@@ -1,0 +1,152 @@
+package app.arbor.chat.ui
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import app.arbor.chat.data.ContextSummaryEntity
+import app.arbor.chat.data.ConversationEntity
+import app.arbor.chat.data.ReasoningVisibility
+
+/** Advanced values which are intentionally absent from the everyday composer. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChatConfigurationSheet(
+    conversation: ConversationEntity,
+    contextSummary: ContextSummaryEntity?,
+    viewModel: ChatViewModel,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text("Chat configuration", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Advanced limits and prompt behavior for this conversation. Thinking, effort, tools, files, and Deep Research live beside the message box.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            ChatNumberSetting("Last request/answer pairs", conversation.contextPairs, 1..500) { value ->
+                viewModel.updateConversation { it.copy(contextPairs = value) }
+            }
+            ChatNumberSetting("Context token ceiling", conversation.contextTokenLimit, 1_024..2_000_000) { value ->
+                viewModel.updateConversation { it.copy(contextTokenLimit = value) }
+            }
+            ChatNumberSetting("Working-history token budget", conversation.workingTokenLimit, 0..2_000_000) { value ->
+                viewModel.updateConversation { it.copy(workingTokenLimit = value) }
+            }
+            ChatNumberSetting("Maximum output tokens", conversation.maxOutputTokens, 1..384_000) { value ->
+                viewModel.updateConversation { it.copy(maxOutputTokens = value) }
+            }
+
+            HorizontalDivider()
+            Text("Token counting", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Hybrid preflight counting")
+                    Text(
+                        "Exact provider counters where available, then local family and generic fallbacks.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = conversation.hybridTokenCountingEnabled,
+                    onCheckedChange = { enabled -> viewModel.updateConversation { it.copy(hybridTokenCountingEnabled = enabled) } },
+                )
+            }
+
+            HorizontalDivider()
+            Text("Working display", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ReasoningVisibility.entries.forEach { option ->
+                    AssistChip(
+                        onClick = { viewModel.updateConversation { it.copy(reasoningVisibility = option) } },
+                        label = { Text(option.chatLabel) },
+                        leadingIcon = if (conversation.reasoningVisibility == option) ({
+                            androidx.compose.material3.Icon(Icons.Outlined.CheckCircle, null)
+                        }) else null,
+                    )
+                }
+            }
+
+            HorizontalDivider()
+            Text("System prompt", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            OutlinedTextField(
+                value = conversation.systemPrompt,
+                onValueChange = { prompt -> viewModel.updateConversation { it.copy(systemPrompt = prompt) } },
+                minLines = 3,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Optional instructions for this chat") },
+            )
+
+            contextSummary?.let { summary ->
+                HorizontalDivider()
+                Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                        Text("Compressed context active", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "${summary.sourceMessageCount} older messages • about ${summary.tokenEstimate} tokens",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = viewModel::compressContextNow, modifier = Modifier.weight(1f)) { Text("Compress") }
+                OutlinedButton(onClick = viewModel::clearContextSummary, modifier = Modifier.weight(1f)) { Text("Clear summary") }
+            }
+            OutlinedButton(onClick = viewModel::applyNewChatDefaultsToCurrent, modifier = Modifier.fillMaxWidth()) {
+                Text("Reset advanced values to defaults")
+            }
+            Spacer(Modifier.height(28.dp))
+        }
+    }
+}
+
+@Composable
+private fun ChatNumberSetting(label: String, value: Int, range: IntRange, onValue: (Int) -> Unit) {
+    OutlinedTextField(
+        value = value.toString(),
+        onValueChange = { raw -> raw.toIntOrNull()?.coerceIn(range)?.let(onValue) },
+        label = { Text(label) },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+private val ReasoningVisibility.chatLabel: String
+    get() = when (this) {
+        ReasoningVisibility.ALWAYS -> "Expanded"
+        ReasoningVisibility.SHOW_WHILE_WORKING -> "While working"
+        ReasoningVisibility.COLLAPSED -> "Collapsed"
+    }

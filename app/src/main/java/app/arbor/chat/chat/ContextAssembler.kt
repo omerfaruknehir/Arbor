@@ -40,11 +40,18 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
             Stop your response after a tool block. Arbor hides the protocol, runs the tool, preserves it in Working, and returns the result so you can continue. Do not pretend to have run a tool.
             """.trimIndent()
         }
+        val researchInstructions = if (conversation.deepResearchEnabled) {
+            """
+            Deep Research mode is active. Treat the request as a research task rather than a quick lookup. First form a concise research plan in Working, then gather evidence iteratively. Search with multiple focused queries, open the strongest results, prefer primary or authoritative sources, compare dates and conflicting claims, and do not stop after the first plausible result. Use uploaded files as sources when relevant. Keep the user able to steer the task: preserve progress after every tool call and respond to steering without discarding completed research. The final answer must be a structured report with inline source URLs or clearly identified source references, a short limitations section when evidence is incomplete, and no invented citations. Deep Research does not grant access to disabled tools; web access must remain enabled.
+            """.trimIndent()
+        } else ""
         val result = ArrayList<InputMessage>()
         result += InputMessage(
             MessageRole.SYSTEM,
             """
             $toolInstructions
+
+            $researchInstructions
 
             User attachments are mirrored under the workspace's `incoming/` directory. Python may inspect and transform those private copies even when the selected API model has no native file or image input. Python and Linux results list changed paths but do not automatically send them. To return one at the correct point in the answer, call `send_file` after its creating tool finishes; use `{"type":"send_file","path":"plot.png","caption":"Generated chart"}` only inside the fallback `arbor-tool` fence when native functions are unavailable. Arbor then inserts a native file card at that exact timeline position. Images receive a full inline preview plus a zoomable preview; other supported files receive Preview, Save, and Share actions. Never claim a file was sent until the `send_file` result confirms it.
 

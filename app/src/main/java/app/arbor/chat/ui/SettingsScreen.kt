@@ -84,30 +84,28 @@ import kotlinx.coroutines.flow.first
 import java.util.UUID
 
 private enum class SettingsTab(val label: String) {
-    CHAT("Chat"), GLOBAL("Global"), PROVIDERS("Providers")
+    DEFAULTS("Defaults"), AUTOMATION("Automation"), APP("App"), PROVIDERS("Providers")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
-    val conversation by viewModel.conversation.collectAsStateWithLifecycle()
     val providers by viewModel.providers.collectAsStateWithLifecycle()
     val defaults by viewModel.newChatDefaults.collectAsStateWithLifecycle()
     val automation by viewModel.automationSettings.collectAsStateWithLifecycle()
-    val contextSummary by viewModel.contextSummary.collectAsStateWithLifecycle()
     val credentialRevision by viewModel.credentialRevision.collectAsStateWithLifecycle()
     val amoled by viewModel.amoled.collectAsState()
     val palette by viewModel.palette.collectAsState()
     val renderSafeMode by viewModel.renderSafeMode.collectAsState()
     val registeredProviders = remember(providers, credentialRevision) { viewModel.registeredProviders(providers) }
     val configuredProviders = remember(providers, credentialRevision) { viewModel.configuredProviders(providers) }
-    var tab by rememberSaveable { mutableStateOf(SettingsTab.CHAT) }
+    var tab by rememberSaveable { mutableStateOf(SettingsTab.DEFAULTS) }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("Settings") },
+                title = { Text("Global settings") },
                 navigationIcon = {
                     IconButton(onClick = { if (openDrawer != null) openDrawer() else viewModel.screen.value = Screen.CHAT }) {
                         Icon(if (openDrawer != null) Icons.Outlined.Menu else Icons.AutoMirrored.Outlined.ArrowBack, "Back")
@@ -119,33 +117,17 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         Column(Modifier.fillMaxSize().padding(padding)) {
             ScrollableTabRow(selectedTabIndex = tab.ordinal, edgePadding = 12.dp) {
                 SettingsTab.entries.forEach { option ->
-                    Tab(
-                        selected = tab == option,
-                        onClick = { tab = option },
-                        text = { Text(option.label) },
-                    )
+                    Tab(selected = tab == option, onClick = { tab = option }, text = { Text(option.label) })
                 }
             }
             when (tab) {
-                SettingsTab.CHAT -> CurrentChatSettings(
-                    conversation = conversation,
-                    providers = configuredProviders,
-                    contextSummary = contextSummary,
-                    viewModel = viewModel,
-                )
-                SettingsTab.GLOBAL -> GlobalSettings(
-                    defaults = defaults,
-                    providers = configuredProviders,
-                    automation = automation,
-                    amoled = amoled,
-                    palette = palette,
-                    renderSafeMode = renderSafeMode,
-                    viewModel = viewModel,
-                )
+                SettingsTab.DEFAULTS -> NewChatDefaultsSettings(defaults, configuredProviders, viewModel)
+                SettingsTab.AUTOMATION -> AutomationSettingsPage(automation, configuredProviders, viewModel)
+                SettingsTab.APP -> AppSettingsPage(amoled, palette, renderSafeMode, viewModel)
                 SettingsTab.PROVIDERS -> ProviderSettings(
                     providers = providers,
                     registeredProviders = registeredProviders,
-                    conversationProviderId = conversation?.selectedProviderId,
+                    conversationProviderId = null,
                     viewModel = viewModel,
                 )
             }
@@ -163,79 +145,15 @@ private fun SettingsPage(content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-private fun CurrentChatSettings(
-    conversation: app.arbor.chat.data.ConversationEntity?,
-    providers: List<ProviderEntity>,
-    contextSummary: app.arbor.chat.data.ContextSummaryEntity?,
-    viewModel: ChatViewModel,
-) = SettingsPage {
-    SectionTitle("Current chat", "These values are stored on this chat. Your latest selections also become the starting defaults for future chats.")
-    if (conversation == null) {
-        Text("Open or create a conversation to edit chat settings.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        return@SettingsPage
-    }
-
-    ChatOptionsEditor(
-        providerId = conversation.selectedProviderId,
-        modelId = conversation.selectedModelId,
-        providers = providers,
-        thinkingEnabled = conversation.thinkingEnabled,
-        thinkingEffort = conversation.thinkingEffort,
-        webEnabled = conversation.webSearchEnabled,
-        pythonEnabled = conversation.agentPythonEnabled,
-        linuxEnabled = conversation.agentUbuntuEnabled,
-        contextPairs = conversation.contextPairs,
-        contextTokenLimit = conversation.contextTokenLimit,
-        workingTokenLimit = conversation.workingTokenLimit,
-        maxOutputTokens = conversation.maxOutputTokens,
-        reasoningVisibility = conversation.reasoningVisibility,
-        systemPrompt = conversation.systemPrompt,
-        viewModel = viewModel,
-        onModel = { providerId, modelId -> viewModel.selectModel(providerId, modelId) },
-        onThinkingEnabled = { enabled -> viewModel.updateConversation { it.copy(thinkingEnabled = enabled) } },
-        onThinkingEffort = { effort -> viewModel.updateConversation { it.copy(thinkingEffort = effort) } },
-        onWeb = { enabled -> viewModel.updateConversation { it.copy(webSearchEnabled = enabled) } },
-        onPython = { enabled -> viewModel.updateConversation { it.copy(agentPythonEnabled = enabled) } },
-        onLinux = { enabled -> viewModel.updateConversation { it.copy(agentUbuntuEnabled = enabled) } },
-        onContextPairs = { value -> viewModel.updateConversation { it.copy(contextPairs = value) } },
-        onContextLimit = { value -> viewModel.updateConversation { it.copy(contextTokenLimit = value) } },
-        onWorkingLimit = { value -> viewModel.updateConversation { it.copy(workingTokenLimit = value) } },
-        onOutputLimit = { value -> viewModel.updateConversation { it.copy(maxOutputTokens = value) } },
-        onReasoningVisibility = { value -> viewModel.updateConversation { it.copy(reasoningVisibility = value) } },
-        onSystemPrompt = { value -> viewModel.updateConversation { it.copy(systemPrompt = value) } },
-    )
-
-    HorizontalDivider()
-    SectionTitle("Compressed context", "Saved summaries apply only to this chat.")
-    contextSummary?.let { summary ->
-        Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(14.dp)) {
-                Text("Compressed context active", fontWeight = FontWeight.SemiBold)
-                Text("${summary.sourceMessageCount} older messages • about ${summary.tokenEstimate} tokens${summary.modelId?.let { " • $it" }.orEmpty()}", style = MaterialTheme.typography.bodySmall)
-            }
-        }
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = viewModel::compressContextNow, modifier = Modifier.weight(1f)) { Text("Compress now") }
-        OutlinedButton(onClick = viewModel::clearContextSummary, modifier = Modifier.weight(1f)) { Text("Clear") }
-    }
-    OutlinedButton(onClick = viewModel::applyNewChatDefaultsToCurrent, modifier = Modifier.fillMaxWidth()) {
-        Text("Reset this chat to new-chat defaults")
-    }
-    Spacer(Modifier.padding(bottom = 24.dp))
-}
-
-@Composable
-private fun GlobalSettings(
+private fun NewChatDefaultsSettings(
     defaults: NewChatDefaults,
     providers: List<ProviderEntity>,
-    automation: AutomationSettingsEntity,
-    amoled: Boolean,
-    palette: ColorPalette,
-    renderSafeMode: Boolean,
     viewModel: ChatViewModel,
 ) = SettingsPage {
-    SectionTitle("New chat defaults", "Used only when a new chat is created. Existing chats keep their own values.")
+    SectionTitle(
+        "New chat defaults",
+        "New conversations copy these values once. Existing chats keep their own persistent controls.",
+    )
     ChatOptionsEditor(
         providerId = defaults.selectedProviderId,
         modelId = defaults.selectedModelId,
@@ -245,6 +163,8 @@ private fun GlobalSettings(
         webEnabled = defaults.webSearchEnabled,
         pythonEnabled = defaults.agentPythonEnabled,
         linuxEnabled = defaults.agentUbuntuEnabled,
+        deepResearchEnabled = defaults.deepResearchEnabled,
+        hybridTokenCountingEnabled = defaults.hybridTokenCountingEnabled,
         contextPairs = defaults.contextPairs,
         contextTokenLimit = defaults.contextTokenLimit,
         workingTokenLimit = defaults.workingTokenLimit,
@@ -255,9 +175,11 @@ private fun GlobalSettings(
         onModel = { providerId, modelId -> viewModel.updateNewChatDefaults { it.copy(selectedProviderId = providerId, selectedModelId = modelId) } },
         onThinkingEnabled = { enabled -> viewModel.updateNewChatDefaults { it.copy(thinkingEnabled = enabled) } },
         onThinkingEffort = { effort -> viewModel.updateNewChatDefaults { it.copy(thinkingEffort = effort) } },
-        onWeb = { enabled -> viewModel.updateNewChatDefaults { it.copy(webSearchEnabled = enabled) } },
+        onWeb = { enabled -> viewModel.updateNewChatDefaults { it.copy(webSearchEnabled = enabled, deepResearchEnabled = it.deepResearchEnabled && enabled) } },
         onPython = { enabled -> viewModel.updateNewChatDefaults { it.copy(agentPythonEnabled = enabled) } },
         onLinux = { enabled -> viewModel.updateNewChatDefaults { it.copy(agentUbuntuEnabled = enabled) } },
+        onDeepResearch = { enabled -> viewModel.updateNewChatDefaults { it.copy(deepResearchEnabled = enabled, webSearchEnabled = it.webSearchEnabled || enabled) } },
+        onHybridTokenCounting = { enabled -> viewModel.updateNewChatDefaults { it.copy(hybridTokenCountingEnabled = enabled) } },
         onContextPairs = { value -> viewModel.updateNewChatDefaults { it.copy(contextPairs = value) } },
         onContextLimit = { value -> viewModel.updateNewChatDefaults { it.copy(contextTokenLimit = value) } },
         onWorkingLimit = { value -> viewModel.updateNewChatDefaults { it.copy(workingTokenLimit = value) } },
@@ -265,9 +187,16 @@ private fun GlobalSettings(
         onReasoningVisibility = { value -> viewModel.updateNewChatDefaults { it.copy(reasoningVisibility = value) } },
         onSystemPrompt = { value -> viewModel.updateNewChatDefaults { it.copy(systemPrompt = value) } },
     )
+    Spacer(Modifier.padding(bottom = 24.dp))
+}
 
-    HorizontalDivider()
-    SectionTitle("Automation models", "Chat naming and context compression are global services, separate from the active chat model.")
+@Composable
+private fun AutomationSettingsPage(
+    automation: AutomationSettingsEntity,
+    providers: List<ProviderEntity>,
+    viewModel: ChatViewModel,
+) = SettingsPage {
+    SectionTitle("Automation models", "Global services used for naming, context compression, and package review.")
     if (providers.isEmpty()) {
         Text("Configure a usable provider to enable model-based automation.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
@@ -285,7 +214,7 @@ private fun GlobalSettings(
     )
     AutomationPolicyEditor(
         title = "Context compression",
-        subtitle = "Older messages outside the active pair/token window are merged into saved compact context.",
+        subtitle = "Older messages outside the active context window are merged into saved compact context.",
         mode = automation.compressionMode,
         providerId = automation.compressionProviderId,
         modelId = automation.compressionModelId,
@@ -295,13 +224,20 @@ private fun GlobalSettings(
             viewModel.updateAutomationSettings { it.copy(compressionMode = mode, compressionProviderId = providerId, compressionModelId = modelId) }
         },
     )
-
     HorizontalDivider()
     SectionTitle("Package approval", "Global policy for pip, apt, and apk package requests.")
     PackageApprovalEditor(automation, providers, viewModel)
+    Spacer(Modifier.padding(bottom = 24.dp))
+}
 
-    HorizontalDivider()
-    SectionTitle("Appearance & privacy", "App-wide display and renderer safety settings.")
+@Composable
+private fun AppSettingsPage(
+    amoled: Boolean,
+    palette: ColorPalette,
+    renderSafeMode: Boolean,
+    viewModel: ChatViewModel,
+) = SettingsPage {
+    SectionTitle("Appearance", "App-wide display settings.")
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         ColorPalette.entries.forEach { option ->
             AssistChip(
@@ -312,6 +248,8 @@ private fun GlobalSettings(
         }
     }
     SettingsSwitch("AMOLED black", amoled, viewModel::setAmoled)
+    HorizontalDivider()
+    SectionTitle("Privacy & rendering", "Global safety settings for generated content.")
     SettingsSwitch("Safe generated rendering", renderSafeMode, viewModel::setRenderSafeMode)
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -332,6 +270,8 @@ private fun ChatOptionsEditor(
     webEnabled: Boolean,
     pythonEnabled: Boolean,
     linuxEnabled: Boolean,
+    deepResearchEnabled: Boolean,
+    hybridTokenCountingEnabled: Boolean,
     contextPairs: Int,
     contextTokenLimit: Int,
     workingTokenLimit: Int,
@@ -345,6 +285,8 @@ private fun ChatOptionsEditor(
     onWeb: (Boolean) -> Unit,
     onPython: (Boolean) -> Unit,
     onLinux: (Boolean) -> Unit,
+    onDeepResearch: (Boolean) -> Unit,
+    onHybridTokenCounting: (Boolean) -> Unit,
     onContextPairs: (Int) -> Unit,
     onContextLimit: (Int) -> Unit,
     onWorkingLimit: (Int) -> Unit,
@@ -358,7 +300,8 @@ private fun ChatOptionsEditor(
     ProviderModelSelector(providers, providerId, modelId, models, viewModel, onModel)
 
     HorizontalDivider()
-    SectionTitle("Thinking", "The switch and effort level are sent with each request when the selected model supports them.")
+    SectionTitle("Composer defaults", "Starting state for the controls beside the message box.")
+    Text("Thinking", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
     SettingsSwitch(
         label = "Thinking",
         checked = thinkingEnabled,
@@ -382,11 +325,16 @@ private fun ChatOptionsEditor(
         Text("Some providers do not allow thinking to be fully disabled on every model; Arbor requests off where the API supports it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 
-    HorizontalDivider()
-    SectionTitle("Tools", "Simple per-chat permissions. Disabled tools are not offered to the model.")
-    SettingsSwitch("Web", webEnabled, onWeb)
+    Text("Tools and modes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    SettingsSwitch("Web search", webEnabled, onWeb)
+    SettingsSwitch("Deep Research", deepResearchEnabled, onDeepResearch, enabled = webEnabled || !deepResearchEnabled)
+    Text("Deep Research plans, searches iteratively, verifies sources, and produces a cited report. Enabling it also enables web search.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     SettingsSwitch("Python", pythonEnabled, onPython)
     SettingsSwitch("Linux", linuxEnabled, onLinux)
+
+    HorizontalDivider()
+    SectionTitle("Token counting", "Optional hybrid preflight counting. Provider count endpoints are preferred; local model-family estimates and the generic estimator are fallbacks.")
+    SettingsSwitch("Hybrid token counting", hybridTokenCountingEnabled, onHybridTokenCounting)
 
     HorizontalDivider()
     SectionTitle("Context & output", "A pair is one request plus its answer. Working history has its own budget inside the total context ceiling.")

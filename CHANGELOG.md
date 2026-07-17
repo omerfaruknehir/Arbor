@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.13.0
+
+- Rebuilt settings around the conversation composer. Thinking and effort now live beside the input, while the `+` sheet handles files, photos, camera capture, Web search, Deep Research, Python, and Linux.
+- Removed the former current-chat Settings tab. Global Settings is available from the navigation drawer and is organized into **Defaults**, **Automation**, **App**, and **Providers**.
+- Added a compact per-chat **Chat configuration** sheet containing only advanced context-pair, context-token, Working-token, output-token, reasoning-display, compression, and system-prompt controls.
+- Added persistent per-chat Deep Research mode. It plans in Working, performs repeated focused searches, opens and verifies stronger sources, uses supplied files, and produces a structured sourced report. Deep Research automatically enables Web search and receives a larger bounded tool-round budget.
+- Added optional hybrid preflight token counting. Anthropic and Gemini use their provider count endpoints; OpenAI-compatible and known local families use model-family estimates; every failure falls back without blocking generation. Provider-reported usage remains authoritative after completion.
+- Persisted Deep Research and hybrid counting in Room schema 11, new-chat defaults, and immutable generation snapshots so queued, resumed, retried, and steered work retains the submitted configuration.
+- Added regression coverage for token-count tiers, fallback behavior, default inheritance, and generation snapshots.
+
 ## 0.12.0
 
 - Split Settings into **Chat**, **Global**, and **Providers** tabs, with current-chat controls kept separate from persistent defaults for future chats.

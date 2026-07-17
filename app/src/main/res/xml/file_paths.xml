@@ -2,4 +2,5 @@
     <files-path name="workspace" path="workspaces/" />
     <files-path name="attachments" path="attachments/" />
     <cache-path name="previews" path="previews/" />
+    <cache-path name="camera" path="camera/" />
 </paths>

@@ -118,7 +118,9 @@ class GenerationWorker(
             }
         val provider = snapshot.provider()
         val model = snapshot.model()
-        val conversation = snapshot.applyTo(currentConversation)
+        val conversation = snapshot.applyTo(currentConversation).let { captured ->
+            if (captured.deepResearchEnabled && !captured.webSearchEnabled) captured.copy(webSearchEnabled = true) else captured
+        }
         val key = container.secureStore.apiKey(provider.id)
         val currentProviderState = repository.provider(provider.id) ?: provider
         require(ProviderCredentialPolicy.isUsable(currentProviderState, key)) {
@@ -145,6 +147,7 @@ class GenerationWorker(
 
         var universalFallback = false
         var lastFinishReason: String? = null
+        val maxToolRounds = if (conversation.deepResearchEnabled) MAX_DEEP_RESEARCH_TOOL_ROUNDS else MAX_TOOL_ROUNDS
         val traces = initial.toolTraceJson
             ?.let { runCatching { json.decodeFromString<MutableList<ToolTraceEvent>>(it) }.getOrNull() }
             ?: mutableListOf()
@@ -317,7 +320,54 @@ class GenerationWorker(
             return ToolExecution(toolOutput, toolError != null, replayed = false)
         }
 
-        for (round in 0..MAX_TOOL_ROUNDS) {
+        fun roughInputTokens(inputs: List<InputMessage>): Int = inputs.sumOf { input ->
+            app.arbor.chat.chat.TokenEstimator.estimate(input.content + input.reasoning + input.toolTraceJson) +
+                input.attachments.sumOf { attachment ->
+                    when {
+                        attachment.extractedText != null -> app.arbor.chat.chat.TokenEstimator.estimate(attachment.extractedText.take(1_000_000)) + 64
+                        attachment.ocrJson != null -> app.arbor.chat.chat.TokenEstimator.estimate(attachment.ocrJson.take(128_000)) + 64
+                        attachment.mimeType.startsWith("image/") -> 1_536
+                        else -> 512
+                    }
+                }
+        }
+
+        fun dropOldestTurn(inputs: List<InputMessage>): List<InputMessage>? {
+            val userIndexes = inputs.indices.filter { inputs[it].role == MessageRole.USER }
+            if (userIndexes.size <= 1) return null
+            val firstUser = userIndexes.first()
+            val nextUser = userIndexes[1]
+            val start = inputs.indexOfFirst { it.role != MessageRole.SYSTEM }.takeIf { it >= 0 } ?: firstUser
+            return inputs.toMutableList().also { list ->
+                repeat(nextUser - start) { list.removeAt(start) }
+            }
+        }
+
+        suspend fun prepareCountedRequest(base: ChatRequest): Pair<ChatRequest, Long?> {
+            if (!conversation.hybridTokenCountingEnabled) return base to null
+            var candidate = base
+            var result = container.tokenCounter.count(candidate)
+            var passes = 0
+            while (result.tokens > conversation.contextTokenLimit && passes++ < 4) {
+                var reduced = candidate.messages
+                val roughTarget = (roughInputTokens(reduced) * conversation.contextTokenLimit.toDouble() / result.tokens.toDouble() * 0.94).toInt()
+                    .coerceAtLeast(512)
+                while (roughInputTokens(reduced) > roughTarget) {
+                    reduced = dropOldestTurn(reduced) ?: break
+                }
+                if (reduced === candidate.messages || reduced == candidate.messages) break
+                candidate = candidate.copy(messages = reduced)
+                result = container.tokenCounter.count(candidate)
+            }
+            if (result.tokens > conversation.contextTokenLimit) {
+                throw IllegalStateException(
+                    "The current prompt, files, and required system context use about ${result.tokens} input tokens, above this chat's ${conversation.contextTokenLimit}-token ceiling. Increase the ceiling or remove an attachment.",
+                )
+            }
+            return candidate to result.tokens
+        }
+
+        for (round in 0..maxToolRounds) {
             val beforeContentLength = savedContent.length
             val beforeReasoningLength = savedReasoning.length
             var pendingCharacters = 0
@@ -354,7 +404,7 @@ class GenerationWorker(
                 var passReceived = false
                 var passFinishReason: String? = null
                 try {
-                    val request = ChatRequest(
+                    val baseRequest = ChatRequest(
                         provider = provider,
                         model = model,
                         apiKey = key,
@@ -366,6 +416,8 @@ class GenerationWorker(
                         customHeaders = parseHeaders(provider.customHeadersJson),
                         tools = if (nativeToolsDisabled) emptyList() else nativeToolDefinitions,
                     )
+                    val (request, preflightInputTokens) = prepareCountedRequest(baseRequest)
+                    passInput = preflightInputTokens
                     container.providers.get(provider.kind).stream(request) { chunk ->
                         if (chunk.text.isNotEmpty() || chunk.reasoning.isNotEmpty() || chunk.toolCalls.isNotEmpty()) passReceived = true
                         if (chunk.toolCalls.isNotEmpty()) passToolCalls += chunk.toolCalls
@@ -451,7 +503,7 @@ class GenerationWorker(
             val passReasoning = savedReasoning.substring(beforeReasoningLength.coerceAtMost(savedReasoning.length))
 
             if (passToolCalls.isNotEmpty()) {
-                if (round >= MAX_TOOL_ROUNDS) {
+                if (round >= maxToolRounds) {
                     val notice = "\n\n*Arbor stopped after too many consecutive tool calls.*"
                     savedContent += notice
                     appendTimeline("text", notice)
@@ -504,7 +556,7 @@ class GenerationWorker(
                     else timeline[lastTextIndex] = textEvent.copy(content = cleaned)
                 }
             }
-            if (round >= MAX_TOOL_ROUNDS) {
+            if (round >= maxToolRounds) {
                 val notice = "\n\n*Arbor stopped after too many consecutive tool calls.*"
                 savedContent += notice
                 appendTimeline("text", notice)
@@ -616,6 +668,7 @@ class GenerationWorker(
         const val KEY_CONTINUATION = "continuation"
         const val CHANNEL_ID = "arbor_generation"
         private const val MAX_TOOL_ROUNDS = 6
+        private const val MAX_DEEP_RESEARCH_TOOL_ROUNDS = 14
         private const val MAX_TOOL_OUTPUT_CHARS = 40_000
         private const val MAX_BACKGROUND_RETRIES = 5
         private const val STREAM_FLUSH_CHARACTERS = 512

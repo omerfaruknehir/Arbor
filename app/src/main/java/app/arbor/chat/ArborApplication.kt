@@ -11,6 +11,7 @@ import app.arbor.chat.files.OcrEngine
 import app.arbor.chat.generation.GenerationScheduler
 import app.arbor.chat.provider.ProviderRegistry
 import app.arbor.chat.provider.ModelDiscoveryService
+import app.arbor.chat.provider.HybridTokenCounter
 import app.arbor.chat.sandbox.PythonSandbox
 import app.arbor.chat.sandbox.UbuntuRuntime
 import app.arbor.chat.sandbox.PackageApprovalService
@@ -53,6 +54,7 @@ class AppContainer(application: Application, val crashReporter: CrashReporter) {
     val repository = ChatRepository(database)
     val providers = ProviderRegistry()
     val modelDiscovery = ModelDiscoveryService()
+    val tokenCounter = HybridTokenCounter()
     val auxiliaryModels = AuxiliaryModelService(repository, providers, secureStore)
     val attachmentStore = AttachmentStore(application, database.attachmentDao())
     val ocrEngine = OcrEngine(application, database.attachmentDao())

@@ -1,7 +1,9 @@
 package app.arbor.chat.ui
 
+import android.net.Uri
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -30,7 +32,15 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.AltRoute
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material.icons.outlined.TravelExplore
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
@@ -47,9 +57,13 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ModalBottomSheet
@@ -78,8 +92,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
 import app.arbor.chat.data.MessageRole
@@ -89,6 +105,7 @@ import app.arbor.chat.data.ModelEntity
 import app.arbor.chat.data.ProviderEntity
 import app.arbor.chat.data.ReasoningVisibility
 import app.arbor.chat.data.SendMode
+import app.arbor.chat.data.ThinkingEffort
 import app.arbor.chat.agent.ToolTraceEvent
 import app.arbor.chat.agent.MessageTimelineEvent
 import app.arbor.chat.agent.groupOrderedTimeline
@@ -97,6 +114,8 @@ import app.arbor.chat.sandbox.UbuntuExecutionResult
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
+import java.io.File
+import java.util.UUID
 
 private val ChatMessageJson = Json { ignoreUnknownKeys = true }
 
@@ -112,11 +131,13 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val pending by viewModel.pending.collectAsStateWithLifecycle()
     val generating by viewModel.isGenerating.collectAsStateWithLifecycle()
     val revisionHistory by viewModel.revisionHistory.collectAsStateWithLifecycle()
+    val contextSummary by viewModel.contextSummary.collectAsStateWithLifecycle()
     val paging = viewModel.messages.collectAsLazyPagingItems()
     val focusedMessageNodeId by viewModel.focusedMessageNodeId.collectAsState()
     var modelMenu by remember { mutableStateOf(false) }
     var chatMenu by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
+    var showChatConfiguration by remember { mutableStateOf(false) }
     val messageListState = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
     val latestThresholdPx = with(LocalDensity.current) { 48.dp.roundToPx() }
@@ -215,7 +236,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                     modelMenu = false
                                 }
                             }
-                            if (usableProviders.isEmpty()) DropdownMenuItem(text = { Text("Configure provider in Settings") }, onClick = { viewModel.screen.value = Screen.SETTINGS; modelMenu = false })
+                            if (usableProviders.isEmpty()) DropdownMenuItem(text = { Text("Open the left menu → Settings to add a provider") }, onClick = { modelMenu = false })
                         }
                     }
                 },
@@ -229,8 +250,9 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                 onClick = { viewModel.regenerateTitle(); chatMenu = false },
                             )
                             DropdownMenuItem(
-                                text = { Text("Conversation settings") },
-                                onClick = { viewModel.screen.value = Screen.SETTINGS; chatMenu = false },
+                                text = { Text("Chat configuration") },
+                                leadingIcon = { Icon(Icons.Outlined.Tune, null) },
+                                onClick = { showChatConfiguration = true; chatMenu = false },
                             )
                             DropdownMenuItem(
                                 text = { Text("Edited message history (${revisionHistory.size})") },
@@ -324,6 +346,11 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             }
             Spacer(Modifier.size(20.dp))
         }
+    }
+    if (showChatConfiguration) {
+        conversation?.let { current ->
+            ChatConfigurationSheet(current, contextSummary, viewModel) { showChatConfiguration = false }
+        } ?: run { showChatConfiguration = false }
     }
 }
 
@@ -637,14 +664,40 @@ private fun ToolStepDetails(kind: String, input: String, output: String, status:
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun Composer(viewModel: ChatViewModel, model: ModelEntity?, generating: Boolean) {
+    val conversation by viewModel.conversation.collectAsStateWithLifecycle()
     val draft by viewModel.draft.collectAsState()
     val staged by viewModel.stagedAttachments.collectAsState()
     val importing by viewModel.importing.collectAsState()
     val pending by viewModel.pending.collectAsState()
+    val context = LocalContext.current
     var sendMenu by remember { mutableStateOf(false) }
+    var plusMenu by remember { mutableStateOf(false) }
+    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingCameraFile by remember { mutableStateOf<File?>(null) }
     val haptics = LocalHapticFeedback.current
     val hasPayload = draft.isNotBlank() || staged.isNotEmpty()
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> uris.forEach(viewModel::import) }
+
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        uris.forEach(viewModel::import)
+    }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(12)) { uris ->
+        uris.forEach(viewModel::import)
+    }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        val uri = pendingCameraUri
+        val file = pendingCameraFile
+        pendingCameraUri = null
+        pendingCameraFile = null
+        if (saved && uri != null) viewModel.import(uri) else file?.delete()
+    }
+
+    fun takePhoto() {
+        val file = File(context.cacheDir, "camera/${UUID.randomUUID()}.jpg").also { it.parentFile?.mkdirs() }
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+        pendingCameraFile = file
+        pendingCameraUri = uri
+        camera.launch(uri)
+    }
 
     Surface(
         shadowElevation = 10.dp,
@@ -653,14 +706,19 @@ private fun Composer(viewModel: ChatViewModel, model: ModelEntity?, generating: 
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 10.dp, vertical = 8.dp)) {
-            if (pending.isNotEmpty()) Text("${pending.size} message${if (pending.size == 1) "" else "s"} queued", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+            if (pending.isNotEmpty()) Text(
+                "${pending.size} message${if (pending.size == 1) "" else "s"} queued",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            )
             if (staged.isNotEmpty()) {
                 LazyColumn(Modifier.heightIn(max = 132.dp)) {
                     items(staged.size, key = { staged[it].id }) { index ->
                         val attachment = staged[index]
                         AssistChip(
                             onClick = { viewModel.removeStaged(attachment.id) },
-                            label = { Text("${attachment.displayName} • ${Formatter.formatShortFileSize(androidx.compose.ui.platform.LocalContext.current, attachment.sizeBytes)}") },
+                            label = { Text("${attachment.displayName} • ${Formatter.formatShortFileSize(context, attachment.sizeBytes)}") },
                             leadingIcon = {
                                 when {
                                     attachment.ocrJson != null -> Badge { Text("OCR") }
@@ -673,40 +731,121 @@ private fun Composer(viewModel: ChatViewModel, model: ModelEntity?, generating: 
                 }
             }
             Row(verticalAlignment = Alignment.Bottom) {
-                IconButton(onClick = { picker.launch(arrayOf("*/*")) }, enabled = !importing) { Icon(Icons.Outlined.AttachFile, "Attach files") }
+                IconButton(onClick = { plusMenu = true }, enabled = !importing) {
+                    Icon(Icons.Outlined.Add, "Add files, images, camera, or tools")
+                }
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { viewModel.draft.value = it },
-                    placeholder = { Text(if (generating) "Steer or queue a message…" else "Message Arbor…") },
+                    placeholder = { Text(if (generating) "Steer or queue a message…" else if (conversation?.deepResearchEnabled == true) "Describe the research outcome…" else "Message Arbor…") },
                     modifier = Modifier.weight(1f).heightIn(min = 54.dp, max = 170.dp),
                     shape = MaterialTheme.shapes.extraLarge,
                     maxLines = 7,
                 )
                 Spacer(Modifier.width(6.dp))
-                Box {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(48.dp).combinedClickable(
-                            onClick = { if (generating && draft.isBlank() && staged.isEmpty()) viewModel.stop() else viewModel.send() },
-                            onLongClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                sendMenu = true
-                            },
-                        ),
-                    ) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Icon(if (generating && draft.isBlank() && staged.isEmpty()) Icons.Filled.Stop else Icons.Filled.ArrowUpward, if (generating) "Stop or send" else "Send")
-                        }
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(48.dp).combinedClickable(
+                        onClick = { if (generating && draft.isBlank() && staged.isEmpty()) viewModel.stop() else viewModel.send() },
+                        onLongClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            sendMenu = true
+                        },
+                    ),
+                ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(
+                            if (generating && draft.isBlank() && staged.isEmpty()) Icons.Filled.Stop else Icons.Filled.ArrowUpward,
+                            if (generating) "Stop or send" else "Send",
+                        )
                     }
                 }
             }
-            val context = model?.contextWindow ?: 1
-            val limit = viewModel.conversation.value?.contextTokenLimit ?: 0
-            LinearProgressIndicator(progress = { (limit.toFloat() / context).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().padding(horizontal = 54.dp, vertical = 4.dp))
+
+            conversation?.let { current ->
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 44.dp, end = 4.dp, top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(
+                        selected = current.thinkingEnabled,
+                        enabled = model?.supportsThinking != false,
+                        onClick = { viewModel.updateConversation { it.copy(thinkingEnabled = !it.thinkingEnabled) } },
+                        label = { Text("Thinking") },
+                        leadingIcon = { Icon(Icons.Outlined.Psychology, null, Modifier.size(16.dp)) },
+                    )
+                    if (current.thinkingEnabled && model?.supportsThinking != false) {
+                        Text(current.thinkingEffort.composerLabel, style = MaterialTheme.typography.labelSmall)
+                        Slider(
+                            value = current.thinkingEffort.ordinal.toFloat(),
+                            onValueChange = { raw ->
+                                val index = raw.toInt().coerceIn(0, ThinkingEffort.entries.lastIndex)
+                                viewModel.updateConversation { it.copy(thinkingEffort = ThinkingEffort.entries[index]) }
+                            },
+                            valueRange = 0f..ThinkingEffort.entries.lastIndex.toFloat(),
+                            steps = ThinkingEffort.entries.size - 2,
+                            modifier = Modifier.weight(1f),
+                        )
+                    } else {
+                        Spacer(Modifier.weight(1f))
+                    }
+                    if (current.deepResearchEnabled) {
+                        AssistChip(
+                            onClick = { plusMenu = true },
+                            label = { Text("Research") },
+                            leadingIcon = { Icon(Icons.Outlined.TravelExplore, null, Modifier.size(16.dp)) },
+                        )
+                    }
+                }
+            }
+
+            val modelContext = model?.contextWindow ?: 1
+            val limit = conversation?.contextTokenLimit ?: 0
+            LinearProgressIndicator(
+                progress = { (limit.toFloat() / modelContext).coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 54.dp, vertical = 2.dp),
+            )
         }
     }
+
+    if (plusMenu) {
+        ModalBottomSheet(onDismissRequest = { plusMenu = false }) {
+            Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                Text("Add and use tools", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
+                ComposerActionRow(Icons.Outlined.AttachFile, "Files", "Documents, archives, code, audio, and other supported files") {
+                    plusMenu = false
+                    filePicker.launch(arrayOf("*/*"))
+                }
+                ComposerActionRow(Icons.Outlined.Image, "Photos", "Choose one or more images") {
+                    plusMenu = false
+                    photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                }
+                ComposerActionRow(Icons.Outlined.CameraAlt, "Camera", "Take a photo and attach it") {
+                    plusMenu = false
+                    takePhoto()
+                }
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                conversation?.let { current ->
+                    ComposerToggleRow(Icons.Outlined.Search, "Web search", "Search and fetch public web sources", current.webSearchEnabled) { enabled ->
+                        viewModel.updateConversation { it.copy(webSearchEnabled = enabled, deepResearchEnabled = it.deepResearchEnabled && enabled) }
+                    }
+                    ComposerToggleRow(Icons.Outlined.TravelExplore, "Deep Research", "Plan, search repeatedly, verify sources, and write a cited report", current.deepResearchEnabled) { enabled ->
+                        viewModel.updateConversation { it.copy(deepResearchEnabled = enabled, webSearchEnabled = it.webSearchEnabled || enabled) }
+                    }
+                    ComposerToggleRow(Icons.Outlined.Code, "Python", "Run code in this chat's persistent workspace", current.agentPythonEnabled) { enabled ->
+                        viewModel.updateConversation { it.copy(agentPythonEnabled = enabled) }
+                    }
+                    ComposerToggleRow(Icons.Outlined.Terminal, "Linux", "Use the selected Linux tooling workspace", current.agentUbuntuEnabled) { enabled ->
+                        viewModel.updateConversation { it.copy(agentUbuntuEnabled = enabled) }
+                    }
+                }
+            }
+        }
+    }
+
     if (sendMenu) {
         ModalBottomSheet(onDismissRequest = { sendMenu = false }) {
             Column(Modifier.padding(bottom = 24.dp)) {
@@ -731,7 +870,7 @@ private fun Composer(viewModel: ChatViewModel, model: ModelEntity?, generating: 
                         onLongClick = { if (hasPayload) { viewModel.send(if (generating) SendMode.STEER else SendMode.SEND_NOW); sendMenu = false } },
                     ),
                     colors = androidx.compose.material3.ListItemDefaults.colors(
-                        headlineColor = if (draft.isNotBlank() || staged.isNotEmpty()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = .38f),
+                        headlineColor = if (hasPayload) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = .38f),
                     ),
                 )
                 if (generating) ListItem(
@@ -750,5 +889,47 @@ private fun Composer(viewModel: ChatViewModel, model: ModelEntity?, generating: 
         }
     }
 }
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ComposerActionRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(subtitle) },
+        leadingContent = { Icon(icon, null) },
+        modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onClick),
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ComposerToggleRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(subtitle) },
+        leadingContent = { Icon(icon, null) },
+        trailingContent = { Switch(checked = checked, onCheckedChange = onCheckedChange) },
+        modifier = Modifier.combinedClickable(onClick = { onCheckedChange(!checked) }, onLongClick = { onCheckedChange(!checked) }),
+    )
+}
+
+private val ThinkingEffort.composerLabel: String
+    get() = when (this) {
+        ThinkingEffort.MINIMAL -> "Min"
+        ThinkingEffort.LOW -> "Low"
+        ThinkingEffort.MEDIUM -> "Med"
+        ThinkingEffort.HIGH -> "High"
+    }
 
 private fun ChatViewModel.containerAttachments(nodeId: String) = observeAttachments(nodeId)

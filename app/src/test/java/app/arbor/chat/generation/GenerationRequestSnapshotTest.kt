@@ -19,6 +19,11 @@ class GenerationRequestSnapshotTest {
             updatedAt = 1,
             thinkingEnabled = false,
             thinkingEffort = ThinkingEffort.MINIMAL,
+            webSearchEnabled = true,
+            agentPythonEnabled = false,
+            agentUbuntuEnabled = true,
+            deepResearchEnabled = true,
+            hybridTokenCountingEnabled = true,
         )
         val provider = ProviderEntity("deepseek", "DeepSeek", ProviderKind.OPENAI_COMPATIBLE, "https://api.deepseek.com")
         val model = ModelEntity(
@@ -40,5 +45,10 @@ class GenerationRequestSnapshotTest {
         assertEquals(ThinkingEffort.MINIMAL, snapshot.thinkingEffort)
         assertFalse(restored.thinkingEnabled)
         assertEquals(ThinkingEffort.MINIMAL, restored.thinkingEffort)
+        assertEquals(true, restored.webSearchEnabled)
+        assertEquals(false, restored.agentPythonEnabled)
+        assertEquals(true, restored.agentUbuntuEnabled)
+        assertEquals(true, restored.deepResearchEnabled)
+        assertEquals(true, restored.hybridTokenCountingEnabled)
     }
 }

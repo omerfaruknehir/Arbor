@@ -25,6 +25,8 @@ data class NewChatDefaults(
     val webSearchEnabled: Boolean = true,
     val agentPythonEnabled: Boolean = true,
     val agentUbuntuEnabled: Boolean = false,
+    val deepResearchEnabled: Boolean = false,
+    val hybridTokenCountingEnabled: Boolean = false,
 ) {
     fun applyTo(conversation: ConversationEntity): ConversationEntity = conversation.copy(
         selectedProviderId = selectedProviderId,
@@ -40,6 +42,8 @@ data class NewChatDefaults(
         webSearchEnabled = webSearchEnabled,
         agentPythonEnabled = agentPythonEnabled,
         agentUbuntuEnabled = agentUbuntuEnabled,
+        deepResearchEnabled = deepResearchEnabled,
+        hybridTokenCountingEnabled = hybridTokenCountingEnabled,
     )
 
     companion object {
@@ -57,6 +61,8 @@ data class NewChatDefaults(
             webSearchEnabled = conversation.webSearchEnabled,
             agentPythonEnabled = conversation.agentPythonEnabled,
             agentUbuntuEnabled = conversation.agentUbuntuEnabled,
+            deepResearchEnabled = conversation.deepResearchEnabled,
+            hybridTokenCountingEnabled = conversation.hybridTokenCountingEnabled,
         )
     }
 }
@@ -104,6 +110,8 @@ class AppPreferences(context: Context) {
             putBoolean(KEY_DEFAULT_WEB, normalized.webSearchEnabled)
             putBoolean(KEY_DEFAULT_PYTHON, normalized.agentPythonEnabled)
             putBoolean(KEY_DEFAULT_LINUX, normalized.agentUbuntuEnabled)
+            putBoolean(KEY_DEFAULT_DEEP_RESEARCH, normalized.deepResearchEnabled)
+            putBoolean(KEY_DEFAULT_HYBRID_COUNTING, normalized.hybridTokenCountingEnabled)
             putBoolean(KEY_DEFAULTS_INITIALIZED, true)
         }
     }
@@ -125,6 +133,8 @@ class AppPreferences(context: Context) {
         webSearchEnabled = preferences.getBoolean(KEY_DEFAULT_WEB, true),
         agentPythonEnabled = preferences.getBoolean(KEY_DEFAULT_PYTHON, true),
         agentUbuntuEnabled = preferences.getBoolean(KEY_DEFAULT_LINUX, false),
+        deepResearchEnabled = preferences.getBoolean(KEY_DEFAULT_DEEP_RESEARCH, false),
+        hybridTokenCountingEnabled = preferences.getBoolean(KEY_DEFAULT_HYBRID_COUNTING, false),
     )
 
     private inline fun <reified T : Enum<T>> enumValue(key: String, fallback: T): T =
@@ -146,6 +156,8 @@ class AppPreferences(context: Context) {
         const val KEY_DEFAULT_WEB = "new_chat_web"
         const val KEY_DEFAULT_PYTHON = "new_chat_python"
         const val KEY_DEFAULT_LINUX = "new_chat_linux"
+        const val KEY_DEFAULT_DEEP_RESEARCH = "new_chat_deep_research"
+        const val KEY_DEFAULT_HYBRID_COUNTING = "new_chat_hybrid_counting"
         const val KEY_DEFAULTS_INITIALIZED = "new_chat_defaults_initialized"
     }
 }

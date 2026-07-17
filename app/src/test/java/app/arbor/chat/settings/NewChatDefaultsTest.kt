@@ -29,6 +29,8 @@ class NewChatDefaultsTest {
             webSearchEnabled = false,
             agentPythonEnabled = true,
             agentUbuntuEnabled = true,
+            deepResearchEnabled = true,
+            hybridTokenCountingEnabled = true,
         )
 
         val defaults = NewChatDefaults.from(conversation)
@@ -53,5 +55,7 @@ class NewChatDefaultsTest {
         assertFalse(applied.webSearchEnabled)
         assertTrue(applied.agentPythonEnabled)
         assertTrue(applied.agentUbuntuEnabled)
+        assertTrue(applied.deepResearchEnabled)
+        assertTrue(applied.hybridTokenCountingEnabled)
     }
 }

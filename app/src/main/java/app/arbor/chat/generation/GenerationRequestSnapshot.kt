@@ -35,6 +35,11 @@ data class GenerationRequestSnapshot(
     val systemPrompt: String,
     val thinkingEnabled: Boolean = true,
     val thinkingEffort: ThinkingEffort = ThinkingEffort.MEDIUM,
+    val webSearchEnabled: Boolean = true,
+    val agentPythonEnabled: Boolean = true,
+    val agentUbuntuEnabled: Boolean = false,
+    val deepResearchEnabled: Boolean = false,
+    val hybridTokenCountingEnabled: Boolean = false,
 ) {
     fun provider(): ProviderEntity = ProviderEntity(
         id = providerId,
@@ -76,6 +81,11 @@ data class GenerationRequestSnapshot(
             systemPrompt = systemPrompt,
             thinkingEnabled = thinkingEnabled,
             thinkingEffort = thinkingEffort,
+            webSearchEnabled = webSearchEnabled,
+            agentPythonEnabled = agentPythonEnabled,
+            agentUbuntuEnabled = agentUbuntuEnabled,
+            deepResearchEnabled = deepResearchEnabled,
+            hybridTokenCountingEnabled = hybridTokenCountingEnabled,
         )
     }
 
@@ -109,6 +119,11 @@ data class GenerationRequestSnapshot(
             systemPrompt = conversation.systemPrompt,
             thinkingEnabled = conversation.thinkingEnabled,
             thinkingEffort = conversation.thinkingEffort,
+            webSearchEnabled = conversation.webSearchEnabled,
+            agentPythonEnabled = conversation.agentPythonEnabled,
+            agentUbuntuEnabled = conversation.agentUbuntuEnabled,
+            deepResearchEnabled = conversation.deepResearchEnabled,
+            hybridTokenCountingEnabled = conversation.hybridTokenCountingEnabled,
         )
     }
 }
