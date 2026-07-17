@@ -4,6 +4,7 @@ import app.arbor.chat.data.AttachmentEntity
 import app.arbor.chat.data.MessageRole
 import app.arbor.chat.data.ModelEntity
 import app.arbor.chat.data.ProviderEntity
+import app.arbor.chat.data.ThinkingEffort
 
 data class InputMessage(
     val role: MessageRole,
@@ -11,6 +12,10 @@ data class InputMessage(
     val reasoning: String = "",
     val toolTraceJson: String = "[]",
     val attachments: List<AttachmentEntity> = emptyList(),
+    val nativeToolCalls: List<NativeToolCall> = emptyList(),
+    val nativeToolResults: List<NativeToolResult> = emptyList(),
+    /** Provider-specific assistant content blocks/parts which must be echoed unchanged during a tool loop. */
+    val nativeProviderPayloadJson: String = "",
 )
 
 data class ChatRequest(
@@ -20,8 +25,10 @@ data class ChatRequest(
     val messages: List<InputMessage>,
     val maxOutputTokens: Int,
     val thinkingEnabled: Boolean,
+    val thinkingEffort: ThinkingEffort = ThinkingEffort.MEDIUM,
     val continuation: Boolean = false,
     val customHeaders: Map<String, String> = emptyMap(),
+    val tools: List<NativeToolDefinition> = emptyList(),
 )
 
 data class StreamChunk(
@@ -31,6 +38,8 @@ data class StreamChunk(
     val outputTokens: Long? = null,
     val cachedInputTokens: Long? = null,
     val finishReason: String? = null,
+    val toolCalls: List<NativeToolCall> = emptyList(),
+    val nativeProviderPayloadJson: String = "",
 )
 
 interface ChatProvider {

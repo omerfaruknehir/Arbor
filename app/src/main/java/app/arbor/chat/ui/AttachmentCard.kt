@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CenterFocusWeak
@@ -234,7 +235,10 @@ private fun AttachmentPreview(attachment: AttachmentEntity, allowOcr: Boolean, m
                 Column(Modifier.verticalScroll(rememberScrollState()).weight(1f, fill = false)) {
                     when {
                         attachment.mimeType == "application/pdf" -> PdfPreview(File(attachment.localPath))
-                        attachment.extractedText != null -> Text(attachment.extractedText, style = MaterialTheme.typography.bodySmall)
+                        attachment.extractedText != null -> Column {
+                            Text("Selectable extracted content", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp))
+                            SelectionContainer { Text(attachment.extractedText, style = MaterialTheme.typography.bodySmall) }
+                        }
                         else -> Column(Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Outlined.FileOpen, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
                             Text("No inline preview for this file type", Modifier.padding(top = 12.dp))

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.0
+
+- Split Settings into **Chat**, **Global**, and **Providers** tabs, with current-chat controls kept separate from persistent defaults for future chats.
+- Added persistent per-chat and new-chat-default thinking controls, including an enable switch and Minimal/Low/Medium/High effort selector mapped to OpenAI-compatible, Anthropic, and Gemini request formats.
+- Simplified agent permissions to independent Web, Python, and Linux switches. Existing chats retain their own choices; every settings change also becomes the starting profile for newly created chats.
+- Added Room migration 9→10 and immutable generation-snapshot fields for thinking state so queued, resumed, and retried work preserves the settings selected when it was submitted.
+- Added native structured tool calls for OpenAI-compatible, Anthropic, and Gemini providers while retaining Arbor's fenced protocol as a compatibility fallback. Streaming tool arguments, provider-specific reasoning blocks, and multi-step tool results are preserved.
+- Added safe local text extraction for DOCX, PPTX, and XLSX attachments, with archive-size, entry-count, XML-size, and path-safety bounds.
+- Expanded protocol, settings inheritance, request snapshot, Office extraction, permission, and fragmented-stream regression tests.
+
 ## 0.11.1
 
 - Added an independent Working-history token budget while preserving resumable partial state.

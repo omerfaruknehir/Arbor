@@ -70,9 +70,11 @@ class AttachmentStore(
             throw error
         }
         val mime = resolver.getType(uri) ?: guessMime(safeName)
-        val extractedText = if (isText(mime, safeName) && file.length() <= 4L * 1024 * 1024) {
-            runCatching { file.readText().take(1_000_000) }.getOrNull()
-        } else null
+        val extractedText = when {
+            isText(mime, safeName) && file.length() <= 4L * 1024 * 1024 -> runCatching { file.readText().take(1_000_000) }.getOrNull()
+            OfficeDocumentExtractor.supports(mime, safeName) -> OfficeDocumentExtractor.extract(file, mime)
+            else -> null
+        }
         AttachmentEntity(
             id = id,
             conversationId = conversationId,
@@ -107,9 +109,12 @@ class AttachmentStore(
         destination.parentFile?.mkdirs()
         source.copyTo(destination, overwrite = true)
         val mime = guessMime(safeName)
-        val extractedText = if (isText(mime, safeName) && destination.length() <= 4L * 1024 * 1024) {
-            runCatching { destination.readText().take(1_000_000) }.getOrNull()
-        } else null
+        val extractedText = when {
+            isText(mime, safeName) && destination.length() <= 4L * 1024 * 1024 ->
+                runCatching { destination.readText().take(1_000_000) }.getOrNull()
+            OfficeDocumentExtractor.supports(mime, safeName) -> OfficeDocumentExtractor.extract(destination, mime)
+            else -> null
+        }
         AttachmentEntity(
             id = id,
             conversationId = conversationId,

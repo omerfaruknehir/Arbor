@@ -43,6 +43,8 @@ data class ToolTraceEvent(
     val status: String,
     val input: String = "",
     val output: String = "",
+    val providerCallId: String = "",
+    val argumentsJson: String = "",
     val startedAt: Long,
     val finishedAt: Long? = null,
 )
@@ -56,6 +58,8 @@ data class MessageTimelineEvent(
     val status: String = "complete",
     val input: String = "",
     val output: String = "",
+    val providerCallId: String = "",
+    val argumentsJson: String = "",
     val startedAt: Long,
     val finishedAt: Long? = null,
 )
@@ -174,7 +178,7 @@ class AgentTools(
             .addQueryParameter("q", query)
             .build()
         val request = Request.Builder().url(url)
-            .header("User-Agent", "Mozilla/5.0 (Android) Arbor/0.11.0")
+            .header("User-Agent", "Mozilla/5.0 (Android) Arbor/0.12.0")
             .header("Accept", "text/html")
             .build()
         client.newCall(request).execute().use { response ->
@@ -190,7 +194,7 @@ class AgentTools(
         var url = validatePublicUrl(rawUrl)
         repeat(4) { redirectCount ->
             val request = Request.Builder().url(url)
-                .header("User-Agent", "Mozilla/5.0 (Android) Arbor/0.11.0")
+                .header("User-Agent", "Mozilla/5.0 (Android) Arbor/0.12.0")
                 .header("Accept", "text/html,text/plain,application/json;q=0.9,*/*;q=0.2")
                 .build()
             client.newBuilder().followRedirects(false).build().newCall(request).execute().use { response ->

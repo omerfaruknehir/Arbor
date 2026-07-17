@@ -22,6 +22,7 @@ import app.arbor.chat.data.PackageTransactionEntity
 import app.arbor.chat.data.SearchHit
 import app.arbor.chat.data.SendMode
 import app.arbor.chat.generation.GenerationRequestSnapshot
+import app.arbor.chat.settings.NewChatDefaults
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -49,36 +50,25 @@ class ChatRepository(private val database: ArborDatabase) {
     suspend fun messageIndexFromLatest(conversationId: String, nodeId: String) =
         database.messageDao().indexFromLatest(conversationId, nodeId)
 
-    fun newConversationDraft(projectId: String? = null, template: ConversationEntity? = null): ConversationEntity {
+    fun newConversationDraft(projectId: String? = null, defaults: NewChatDefaults = NewChatDefaults()): ConversationEntity {
         val now = System.currentTimeMillis()
-        return ConversationEntity(
+        return defaults.applyTo(ConversationEntity(
             id = UUID.randomUUID().toString(),
             title = "New conversation",
             createdAt = now,
             updatedAt = now,
             projectId = projectId,
-            selectedProviderId = template?.selectedProviderId ?: "deepseek",
-            selectedModelId = template?.selectedModelId ?: "deepseek-v4-flash",
-            contextPairs = template?.contextPairs ?: 24,
-            contextTokenLimit = template?.contextTokenLimit ?: 64_000,
-            workingTokenLimit = template?.workingTokenLimit ?: 16_000,
-            maxOutputTokens = template?.maxOutputTokens ?: 8_192,
-            systemPrompt = template?.systemPrompt.orEmpty(),
-            reasoningVisibility = template?.reasoningVisibility ?: app.arbor.chat.data.ReasoningVisibility.SHOW_WHILE_WORKING,
-            webSearchEnabled = template?.webSearchEnabled ?: true,
-            agentPythonEnabled = template?.agentPythonEnabled ?: true,
-            agentUbuntuEnabled = template?.agentUbuntuEnabled ?: false,
-        )
+        ))
     }
 
-    suspend fun createConversation(projectId: String? = null, template: ConversationEntity? = null): ConversationEntity {
-        return newConversationDraft(projectId, template).also { database.conversationDao().upsert(it) }
+    suspend fun createConversation(projectId: String? = null, defaults: NewChatDefaults = NewChatDefaults()): ConversationEntity {
+        return newConversationDraft(projectId, defaults).also { database.conversationDao().upsert(it) }
     }
+
+    suspend fun getOrCreateConversation(id: String?, defaults: NewChatDefaults = NewChatDefaults()): ConversationEntity =
+        id?.let { database.conversationDao().get(it) } ?: createConversation(defaults = defaults)
 
     suspend fun persistConversationDraft(value: ConversationEntity) = database.conversationDao().upsert(value)
-
-    suspend fun getOrCreateConversation(id: String?): ConversationEntity =
-        id?.let { database.conversationDao().get(it) } ?: createConversation()
 
     suspend fun submit(
         conversationId: String,

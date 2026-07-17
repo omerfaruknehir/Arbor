@@ -13,6 +13,7 @@ enum class MessageStatus { QUEUED, STREAMING, INTERRUPTED, COMPLETE, ERROR }
 enum class SendMode { SEND_NOW, QUEUE, STEER }
 @Serializable enum class ProviderKind { OPENAI_COMPATIBLE, ANTHROPIC, GEMINI }
 enum class ReasoningVisibility { ALWAYS, SHOW_WHILE_WORKING, COLLAPSED }
+enum class ThinkingEffort { MINIMAL, LOW, MEDIUM, HIGH }
 enum class AuxiliaryMode { OFF, LOCAL, MODEL }
 enum class PackageApprovalMode { ALWAYS_ASK, TRUSTED_ONLY, MODEL_REVIEW, AUTO_APPROVE }
 
@@ -37,6 +38,8 @@ data class ConversationEntity(
     @ColumnInfo(defaultValue = "0") val lastReadAt: Long = 0,
     @ColumnInfo(defaultValue = "1") val autoTitle: Boolean = true,
     @ColumnInfo(defaultValue = "'SHOW_WHILE_WORKING'") val reasoningVisibility: ReasoningVisibility = ReasoningVisibility.SHOW_WHILE_WORKING,
+    @ColumnInfo(defaultValue = "1") val thinkingEnabled: Boolean = true,
+    @ColumnInfo(defaultValue = "'MEDIUM'") val thinkingEffort: ThinkingEffort = ThinkingEffort.MEDIUM,
     @ColumnInfo(defaultValue = "1") val webSearchEnabled: Boolean = true,
     @ColumnInfo(defaultValue = "1") val agentPythonEnabled: Boolean = true,
     @ColumnInfo(defaultValue = "0") val agentUbuntuEnabled: Boolean = false,

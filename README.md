@@ -2,7 +2,7 @@
 
 Arbor is a fully native Android BYOK chat client built with Kotlin, Jetpack Compose, and Material 3. It has no WebView, hosted account, telemetry, ads, or application backend. API keys and chat data stay on the device; requests go directly to the endpoints configured by the user.
 
-This repository is version `0.11.1`, an installable and deliberately honest foundation for a larger agent client.
+This repository is version `0.12.0`, an installable and deliberately honest foundation for a larger agent client.
 
 ## Included
 
@@ -38,7 +38,7 @@ This repository is version `0.11.1`, an installable and deliberately honest foun
 - Context compression for messages outside the verbatim pair/token window. It can be off, deterministic/local with no API call, or driven by a separately selected provider/model. Summaries are persisted, inspectable by size/count, and can be cleared.
 - Separate automation policies and model selectors for evolving chat titles and context compression, plus an editable model catalog for context/output limits, capability flags, and pricing.
 - Phone/tablet adaptive Compose UI, edge-to-edge layout, a calmer Arbor green-neutral palette, optional Material You or graphite palettes, optional AMOLED surfaces, revised Material 3 hierarchy, and a remastered adaptive/themed launcher mark.
-- Persistent, race-safe settings: rapid edits are serialized against the latest stored value, AMOLED and Linux selection survive restarts, and new chats inherit the active chat's model, Linux/Python/search permissions, reasoning, context, and output configuration. Unsaved empty chats stay in memory and never clutter the sidebar.
+- Persistent, race-safe settings split into **Chat**, **Global**, and **Providers** tabs. Each conversation stores its own model, thinking, Web/Python/Linux permissions, context, Working, output, and system-prompt choices. The last selected chat options also become the persistent defaults for new chats without rewriting existing conversations. Unsaved empty chats stay in memory and never clutter the sidebar.
 
 ## Important boundaries
 
@@ -46,14 +46,14 @@ Arbor's Python and Linux workspaces are private application storage, not operati
 
 Strict runtime Python installation accepts names and version constraints; Settings can allow direct PEP 508 references. Pip command-line options remain blocked. Not every PyPI project publishes an Android-compatible wheel, so packages with unsupported native extensions fail transactionally. The selectable apt/apk Linux layer is the broader compatibility route for Linux tools and libraries.
 
-A full Mermaid grammar, office-document rendering, Android system image descriptions, exact model-specific preflight tokenizers, native function-call adapters, Bedrock/Azure signing adapters, and Play production signing are not implemented yet. The native diagram renderer intentionally supports the most useful flow and sequence subset. Android launchers render `RemoteViews`, not arbitrary generated Compose/custom views, so Home-screen mini-apps dynamically assemble audited native primitives from a safe declarative state machine; they cannot run model-written UI code. Home-screen text fields are read-only and should be paired with generated choices/keypads because launchers do not provide arbitrary text entry. Home-screen timers update when the widget is refreshed or interacted with, not every second. Live widgets require a compatible public JSON API and do not embed provider credentials. Arbor's portable fenced tool protocol works across the included providers. Unsupported images are represented to text-only models through OCR/extracted data; no local captioning model is bundled.
+A full Mermaid grammar, visual Office-document rendering, Android system image descriptions, exact model-specific preflight tokenizers, Bedrock/Azure signing adapters, and Play production signing are not implemented yet. DOCX, PPTX, and XLSX text is extracted locally with bounded OOXML parsing. Native structured tool calls are implemented for OpenAI-compatible, Anthropic, and Gemini providers, with the portable fenced protocol retained as a fallback. The native diagram renderer intentionally supports the most useful flow and sequence subset. Android launchers render `RemoteViews`, not arbitrary generated Compose/custom views, so Home-screen mini-apps dynamically assemble audited native primitives from a safe declarative state machine; they cannot run model-written UI code. Home-screen text fields are read-only and should be paired with generated choices/keypads because launchers do not provide arbitrary text entry. Home-screen timers update when the widget is refreshed or interacted with, not every second. Live widgets require a compatible public JSON API and do not embed provider credentials. Arbor uses native structured tool calls where the included provider protocol supports them and falls back to its portable fenced protocol when an endpoint or model does not. Unsupported images are represented to text-only models through OCR/extracted data; no local captioning model is bundled.
 
 The supplied APK/AAB are debug-signed so they are immediately testable. Use your own protected release key before publishing. API behavior changes over time; provider defaults may need editing when vendors change endpoints or schemas.
 
 ## Quick start
 
 1. Install the APK on Android 8.0 or later (`arm64-v8a` and `x86_64` are packaged).
-2. Open Settings, tap **Add provider**, choose its protocol, give it a name, and enter its endpoint and key. Tap **Connect & fetch models**, select the models to register, then save it securely. Manual model IDs are available only as a fallback for endpoints without model discovery.
+2. Open Settings → **Providers**, tap **Add provider**, choose its protocol, give it a name, and enter its endpoint and key. Tap **Connect & fetch models**, select the models to register, then save it securely. Manual model IDs are available only as a fallback for endpoints without model discovery.
 3. Tap **Use … in this conversation**, choose a model from the top chip, and send a message.
 4. Hold the Send button while a response is running to stop, queue, steer, or start a separate turn. A normal tap with drafted text queues safely while the current turn is working.
 5. Open **Tool workspaces**, choose Ubuntu, Debian, or Alpine, and install it when broader Linux tools are useful; the layer is optional and does not inflate first-launch data.

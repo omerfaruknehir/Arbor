@@ -14,12 +14,21 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
         conversation: ConversationEntity,
         newestFirst: List<MessageEntity>,
         compressedContext: ContextSummaryEntity? = null,
+        nativeToolsAvailable: Boolean = false,
     ): List<InputMessage> {
-        val result = ArrayList<InputMessage>()
-        result += InputMessage(
-            MessageRole.SYSTEM,
+        val toolInstructions = if (nativeToolsAvailable) {
             """
-            You are running inside Arbor for Android. Arbor provides native agent tools. To search the web, emit exactly one fenced block like:
+            You are running inside Arbor for Android. Arbor exposes native functions for enabled web, Python, Linux, and file-delivery tools. Use those structured functions directly and call at most one side-effecting function at a time. Do not print function-call JSON or an `arbor-tool` fence while native functions are available. Stop the conversational answer when making a function call; Arbor runs it, records it in Working, and returns a structured result so you can continue. Never claim a tool ran until Arbor returns its result.
+
+            Some OpenAI-compatible servers falsely advertise function calling. If no native functions are exposed on a retry, use exactly one fallback block at the end of the response:
+            ```arbor-tool
+            {"type":"web_search","query":"concise query"}
+            ```
+            The fallback also accepts `web_fetch`, `python`, `linux_exec`, and `send_file` with the same arguments described by Arbor's native functions. Stop after the block. Never emit both a native call and a fallback block in the same response.
+            """.trimIndent()
+        } else {
+            """
+            You are running inside Arbor for Android. Arbor provides a portable fallback tool protocol. To search the web, emit exactly one fenced block like:
             ```arbor-tool
             {"type":"web_search","query":"concise query"}
             ```
@@ -29,15 +38,19 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
             {"type":"python","code":"print(2 + 2)"}
             ```
             Stop your response after a tool block. Arbor hides the protocol, runs the tool, preserves it in Working, and returns the result so you can continue. Do not pretend to have run a tool.
+            """.trimIndent()
+        }
+        val result = ArrayList<InputMessage>()
+        result += InputMessage(
+            MessageRole.SYSTEM,
+            """
+            $toolInstructions
 
-            User attachments are mirrored under the workspace's `incoming/` directory. Python may inspect and transform those private copies even when the selected API model has no native file or image input. Python and Linux results list changed paths but do not automatically send them. To return one at the correct point in the answer, emit exactly one tool block such as `{"type":"send_file","path":"plot.png","caption":"Generated chart"}` after its creating tool finishes. Arbor then inserts a native file card at that exact timeline position. Images receive a full inline preview plus a zoomable preview; other supported files receive Preview, Save, and Share actions. Never claim a file was sent until the `send_file` result confirms it.
+            User attachments are mirrored under the workspace's `incoming/` directory. Python may inspect and transform those private copies even when the selected API model has no native file or image input. Python and Linux results list changed paths but do not automatically send them. To return one at the correct point in the answer, call `send_file` after its creating tool finishes; use `{"type":"send_file","path":"plot.png","caption":"Generated chart"}` only inside the fallback `arbor-tool` fence when native functions are unavailable. Arbor then inserts a native file card at that exact timeline position. Images receive a full inline preview plus a zoomable preview; other supported files receive Preview, Save, and Share actions. Never claim a file was sent until the `send_file` result confirms it.
 
             If Python needs packages which are not installed, request them in a fenced `python-requirements` block with one package requirement per line. Arbor asks the user before installing anything; never claim installation until a later system event confirms it.
 
-            Arbor can also provide a user-selected Ubuntu, Debian, or Alpine tooling layer. When Linux tools are enabled and the selected distribution is installed, run a non-interactive command with:
-            ```arbor-tool
-            {"type":"linux_exec","command":"file incoming/example.bin && rg -n TODO ."}
-            ```
+            Arbor can also provide a user-selected Ubuntu, Debian, or Alpine tooling layer. When Linux tools are enabled and the selected distribution is installed, call `linux_exec` with a non-interactive command such as `file incoming/example.bin && rg -n TODO .`; use the equivalent JSON only inside a fallback `arbor-tool` fence when native functions are unavailable.
             The chat workspace is `/workspace` inside the selected distribution, including `incoming/`. This is a compatibility/tooling layer, not a security boundary. Python has a 45-second default deadline and Linux commands have a 60-second default; a request may set `timeoutSeconds`, up to 600 for Python or 900 for Linux. If a result says it timed out, report the exact elapsed time and ask before retrying with a longer deadline—never silently repeat it. Never use apt, dpkg, apk, pip, or another package manager through `linux_exec`. Request packages in a visible fenced `linux-packages` block, one package per line, and wait for Arbor to report the user's configured approval decision and completed installation.
 
             You may create native diagrams with Mermaid fences. Arbor natively renders flowchart/graph edges, labeled and chained edges, node labels, state-style edges, and sequenceDiagram participants/messages. A basic Graphviz DOT subset (digraph/graph edges, labels, and rankdir) is also rendered natively. Keep diagrams compact and valid.

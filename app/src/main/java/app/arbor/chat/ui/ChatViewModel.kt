@@ -42,6 +42,7 @@ import app.arbor.chat.sandbox.LinuxDistribution
 import app.arbor.chat.sandbox.UbuntuExecutionResult
 import app.arbor.chat.sandbox.UbuntuPackageInstallResult
 import app.arbor.chat.sandbox.UbuntuRuntimeStatus
+import app.arbor.chat.settings.NewChatDefaults
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -106,6 +107,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     private val focusedMessageIndex = savedStateHandle.getMutableStateFlow<Int?>("focused_message_index", null)
     val amoled: StateFlow<Boolean> = container.appPreferences.amoled
     val palette = container.appPreferences.palette
+    val newChatDefaults: StateFlow<NewChatDefaults> = container.appPreferences.newChatDefaults
     val renderSafeMode = container.crashReporter.renderSafeMode
     val notices = MutableSharedFlow<String>(extraBufferCapacity = 8)
     private val _credentialRevision = MutableStateFlow(0L)
@@ -232,9 +234,12 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         val preferred = preferredConversationId?.let { container.repository.conversationNow(it) }
         val restored = selectedConversationId.value?.let { container.repository.conversationNow(it) }
         val target = preferred ?: restored ?: container.repository.conversations.first().firstOrNull()?.conversation
+        if (target != null && !container.appPreferences.hasNewChatDefaults) {
+            container.appPreferences.setNewChatDefaults(NewChatDefaults.from(target))
+        }
         if (target == null) {
             selectedConversationId.value = null
-            if (draftConversation.value == null) draftConversation.value = container.repository.newConversationDraft()
+            if (draftConversation.value == null) draftConversation.value = container.repository.newConversationDraft(defaults = newChatDefaults.value)
             stagedAttachments.value = emptyList()
         } else {
             draftConversation.value = null
@@ -250,6 +255,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         selectedConversationId.value?.let { return it }
         val value = draftConversation.value ?: container.repository.newConversationDraft(
             projectId = selectedProjectId.value.takeUnless { showArchived.value },
+            defaults = newChatDefaults.value,
         )
         container.repository.persistConversationDraft(value)
         draftConversation.value = null
@@ -257,11 +263,11 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         return value.id
     }
 
-    private fun openEmptyDraft(template: ConversationEntity? = conversation.value) {
+    private fun openEmptyDraft() {
         selectedConversationId.value = null
         draftConversation.value = container.repository.newConversationDraft(
             projectId = selectedProjectId.value.takeUnless { showArchived.value },
-            template = template,
+            defaults = newChatDefaults.value,
         )
         stagedAttachments.value = emptyList()
         focusedMessageNodeId.value = null
@@ -291,9 +297,8 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     }
 
     fun newConversation() = launchAction {
-        val template = selectedConversationId.value?.let { container.repository.conversationNow(it) }
         showArchived.value = false
-        openEmptyDraft(template)
+        openEmptyDraft()
     }
 
     fun deleteConversation(id: String) = launchAction {
@@ -448,14 +453,25 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         val id = selectedConversationId.value
         if (id == null) {
             draftConversation.value = draftConversation.value?.let(transform)?.copy(updatedAt = System.currentTimeMillis())
+            draftConversation.value?.let { container.appPreferences.setNewChatDefaults(NewChatDefaults.from(it)) }
             return
         }
         launchAction {
-        conversationSettingsMutex.withLock {
-            val current = container.repository.conversationNow(id) ?: return@withLock
-            container.repository.saveConversation(transform(current).copy(updatedAt = System.currentTimeMillis()))
+            conversationSettingsMutex.withLock {
+                val current = container.repository.conversationNow(id) ?: return@withLock
+                val updated = transform(current).copy(updatedAt = System.currentTimeMillis())
+                container.repository.saveConversation(updated)
+                container.appPreferences.setNewChatDefaults(NewChatDefaults.from(updated))
+            }
         }
-        }
+    }
+
+    fun updateNewChatDefaults(transform: (NewChatDefaults) -> NewChatDefaults) {
+        container.appPreferences.updateNewChatDefaults(transform)
+    }
+
+    fun applyNewChatDefaultsToCurrent() = updateConversation { defaults ->
+        newChatDefaults.value.applyTo(defaults)
     }
 
     fun saveProvider(provider: ProviderEntity, apiKey: String) = launchAction {

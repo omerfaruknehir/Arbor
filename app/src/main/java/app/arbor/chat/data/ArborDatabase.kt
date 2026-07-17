@@ -23,7 +23,7 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         GenerationUsageEntity::class,
         PackageTransactionEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -45,7 +45,7 @@ abstract class ArborDatabase : RoomDatabase() {
             val factory = SupportOpenHelperFactory(passphrase)
             return Room.databaseBuilder(context, ArborDatabase::class.java, "arbor.db")
                 .openHelperFactory(factory)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
@@ -169,6 +169,13 @@ abstract class ArborDatabase : RoomDatabase() {
                 db.execSQL("UPDATE messages SET costKnown = 1 WHERE costMicros > 0 OR (providerId = 'deepseek' AND (inputTokens > 0 OR outputTokens > 0))")
                 db.execSQL("UPDATE generation_usage SET costKnown = 1 WHERE costMicros > 0 OR providerId = 'deepseek'")
                 db.execSQL("UPDATE conversations SET hasUnknownCost = 1 WHERE EXISTS (SELECT 1 FROM messages WHERE messages.conversationId = conversations.id AND (messages.inputTokens > 0 OR messages.outputTokens > 0) AND messages.costKnown = 0)")
+            }
+        }
+
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE conversations ADD COLUMN thinkingEnabled INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE conversations ADD COLUMN thinkingEffort TEXT NOT NULL DEFAULT 'MEDIUM'")
             }
         }
 

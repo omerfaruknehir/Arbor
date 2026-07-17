@@ -13,7 +13,7 @@
 Set `sdk.dir` in `local.properties` or export `ANDROID_HOME`, then run:
 
 ```bash
-./gradlew --no-daemon testDebugUnitTest assembleDebug bundleDebug
+./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug bundleDebug assembleDebugAndroidTest
 ```
 
 Outputs:
@@ -43,12 +43,12 @@ Never commit the keystore or passwords. The GitHub Actions release job accepts t
 
 ## Toolchain archive
 
-Extract `Android-Build-Tools-for-ChatGPT-Arbor-0.11.1-2026-07-17.tar.gz`. Its `env.sh` establishes the bundled JDK, Android SDK, Gradle, and cache paths. From the extracted directory:
+Extract `Android-Build-Tools-for-ChatGPT-Arbor-0.9.2-2026-07-16.tar.gz`. Its `env.sh` establishes the bundled JDK, Android SDK, Gradle, and cache paths. From the extracted directory:
 
 ```bash
 source ./env.sh
 cd /path/to/Arbor
-gradle --offline --no-daemon testDebugUnitTest assembleDebug bundleDebug
+gradle --offline --no-daemon testDebugUnitTest lintDebug assembleDebug bundleDebug assembleDebugAndroidTest
 ```
 
 The archive is a Linux x86_64 environment snapshot. The Android project source remains portable, but the bundled JDK/Gradle executables are platform-specific.

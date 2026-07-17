@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -43,6 +44,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -52,6 +56,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -66,51 +71,37 @@ import app.arbor.chat.data.ProviderKind
 import app.arbor.chat.data.ModelEntity
 import app.arbor.chat.data.DefaultCatalog
 import app.arbor.chat.data.ReasoningVisibility
+import app.arbor.chat.data.ThinkingEffort
 import app.arbor.chat.data.AuxiliaryMode
 import app.arbor.chat.data.AutomationSettingsEntity
 import app.arbor.chat.data.PackageApprovalMode
 import app.arbor.chat.provider.DiscoveredModel
 import app.arbor.chat.settings.ColorPalette
+import app.arbor.chat.settings.NewChatDefaults
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import java.util.UUID
+
+private enum class SettingsTab(val label: String) {
+    CHAT("Chat"), GLOBAL("Global"), PROVIDERS("Providers")
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val conversation by viewModel.conversation.collectAsStateWithLifecycle()
     val providers by viewModel.providers.collectAsStateWithLifecycle()
-    var selectedId by remember { mutableStateOf<String?>(null) }
-    var addingProvider by remember { mutableStateOf(false) }
-    var removingProvider by remember { mutableStateOf<ProviderEntity?>(null) }
-    var baseUrl by remember { mutableStateOf("") }
-    var apiKey by remember { mutableStateOf("") }
-    var headers by remember { mutableStateOf("{}") }
-    var providerName by remember { mutableStateOf("") }
-    var apiKeyRequired by remember { mutableStateOf(true) }
-    val amoled by viewModel.amoled.collectAsState()
-    val palette by viewModel.palette.collectAsState()
-    val renderSafeMode by viewModel.renderSafeMode.collectAsState()
+    val defaults by viewModel.newChatDefaults.collectAsStateWithLifecycle()
     val automation by viewModel.automationSettings.collectAsStateWithLifecycle()
     val contextSummary by viewModel.contextSummary.collectAsStateWithLifecycle()
     val credentialRevision by viewModel.credentialRevision.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
-    var syncingModels by remember { mutableStateOf(false) }
-    var modelSyncStatus by remember { mutableStateOf<String?>(null) }
+    val amoled by viewModel.amoled.collectAsState()
+    val palette by viewModel.palette.collectAsState()
+    val renderSafeMode by viewModel.renderSafeMode.collectAsState()
     val registeredProviders = remember(providers, credentialRevision) { viewModel.registeredProviders(providers) }
     val configuredProviders = remember(providers, credentialRevision) { viewModel.configuredProviders(providers) }
-    val selected = registeredProviders.firstOrNull { it.id == selectedId } ?: registeredProviders.firstOrNull()
-
-    LaunchedEffect(selected?.id) {
-        selected?.let {
-            selectedId = it.id
-            baseUrl = it.baseUrl
-            apiKey = viewModel.apiKey(it.id)
-            headers = it.customHeadersJson
-            providerName = it.displayName
-            apiKeyRequired = it.apiKeyRequired
-        }
-    }
+    var tab by rememberSaveable { mutableStateOf(SettingsTab.CHAT) }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0),
@@ -125,293 +116,541 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             )
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    SectionTitle("Providers & BYOK", "Add only the services you actually use. Keys stay encrypted by Android Keystore.")
-                }
-                FilledTonalButton(onClick = { addingProvider = true }) {
-                    Icon(Icons.Outlined.Add, null)
-                    Text("Add", Modifier.padding(start = 6.dp))
-                }
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                registeredProviders.forEach { provider ->
-                    Surface(
-                        onClick = { selectedId = provider.id },
-                        color = if (provider.id == selected?.id) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-                        shape = MaterialTheme.shapes.large,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(provider.displayName, fontWeight = FontWeight.SemiBold)
-                                Text("${providerKindLabel(provider.kind)} • ${provider.baseUrl}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            if (provider.id == conversation?.selectedProviderId) Icon(Icons.Outlined.CheckCircle, "In use", tint = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-                if (registeredProviders.isEmpty()) {
-                    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("No providers added", fontWeight = FontWeight.SemiBold)
-                            Text("Tap Add, choose the API protocol, and let Arbor fetch the provider's model catalog.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
-            }
-            selected?.let { provider ->
-                ProviderEditor(
-                    provider = provider,
-                    name = providerName,
-                    onName = { providerName = it },
-                    baseUrl = baseUrl,
-                    onBaseUrl = { baseUrl = it },
-                    key = apiKey,
-                    onKey = { apiKey = it },
-                    headers = headers,
-                    onHeaders = { headers = it },
-                    apiKeyRequired = apiKeyRequired,
-                    onApiKeyRequired = { apiKeyRequired = it },
-                ) {
-                    viewModel.saveProvider(provider.copy(displayName = providerName.trim(), baseUrl = baseUrl.trimEnd('/'), customHeadersJson = headers, apiKeyRequired = apiKeyRequired), apiKey)
-                }
-                OutlinedButton(onClick = { viewModel.useProvider(provider.id) }, modifier = Modifier.fillMaxWidth()) { Text("Use ${provider.displayName} in this conversation") }
-                OutlinedButton(
-                    onClick = {
-                        scope.launch {
-                            syncingModels = true
-                            modelSyncStatus = null
-                            runCatching { viewModel.discoverModels(provider.kind, baseUrl, apiKey, headers) }
-                                .onSuccess { discovered ->
-                                    viewModel.saveDiscoveredModels(provider.id, discovered)
-                                    modelSyncStatus = "Updated ${discovered.size} models from ${provider.displayName}"
-                                }
-                                .onFailure { modelSyncStatus = it.message?.take(1_000) ?: "Model refresh failed" }
-                            syncingModels = false
-                        }
-                    },
-                    enabled = !syncingModels && baseUrl.isNotBlank() && (!apiKeyRequired || apiKey.isNotBlank()),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    if (syncingModels) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.Refresh, null)
-                    Text(if (syncingModels) " Refreshing…" else " Refresh model list")
-                }
-                modelSyncStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                ModelCatalogEditor(provider, viewModel)
-                OutlinedButton(onClick = { removingProvider = provider }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Remove provider from Arbor", color = MaterialTheme.colorScheme.error)
-                }
-            }
-
-            removingProvider?.let { provider ->
-                AlertDialog(
-                    onDismissRequest = { removingProvider = null },
-                    title = { Text("Remove ${provider.displayName}?") },
-                    text = { Text("Its saved API key will be erased and it will disappear from model selectors. Chats and usage history are kept.") },
-                    dismissButton = { OutlinedButton(onClick = { removingProvider = null }) { Text("Cancel") } },
-                    confirmButton = { Button(onClick = { viewModel.removeProvider(provider); removingProvider = null }) { Text("Remove provider") } },
-                )
-            }
-
-            if (addingProvider) AddProviderDialog(
-                templates = providers.filter { provider -> provider !in registeredProviders },
-                onDismiss = { addingProvider = false },
-                onDiscover = viewModel::discoverModels,
-                onAdd = { draft ->
-                    val id = draft.templateProviderId ?: "provider-${UUID.randomUUID()}"
-                    val template = providers.firstOrNull { it.id == draft.templateProviderId }
-                    val provider = (template ?: ProviderEntity(
-                        id = id, displayName = draft.name, kind = draft.kind, baseUrl = draft.baseUrl,
-                    )).copy(
-                        displayName = draft.name,
-                        kind = draft.kind,
-                        baseUrl = draft.baseUrl.trimEnd('/'),
-                        customHeadersJson = draft.headers,
-                        registered = true,
-                        apiKeyRequired = draft.apiKeyRequired,
-                    )
-                    val discovered = draft.discoveredModels.ifEmpty { listOf(DiscoveredModel(draft.modelId, draft.modelName)) }
-                    val models = discovered.map { candidate ->
-                        DefaultCatalog.models.firstOrNull { it.providerId == id && it.modelId == candidate.id } ?: ModelEntity(
-                            providerId = id, modelId = candidate.id, displayName = candidate.displayName,
-                            contextWindow = candidate.contextWindow ?: 128_000,
-                            maxOutputTokens = candidate.maxOutputTokens ?: 16_384,
-                            inputCacheHitUsdPerMillion = 0.0, inputCacheMissUsdPerMillion = 0.0, outputUsdPerMillion = 0.0,
-                            supportsThinking = candidate.supportsThinking ?: false,
-                        )
-                    }
-                    viewModel.addProvider(provider, draft.apiKey, models)
-                    selectedId = id
-                    addingProvider = false
-                },
-            )
-
-            HorizontalDivider()
-            SectionTitle("Automation models", "Only registered providers which are currently usable appear here. The main chat model is unaffected.")
-            if (configuredProviders.isEmpty()) {
-                Text("Add a provider with valid credentials, or explicitly register a keyless local endpoint, to enable model-based automation.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-            }
-            AutomationPolicyEditor(
-                title = "Chat naming",
-                subtitle = "Model mode considers newer messages whenever a name is regenerated.",
-                mode = automation.titleMode,
-                providerId = automation.titleProviderId,
-                modelId = automation.titleModelId,
-                providers = configuredProviders,
-                viewModel = viewModel,
-                onChange = { mode, providerId, modelId ->
-                    viewModel.updateAutomationSettings { it.copy(titleMode = mode, titleProviderId = providerId, titleModelId = modelId) }
-                },
-            )
-            AutomationPolicyEditor(
-                title = "Context compression",
-                subtitle = "Older messages outside the active pair/token window are merged into saved compact context.",
-                mode = automation.compressionMode,
-                providerId = automation.compressionProviderId,
-                modelId = automation.compressionModelId,
-                providers = configuredProviders,
-                viewModel = viewModel,
-                onChange = { mode, providerId, modelId ->
-                    viewModel.updateAutomationSettings { it.copy(compressionMode = mode, compressionProviderId = providerId, compressionModelId = modelId) }
-                },
-            )
-            contextSummary?.let { summary ->
-                Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp)) {
-                        Text("Compressed context active", fontWeight = FontWeight.SemiBold)
-                        Text("${summary.sourceMessageCount} older messages • about ${summary.tokenEstimate} tokens${summary.modelId?.let { " • $it" }.orEmpty()}", style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = viewModel::compressContextNow, modifier = Modifier.weight(1f)) {
-                    Text("Compress now")
-                }
-                OutlinedButton(onClick = viewModel::clearContextSummary, modifier = Modifier.weight(1f)) {
-                    Text("Clear summary")
-                }
-            }
-
-            HorizontalDivider()
-            SectionTitle("Agent tools · current chat", "Web search, fast embedded Python, and Linux-tool permissions are saved for this chat and inherited by new chats.")
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { Text("Allow web search"); Text("The model may send search queries to DuckDuckGo", style = MaterialTheme.typography.bodySmall) }
-                Switch(
-                    checked = conversation?.webSearchEnabled == true,
-                    onCheckedChange = { enabled -> viewModel.updateConversation { it.copy(webSearchEnabled = enabled) } },
-                )
-            }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { Text("Allow agent Linux tools"); Text("The model may use the selected installed distribution in /workspace", style = MaterialTheme.typography.bodySmall) }
-                Switch(
-                    checked = conversation?.agentUbuntuEnabled == true,
-                    onCheckedChange = { enabled -> viewModel.updateConversation { it.copy(agentUbuntuEnabled = enabled) } },
-                )
-            }
-
-            HorizontalDivider()
-            SectionTitle("Package approval", "One policy controls pip, apt, and apk. Every request is preflighted first, and already-satisfied packages are never offered for installation.")
-            PackageApprovalEditor(automation, configuredProviders, viewModel)
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { Text("Allow agent Python"); Text("The model may execute code in the app process", style = MaterialTheme.typography.bodySmall) }
-                Switch(
-                    checked = conversation?.agentPythonEnabled == true,
-                    onCheckedChange = { enabled -> viewModel.updateConversation { it.copy(agentPythonEnabled = enabled) } },
-                )
-            }
-
-            HorizontalDivider()
-            SectionTitle("Working & reasoning", "Working cards always stay in the transcript. Choose when they expand automatically.")
-            ReasoningVisibility.entries.forEach { option ->
-                val label = when (option) {
-                    ReasoningVisibility.ALWAYS -> "Always expanded"
-                    ReasoningVisibility.SHOW_WHILE_WORKING -> "Expanded while working"
-                    ReasoningVisibility.COLLAPSED -> "Always collapsed"
-                }
-                Row(
-                    Modifier.fillMaxWidth().clickable { viewModel.updateConversation { it.copy(reasoningVisibility = option) } },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RadioButton(
-                        selected = conversation?.reasoningVisibility == option,
-                        onClick = { viewModel.updateConversation { it.copy(reasoningVisibility = option) } },
-                    )
-                    Text(label)
-                }
-            }
-
-            HorizontalDivider()
-            SectionTitle("Context & output · current chat", "Saved for this chat and inherited by new chats. A pair is one request plus its answer. Working history has an independent budget but still fits inside the overall context ceiling.")
-            OutlinedTextField(
-                value = conversation?.contextPairs?.toString().orEmpty(),
-                onValueChange = { raw -> raw.toIntOrNull()?.coerceIn(1, 500)?.let { value -> viewModel.updateConversation { it.copy(contextPairs = value) } } },
-                label = { Text("Last message pairs") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = conversation?.contextTokenLimit?.toString().orEmpty(),
-                onValueChange = { raw -> raw.toIntOrNull()?.coerceIn(1_024, 2_000_000)?.let { value -> viewModel.updateConversation { it.copy(contextTokenLimit = value) } } },
-                label = { Text("Context token ceiling") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = conversation?.workingTokenLimit?.toString().orEmpty(),
-                onValueChange = { raw -> raw.toIntOrNull()?.coerceIn(0, 2_000_000)?.let { value -> viewModel.updateConversation { it.copy(workingTokenLimit = value) } } },
-                label = { Text("Working history token budget") },
-                supportingText = { Text("Older reasoning and tool traces only; interrupted responses are preserved for resume") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = conversation?.maxOutputTokens?.toString().orEmpty(),
-                onValueChange = { raw -> raw.toIntOrNull()?.coerceIn(1, 384_000)?.let { value -> viewModel.updateConversation { it.copy(maxOutputTokens = value) } } },
-                label = { Text("Maximum output tokens") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = conversation?.systemPrompt.orEmpty(),
-                onValueChange = { value -> viewModel.updateConversation { it.copy(systemPrompt = value) } },
-                label = { Text("Conversation system prompt") },
-                minLines = 3,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            HorizontalDivider()
-            SectionTitle("Appearance & privacy", "Choose Arbor's calm palette, your phone's Material You colors, or a neutral graphite theme.")
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ColorPalette.entries.forEach { option ->
-                    AssistChip(
-                        onClick = { viewModel.setPalette(option) },
-                        label = { Text(when (option) { ColorPalette.ARBOR -> "Arbor"; ColorPalette.SYSTEM -> "System"; ColorPalette.GRAPHITE -> "Graphite" }) },
-                        leadingIcon = if (palette == option) ({ Icon(Icons.Outlined.CheckCircle, null, Modifier.size(18.dp)) }) else null,
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            ScrollableTabRow(selectedTabIndex = tab.ordinal, edgePadding = 12.dp) {
+                SettingsTab.entries.forEach { option ->
+                    Tab(
+                        selected = tab == option,
+                        onClick = { tab = option },
+                        text = { Text(option.label) },
                     )
                 }
             }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { Text("AMOLED black"); Text("Pure black surfaces in dark mode", style = MaterialTheme.typography.bodySmall) }
-                Switch(checked = amoled, onCheckedChange = viewModel::setAmoled)
+            when (tab) {
+                SettingsTab.CHAT -> CurrentChatSettings(
+                    conversation = conversation,
+                    providers = configuredProviders,
+                    contextSummary = contextSummary,
+                    viewModel = viewModel,
+                )
+                SettingsTab.GLOBAL -> GlobalSettings(
+                    defaults = defaults,
+                    providers = configuredProviders,
+                    automation = automation,
+                    amoled = amoled,
+                    palette = palette,
+                    renderSafeMode = renderSafeMode,
+                    viewModel = viewModel,
+                )
+                SettingsTab.PROVIDERS -> ProviderSettings(
+                    providers = providers,
+                    registeredProviders = registeredProviders,
+                    conversationProviderId = conversation?.selectedProviderId,
+                    viewModel = viewModel,
+                )
             }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Safe generated rendering")
-                    Text("Pause AI-generated widgets after a renderer crash without deleting the chat", style = MaterialTheme.typography.bodySmall)
-                }
-                Switch(checked = renderSafeMode, onCheckedChange = viewModel::setRenderSafeMode)
-            }
-            Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.Security, null)
-                    Text("No account, ads, analytics, or Arbor cloud. Network traffic goes only to endpoints you configure.", Modifier.padding(start = 12.dp), style = MaterialTheme.typography.bodySmall)
-                }
-            }
-            Spacer(Modifier.padding(bottom = 24.dp))
         }
     }
+}
+
+@Composable
+private fun SettingsPage(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+        content = content,
+    )
+}
+
+@Composable
+private fun CurrentChatSettings(
+    conversation: app.arbor.chat.data.ConversationEntity?,
+    providers: List<ProviderEntity>,
+    contextSummary: app.arbor.chat.data.ContextSummaryEntity?,
+    viewModel: ChatViewModel,
+) = SettingsPage {
+    SectionTitle("Current chat", "These values are stored on this chat. Your latest selections also become the starting defaults for future chats.")
+    if (conversation == null) {
+        Text("Open or create a conversation to edit chat settings.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return@SettingsPage
+    }
+
+    ChatOptionsEditor(
+        providerId = conversation.selectedProviderId,
+        modelId = conversation.selectedModelId,
+        providers = providers,
+        thinkingEnabled = conversation.thinkingEnabled,
+        thinkingEffort = conversation.thinkingEffort,
+        webEnabled = conversation.webSearchEnabled,
+        pythonEnabled = conversation.agentPythonEnabled,
+        linuxEnabled = conversation.agentUbuntuEnabled,
+        contextPairs = conversation.contextPairs,
+        contextTokenLimit = conversation.contextTokenLimit,
+        workingTokenLimit = conversation.workingTokenLimit,
+        maxOutputTokens = conversation.maxOutputTokens,
+        reasoningVisibility = conversation.reasoningVisibility,
+        systemPrompt = conversation.systemPrompt,
+        viewModel = viewModel,
+        onModel = { providerId, modelId -> viewModel.selectModel(providerId, modelId) },
+        onThinkingEnabled = { enabled -> viewModel.updateConversation { it.copy(thinkingEnabled = enabled) } },
+        onThinkingEffort = { effort -> viewModel.updateConversation { it.copy(thinkingEffort = effort) } },
+        onWeb = { enabled -> viewModel.updateConversation { it.copy(webSearchEnabled = enabled) } },
+        onPython = { enabled -> viewModel.updateConversation { it.copy(agentPythonEnabled = enabled) } },
+        onLinux = { enabled -> viewModel.updateConversation { it.copy(agentUbuntuEnabled = enabled) } },
+        onContextPairs = { value -> viewModel.updateConversation { it.copy(contextPairs = value) } },
+        onContextLimit = { value -> viewModel.updateConversation { it.copy(contextTokenLimit = value) } },
+        onWorkingLimit = { value -> viewModel.updateConversation { it.copy(workingTokenLimit = value) } },
+        onOutputLimit = { value -> viewModel.updateConversation { it.copy(maxOutputTokens = value) } },
+        onReasoningVisibility = { value -> viewModel.updateConversation { it.copy(reasoningVisibility = value) } },
+        onSystemPrompt = { value -> viewModel.updateConversation { it.copy(systemPrompt = value) } },
+    )
+
+    HorizontalDivider()
+    SectionTitle("Compressed context", "Saved summaries apply only to this chat.")
+    contextSummary?.let { summary ->
+        Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp)) {
+                Text("Compressed context active", fontWeight = FontWeight.SemiBold)
+                Text("${summary.sourceMessageCount} older messages • about ${summary.tokenEstimate} tokens${summary.modelId?.let { " • $it" }.orEmpty()}", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = viewModel::compressContextNow, modifier = Modifier.weight(1f)) { Text("Compress now") }
+        OutlinedButton(onClick = viewModel::clearContextSummary, modifier = Modifier.weight(1f)) { Text("Clear") }
+    }
+    OutlinedButton(onClick = viewModel::applyNewChatDefaultsToCurrent, modifier = Modifier.fillMaxWidth()) {
+        Text("Reset this chat to new-chat defaults")
+    }
+    Spacer(Modifier.padding(bottom = 24.dp))
+}
+
+@Composable
+private fun GlobalSettings(
+    defaults: NewChatDefaults,
+    providers: List<ProviderEntity>,
+    automation: AutomationSettingsEntity,
+    amoled: Boolean,
+    palette: ColorPalette,
+    renderSafeMode: Boolean,
+    viewModel: ChatViewModel,
+) = SettingsPage {
+    SectionTitle("New chat defaults", "Used only when a new chat is created. Existing chats keep their own values.")
+    ChatOptionsEditor(
+        providerId = defaults.selectedProviderId,
+        modelId = defaults.selectedModelId,
+        providers = providers,
+        thinkingEnabled = defaults.thinkingEnabled,
+        thinkingEffort = defaults.thinkingEffort,
+        webEnabled = defaults.webSearchEnabled,
+        pythonEnabled = defaults.agentPythonEnabled,
+        linuxEnabled = defaults.agentUbuntuEnabled,
+        contextPairs = defaults.contextPairs,
+        contextTokenLimit = defaults.contextTokenLimit,
+        workingTokenLimit = defaults.workingTokenLimit,
+        maxOutputTokens = defaults.maxOutputTokens,
+        reasoningVisibility = defaults.reasoningVisibility,
+        systemPrompt = defaults.systemPrompt,
+        viewModel = viewModel,
+        onModel = { providerId, modelId -> viewModel.updateNewChatDefaults { it.copy(selectedProviderId = providerId, selectedModelId = modelId) } },
+        onThinkingEnabled = { enabled -> viewModel.updateNewChatDefaults { it.copy(thinkingEnabled = enabled) } },
+        onThinkingEffort = { effort -> viewModel.updateNewChatDefaults { it.copy(thinkingEffort = effort) } },
+        onWeb = { enabled -> viewModel.updateNewChatDefaults { it.copy(webSearchEnabled = enabled) } },
+        onPython = { enabled -> viewModel.updateNewChatDefaults { it.copy(agentPythonEnabled = enabled) } },
+        onLinux = { enabled -> viewModel.updateNewChatDefaults { it.copy(agentUbuntuEnabled = enabled) } },
+        onContextPairs = { value -> viewModel.updateNewChatDefaults { it.copy(contextPairs = value) } },
+        onContextLimit = { value -> viewModel.updateNewChatDefaults { it.copy(contextTokenLimit = value) } },
+        onWorkingLimit = { value -> viewModel.updateNewChatDefaults { it.copy(workingTokenLimit = value) } },
+        onOutputLimit = { value -> viewModel.updateNewChatDefaults { it.copy(maxOutputTokens = value) } },
+        onReasoningVisibility = { value -> viewModel.updateNewChatDefaults { it.copy(reasoningVisibility = value) } },
+        onSystemPrompt = { value -> viewModel.updateNewChatDefaults { it.copy(systemPrompt = value) } },
+    )
+
+    HorizontalDivider()
+    SectionTitle("Automation models", "Chat naming and context compression are global services, separate from the active chat model.")
+    if (providers.isEmpty()) {
+        Text("Configure a usable provider to enable model-based automation.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+    }
+    AutomationPolicyEditor(
+        title = "Chat naming",
+        subtitle = "Model mode considers newer messages whenever a name is regenerated.",
+        mode = automation.titleMode,
+        providerId = automation.titleProviderId,
+        modelId = automation.titleModelId,
+        providers = providers,
+        viewModel = viewModel,
+        onChange = { mode, providerId, modelId ->
+            viewModel.updateAutomationSettings { it.copy(titleMode = mode, titleProviderId = providerId, titleModelId = modelId) }
+        },
+    )
+    AutomationPolicyEditor(
+        title = "Context compression",
+        subtitle = "Older messages outside the active pair/token window are merged into saved compact context.",
+        mode = automation.compressionMode,
+        providerId = automation.compressionProviderId,
+        modelId = automation.compressionModelId,
+        providers = providers,
+        viewModel = viewModel,
+        onChange = { mode, providerId, modelId ->
+            viewModel.updateAutomationSettings { it.copy(compressionMode = mode, compressionProviderId = providerId, compressionModelId = modelId) }
+        },
+    )
+
+    HorizontalDivider()
+    SectionTitle("Package approval", "Global policy for pip, apt, and apk package requests.")
+    PackageApprovalEditor(automation, providers, viewModel)
+
+    HorizontalDivider()
+    SectionTitle("Appearance & privacy", "App-wide display and renderer safety settings.")
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ColorPalette.entries.forEach { option ->
+            AssistChip(
+                onClick = { viewModel.setPalette(option) },
+                label = { Text(when (option) { ColorPalette.ARBOR -> "Arbor"; ColorPalette.SYSTEM -> "System"; ColorPalette.GRAPHITE -> "Graphite" }) },
+                leadingIcon = if (palette == option) ({ Icon(Icons.Outlined.CheckCircle, null, Modifier.size(18.dp)) }) else null,
+            )
+        }
+    }
+    SettingsSwitch("AMOLED black", amoled, viewModel::setAmoled)
+    SettingsSwitch("Safe generated rendering", renderSafeMode, viewModel::setRenderSafeMode)
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.Security, null)
+            Text("No account, ads, analytics, or Arbor cloud. Network traffic goes only to endpoints you configure.", Modifier.padding(start = 12.dp), style = MaterialTheme.typography.bodySmall)
+        }
+    }
+    Spacer(Modifier.padding(bottom = 24.dp))
+}
+
+@Composable
+private fun ChatOptionsEditor(
+    providerId: String,
+    modelId: String,
+    providers: List<ProviderEntity>,
+    thinkingEnabled: Boolean,
+    thinkingEffort: ThinkingEffort,
+    webEnabled: Boolean,
+    pythonEnabled: Boolean,
+    linuxEnabled: Boolean,
+    contextPairs: Int,
+    contextTokenLimit: Int,
+    workingTokenLimit: Int,
+    maxOutputTokens: Int,
+    reasoningVisibility: ReasoningVisibility,
+    systemPrompt: String,
+    viewModel: ChatViewModel,
+    onModel: (String, String) -> Unit,
+    onThinkingEnabled: (Boolean) -> Unit,
+    onThinkingEffort: (ThinkingEffort) -> Unit,
+    onWeb: (Boolean) -> Unit,
+    onPython: (Boolean) -> Unit,
+    onLinux: (Boolean) -> Unit,
+    onContextPairs: (Int) -> Unit,
+    onContextLimit: (Int) -> Unit,
+    onWorkingLimit: (Int) -> Unit,
+    onOutputLimit: (Int) -> Unit,
+    onReasoningVisibility: (ReasoningVisibility) -> Unit,
+    onSystemPrompt: (String) -> Unit,
+) {
+    val modelFlow = remember(providerId) { viewModel.modelsFor(providerId) }
+    val models by modelFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val activeModel = models.firstOrNull { it.modelId == modelId }
+    ProviderModelSelector(providers, providerId, modelId, models, viewModel, onModel)
+
+    HorizontalDivider()
+    SectionTitle("Thinking", "The switch and effort level are sent with each request when the selected model supports them.")
+    SettingsSwitch(
+        label = "Thinking",
+        checked = thinkingEnabled,
+        onCheckedChange = onThinkingEnabled,
+        enabled = activeModel?.supportsThinking != false,
+    )
+    if (activeModel?.supportsThinking == false) {
+        Text("This model does not advertise thinking support.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } else if (thinkingEnabled) {
+        Text("Effort: ${thinkingEffort.displayName}", fontWeight = FontWeight.SemiBold)
+        Slider(
+            value = thinkingEffort.ordinal.toFloat(),
+            onValueChange = { raw -> onThinkingEffort(ThinkingEffort.entries[raw.toInt().coerceIn(0, ThinkingEffort.entries.lastIndex)]) },
+            valueRange = 0f..ThinkingEffort.entries.lastIndex.toFloat(),
+            steps = ThinkingEffort.entries.size - 2,
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Minimal", style = MaterialTheme.typography.labelSmall)
+            Text("High", style = MaterialTheme.typography.labelSmall)
+        }
+        Text("Some providers do not allow thinking to be fully disabled on every model; Arbor requests off where the API supports it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+
+    HorizontalDivider()
+    SectionTitle("Tools", "Simple per-chat permissions. Disabled tools are not offered to the model.")
+    SettingsSwitch("Web", webEnabled, onWeb)
+    SettingsSwitch("Python", pythonEnabled, onPython)
+    SettingsSwitch("Linux", linuxEnabled, onLinux)
+
+    HorizontalDivider()
+    SectionTitle("Context & output", "A pair is one request plus its answer. Working history has its own budget inside the total context ceiling.")
+    NumberSetting("Last message pairs", contextPairs, 1..500, onContextPairs)
+    NumberSetting("Context token ceiling", contextTokenLimit, 1_024..2_000_000, onContextLimit)
+    NumberSetting("Working history token budget", workingTokenLimit, 0..2_000_000, onWorkingLimit)
+    NumberSetting("Maximum output tokens", maxOutputTokens, 1..384_000, onOutputLimit)
+
+    HorizontalDivider()
+    SectionTitle("Working display", "Controls whether reasoning and tool cards expand automatically; they remain saved either way.")
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ReasoningVisibility.entries.forEach { option ->
+            AssistChip(
+                onClick = { onReasoningVisibility(option) },
+                label = { Text(option.shortLabel) },
+                leadingIcon = if (reasoningVisibility == option) ({ Icon(Icons.Outlined.CheckCircle, null, Modifier.size(18.dp)) }) else null,
+            )
+        }
+    }
+
+    HorizontalDivider()
+    SectionTitle("System prompt", "Stored with this settings profile.")
+    OutlinedTextField(
+        value = systemPrompt,
+        onValueChange = onSystemPrompt,
+        label = { Text("System prompt") },
+        minLines = 3,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
+private fun ProviderModelSelector(
+    providers: List<ProviderEntity>,
+    providerId: String,
+    modelId: String,
+    models: List<ModelEntity>,
+    viewModel: ChatViewModel,
+    onSelect: (String, String) -> Unit,
+) {
+    var providerMenu by remember { mutableStateOf(false) }
+    var modelMenu by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val provider = providers.firstOrNull { it.id == providerId }
+    SectionTitle("Model", "Provider and model selection for this settings profile.")
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.weight(1f)) {
+            OutlinedButton(onClick = { providerMenu = true }, modifier = Modifier.fillMaxWidth()) {
+                Text(provider?.displayName ?: "Choose provider", maxLines = 1)
+            }
+            DropdownMenu(expanded = providerMenu, onDismissRequest = { providerMenu = false }) {
+                providers.forEach { candidate ->
+                    DropdownMenuItem(
+                        text = { Text(candidate.displayName) },
+                        onClick = {
+                            providerMenu = false
+                            scope.launch {
+                                val first = viewModel.modelsFor(candidate.id).first().firstOrNull()
+                                if (first != null) onSelect(candidate.id, first.modelId)
+                            }
+                        },
+                    )
+                }
+            }
+        }
+        Box(Modifier.weight(1f)) {
+            OutlinedButton(onClick = { modelMenu = true }, enabled = models.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
+                Text(models.firstOrNull { it.modelId == modelId }?.displayName ?: modelId.ifBlank { "Choose model" }, maxLines = 1)
+            }
+            DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
+                models.forEach { model ->
+                    DropdownMenuItem(
+                        text = { Text(model.displayName) },
+                        onClick = { onSelect(providerId, model.modelId); modelMenu = false },
+                    )
+                }
+            }
+        }
+    }
+    if (providers.isEmpty()) Text("Add a usable provider in the Providers tab.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+}
+
+@Composable
+private fun SettingsSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, enabled: Boolean = true) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+    }
+}
+
+@Composable
+private fun NumberSetting(label: String, value: Int, range: IntRange, onValue: (Int) -> Unit) {
+    OutlinedTextField(
+        value = value.toString(),
+        onValueChange = { raw -> raw.toIntOrNull()?.coerceIn(range)?.let(onValue) },
+        label = { Text(label) },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+private val ThinkingEffort.displayName: String
+    get() = name.lowercase().replaceFirstChar(Char::uppercase)
+
+private val ReasoningVisibility.shortLabel: String
+    get() = when (this) {
+        ReasoningVisibility.ALWAYS -> "Expanded"
+        ReasoningVisibility.SHOW_WHILE_WORKING -> "While working"
+        ReasoningVisibility.COLLAPSED -> "Collapsed"
+    }
+
+@Composable
+private fun ProviderSettings(
+    providers: List<ProviderEntity>,
+    registeredProviders: List<ProviderEntity>,
+    conversationProviderId: String?,
+    viewModel: ChatViewModel,
+) {
+    var selectedId by remember { mutableStateOf<String?>(null) }
+    var addingProvider by remember { mutableStateOf(false) }
+    var removingProvider by remember { mutableStateOf<ProviderEntity?>(null) }
+    var baseUrl by remember { mutableStateOf("") }
+    var apiKey by remember { mutableStateOf("") }
+    var headers by remember { mutableStateOf("{}") }
+    var providerName by remember { mutableStateOf("") }
+    var apiKeyRequired by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+    var syncingModels by remember { mutableStateOf(false) }
+    var modelSyncStatus by remember { mutableStateOf<String?>(null) }
+    val selected = registeredProviders.firstOrNull { it.id == selectedId } ?: registeredProviders.firstOrNull()
+
+    LaunchedEffect(selected?.id) {
+        selected?.let {
+            selectedId = it.id
+            baseUrl = it.baseUrl
+            apiKey = viewModel.apiKey(it.id)
+            headers = it.customHeadersJson
+            providerName = it.displayName
+            apiKeyRequired = it.apiKeyRequired
+        }
+    }
+
+    SettingsPage {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) { SectionTitle("Providers & BYOK", "Keys stay encrypted by Android Keystore.") }
+            FilledTonalButton(onClick = { addingProvider = true }) {
+                Icon(Icons.Outlined.Add, null)
+                Text("Add", Modifier.padding(start = 6.dp))
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            registeredProviders.forEach { provider ->
+                Surface(
+                    onClick = { selectedId = provider.id },
+                    color = if (provider.id == selected?.id) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(provider.displayName, fontWeight = FontWeight.SemiBold)
+                            Text("${providerKindLabel(provider.kind)} • ${provider.baseUrl}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (provider.id == conversationProviderId) Icon(Icons.Outlined.CheckCircle, "In use", tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+            if (registeredProviders.isEmpty()) {
+                Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("No providers added", fontWeight = FontWeight.SemiBold)
+                        Text("Tap Add, choose the API protocol, and let Arbor fetch the provider's model catalog.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        selected?.let { provider ->
+            ProviderEditor(
+                provider = provider,
+                name = providerName,
+                onName = { providerName = it },
+                baseUrl = baseUrl,
+                onBaseUrl = { baseUrl = it },
+                key = apiKey,
+                onKey = { apiKey = it },
+                headers = headers,
+                onHeaders = { headers = it },
+                apiKeyRequired = apiKeyRequired,
+                onApiKeyRequired = { apiKeyRequired = it },
+            ) {
+                viewModel.saveProvider(provider.copy(displayName = providerName.trim(), baseUrl = baseUrl.trimEnd('/'), customHeadersJson = headers, apiKeyRequired = apiKeyRequired), apiKey)
+            }
+            OutlinedButton(onClick = { viewModel.useProvider(provider.id) }, modifier = Modifier.fillMaxWidth()) { Text("Use ${provider.displayName} in current chat") }
+            OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        syncingModels = true
+                        modelSyncStatus = null
+                        runCatching { viewModel.discoverModels(provider.kind, baseUrl, apiKey, headers) }
+                            .onSuccess { discovered ->
+                                viewModel.saveDiscoveredModels(provider.id, discovered)
+                                modelSyncStatus = "Updated ${discovered.size} models from ${provider.displayName}"
+                            }
+                            .onFailure { modelSyncStatus = it.message?.take(1_000) ?: "Model refresh failed" }
+                        syncingModels = false
+                    }
+                },
+                enabled = !syncingModels && baseUrl.isNotBlank() && (!apiKeyRequired || apiKey.isNotBlank()),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (syncingModels) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.Refresh, null)
+                Text(if (syncingModels) " Refreshing…" else " Refresh model list")
+            }
+            modelSyncStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            ModelCatalogEditor(provider, viewModel)
+            OutlinedButton(onClick = { removingProvider = provider }, modifier = Modifier.fillMaxWidth()) {
+                Text("Remove provider from Arbor", color = MaterialTheme.colorScheme.error)
+            }
+        }
+        Spacer(Modifier.padding(bottom = 24.dp))
+    }
+
+    removingProvider?.let { provider ->
+        AlertDialog(
+            onDismissRequest = { removingProvider = null },
+            title = { Text("Remove ${provider.displayName}?") },
+            text = { Text("Its saved API key will be erased and it will disappear from model selectors. Chats and usage history are kept.") },
+            dismissButton = { OutlinedButton(onClick = { removingProvider = null }) { Text("Cancel") } },
+            confirmButton = { Button(onClick = { viewModel.removeProvider(provider); removingProvider = null }) { Text("Remove provider") } },
+        )
+    }
+
+    if (addingProvider) AddProviderDialog(
+        templates = providers.filter { provider -> provider !in registeredProviders },
+        onDismiss = { addingProvider = false },
+        onDiscover = viewModel::discoverModels,
+        onAdd = { draft ->
+            val id = draft.templateProviderId ?: "provider-${UUID.randomUUID()}"
+            val template = providers.firstOrNull { it.id == draft.templateProviderId }
+            val provider = (template ?: ProviderEntity(
+                id = id, displayName = draft.name, kind = draft.kind, baseUrl = draft.baseUrl,
+            )).copy(
+                displayName = draft.name,
+                kind = draft.kind,
+                baseUrl = draft.baseUrl.trimEnd('/'),
+                customHeadersJson = draft.headers,
+                registered = true,
+                apiKeyRequired = draft.apiKeyRequired,
+            )
+            val discovered = draft.discoveredModels.ifEmpty { listOf(DiscoveredModel(draft.modelId, draft.modelName)) }
+            val models = discovered.map { candidate ->
+                DefaultCatalog.models.firstOrNull { it.providerId == id && it.modelId == candidate.id } ?: ModelEntity(
+                    providerId = id, modelId = candidate.id, displayName = candidate.displayName,
+                    contextWindow = candidate.contextWindow ?: 128_000,
+                    maxOutputTokens = candidate.maxOutputTokens ?: 16_384,
+                    inputCacheHitUsdPerMillion = 0.0, inputCacheMissUsdPerMillion = 0.0, outputUsdPerMillion = 0.0,
+                    supportsThinking = candidate.supportsThinking ?: false,
+                )
+            }
+            viewModel.addProvider(provider, draft.apiKey, models)
+            selectedId = id
+            addingProvider = false
+        },
+    )
 }
 
 @Composable

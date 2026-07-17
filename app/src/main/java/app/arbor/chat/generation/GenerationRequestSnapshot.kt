@@ -4,6 +4,7 @@ import app.arbor.chat.data.ConversationEntity
 import app.arbor.chat.data.ModelEntity
 import app.arbor.chat.data.ProviderEntity
 import app.arbor.chat.data.ProviderKind
+import app.arbor.chat.data.ThinkingEffort
 import kotlinx.serialization.Serializable
 
 /** Immutable request identity captured before work is queued. Secrets are deliberately excluded. */
@@ -32,6 +33,8 @@ data class GenerationRequestSnapshot(
     val workingTokenLimit: Int = 16_000,
     val requestedMaxOutputTokens: Int,
     val systemPrompt: String,
+    val thinkingEnabled: Boolean = true,
+    val thinkingEffort: ThinkingEffort = ThinkingEffort.MEDIUM,
 ) {
     fun provider(): ProviderEntity = ProviderEntity(
         id = providerId,
@@ -71,6 +74,8 @@ data class GenerationRequestSnapshot(
             workingTokenLimit = workingTokenLimit.coerceIn(0, safeInput),
             maxOutputTokens = output,
             systemPrompt = systemPrompt,
+            thinkingEnabled = thinkingEnabled,
+            thinkingEffort = thinkingEffort,
         )
     }
 
@@ -102,6 +107,8 @@ data class GenerationRequestSnapshot(
             workingTokenLimit = conversation.workingTokenLimit,
             requestedMaxOutputTokens = conversation.maxOutputTokens,
             systemPrompt = conversation.systemPrompt,
+            thinkingEnabled = conversation.thinkingEnabled,
+            thinkingEffort = conversation.thinkingEffort,
         )
     }
 }
