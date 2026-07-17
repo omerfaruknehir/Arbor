@@ -20,6 +20,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.SmartToy
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.PrivacyTip
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Edit
@@ -39,14 +48,14 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -78,13 +87,20 @@ import app.arbor.chat.data.PackageApprovalMode
 import app.arbor.chat.provider.DiscoveredModel
 import app.arbor.chat.settings.ColorPalette
 import app.arbor.chat.settings.NewChatDefaults
+import app.arbor.chat.settings.ThemeMode
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
 import java.util.UUID
 
-private enum class SettingsTab(val label: String) {
-    DEFAULTS("Defaults"), AUTOMATION("Automation"), APP("App"), PROVIDERS("Providers")
+private enum class SettingsRoute(val title: String) {
+    HOME("Settings"),
+    DEFAULTS("New chat defaults"),
+    AUTOMATION("Automation"),
+    APPEARANCE("Appearance"),
+    PRIVACY("Privacy & safety"),
+    PROVIDERS("Providers & models"),
+    ABOUT("About"),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -96,43 +112,128 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val credentialRevision by viewModel.credentialRevision.collectAsStateWithLifecycle()
     val amoled by viewModel.amoled.collectAsState()
     val palette by viewModel.palette.collectAsState()
+    val themeMode by viewModel.themeMode.collectAsState()
     val renderSafeMode by viewModel.renderSafeMode.collectAsState()
     val registeredProviders = remember(providers, credentialRevision) { viewModel.registeredProviders(providers) }
     val configuredProviders = remember(providers, credentialRevision) { viewModel.configuredProviders(providers) }
-    var tab by rememberSaveable { mutableStateOf(SettingsTab.DEFAULTS) }
+    var route by rememberSaveable { mutableStateOf(SettingsRoute.HOME) }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("Global settings") },
+                title = { Text(route.title) },
                 navigationIcon = {
-                    IconButton(onClick = { if (openDrawer != null) openDrawer() else viewModel.screen.value = Screen.CHAT }) {
-                        Icon(if (openDrawer != null) Icons.Outlined.Menu else Icons.AutoMirrored.Outlined.ArrowBack, "Back")
+                    IconButton(onClick = {
+                        if (route != SettingsRoute.HOME) route = SettingsRoute.HOME
+                        else if (openDrawer != null) openDrawer()
+                        else viewModel.screen.value = Screen.CHAT
+                    }) {
+                        Icon(
+                            if (route == SettingsRoute.HOME && openDrawer != null) Icons.Outlined.Menu else Icons.AutoMirrored.Outlined.ArrowBack,
+                            "Back",
+                        )
                     }
                 },
             )
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            ScrollableTabRow(selectedTabIndex = tab.ordinal, edgePadding = 12.dp) {
-                SettingsTab.entries.forEach { option ->
-                    Tab(selected = tab == option, onClick = { tab = option }, text = { Text(option.label) })
-                }
-            }
-            when (tab) {
-                SettingsTab.DEFAULTS -> NewChatDefaultsSettings(defaults, configuredProviders, viewModel)
-                SettingsTab.AUTOMATION -> AutomationSettingsPage(automation, configuredProviders, viewModel)
-                SettingsTab.APP -> AppSettingsPage(amoled, palette, renderSafeMode, viewModel)
-                SettingsTab.PROVIDERS -> ProviderSettings(
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            when (route) {
+                SettingsRoute.HOME -> SettingsHome(
+                    providerCount = registeredProviders.size,
+                    onOpen = { route = it },
+                )
+                SettingsRoute.DEFAULTS -> NewChatDefaultsSettings(defaults, configuredProviders, viewModel)
+                SettingsRoute.AUTOMATION -> AutomationSettingsPage(automation, configuredProviders, viewModel)
+                SettingsRoute.APPEARANCE -> AppearanceSettingsPage(themeMode, amoled, palette, viewModel)
+                SettingsRoute.PRIVACY -> PrivacySettingsPage(renderSafeMode, viewModel)
+                SettingsRoute.PROVIDERS -> ProviderSettings(
                     providers = providers,
                     registeredProviders = registeredProviders,
                     conversationProviderId = null,
                     viewModel = viewModel,
                 )
+                SettingsRoute.ABOUT -> AboutSettingsPage()
             }
         }
     }
+}
+
+@Composable
+private fun SettingsHome(providerCount: Int, onOpen: (SettingsRoute) -> Unit) = SettingsPage {
+    SettingsGroup("AI & models") {
+        SettingsDestination(
+            icon = Icons.Outlined.Cloud,
+            title = "Providers & models",
+            subtitle = if (providerCount == 0) "Add your first API provider" else "$providerCount provider${if (providerCount == 1) "" else "s"} configured",
+            onClick = { onOpen(SettingsRoute.PROVIDERS) },
+        )
+        SettingsDestination(
+            icon = Icons.Outlined.SmartToy,
+            title = "New chat defaults",
+            subtitle = "Model, thinking, tools, context, and output",
+            onClick = { onOpen(SettingsRoute.DEFAULTS) },
+        )
+        SettingsDestination(
+            icon = Icons.Outlined.AutoAwesome,
+            title = "Automation",
+            subtitle = "Naming, compression, and package approval",
+            onClick = { onOpen(SettingsRoute.AUTOMATION) },
+        )
+    }
+    SettingsGroup("App") {
+        SettingsDestination(
+            icon = Icons.Outlined.Palette,
+            title = "Appearance",
+            subtitle = "Theme mode, colors, and AMOLED black",
+            onClick = { onOpen(SettingsRoute.APPEARANCE) },
+        )
+        SettingsDestination(
+            icon = Icons.Outlined.PrivacyTip,
+            title = "Privacy & safety",
+            subtitle = "Generated UI safety and local-data behavior",
+            onClick = { onOpen(SettingsRoute.PRIVACY) },
+        )
+    }
+    SettingsGroup("About") {
+        SettingsDestination(
+            icon = Icons.Outlined.Info,
+            title = "About Arbor",
+            subtitle = "Version, architecture, and privacy model",
+            onClick = { onOpen(SettingsRoute.ABOUT) },
+        )
+    }
+    Spacer(Modifier.padding(bottom = 24.dp))
+}
+
+@Composable
+private fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 6.dp))
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(content = content)
+    }
+}
+
+@Composable
+private fun SettingsDestination(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(title, fontWeight = FontWeight.SemiBold) },
+        supportingContent = { Text(subtitle) },
+        leadingContent = { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) },
+        trailingContent = { Icon(Icons.Outlined.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+        modifier = Modifier.clickable(onClick = onClick),
+        colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+    )
 }
 
 @Composable
@@ -231,34 +332,117 @@ private fun AutomationSettingsPage(
 }
 
 @Composable
-private fun AppSettingsPage(
+private fun AppearanceSettingsPage(
+    themeMode: ThemeMode,
     amoled: Boolean,
     palette: ColorPalette,
-    renderSafeMode: Boolean,
     viewModel: ChatViewModel,
 ) = SettingsPage {
-    SectionTitle("Appearance", "App-wide display settings.")
+    SectionTitle("Theme mode", "Choose whether Arbor follows Android or stays light or dark.")
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        ColorPalette.entries.forEach { option ->
-            AssistChip(
-                onClick = { viewModel.setPalette(option) },
-                label = { Text(when (option) { ColorPalette.ARBOR -> "Arbor"; ColorPalette.SYSTEM -> "System"; ColorPalette.GRAPHITE -> "Graphite" }) },
-                leadingIcon = if (palette == option) ({ Icon(Icons.Outlined.CheckCircle, null, Modifier.size(18.dp)) }) else null,
+        ThemeMode.entries.forEach { option ->
+            FilterChip(
+                selected = themeMode == option,
+                onClick = { viewModel.setThemeMode(option) },
+                label = { Text(option.displayName) },
+                leadingIcon = if (themeMode == option) ({ Icon(Icons.Outlined.CheckCircle, null, Modifier.size(18.dp)) }) else null,
             )
         }
     }
-    SettingsSwitch("AMOLED black", amoled, viewModel::setAmoled)
+
     HorizontalDivider()
-    SectionTitle("Privacy & rendering", "Global safety settings for generated content.")
+    SectionTitle("Color scheme", "Use Arbor green, a neutral graphite palette, or Android dynamic colors.")
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ColorPalette.entries.forEach { option ->
+            Surface(
+                onClick = { viewModel.setPalette(option) },
+                color = if (palette == option) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                shape = MaterialTheme.shapes.large,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = when (option) {
+                            ColorPalette.ARBOR -> MaterialTheme.colorScheme.primary
+                            ColorPalette.GRAPHITE -> MaterialTheme.colorScheme.secondary
+                            ColorPalette.SYSTEM -> MaterialTheme.colorScheme.tertiary
+                        },
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                        modifier = Modifier.size(28.dp),
+                    ) {}
+                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                        Text(option.displayName, fontWeight = FontWeight.SemiBold)
+                        Text(option.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (palette == option) Icon(Icons.Outlined.CheckCircle, "Selected", tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+    }
+    SettingsSwitch("AMOLED black", amoled, viewModel::setAmoled, enabled = themeMode != ThemeMode.LIGHT)
+    Text("AMOLED black only changes dark mode surfaces.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(Modifier.padding(bottom = 24.dp))
+}
+
+@Composable
+private fun PrivacySettingsPage(
+    renderSafeMode: Boolean,
+    viewModel: ChatViewModel,
+) = SettingsPage {
+    SectionTitle("Generated content", "Controls how Arbor handles AI-generated interactive UI.")
     SettingsSwitch("Safe generated rendering", renderSafeMode, viewModel::setRenderSafeMode)
+    Text(
+        if (renderSafeMode) "Generated widgets are paused and shown as safe fallback content." else "Generated widgets may render, but Arbor still applies its capability checks and crash recovery.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Security, null)
-            Text("No account, ads, analytics, or Arbor cloud. Network traffic goes only to endpoints you configure.", Modifier.padding(start = 12.dp), style = MaterialTheme.typography.bodySmall)
+            Text(
+                "No Arbor account, ads, analytics, or Arbor cloud. Chat history and API keys remain on this device; traffic goes to endpoints and web tools you explicitly enable.",
+                Modifier.padding(start = 12.dp),
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
     Spacer(Modifier.padding(bottom = 24.dp))
 }
+
+@Composable
+private fun AboutSettingsPage() = SettingsPage {
+    SectionTitle("Arbor 0.14.0", "Native Android BYOK model workspace.")
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Built for long-running, tool-using chats", fontWeight = FontWeight.SemiBold)
+            Text("On-device encrypted history, provider-native tool calls, persistent Python/Linux workspaces, Deep Research, and per-chat generation controls.", style = MaterialTheme.typography.bodySmall)
+            HorizontalDivider()
+            Text("Debug builds use Android's debug certificate and are not production releases.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+    Spacer(Modifier.padding(bottom = 24.dp))
+}
+
+private val ThemeMode.displayName: String
+    get() = when (this) {
+        ThemeMode.SYSTEM -> "Follow device"
+        ThemeMode.LIGHT -> "Light"
+        ThemeMode.DARK -> "Dark"
+    }
+
+private val ColorPalette.displayName: String
+    get() = when (this) {
+        ColorPalette.ARBOR -> "Arbor"
+        ColorPalette.SYSTEM -> "Dynamic"
+        ColorPalette.GRAPHITE -> "Graphite"
+    }
+
+private val ColorPalette.description: String
+    get() = when (this) {
+        ColorPalette.ARBOR -> "Arbor's green Material palette"
+        ColorPalette.SYSTEM -> "Colors generated from your wallpaper on Android 12+"
+        ColorPalette.GRAPHITE -> "Neutral blue-gray palette"
+    }
 
 @Composable
 private fun ChatOptionsEditor(
@@ -301,29 +485,13 @@ private fun ChatOptionsEditor(
 
     HorizontalDivider()
     SectionTitle("Composer defaults", "Starting state for the controls beside the message box.")
-    Text("Thinking", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-    SettingsSwitch(
-        label = "Thinking",
-        checked = thinkingEnabled,
-        onCheckedChange = onThinkingEnabled,
-        enabled = activeModel?.supportsThinking != false,
+    ThinkingDefaultsControl(
+        enabled = thinkingEnabled,
+        effort = thinkingEffort,
+        supported = activeModel?.supportsThinking != false,
+        onEnabled = onThinkingEnabled,
+        onEffort = onThinkingEffort,
     )
-    if (activeModel?.supportsThinking == false) {
-        Text("This model does not advertise thinking support.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    } else if (thinkingEnabled) {
-        Text("Effort: ${thinkingEffort.displayName}", fontWeight = FontWeight.SemiBold)
-        Slider(
-            value = thinkingEffort.ordinal.toFloat(),
-            onValueChange = { raw -> onThinkingEffort(ThinkingEffort.entries[raw.toInt().coerceIn(0, ThinkingEffort.entries.lastIndex)]) },
-            valueRange = 0f..ThinkingEffort.entries.lastIndex.toFloat(),
-            steps = ThinkingEffort.entries.size - 2,
-        )
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Minimal", style = MaterialTheme.typography.labelSmall)
-            Text("High", style = MaterialTheme.typography.labelSmall)
-        }
-        Text("Some providers do not allow thinking to be fully disabled on every model; Arbor requests off where the API supports it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
 
     Text("Tools and modes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
     SettingsSwitch("Web search", webEnabled, onWeb)
@@ -364,6 +532,48 @@ private fun ChatOptionsEditor(
         minLines = 3,
         modifier = Modifier.fillMaxWidth(),
     )
+}
+
+@Composable
+private fun ThinkingDefaultsControl(
+    enabled: Boolean,
+    effort: ThinkingEffort,
+    supported: Boolean,
+    onEnabled: (Boolean) -> Unit,
+    onEffort: (ThinkingEffort) -> Unit,
+) {
+    var menu by remember { mutableStateOf(false) }
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.SmartToy, null, tint = MaterialTheme.colorScheme.primary)
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                Text("Thinking", fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (!supported) "Not supported by this model" else if (enabled) "${effort.displayName} effort" else "Off",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = enabled && supported, onCheckedChange = onEnabled, enabled = supported)
+            Box {
+                IconButton(onClick = { menu = true }, enabled = supported) { Icon(Icons.Outlined.ExpandMore, "Thinking effort") }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    ThinkingEffort.entries.forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text(option.displayName) },
+                            leadingIcon = if (enabled && effort == option) ({ Icon(Icons.Outlined.CheckCircle, null) }) else null,
+                            onClick = {
+                                onEffort(option)
+                                if (!enabled) onEnabled(true)
+                                menu = false
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+    Text("Some providers cannot fully disable reasoning on every model; Arbor requests off only where the API supports it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
@@ -446,6 +656,7 @@ private val ReasoningVisibility.shortLabel: String
         ReasoningVisibility.COLLAPSED -> "Collapsed"
     }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ProviderSettings(
     providers: List<ProviderEntity>,
@@ -456,6 +667,7 @@ private fun ProviderSettings(
     var selectedId by remember { mutableStateOf<String?>(null) }
     var addingProvider by remember { mutableStateOf(false) }
     var removingProvider by remember { mutableStateOf<ProviderEntity?>(null) }
+    var editingConnection by remember { mutableStateOf(false) }
     var baseUrl by remember { mutableStateOf("") }
     var apiKey by remember { mutableStateOf("") }
     var headers by remember { mutableStateOf("{}") }
@@ -479,82 +691,128 @@ private fun ProviderSettings(
 
     SettingsPage {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { SectionTitle("Providers & BYOK", "Keys stay encrypted by Android Keystore.") }
+            Column(Modifier.weight(1f)) {
+                SectionTitle("Providers", "Choose a provider, then manage its connection and models.")
+            }
             FilledTonalButton(onClick = { addingProvider = true }) {
                 Icon(Icons.Outlined.Add, null)
                 Text("Add", Modifier.padding(start = 6.dp))
             }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            registeredProviders.forEach { provider ->
-                Surface(
-                    onClick = { selectedId = provider.id },
-                    color = if (provider.id == selected?.id) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-                    shape = MaterialTheme.shapes.large,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(provider.displayName, fontWeight = FontWeight.SemiBold)
-                            Text("${providerKindLabel(provider.kind)} • ${provider.baseUrl}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        if (provider.id == conversationProviderId) Icon(Icons.Outlined.CheckCircle, "In use", tint = MaterialTheme.colorScheme.primary)
-                    }
+
+        if (registeredProviders.isEmpty()) {
+            Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Outlined.Cloud, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp))
+                    Text("No providers yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Add DeepSeek, OpenAI, Anthropic, Gemini, OpenRouter, or a compatible local endpoint.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(onClick = { addingProvider = true }) { Text("Add provider") }
                 }
             }
-            if (registeredProviders.isEmpty()) {
-                Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("No providers added", fontWeight = FontWeight.SemiBold)
-                        Text("Tap Add, choose the API protocol, and let Arbor fetch the provider's model catalog.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                registeredProviders.forEach { provider ->
+                    Surface(
+                        onClick = { selectedId = provider.id },
+                        color = if (provider.id == selected?.id) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                        shape = MaterialTheme.shapes.large,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                color = if (provider.id == selected?.id) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                contentColor = if (provider.id == selected?.id) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                shape = androidx.compose.foundation.shape.CircleShape,
+                                modifier = Modifier.size(38.dp),
+                            ) { Box(contentAlignment = Alignment.Center) { Text(provider.displayName.take(1).uppercase(), fontWeight = FontWeight.Bold) } }
+                            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                                Text(provider.displayName, fontWeight = FontWeight.SemiBold)
+                                Text(providerKindLabel(provider.kind), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (provider.id == conversationProviderId) Text("In use", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            if (provider.id == selected?.id) Icon(Icons.Outlined.CheckCircle, "Selected", tint = MaterialTheme.colorScheme.primary)
+                        }
                     }
                 }
             }
         }
+
         selected?.let { provider ->
-            ProviderEditor(
-                provider = provider,
-                name = providerName,
-                onName = { providerName = it },
-                baseUrl = baseUrl,
-                onBaseUrl = { baseUrl = it },
-                key = apiKey,
-                onKey = { apiKey = it },
-                headers = headers,
-                onHeaders = { headers = it },
-                apiKeyRequired = apiKeyRequired,
-                onApiKeyRequired = { apiKeyRequired = it },
-            ) {
-                viewModel.saveProvider(provider.copy(displayName = providerName.trim(), baseUrl = baseUrl.trimEnd('/'), customHeadersJson = headers, apiKeyRequired = apiKeyRequired), apiKey)
-            }
-            OutlinedButton(onClick = { viewModel.useProvider(provider.id) }, modifier = Modifier.fillMaxWidth()) { Text("Use ${provider.displayName} in current chat") }
-            OutlinedButton(
-                onClick = {
-                    scope.launch {
-                        syncingModels = true
-                        modelSyncStatus = null
-                        runCatching { viewModel.discoverModels(provider.kind, baseUrl, apiKey, headers) }
-                            .onSuccess { discovered ->
-                                viewModel.saveDiscoveredModels(provider.id, discovered)
-                                modelSyncStatus = "Updated ${discovered.size} models from ${provider.displayName}"
-                            }
-                            .onFailure { modelSyncStatus = it.message?.take(1_000) ?: "Model refresh failed" }
-                        syncingModels = false
+            HorizontalDivider()
+            SectionTitle("${provider.displayName} connection", "Connection details stay out of the way until you need them.")
+            Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(provider.baseUrl, maxLines = 1, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                if (!provider.apiKeyRequired) "Keyless endpoint" else if (apiKey.isNotBlank()) "API key saved securely" else "API key missing",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (provider.apiKeyRequired && apiKey.isBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        OutlinedButton(onClick = { editingConnection = true }) { Text("Edit") }
                     }
-                },
-                enabled = !syncingModels && baseUrl.isNotBlank() && (!apiKeyRequired || apiKey.isNotBlank()),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                if (syncingModels) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.Refresh, null)
-                Text(if (syncingModels) " Refreshing…" else " Refresh model list")
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    syncingModels = true
+                                    modelSyncStatus = null
+                                    runCatching { viewModel.discoverModels(provider.kind, baseUrl, apiKey, headers) }
+                                        .onSuccess { discovered ->
+                                            viewModel.saveDiscoveredModels(provider.id, discovered)
+                                            modelSyncStatus = "Updated ${discovered.size} models"
+                                        }
+                                        .onFailure { modelSyncStatus = it.message?.take(1_000) ?: "Model refresh failed" }
+                                    syncingModels = false
+                                }
+                            },
+                            enabled = !syncingModels && baseUrl.isNotBlank() && (!apiKeyRequired || apiKey.isNotBlank()),
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            if (syncingModels) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.Refresh, null)
+                            Text(if (syncingModels) " Refreshing…" else " Refresh models")
+                        }
+                        OutlinedButton(onClick = { removingProvider = provider }) {
+                            Icon(Icons.Outlined.DeleteOutline, "Remove", tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                    modelSyncStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
             }
-            modelSyncStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             ModelCatalogEditor(provider, viewModel)
-            OutlinedButton(onClick = { removingProvider = provider }, modifier = Modifier.fillMaxWidth()) {
-                Text("Remove provider from Arbor", color = MaterialTheme.colorScheme.error)
-            }
         }
         Spacer(Modifier.padding(bottom = 24.dp))
+    }
+
+    if (editingConnection) {
+        ModalBottomSheet(onDismissRequest = { editingConnection = false }) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).verticalScroll(rememberScrollState())) {
+                Text("Edit connection", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                Text(selected?.displayName.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.size(16.dp))
+                selected?.let { provider ->
+                    ProviderEditor(
+                        provider = provider,
+                        name = providerName,
+                        onName = { providerName = it },
+                        baseUrl = baseUrl,
+                        onBaseUrl = { baseUrl = it },
+                        key = apiKey,
+                        onKey = { apiKey = it },
+                        headers = headers,
+                        onHeaders = { headers = it },
+                        apiKeyRequired = apiKeyRequired,
+                        onApiKeyRequired = { apiKeyRequired = it },
+                    ) {
+                        viewModel.saveProvider(provider.copy(displayName = providerName.trim(), baseUrl = baseUrl.trimEnd('/'), customHeadersJson = headers, apiKeyRequired = apiKeyRequired), apiKey)
+                        editingConnection = false
+                    }
+                }
+                Spacer(Modifier.size(28.dp))
+            }
+        }
     }
 
     removingProvider?.let { provider ->
@@ -611,11 +869,11 @@ private fun ProviderEditor(
     apiKeyRequired: Boolean, onApiKeyRequired: (Boolean) -> Unit,
     onSave: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Provider details", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    var advanced by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(providerKindLabel(provider.kind), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         OutlinedTextField(name, onName, label = { Text("Provider name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(baseUrl, onBaseUrl, label = { Text("Base URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(baseUrl, onBaseUrl, label = { Text("API base URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(
             key, onKey,
             label = { Text(if (apiKeyRequired) "API key" else "API key (optional)") },
@@ -625,13 +883,32 @@ private fun ProviderEditor(
         )
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Require API key")
-                Text("Turn off for a trusted local or keyless endpoint", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Require API key", fontWeight = FontWeight.Medium)
+                Text("Disable only for a trusted local or keyless endpoint", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Switch(checked = apiKeyRequired, onCheckedChange = onApiKeyRequired)
         }
-        OutlinedTextField(headers, onHeaders, label = { Text("Custom headers JSON") }, minLines = 2, modifier = Modifier.fillMaxWidth())
-        Button(onClick = onSave, enabled = name.isNotBlank() && baseUrl.isNotBlank() && (!apiKeyRequired || key.isNotBlank()), modifier = Modifier.align(Alignment.End)) { Text("Save provider") }
+        Surface(
+            onClick = { advanced = !advanced },
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Tune, null)
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text("Advanced headers", fontWeight = FontWeight.Medium)
+                    Text("Usually unnecessary", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Icon(Icons.Outlined.ExpandMore, null)
+            }
+        }
+        if (advanced) OutlinedTextField(headers, onHeaders, label = { Text("Custom headers JSON") }, minLines = 3, modifier = Modifier.fillMaxWidth())
+        Button(
+            onClick = onSave,
+            enabled = name.isNotBlank() && baseUrl.isNotBlank() && (!apiKeyRequired || key.isNotBlank()),
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Save connection") }
     }
 }
 
@@ -1079,31 +1356,58 @@ private fun ModelCatalogEditor(provider: ProviderEntity, viewModel: ChatViewMode
     val models by modelFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     var editing by remember { mutableStateOf<ModelEntity?>(null) }
     var creating by remember { mutableStateOf(false) }
+    var search by remember { mutableStateOf("") }
+    val visibleModels = remember(models, search) {
+        val query = search.trim()
+        if (query.isBlank()) models else models.filter {
+            it.displayName.contains(query, ignoreCase = true) || it.modelId.contains(query, ignoreCase = true)
+        }
+    }
 
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Models", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("Context, output limits, capabilities, and pricing are editable.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                IconButton(onClick = { creating = true }) { Icon(Icons.Outlined.Add, "Add model") }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Models", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text("${models.size} available for ${provider.displayName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            models.forEach { model ->
-                Surface(onClick = { editing = model }, color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
-                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(model.displayName, fontWeight = FontWeight.Medium)
-                            Text("${model.modelId} • ${model.contextWindow / 1_000}K context • ${model.maxOutputTokens / 1_000}K output • ${if (model.pricingConfigured) "pricing configured" else "cost unavailable"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Icon(Icons.Outlined.Edit, null, Modifier.padding(start = 8.dp))
-                    }
+            FilledTonalButton(onClick = { creating = true }) {
+                Icon(Icons.Outlined.Add, null)
+                Text("Add", Modifier.padding(start = 6.dp))
+            }
+        }
+        if (models.size > 8) {
+            OutlinedTextField(
+                value = search,
+                onValueChange = { search = it },
+                label = { Text("Search models") },
+                leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
+            Column {
+                visibleModels.forEachIndexed { index, model ->
+                    ListItem(
+                        headlineContent = { Text(model.displayName, fontWeight = FontWeight.SemiBold) },
+                        supportingContent = {
+                            Column {
+                                Text(model.modelId, maxLines = 1, style = MaterialTheme.typography.bodySmall)
+                                Text(model.compactSummary, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        },
+                        trailingContent = { Icon(Icons.Outlined.ChevronRight, null) },
+                        modifier = Modifier.clickable { editing = model },
+                        colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+                    )
+                    if (index != visibleModels.lastIndex) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                 }
+                if (visibleModels.isEmpty()) Text("No matching models.", Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
 
-    if (creating) ModelEditorDialog(
+    if (creating) ModelEditorSheet(
         title = "Add model",
         initial = ModelEntity(provider.id, "", "", 128_000, 16_384, 0.0, 0.0, 0.0),
         allowIdEdit = true,
@@ -1111,7 +1415,7 @@ private fun ModelCatalogEditor(provider: ProviderEntity, viewModel: ChatViewMode
         onSave = { viewModel.saveModel(it); creating = false },
     )
     editing?.let { model ->
-        ModelEditorDialog(
+        ModelEditorSheet(
             title = "Edit model",
             initial = model,
             allowIdEdit = false,
@@ -1121,8 +1425,19 @@ private fun ModelCatalogEditor(provider: ProviderEntity, viewModel: ChatViewMode
     }
 }
 
+private val ModelEntity.compactSummary: String
+    get() = buildList {
+        add("${contextWindow / 1_000}K context")
+        add("${maxOutputTokens / 1_000}K output")
+        if (supportsThinking) add("Thinking")
+        if (supportsVision) add("Vision")
+        if (supportsTools) add("Tools")
+        if (!pricingConfigured) add("Cost unavailable")
+    }.joinToString(" · ")
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ModelEditorDialog(
+private fun ModelEditorSheet(
     title: String,
     initial: ModelEntity,
     allowIdEdit: Boolean,
@@ -1141,60 +1456,81 @@ private fun ModelEditorDialog(
     var files by remember(initial) { mutableStateOf(initial.supportsFiles) }
     var thinking by remember(initial) { mutableStateOf(initial.supportsThinking) }
     var tools by remember(initial) { mutableStateOf(initial.supportsTools) }
+    var showPricing by remember(initial) { mutableStateOf(initial.pricingConfigured) }
     val pricesValid = !pricingConfigured || listOf(cacheHit, cacheMiss, outputPrice).all { it.toDoubleOrNull()?.let { price -> price >= 0.0 } == true }
     val valid = id.isNotBlank() && name.isNotBlank() && context.toIntOrNull() != null && output.toIntOrNull() != null && pricesValid
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(id, { id = it.trim() }, label = { Text("API model ID") }, enabled = allowIdEdit, singleLine = true)
-                OutlinedTextField(name, { name = it }, label = { Text("Display name") }, singleLine = true)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(context, { context = it.filter(Char::isDigit) }, label = { Text("Context") }, modifier = Modifier.weight(1f))
-                    OutlinedTextField(output, { output = it.filter(Char::isDigit) }, label = { Text("Max output") }, modifier = Modifier.weight(1f))
-                }
-                CapabilitySwitch("Pricing configured", pricingConfigured) { pricingConfigured = it }
-                Text(if (pricingConfigured) "USD per million tokens" else "Arbor will show cost as unavailable instead of treating this model as free.", style = MaterialTheme.typography.labelMedium)
-                OutlinedTextField(cacheHit, { cacheHit = it }, label = { Text("Cache-hit input") }, enabled = pricingConfigured)
-                OutlinedTextField(cacheMiss, { cacheMiss = it }, label = { Text("Cache-miss input") }, enabled = pricingConfigured)
-                OutlinedTextField(outputPrice, { outputPrice = it }, label = { Text("Output") }, enabled = pricingConfigured)
-                CapabilitySwitch("Vision", vision) { vision = it }
-                CapabilitySwitch("Files", files) { files = it }
-                CapabilitySwitch("Thinking", thinking) { thinking = it }
-                CapabilitySwitch("Tools", tools) { tools = it }
-            }
-        },
-        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } },
-        confirmButton = {
-            Button(
-                enabled = valid,
-                onClick = {
-                    onSave(initial.copy(
-                        modelId = id,
-                        displayName = name.trim(),
-                        contextWindow = context.toIntOrNull()?.coerceAtLeast(1_024) ?: initial.contextWindow,
-                        maxOutputTokens = output.toIntOrNull()?.coerceAtLeast(1) ?: initial.maxOutputTokens,
-                        inputCacheHitUsdPerMillion = cacheHit.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0,
-                        inputCacheMissUsdPerMillion = cacheMiss.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0,
-                        outputUsdPerMillion = outputPrice.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0,
-                        pricingConfigured = pricingConfigured,
-                        supportsVision = vision,
-                        supportsFiles = files,
-                        supportsThinking = thinking,
-                        supportsTools = tools,
-                    ))
-                },
-            ) { Text("Save") }
-        },
-    )
-}
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text("Only the essentials are shown. Pricing is optional.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-@Composable
-private fun CapabilitySwitch(label: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChecked)
+            OutlinedTextField(id, { id = it.trim() }, label = { Text("API model ID") }, enabled = allowIdEdit, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(name, { name = it }, label = { Text("Display name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(context, { context = it.filter(Char::isDigit) }, label = { Text("Context tokens") }, modifier = Modifier.weight(1f), singleLine = true)
+                OutlinedTextField(output, { output = it.filter(Char::isDigit) }, label = { Text("Max output") }, modifier = Modifier.weight(1f), singleLine = true)
+            }
+
+            Text("Capabilities", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = thinking, onClick = { thinking = !thinking }, label = { Text("Thinking") }, modifier = Modifier.weight(1f))
+                FilterChip(selected = tools, onClick = { tools = !tools }, label = { Text("Tools") }, modifier = Modifier.weight(1f))
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = vision, onClick = { vision = !vision }, label = { Text("Vision") }, modifier = Modifier.weight(1f))
+                FilterChip(selected = files, onClick = { files = !files }, label = { Text("Files") }, modifier = Modifier.weight(1f))
+            }
+
+            Surface(
+                onClick = { showPricing = !showPricing },
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                shape = MaterialTheme.shapes.large,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Pricing", fontWeight = FontWeight.SemiBold)
+                        Text(if (pricingConfigured) "Configured in USD per million tokens" else "Optional · cost will show as unavailable", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Icon(Icons.Outlined.ExpandMore, null)
+                }
+            }
+            if (showPricing) {
+                SettingsSwitch("Pricing configured", pricingConfigured, { pricingConfigured = it })
+                OutlinedTextField(cacheHit, { cacheHit = it }, label = { Text("Cached input") }, enabled = pricingConfigured, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(cacheMiss, { cacheMiss = it }, label = { Text("Input") }, enabled = pricingConfigured, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(outputPrice, { outputPrice = it }, label = { Text("Output") }, enabled = pricingConfigured, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            }
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                Button(
+                    enabled = valid,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        onSave(initial.copy(
+                            modelId = id,
+                            displayName = name.trim(),
+                            contextWindow = context.toIntOrNull()?.coerceAtLeast(1_024) ?: initial.contextWindow,
+                            maxOutputTokens = output.toIntOrNull()?.coerceAtLeast(1) ?: initial.maxOutputTokens,
+                            inputCacheHitUsdPerMillion = cacheHit.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0,
+                            inputCacheMissUsdPerMillion = cacheMiss.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0,
+                            outputUsdPerMillion = outputPrice.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0,
+                            pricingConfigured = pricingConfigured,
+                            supportsVision = vision,
+                            supportsFiles = files,
+                            supportsThinking = thinking,
+                            supportsTools = tools,
+                        ))
+                    },
+                ) { Text("Save") }
+            }
+            Spacer(Modifier.size(28.dp))
+        }
     }
 }
+

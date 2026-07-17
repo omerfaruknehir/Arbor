@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 enum class ColorPalette { ARBOR, SYSTEM, GRAPHITE }
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 data class NewChatDefaults(
     val selectedProviderId: String = "deepseek",
@@ -71,10 +72,12 @@ class AppPreferences(context: Context) {
     private val preferences = context.getSharedPreferences("arbor_app_settings", Context.MODE_PRIVATE)
     private val _amoled = MutableStateFlow(preferences.getBoolean(KEY_AMOLED, false))
     private val _palette = MutableStateFlow(enumValue(KEY_PALETTE, ColorPalette.ARBOR))
+    private val _themeMode = MutableStateFlow(enumValue(KEY_THEME_MODE, ThemeMode.SYSTEM))
     private val _newChatDefaults = MutableStateFlow(readNewChatDefaults())
 
     val amoled: StateFlow<Boolean> = _amoled.asStateFlow()
     val palette: StateFlow<ColorPalette> = _palette.asStateFlow()
+    val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
     val newChatDefaults: StateFlow<NewChatDefaults> = _newChatDefaults.asStateFlow()
     val hasNewChatDefaults: Boolean get() = preferences.getBoolean(KEY_DEFAULTS_INITIALIZED, false)
 
@@ -86,6 +89,11 @@ class AppPreferences(context: Context) {
     fun setPalette(value: ColorPalette) {
         _palette.value = value
         preferences.edit { putString(KEY_PALETTE, value.name) }
+    }
+
+    fun setThemeMode(value: ThemeMode) {
+        _themeMode.value = value
+        preferences.edit { putString(KEY_THEME_MODE, value.name) }
     }
 
     fun setNewChatDefaults(value: NewChatDefaults) {
@@ -143,6 +151,7 @@ class AppPreferences(context: Context) {
     private companion object {
         const val KEY_AMOLED = "amoled_black"
         const val KEY_PALETTE = "color_palette"
+        const val KEY_THEME_MODE = "theme_mode"
         const val KEY_DEFAULT_PROVIDER = "new_chat_provider"
         const val KEY_DEFAULT_MODEL = "new_chat_model"
         const val KEY_DEFAULT_PAIRS = "new_chat_context_pairs"

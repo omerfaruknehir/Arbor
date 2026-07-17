@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +43,8 @@ import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Psychology
@@ -62,7 +65,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ListItem
@@ -770,28 +772,16 @@ private fun Composer(viewModel: ChatViewModel, model: ModelEntity?, generating: 
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    FilterChip(
-                        selected = current.thinkingEnabled,
-                        enabled = model?.supportsThinking != false,
-                        onClick = { viewModel.updateConversation { it.copy(thinkingEnabled = !it.thinkingEnabled) } },
-                        label = { Text("Thinking") },
-                        leadingIcon = { Icon(Icons.Outlined.Psychology, null, Modifier.size(16.dp)) },
+                    ThinkingComposerChip(
+                        enabled = current.thinkingEnabled,
+                        effort = current.thinkingEffort,
+                        supported = model?.supportsThinking != false,
+                        onToggle = { viewModel.updateConversation { it.copy(thinkingEnabled = !it.thinkingEnabled) } },
+                        onEffort = { effort ->
+                            viewModel.updateConversation { it.copy(thinkingEnabled = true, thinkingEffort = effort) }
+                        },
                     )
-                    if (current.thinkingEnabled && model?.supportsThinking != false) {
-                        Text(current.thinkingEffort.composerLabel, style = MaterialTheme.typography.labelSmall)
-                        Slider(
-                            value = current.thinkingEffort.ordinal.toFloat(),
-                            onValueChange = { raw ->
-                                val index = raw.toInt().coerceIn(0, ThinkingEffort.entries.lastIndex)
-                                viewModel.updateConversation { it.copy(thinkingEffort = ThinkingEffort.entries[index]) }
-                            },
-                            valueRange = 0f..ThinkingEffort.entries.lastIndex.toFloat(),
-                            steps = ThinkingEffort.entries.size - 2,
-                            modifier = Modifier.weight(1f),
-                        )
-                    } else {
-                        Spacer(Modifier.weight(1f))
-                    }
+                    Spacer(Modifier.weight(1f))
                     if (current.deepResearchEnabled) {
                         AssistChip(
                             onClick = { plusMenu = true },
@@ -891,6 +881,98 @@ private fun Composer(viewModel: ChatViewModel, model: ModelEntity?, generating: 
 }
 
 @OptIn(ExperimentalFoundationApi::class)
+
+@Composable
+private fun ThinkingComposerChip(
+    enabled: Boolean,
+    effort: ThinkingEffort,
+    supported: Boolean,
+    onToggle: () -> Unit,
+    onEffort: (ThinkingEffort) -> Unit,
+) {
+    var effortMenu by remember { mutableStateOf(false) }
+    Box {
+        Surface(
+            color = when {
+                !supported -> MaterialTheme.colorScheme.surfaceContainer
+                enabled -> MaterialTheme.colorScheme.secondaryContainer
+                else -> MaterialTheme.colorScheme.surfaceContainerHigh
+            },
+            contentColor = when {
+                !supported -> MaterialTheme.colorScheme.onSurfaceVariant
+                enabled -> MaterialTheme.colorScheme.onSecondaryContainer
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            shape = CircleShape,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier
+                        .clickable(enabled = supported, onClick = onToggle)
+                        .padding(start = 12.dp, end = 4.dp, top = 7.dp, bottom = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Icon(Icons.Outlined.Psychology, null, Modifier.size(17.dp))
+                    Text(
+                        when {
+                            !supported -> "Thinking unavailable"
+                            enabled -> "Thinking · ${effort.displayName}"
+                            else -> "Thinking off"
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+                IconButton(
+                    onClick = { effortMenu = true },
+                    enabled = supported,
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(Icons.Outlined.ExpandMore, "Choose thinking effort", Modifier.size(19.dp))
+                }
+            }
+        }
+        DropdownMenu(expanded = effortMenu, onDismissRequest = { effortMenu = false }) {
+            ThinkingEffort.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(option.displayName)
+                            Text(option.effortDescription, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    },
+                    leadingIcon = if (enabled && effort == option) ({ Icon(Icons.Outlined.Check, null) }) else null,
+                    onClick = {
+                        onEffort(option)
+                        effortMenu = false
+                    },
+                )
+            }
+            if (enabled) {
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text("Turn thinking off") },
+                    onClick = {
+                        onToggle()
+                        effortMenu = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+private val ThinkingEffort.effortDescription: String
+    get() = when (this) {
+        ThinkingEffort.MINIMAL -> "Fastest, light reasoning"
+        ThinkingEffort.LOW -> "Short reasoning"
+        ThinkingEffort.MEDIUM -> "Balanced"
+        ThinkingEffort.HIGH -> "More thorough reasoning"
+    }
+
+private val ThinkingEffort.displayName: String
+    get() = name.lowercase().replaceFirstChar(Char::uppercase)
+
 @Composable
 private fun ComposerActionRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -924,12 +1006,5 @@ private fun ComposerToggleRow(
     )
 }
 
-private val ThinkingEffort.composerLabel: String
-    get() = when (this) {
-        ThinkingEffort.MINIMAL -> "Min"
-        ThinkingEffort.LOW -> "Low"
-        ThinkingEffort.MEDIUM -> "Med"
-        ThinkingEffort.HIGH -> "High"
-    }
 
 private fun ChatViewModel.containerAttachments(nodeId: String) = observeAttachments(nodeId)

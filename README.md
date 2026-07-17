@@ -2,7 +2,7 @@
 
 Arbor is a fully native Android BYOK chat client built with Kotlin, Jetpack Compose, and Material 3. It has no WebView, hosted account, telemetry, ads, or application backend. API keys and chat data stay on the device; requests go directly to the endpoints configured by the user.
 
-This repository is version `0.13.0`, an installable and deliberately honest foundation for a larger agent client.
+This repository is version `0.14.0`, an installable and deliberately honest foundation for a larger agent client.
 
 ## Included
 
@@ -38,7 +38,7 @@ This repository is version `0.13.0`, an installable and deliberately honest foun
 - Context compression for messages outside the verbatim pair/token window. It can be off, deterministic/local with no API call, or driven by a separately selected provider/model. Summaries are persisted, inspectable by size/count, and can be cleared.
 - Separate automation policies and model selectors for evolving chat titles and context compression, plus an editable model catalog for context/output limits, capability flags, and pricing.
 - Phone/tablet adaptive Compose UI, edge-to-edge layout, a calmer Arbor green-neutral palette, optional Material You or graphite palettes, optional AMOLED surfaces, revised Material 3 hierarchy, and a remastered adaptive/themed launcher mark.
-- Composer-first persistent controls: thinking and effort sit beside the input, while a `+` sheet handles files, photos, camera capture, Web search, Deep Research, Python, and Linux. Global Settings is available from the navigation drawer under **Defaults**, **Automation**, **App**, and **Providers**; the chat overflow contains only compact advanced context/output/system-prompt configuration. Per-chat choices become defaults for subsequently created chats without rewriting existing conversations. Unsaved empty chats stay in memory and never clutter the sidebar.
+- Composer-first persistent controls: thinking and effort sit beside the input, while a `+` sheet handles files, photos, camera capture, Web search, Deep Research, Python, and Linux. Global Settings is available from the navigation drawer as a categorized home with **Providers & models**, **New chat defaults**, **Automation**, **Appearance**, and **Privacy & safety**; the chat overflow contains only compact advanced context/output/system-prompt configuration. Per-chat choices become defaults for subsequently created chats without rewriting existing conversations. Unsaved empty chats stay in memory and never clutter the sidebar.
 - Optional per-chat Deep Research mode with explicit planning in Working, iterative search/fetch rounds, source verification, file-aware research, steering-safe persisted state, and structured sourced reports.
 - Optional hybrid preflight token counting. Anthropic and Gemini can use exact provider count endpoints; OpenAI-compatible and recognized local model families use local family-aware estimates, with the generic estimator as the non-blocking final fallback. Provider-reported post-response usage remains authoritative.
 
@@ -55,8 +55,8 @@ The supplied APK/AAB are debug-signed so they are immediately testable. Use your
 ## Quick start
 
 1. Install the APK on Android 8.0 or later (`arm64-v8a` and `x86_64` are packaged).
-2. Open the left navigation drawer → **Settings** → **Providers**, tap **Add provider**, choose its protocol, give it a name, and enter its endpoint and key. Tap **Connect & fetch models**, select the models to register, then save it securely. Manual model IDs are available only as a fallback for endpoints without model discovery.
-3. Tap **Use … in this conversation**, choose a model from the top chip, and send a message. Use the composer Thinking control and its effort slider; open `+` for attachments, camera, Web search, Deep Research, Python, or Linux.
+2. Open the left navigation drawer → **Settings** → **Providers & models**, tap **Add provider**, choose its protocol, give it a name, and enter its endpoint and key. Tap **Connect & fetch models**, select the models to register, then save it securely. Manual model IDs are available only as a fallback for endpoints without model discovery.
+3. Choose a model from the chat header and send a message. Tap the composer Thinking chip to toggle it; use its arrow menu to choose effort; open `+` for attachments, camera, Web search, Deep Research, Python, or Linux.
 4. Hold the Send button while a response is running to stop, queue, steer, or start a separate turn. A normal tap with drafted text queues safely while the current turn is working.
 5. Open **Tool workspaces**, choose Ubuntu, Debian, or Alpine, and install it when broader Linux tools are useful; the layer is optional and does not inflate first-launch data.
 

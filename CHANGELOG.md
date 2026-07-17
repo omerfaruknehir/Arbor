@@ -1,14 +1,14 @@
 # Changelog
 
-## 0.13.0
+## 0.14.0
 
-- Rebuilt settings around the conversation composer. Thinking and effort now live beside the input, while the `+` sheet handles files, photos, camera capture, Web search, Deep Research, Python, and Linux.
-- Removed the former current-chat Settings tab. Global Settings is available from the navigation drawer and is organized into **Defaults**, **Automation**, **App**, and **Providers**.
-- Added a compact per-chat **Chat configuration** sheet containing only advanced context-pair, context-token, Working-token, output-token, reasoning-display, compression, and system-prompt controls.
-- Added persistent per-chat Deep Research mode. It plans in Working, performs repeated focused searches, opens and verifies stronger sources, uses supplied files, and produces a structured sourced report. Deep Research automatically enables Web search and receives a larger bounded tool-round budget.
-- Added optional hybrid preflight token counting. Anthropic and Gemini use their provider count endpoints; OpenAI-compatible and known local families use model-family estimates; every failure falls back without blocking generation. Provider-reported usage remains authoritative after completion.
-- Persisted Deep Research and hybrid counting in Room schema 11, new-chat defaults, and immutable generation snapshots so queued, resumed, retried, and steered work retains the submitted configuration.
-- Added regression coverage for token-count tiers, fallback behavior, default inheritance, and generation snapshots.
+- Replaced the wide composer thinking controls with one compact persistent chip. Tapping the label toggles thinking; the arrow opens a Minimal/Low/Medium/High effort menu.
+- Rebuilt Global Settings as a categorized home screen instead of a dense tab strip. Providers, new-chat defaults, automation, appearance, privacy, and about information now open as focused pages.
+- Added persistent Follow-device, Light, and Dark theme modes while retaining Arbor, dynamic Material You, graphite, and AMOLED options.
+- Simplified provider management: provider selection is separate from a compact connection summary, while endpoint, key, and custom headers stay in an edit sheet.
+- Replaced the oversized model editor with a focused bottom sheet. Basic identity and token limits stay visible; capabilities use compact chips and optional pricing is collapsed by default.
+- Improved model catalog readability with search, concise capability summaries, and cleaner navigation rows.
+- Bumped the debug package to version code 21.
 
 ## 0.12.0
 

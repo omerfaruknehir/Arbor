@@ -43,7 +43,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             val amoled by viewModel.amoled.collectAsState()
             val palette by viewModel.palette.collectAsState()
-            ArborTheme(amoled = amoled, palette = palette) {
+            val themeMode by viewModel.themeMode.collectAsState()
+            ArborTheme(amoled = amoled, palette = palette, themeMode = themeMode) {
                 ArborApp(viewModel)
                 val container = (application as ArborApplication).container
                 var crashReport by remember { mutableStateOf(container.crashReporter.read()) }

@@ -107,6 +107,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     private val focusedMessageIndex = savedStateHandle.getMutableStateFlow<Int?>("focused_message_index", null)
     val amoled: StateFlow<Boolean> = container.appPreferences.amoled
     val palette = container.appPreferences.palette
+    val themeMode = container.appPreferences.themeMode
     val newChatDefaults: StateFlow<NewChatDefaults> = container.appPreferences.newChatDefaults
     val renderSafeMode = container.crashReporter.renderSafeMode
     val notices = MutableSharedFlow<String>(extraBufferCapacity = 8)
@@ -551,6 +552,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
 
     fun setAmoled(enabled: Boolean) = container.appPreferences.setAmoled(enabled)
     fun setPalette(value: app.arbor.chat.settings.ColorPalette) = container.appPreferences.setPalette(value)
+    fun setThemeMode(value: app.arbor.chat.settings.ThemeMode) = container.appPreferences.setThemeMode(value)
 
     fun clearContextSummary() = launchAction {
         val id = selectedConversationId.value

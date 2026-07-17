@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import app.arbor.chat.settings.ColorPalette
+import app.arbor.chat.settings.ThemeMode
 
 private val ArborLight = lightColorScheme(
     primary = Color(0xFF286448),
@@ -104,9 +105,18 @@ private val ArborShapes = Shapes(
 )
 
 @Composable
-fun ArborTheme(amoled: Boolean = false, palette: ColorPalette = ColorPalette.ARBOR, content: @Composable () -> Unit) {
+fun ArborTheme(
+    amoled: Boolean = false,
+    palette: ColorPalette = ColorPalette.ARBOR,
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
+    content: @Composable () -> Unit,
+) {
     val context = LocalContext.current
-    val dark = isSystemInDarkTheme()
+    val dark = when (themeMode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
     var colors = when (palette) {
         ColorPalette.ARBOR -> if (dark) ArborDark else ArborLight
         ColorPalette.GRAPHITE -> if (dark) GraphiteDark else GraphiteLight
