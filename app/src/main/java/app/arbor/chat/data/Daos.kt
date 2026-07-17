@@ -57,8 +57,8 @@ interface ConversationDao {
     @Query("UPDATE conversations SET activeLeafNodeId = :leaf, updatedAt = :now WHERE id = :id")
     suspend fun setLeaf(id: String, leaf: String, now: Long)
 
-    @Query("UPDATE conversations SET totalInputTokens = totalInputTokens + :input, totalOutputTokens = totalOutputTokens + :output, totalCostMicros = totalCostMicros + :cost, updatedAt = :now WHERE id = :id")
-    suspend fun addUsage(id: String, input: Long, output: Long, cost: Long, now: Long)
+    @Query("UPDATE conversations SET totalInputTokens = totalInputTokens + :input, totalOutputTokens = totalOutputTokens + :output, totalCostMicros = totalCostMicros + :cost, hasUnknownCost = CASE WHEN :costKnown THEN hasUnknownCost ELSE 1 END, updatedAt = :now WHERE id = :id")
+    suspend fun addUsage(id: String, input: Long, output: Long, cost: Long, costKnown: Boolean, now: Long)
 
     @Query("UPDATE conversations SET lastReadAt = :now WHERE id = :id")
     suspend fun markRead(id: String, now: Long)
@@ -183,8 +183,8 @@ interface MessageDao {
     @Query("UPDATE messages SET content = :content, reasoning = :reasoning, toolTraceJson = :toolTraceJson, timelineJson = :timelineJson, streamOffset = :offset, updatedAt = :now WHERE nodeId = :nodeId")
     suspend fun replaceWorkingState(nodeId: String, content: String, reasoning: String, toolTraceJson: String, timelineJson: String, offset: Int, now: Long)
 
-    @Query("UPDATE messages SET status = :status, error = :error, inputTokens = :input, outputTokens = :output, cachedInputTokens = :cached, costMicros = :cost, updatedAt = :now WHERE nodeId = :nodeId")
-    suspend fun finish(nodeId: String, status: MessageStatus, error: String?, input: Long, output: Long, cached: Long, cost: Long, now: Long)
+    @Query("UPDATE messages SET status = :status, error = :error, inputTokens = :input, outputTokens = :output, cachedInputTokens = :cached, costMicros = :cost, costKnown = :costKnown, updatedAt = :now WHERE nodeId = :nodeId")
+    suspend fun finish(nodeId: String, status: MessageStatus, error: String?, input: Long, output: Long, cached: Long, cost: Long, costKnown: Boolean, now: Long)
 
     @Query("UPDATE messages SET status = 'STREAMING', error = NULL, updatedAt = :now WHERE nodeId = :nodeId")
     suspend fun markStreaming(nodeId: String, now: Long)

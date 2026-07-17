@@ -1,7 +1,9 @@
 package app.arbor.chat.security
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Base64
+import androidx.core.content.edit
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import java.security.SecureRandom
@@ -19,6 +21,7 @@ class SecureStore(context: Context) {
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
     )
 
+    @SuppressLint("UseKtx") // A checked synchronous commit is intentional before opening SQLCipher.
     fun databasePassphrase(): ByteArray {
         val existing = preferences.getString("database_passphrase", null)
         if (existing != null) return Base64.decode(existing, Base64.NO_WRAP)
@@ -30,6 +33,6 @@ class SecureStore(context: Context) {
     fun apiKey(providerId: String): String = preferences.getString("key_$providerId", "").orEmpty()
 
     fun setApiKey(providerId: String, value: String) {
-        preferences.edit().putString("key_$providerId", value.trim()).apply()
+        preferences.edit { putString("key_$providerId", value.trim()) }
     }
 }

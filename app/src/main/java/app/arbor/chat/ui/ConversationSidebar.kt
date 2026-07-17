@@ -18,7 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DriveFileMove
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PushPin
@@ -191,7 +191,7 @@ fun ConversationSidebar(
             SheetAction(if (conversation.pinned) Icons.Outlined.PushPin else Icons.Filled.PushPin, if (conversation.pinned) "Unpin" else "Pin") {
                 onPin(conversation.id, !conversation.pinned); actionTarget = null
             }
-            SheetAction(Icons.Filled.DriveFileMove, "Move to project") { movingTarget = item; actionTarget = null }
+            SheetAction(Icons.AutoMirrored.Filled.DriveFileMove, "Move to project") { movingTarget = item; actionTarget = null }
             SheetAction(if (conversation.archived) Icons.Filled.Unarchive else Icons.Filled.Archive, if (conversation.archived) "Unarchive" else "Archive") {
                 onArchive(conversation.id, !conversation.archived); actionTarget = null
             }
@@ -276,6 +276,7 @@ private fun ConversationRow(item: ConversationListItem, selected: Boolean, onCli
                         item.projectName?.let { append(it).append(" • ") }
                         append(conversation.totalInputTokens + conversation.totalOutputTokens).append(" tokens")
                         if (conversation.totalCostMicros > 0) append(" • $").append("%.4f".format(conversation.totalCostMicros / 1_000_000.0))
+                        if (conversation.hasUnknownCost) append(" • partial cost")
                     },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

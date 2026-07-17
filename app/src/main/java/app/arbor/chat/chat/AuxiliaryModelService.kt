@@ -183,11 +183,13 @@ class AuxiliaryModelService(
         require(text.isNotBlank()) { "Auxiliary model returned an empty response" }
         if (inputTokens == 0L) inputTokens = TokenEstimator.estimate(system + prompt).toLong()
         if (outputTokens == 0L) outputTokens = TokenEstimator.estimate(text).toLong()
+        val calculatedCost = CostCalculator.micros(model, inputTokens, cachedTokens, outputTokens)
         repository.addUsage(
             conversationId,
             inputTokens,
             outputTokens,
-            CostCalculator.micros(model, inputTokens, cachedTokens, outputTokens),
+            calculatedCost ?: 0L,
+            calculatedCost != null,
         )
         return text
     }

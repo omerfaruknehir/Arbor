@@ -23,7 +23,7 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         GenerationUsageEntity::class,
         PackageTransactionEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -45,7 +45,7 @@ abstract class ArborDatabase : RoomDatabase() {
             val factory = SupportOpenHelperFactory(passphrase)
             return Room.databaseBuilder(context, ArborDatabase::class.java, "arbor.db")
                 .openHelperFactory(factory)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
@@ -155,6 +155,20 @@ abstract class ArborDatabase : RoomDatabase() {
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_package_transactions_conversationId ON package_transactions(conversationId)")
                 createSearchIndex(db, backfill = true)
+            }
+        }
+
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE conversations ADD COLUMN workingTokenLimit INTEGER NOT NULL DEFAULT 16000")
+                db.execSQL("ALTER TABLE conversations ADD COLUMN hasUnknownCost INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE messages ADD COLUMN costKnown INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE generation_usage ADD COLUMN costKnown INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE models ADD COLUMN pricingConfigured INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE models SET pricingConfigured = 1 WHERE inputCacheHitUsdPerMillion > 0 OR inputCacheMissUsdPerMillion > 0 OR outputUsdPerMillion > 0")
+                db.execSQL("UPDATE messages SET costKnown = 1 WHERE costMicros > 0 OR (providerId = 'deepseek' AND (inputTokens > 0 OR outputTokens > 0))")
+                db.execSQL("UPDATE generation_usage SET costKnown = 1 WHERE costMicros > 0 OR providerId = 'deepseek'")
+                db.execSQL("UPDATE conversations SET hasUnknownCost = 1 WHERE EXISTS (SELECT 1 FROM messages WHERE messages.conversationId = conversations.id AND (messages.inputTokens > 0 OR messages.outputTokens > 0) AND messages.costKnown = 0)")
             }
         }
 

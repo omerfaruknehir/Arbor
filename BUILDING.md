@@ -29,11 +29,21 @@ The same ABI folders contain the PRoot launcher, loader, talloc, and libandroid-
 
 ## Release signing
 
-The repository intentionally contains no release private key. Configure a Gradle signing config backed by environment variables or a private `keystore.properties`, and never commit the keystore or its passwords. Then run `assembleRelease` and `bundleRelease`.
+The repository intentionally contains no release private key. Configure these environment variables or equivalent Gradle properties, then run `assembleRelease bundleRelease`:
+
+```bash
+export ARBOR_KEYSTORE_FILE=/absolute/path/arbor-release.jks
+export ARBOR_KEYSTORE_PASSWORD='...'
+export ARBOR_KEY_ALIAS='...'
+export ARBOR_KEY_PASSWORD='...'
+./gradlew assembleRelease bundleRelease
+```
+
+Never commit the keystore or passwords. The GitHub Actions release job accepts the same values through protected repository/environment secrets.
 
 ## Toolchain archive
 
-Extract `Android-Build-Tools-for-ChatGPT-Arbor-0.11.0-2026-07-17.tar.gz`. Its `env.sh` establishes the bundled JDK, Android SDK, Gradle, and cache paths. From the extracted directory:
+Extract `Android-Build-Tools-for-ChatGPT-Arbor-0.11.1-2026-07-17.tar.gz`. Its `env.sh` establishes the bundled JDK, Android SDK, Gradle, and cache paths. From the extracted directory:
 
 ```bash
 source ./env.sh

@@ -7,6 +7,11 @@ plugins {
     id("com.chaquo.python")
 }
 
+val releaseStoreFile = providers.gradleProperty("ARBOR_KEYSTORE_FILE").orNull ?: System.getenv("ARBOR_KEYSTORE_FILE")
+val releaseStorePassword = providers.gradleProperty("ARBOR_KEYSTORE_PASSWORD").orNull ?: System.getenv("ARBOR_KEYSTORE_PASSWORD")
+val releaseKeyAlias = providers.gradleProperty("ARBOR_KEY_ALIAS").orNull ?: System.getenv("ARBOR_KEY_ALIAS")
+val releaseKeyPassword = providers.gradleProperty("ARBOR_KEY_PASSWORD").orNull ?: System.getenv("ARBOR_KEY_PASSWORD")
+
 android {
     namespace = "app.arbor.chat"
     compileSdk = 35
@@ -15,13 +20,28 @@ android {
         applicationId = "app.arbor.chat"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
-        versionName = "0.11.0"
+        versionCode = 18
+        versionName = "0.11.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
+        }
+    }
+
+    signingConfigs {
+        if (!releaseStoreFile.isNullOrBlank()) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = true
+            }
         }
     }
 
@@ -33,6 +53,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.findByName("release")
         }
         debug {
             applicationIdSuffix = ".debug"

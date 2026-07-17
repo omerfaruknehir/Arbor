@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -37,7 +37,7 @@ fun SearchScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("Search history") },
-                navigationIcon = { IconButton(onClick = { openDrawer?.invoke() ?: run { viewModel.screen.value = Screen.CHAT } }) { Icon(if (openDrawer != null) Icons.Outlined.Menu else Icons.Outlined.ArrowBack, "Back") } },
+                navigationIcon = { IconButton(onClick = { openDrawer?.invoke() ?: run { viewModel.screen.value = Screen.CHAT } }) { Icon(if (openDrawer != null) Icons.Outlined.Menu else Icons.AutoMirrored.Outlined.ArrowBack, "Back") } },
             )
         },
     ) { padding ->

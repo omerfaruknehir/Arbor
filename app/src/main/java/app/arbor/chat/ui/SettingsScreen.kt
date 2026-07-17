@@ -17,7 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Add
@@ -119,7 +119,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 title = { Text("Settings") },
                 navigationIcon = {
                     IconButton(onClick = { if (openDrawer != null) openDrawer() else viewModel.screen.value = Screen.CHAT }) {
-                        Icon(if (openDrawer != null) Icons.Outlined.Menu else Icons.Outlined.ArrowBack, "Back")
+                        Icon(if (openDrawer != null) Icons.Outlined.Menu else Icons.AutoMirrored.Outlined.ArrowBack, "Back")
                     }
                 },
             )
@@ -343,7 +343,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             }
 
             HorizontalDivider()
-            SectionTitle("Context & output · current chat", "Saved for this chat and inherited by new chats. A pair is one request plus its answer; reasoning and tools count against the token window.")
+            SectionTitle("Context & output · current chat", "Saved for this chat and inherited by new chats. A pair is one request plus its answer. Working history has an independent budget but still fits inside the overall context ceiling.")
             OutlinedTextField(
                 value = conversation?.contextPairs?.toString().orEmpty(),
                 onValueChange = { raw -> raw.toIntOrNull()?.coerceIn(1, 500)?.let { value -> viewModel.updateConversation { it.copy(contextPairs = value) } } },
@@ -355,6 +355,14 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 value = conversation?.contextTokenLimit?.toString().orEmpty(),
                 onValueChange = { raw -> raw.toIntOrNull()?.coerceIn(1_024, 2_000_000)?.let { value -> viewModel.updateConversation { it.copy(contextTokenLimit = value) } } },
                 label = { Text("Context token ceiling") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = conversation?.workingTokenLimit?.toString().orEmpty(),
+                onValueChange = { raw -> raw.toIntOrNull()?.coerceIn(0, 2_000_000)?.let { value -> viewModel.updateConversation { it.copy(workingTokenLimit = value) } } },
+                label = { Text("Working history token budget") },
+                supportingText = { Text("Older reasoning and tool traces only; interrupted responses are preserved for resume") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -899,7 +907,7 @@ private fun ModelCatalogEditor(provider: ProviderEntity, viewModel: ChatViewMode
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(model.displayName, fontWeight = FontWeight.Medium)
-                            Text("${model.modelId} • ${model.contextWindow / 1_000}K context • ${model.maxOutputTokens / 1_000}K output", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${model.modelId} • ${model.contextWindow / 1_000}K context • ${model.maxOutputTokens / 1_000}K output • ${if (model.pricingConfigured) "pricing configured" else "cost unavailable"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Icon(Icons.Outlined.Edit, null, Modifier.padding(start = 8.dp))
                     }
@@ -941,11 +949,13 @@ private fun ModelEditorDialog(
     var cacheHit by remember(initial) { mutableStateOf(initial.inputCacheHitUsdPerMillion.toString()) }
     var cacheMiss by remember(initial) { mutableStateOf(initial.inputCacheMissUsdPerMillion.toString()) }
     var outputPrice by remember(initial) { mutableStateOf(initial.outputUsdPerMillion.toString()) }
+    var pricingConfigured by remember(initial) { mutableStateOf(initial.pricingConfigured) }
     var vision by remember(initial) { mutableStateOf(initial.supportsVision) }
     var files by remember(initial) { mutableStateOf(initial.supportsFiles) }
     var thinking by remember(initial) { mutableStateOf(initial.supportsThinking) }
     var tools by remember(initial) { mutableStateOf(initial.supportsTools) }
-    val valid = id.isNotBlank() && name.isNotBlank() && context.toIntOrNull() != null && output.toIntOrNull() != null
+    val pricesValid = !pricingConfigured || listOf(cacheHit, cacheMiss, outputPrice).all { it.toDoubleOrNull()?.let { price -> price >= 0.0 } == true }
+    val valid = id.isNotBlank() && name.isNotBlank() && context.toIntOrNull() != null && output.toIntOrNull() != null && pricesValid
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -958,10 +968,11 @@ private fun ModelEditorDialog(
                     OutlinedTextField(context, { context = it.filter(Char::isDigit) }, label = { Text("Context") }, modifier = Modifier.weight(1f))
                     OutlinedTextField(output, { output = it.filter(Char::isDigit) }, label = { Text("Max output") }, modifier = Modifier.weight(1f))
                 }
-                Text("USD per million tokens", style = MaterialTheme.typography.labelMedium)
-                OutlinedTextField(cacheHit, { cacheHit = it }, label = { Text("Cache-hit input") })
-                OutlinedTextField(cacheMiss, { cacheMiss = it }, label = { Text("Cache-miss input") })
-                OutlinedTextField(outputPrice, { outputPrice = it }, label = { Text("Output") })
+                CapabilitySwitch("Pricing configured", pricingConfigured) { pricingConfigured = it }
+                Text(if (pricingConfigured) "USD per million tokens" else "Arbor will show cost as unavailable instead of treating this model as free.", style = MaterialTheme.typography.labelMedium)
+                OutlinedTextField(cacheHit, { cacheHit = it }, label = { Text("Cache-hit input") }, enabled = pricingConfigured)
+                OutlinedTextField(cacheMiss, { cacheMiss = it }, label = { Text("Cache-miss input") }, enabled = pricingConfigured)
+                OutlinedTextField(outputPrice, { outputPrice = it }, label = { Text("Output") }, enabled = pricingConfigured)
                 CapabilitySwitch("Vision", vision) { vision = it }
                 CapabilitySwitch("Files", files) { files = it }
                 CapabilitySwitch("Thinking", thinking) { thinking = it }
@@ -981,6 +992,7 @@ private fun ModelEditorDialog(
                         inputCacheHitUsdPerMillion = cacheHit.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0,
                         inputCacheMissUsdPerMillion = cacheMiss.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0,
                         outputUsdPerMillion = outputPrice.toDoubleOrNull()?.coerceAtLeast(0.0) ?: 0.0,
+                        pricingConfigured = pricingConfigured,
                         supportsVision = vision,
                         supportsFiles = files,
                         supportsThinking = thinking,

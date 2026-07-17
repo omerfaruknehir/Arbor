@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.1
+
+- Added an independent Working-history token budget while preserving resumable partial state.
+- Enforced the total context ceiling after Working-history and attachment accounting.
+- Added explicit known/unknown cost accounting so unconfigured prices are not reported as free.
+- Added Room migration 8→9, release-signing configuration, CI, instrumentation smoke coverage, and lint cleanups.
+
 ## 0.11.0
 
 - Fixed the Android-only mini-app template-regex initializer crash reported from `MiniAppWidgetBlock.kt:101` by making both template delimiters explicit.

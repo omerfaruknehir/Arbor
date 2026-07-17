@@ -73,34 +73,64 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
             compressedContext == null || message.createdAt > compressedContext.throughCreatedAt ||
                 (message.createdAt == compressedContext.throughCreatedAt && message.rowId > compressedContext.throughRowId)
         }
-        val messageInputs = selected.map { message ->
-            val savedWorkingState = if (
-                message.role == MessageRole.ASSISTANT &&
-                message.status in setOf(MessageStatus.STREAMING, MessageStatus.INTERRUPTED, MessageStatus.ERROR) &&
-                (message.reasoning.isNotBlank() || message.toolTraceJson != "[]")
-            ) buildString {
-                append("\n\n[Arbor saved partial working state; preserve it when resuming or steering]")
-                if (message.reasoning.isNotBlank()) append("\nReasoning so far:\n").append(message.reasoning)
-                if (message.toolTraceJson != "[]") append("\nTool activity so far:\n").append(message.toolTraceJson)
-            } else ""
-            InputMessage(
-                role = message.role,
-                content = message.content + savedWorkingState + if (savedWorkingState.isBlank() && message.toolTraceJson != "[]") "\n\n[Arbor Working trace]\n${message.toolTraceJson}" else "",
-                reasoning = message.reasoning,
-                toolTraceJson = message.toolTraceJson,
-                attachments = attachmentDao.forMessage(message.nodeId),
-            )
+        val attachmentsByMessage = selected.associate { it.nodeId to attachmentDao.forMessage(it.nodeId) }
+        val boundedMessages = selected.toMutableList()
+
+        fun buildInputs(historicalWorkingLimit: Int): List<InputMessage> {
+            val limitedWorking = limitWorkingStates(boundedMessages, historicalWorkingLimit)
+            return boundedMessages.map { message ->
+                val working = limitedWorking[message.nodeId] ?: LimitedWorkingState()
+                val resumable = message.role == MessageRole.ASSISTANT &&
+                    message.status in setOf(MessageStatus.STREAMING, MessageStatus.INTERRUPTED, MessageStatus.ERROR)
+                val workingAppendix = buildString {
+                    if (working.reasoning.isBlank() && working.toolTrace.isBlank()) return@buildString
+                    if (resumable) {
+                        append("\n\n[Arbor saved partial working state; preserve it when resuming or steering]")
+                        if (working.reasoning.isNotBlank()) append("\nReasoning so far:\n").append(working.reasoning)
+                        if (working.toolTrace.isNotBlank()) append("\nTool activity so far:\n").append(working.toolTrace)
+                    } else {
+                        append("\n\n[Arbor Working context]")
+                        if (working.reasoning.isNotBlank()) append("\nReasoning:\n").append(working.reasoning)
+                        if (working.toolTrace.isNotBlank()) append("\nTool activity:\n").append(working.toolTrace)
+                    }
+                }
+                InputMessage(
+                    role = message.role,
+                    content = message.content + workingAppendix,
+                    reasoning = if (resumable) working.reasoning else "",
+                    toolTraceJson = "[]",
+                    attachments = attachmentsByMessage[message.nodeId].orEmpty(),
+                )
+            }
         }
-        val bounded = messageInputs.toMutableList()
-        fun estimatedTotal(): Int = fixedTokens + bounded.sumOf { input ->
-            TokenEstimator.estimate(input.content + input.reasoning + input.toolTraceJson) + input.attachments.sumOf(::estimateAttachmentTokens)
+
+        fun estimatedTotal(inputs: List<InputMessage>): Int = fixedTokens + inputs.sumOf { input ->
+            TokenEstimator.estimate(input.content + input.reasoning) + input.attachments.sumOf(::estimateAttachmentTokens)
         }
-        // Remove complete oldest request/answer groups if attachment payloads
-        // make the text-only selection exceed the real request budget.
-        while (estimatedTotal() > conversation.contextTokenLimit) {
-            val nextUser = bounded.indexOfFirstFrom(1) { it.role == MessageRole.USER }
-            if (nextUser < 0) break // Always retain the newest request/answer group.
-            repeat(nextUser) { bounded.removeAt(0) }
+
+        var bounded = buildInputs(conversation.workingTokenLimit)
+        while (estimatedTotal(bounded) > conversation.contextTokenLimit) {
+            val nextUser = boundedMessages.indexOfFirstFrom(1) { it.role == MessageRole.USER }
+            if (nextUser < 0) break
+            repeat(nextUser) { boundedMessages.removeAt(0) }
+            bounded = buildInputs(conversation.workingTokenLimit)
+        }
+
+        if (estimatedTotal(bounded) > conversation.contextTokenLimit && conversation.workingTokenLimit > 0) {
+            var low = 0
+            var high = conversation.workingTokenLimit
+            var best = buildInputs(0)
+            while (low <= high) {
+                val mid = (low + high) ushr 1
+                val candidate = buildInputs(mid)
+                if (estimatedTotal(candidate) <= conversation.contextTokenLimit) {
+                    best = candidate
+                    low = mid + 1
+                } else {
+                    high = mid - 1
+                }
+            }
+            bounded = best
         }
         result += bounded
         return result
@@ -119,6 +149,52 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
             for (index in start until size) if (predicate(this[index])) return index
             return -1
         }
+        internal data class LimitedWorkingState(
+            val reasoning: String = "",
+            val toolTrace: String = "",
+        )
+
+        internal fun limitWorkingStates(
+            messagesOldestFirst: List<MessageEntity>,
+            tokenLimit: Int,
+        ): Map<String, LimitedWorkingState> {
+            var remaining = tokenLimit.coerceAtLeast(0)
+            val result = HashMap<String, LimitedWorkingState>()
+            messagesOldestFirst.asReversed().forEach { message ->
+                if (message.role != MessageRole.ASSISTANT) return@forEach
+                val resumable = message.status in setOf(MessageStatus.STREAMING, MessageStatus.INTERRUPTED, MessageStatus.ERROR)
+                val trace = message.toolTraceJson.takeUnless { it.isBlank() || it == "[]" }.orEmpty()
+                if (resumable) {
+                    result[message.nodeId] = LimitedWorkingState(message.reasoning, trace)
+                    return@forEach
+                }
+                if (remaining <= 0) return@forEach
+                val limitedTrace = suffixWithinTokenBudget(trace, remaining)
+                remaining = (remaining - TokenEstimator.estimate(limitedTrace)).coerceAtLeast(0)
+                val limitedReasoning = suffixWithinTokenBudget(message.reasoning, remaining)
+                remaining = (remaining - TokenEstimator.estimate(limitedReasoning)).coerceAtLeast(0)
+                if (limitedTrace.isNotBlank() || limitedReasoning.isNotBlank()) {
+                    result[message.nodeId] = LimitedWorkingState(limitedReasoning, limitedTrace)
+                }
+            }
+            return result
+        }
+
+        private fun suffixWithinTokenBudget(text: String, tokenBudget: Int): String {
+            if (text.isBlank() || tokenBudget <= 0) return ""
+            if (TokenEstimator.estimate(text) <= tokenBudget) return text
+            val marker = "[older Working state truncated]\n"
+            if (TokenEstimator.estimate(marker) >= tokenBudget) return ""
+            var low = 0
+            var high = text.length
+            while (low < high) {
+                val mid = (low + high + 1) ushr 1
+                val candidate = marker + text.takeLast(mid)
+                if (TokenEstimator.estimate(candidate) <= tokenBudget) low = mid else high = mid - 1
+            }
+            return if (low == 0) "" else marker + text.takeLast(low)
+        }
+
         /** Select complete newest request/answer groups so trimming never leaves an orphaned answer. */
         internal fun selectMessages(conversation: ConversationEntity, newestFirst: List<MessageEntity>): List<MessageEntity> {
             val selectedNewestFirst = ArrayList<MessageEntity>()
@@ -131,7 +207,7 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
                 group += message
                 if (message.role != MessageRole.USER) continue
 
-                val groupTokens = group.sumOf(TokenEstimator::estimate)
+                val groupTokens = group.sumOf { TokenEstimator.estimate(it.content) }
                 val hasResumeState = group.any { it.status in setOf(MessageStatus.STREAMING, MessageStatus.INTERRUPTED, MessageStatus.ERROR) }
                 val preserveResumeState = hasResumeState && resumableGroupsRetained < 2
                 val isNewestRequiredPair = userTurns == 0

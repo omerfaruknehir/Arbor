@@ -6,6 +6,7 @@ import app.arbor.chat.data.MessageRole
 import app.arbor.chat.data.MessageStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ContextAssemblerTest {
@@ -59,6 +60,37 @@ class ContextAssemblerTest {
         assertEquals(listOf("u2", "a2", "u3", "a3"), selected.map { it.nodeId })
     }
 
+
+    @Test
+    fun workingBudgetKeepsNewestCompletedHistoryFirst() {
+        val old = message("a1", MessageRole.ASSISTANT, "old answer", reasoning = "old ".repeat(200))
+        val newest = message("a2", MessageRole.ASSISTANT, "new answer", reasoning = "newest reasoning")
+
+        val limited = ContextAssembler.limitWorkingStates(listOf(old, newest), tokenLimit = 20)
+
+        assertEquals("newest reasoning", limited["a2"]?.reasoning)
+        val older = limited["a1"]?.reasoning.orEmpty()
+        assertTrue(older.isBlank() || older.startsWith("[older Working state truncated]"))
+        assertFalse(older == "old ".repeat(200))
+    }
+
+    @Test
+    fun interruptedWorkingSurvivesZeroHistoricalBudget() {
+        val interrupted = message(
+            "a1",
+            MessageRole.ASSISTANT,
+            "partial answer",
+            status = MessageStatus.INTERRUPTED,
+            reasoning = "must survive",
+            toolTraceJson = "[{\"type\":\"python\"}]",
+        )
+
+        val limited = ContextAssembler.limitWorkingStates(listOf(interrupted), tokenLimit = 0)
+
+        assertEquals("must survive", limited["a1"]?.reasoning)
+        assertTrue(limited["a1"]?.toolTrace?.contains("python") == true)
+    }
+
     private fun conversation(contextPairs: Int, tokenLimit: Int) = ConversationEntity(
         id = "c",
         title = "test",
@@ -73,6 +105,8 @@ class ContextAssemblerTest {
         role: MessageRole,
         content: String,
         status: MessageStatus = MessageStatus.COMPLETE,
+        reasoning: String = "",
+        toolTraceJson: String = "[]",
     ) = MessageEntity(
         nodeId = id,
         conversationId = "c",
@@ -80,6 +114,8 @@ class ContextAssemblerTest {
         branchId = "b",
         role = role,
         content = content,
+        reasoning = reasoning,
+        toolTraceJson = toolTraceJson,
         status = status,
         createdAt = 0,
         updatedAt = 0,

@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import androidx.core.graphics.createBitmap
 import app.arbor.chat.data.AttachmentDao
 import app.arbor.chat.data.AttachmentEntity
 import com.google.android.gms.tasks.Task
@@ -72,7 +73,7 @@ class OcrEngine(
             (0 until minOf(renderer.pageCount, 12)).map { index ->
                 renderer.openPage(index).use { page ->
                     val scale = minOf(2f, 2048f / page.width.coerceAtLeast(page.height))
-                    val bitmap = Bitmap.createBitmap((page.width * scale).toInt(), (page.height * scale).toInt(), Bitmap.Config.ARGB_8888)
+                    val bitmap = createBitmap((page.width * scale).toInt(), (page.height * scale).toInt(), Bitmap.Config.ARGB_8888)
                     page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                     index to recognize(InputImage.fromBitmap(bitmap, 0), index).second.also { bitmap.recycle() }
                 }

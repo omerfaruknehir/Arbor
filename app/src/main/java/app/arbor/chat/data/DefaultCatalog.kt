@@ -14,8 +14,8 @@ object DefaultCatalog {
 
     // Prices are USD per million tokens, verified against DeepSeek's API pricing page on 2026-07-16.
     val models = listOf(
-        ModelEntity("deepseek", "deepseek-v4-flash", "DeepSeek V4 Flash", 1_000_000, 384_000, 0.0028, 0.14, 0.28, supportsVision = false, supportsFiles = false, supportsThinking = true, supportsTools = true),
-        ModelEntity("deepseek", "deepseek-v4-pro", "DeepSeek V4 Pro", 1_000_000, 384_000, 0.003625, 0.435, 0.87, supportsVision = false, supportsFiles = false, supportsThinking = true, supportsTools = true),
+        ModelEntity("deepseek", "deepseek-v4-flash", "DeepSeek V4 Flash", 1_000_000, 384_000, 0.0028, 0.14, 0.28, pricingConfigured = true, supportsVision = false, supportsFiles = false, supportsThinking = true, supportsTools = true),
+        ModelEntity("deepseek", "deepseek-v4-pro", "DeepSeek V4 Pro", 1_000_000, 384_000, 0.003625, 0.435, 0.87, pricingConfigured = true, supportsVision = false, supportsFiles = false, supportsThinking = true, supportsTools = true),
         ModelEntity("openai", "gpt-4.1", "GPT-4.1", 1_000_000, 32_768, 0.0, 0.0, 0.0, supportsVision = true, supportsFiles = true, supportsTools = true),
         ModelEntity("anthropic", "claude-sonnet-4-20250514", "Claude Sonnet 4", 200_000, 64_000, 0.0, 0.0, 0.0, supportsVision = true, supportsFiles = true, supportsThinking = true, supportsTools = true),
         ModelEntity("gemini", "gemini-2.5-pro", "Gemini 2.5 Pro", 1_000_000, 65_536, 0.0, 0.0, 0.0, supportsVision = true, supportsFiles = true, supportsThinking = true, supportsTools = true),

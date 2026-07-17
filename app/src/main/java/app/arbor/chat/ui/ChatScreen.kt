@@ -28,8 +28,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.outlined.AltRoute
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.outlined.AltRoute
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Menu
@@ -97,6 +97,8 @@ import app.arbor.chat.sandbox.UbuntuExecutionResult
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
+
+private val ChatMessageJson = Json { ignoreUnknownKeys = true }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -378,7 +380,7 @@ private fun MessageCard(message: app.arbor.chat.data.MessageEntity, viewModel: C
         ) {
             Column(Modifier.padding(if (user) 14.dp else 4.dp)) {
                 val timeline = remember(message.timelineJson) {
-                    runCatching { Json { ignoreUnknownKeys = true }.decodeFromString<List<MessageTimelineEvent>>(message.timelineJson) }.getOrDefault(emptyList())
+                    runCatching { ChatMessageJson.decodeFromString<List<MessageTimelineEvent>>(message.timelineJson) }.getOrDefault(emptyList())
                 }
                 if (attachments.isNotEmpty() && (user || timeline.isEmpty())) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 10.dp)) {
@@ -425,7 +427,8 @@ private fun MessageCard(message: app.arbor.chat.data.MessageEntity, viewModel: C
                         buildString {
                             if (!message.modelId.isNullOrBlank()) append(message.modelId)
                             if (tokens > 0) append(" • $tokens tok")
-                            if (cost > 0) append(" • $").append("%.5f".format(cost))
+                            if (message.costKnown && cost > 0) append(" • $").append("%.5f".format(cost))
+                            else if (!message.costKnown && tokens > 0) append(" • cost unavailable")
                             if (message.status !in setOf(MessageStatus.COMPLETE, MessageStatus.STREAMING)) append(" • ${message.status.name.lowercase()}")
                         },
                         style = MaterialTheme.typography.labelSmall,
@@ -576,7 +579,7 @@ private fun TimelineWorkingBlock(events: List<MessageTimelineEvent>, streaming: 
 @Composable
 private fun LegacyWorkingBlock(text: String, toolTraceJson: String, streaming: Boolean, visibility: ReasoningVisibility) {
     val traces = remember(toolTraceJson) {
-        runCatching { Json { ignoreUnknownKeys = true }.decodeFromString<List<ToolTraceEvent>>(toolTraceJson) }.getOrDefault(emptyList())
+        runCatching { ChatMessageJson.decodeFromString<List<ToolTraceEvent>>(toolTraceJson) }.getOrDefault(emptyList())
     }
     val hasContent = text.isNotBlank() || traces.isNotEmpty()
     val initiallyExpanded = when (visibility) {
@@ -620,7 +623,7 @@ private fun ToolStepDetails(kind: String, input: String, output: String, status:
     val language = if (kind == "python") "python" else if (kind == "ubuntu") "bash" else "text"
     if (input.isNotBlank()) CodeSourcePanel(language, input, when (kind) { "python" -> "PYTHON CODE"; "ubuntu" -> "SHELL COMMAND"; "search" -> "SEARCH QUERY"; "fetch" -> "URL"; else -> "INPUT" })
     if (output.isNotBlank()) {
-        val json = remember { Json { ignoreUnknownKeys = true } }
+        val json = ChatMessageJson
         when (kind) {
             "python" -> runCatching { json.decodeFromString<ExecutionResult>(output) }.getOrNull()?.let { PythonExecutionCard(it, "Python tool result") }
                 ?: GenericToolOutputCard(output, failed = status == "error")
@@ -722,7 +725,7 @@ private fun Composer(viewModel: ChatViewModel, model: ModelEntity?, generating: 
                 ListItem(
                     headlineContent = { Text(if (generating) "Steer current response" else "Send now") },
                     supportingContent = { Text(if (!hasPayload) "Type a message or attach a file first" else if (generating) "Stop it, preserve its state, insert this message, then continue" else "Start a response immediately") },
-                    leadingContent = { Icon(if (generating) Icons.Outlined.AltRoute else Icons.Filled.Send, null) },
+                    leadingContent = { Icon(if (generating) Icons.AutoMirrored.Outlined.AltRoute else Icons.AutoMirrored.Filled.Send, null) },
                     modifier = Modifier.combinedClickable(
                         onClick = { if (hasPayload) { viewModel.send(if (generating) SendMode.STEER else SendMode.SEND_NOW); sendMenu = false } },
                         onLongClick = { if (hasPayload) { viewModel.send(if (generating) SendMode.STEER else SendMode.SEND_NOW); sendMenu = false } },
@@ -740,7 +743,7 @@ private fun Composer(viewModel: ChatViewModel, model: ModelEntity?, generating: 
                 if (generating) ListItem(
                     headlineContent = { Text("Start a separate turn") },
                     supportingContent = { Text(if (hasPayload) "Let both responses run concurrently" else "Type a message or attach a file first") },
-                    leadingContent = { Icon(Icons.Filled.Send, null) },
+                    leadingContent = { Icon(Icons.AutoMirrored.Filled.Send, null) },
                     modifier = Modifier.combinedClickable(onClick = { if (hasPayload) { viewModel.send(SendMode.SEND_NOW); sendMenu = false } }, onLongClick = { if (hasPayload) { viewModel.send(SendMode.SEND_NOW); sendMenu = false } }),
                 )
             }

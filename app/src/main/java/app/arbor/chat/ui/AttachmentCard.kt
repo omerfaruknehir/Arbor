@@ -36,8 +36,8 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.PictureAsPdf
-import androidx.compose.material.icons.outlined.NavigateBefore
-import androidx.compose.material.icons.outlined.NavigateNext
+import androidx.compose.material.icons.automirrored.outlined.NavigateBefore
+import androidx.compose.material.icons.automirrored.outlined.NavigateNext
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material.icons.outlined.ZoomIn
@@ -53,6 +53,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -73,6 +75,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.createBitmap
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -261,7 +264,7 @@ private fun AttachmentPreview(attachment: AttachmentEntity, allowOcr: Boolean, m
 
 @Composable
 private fun RasterImagePreview(attachment: AttachmentEntity, allowOcr: Boolean, modelUsesFallback: Boolean, onDismiss: () -> Unit) {
-    var scale by remember(attachment.id) { mutableStateOf(1f) }
+    var scale by remember(attachment.id) { mutableFloatStateOf(1f) }
     var translation by remember(attachment.id) { mutableStateOf(Offset.Zero) }
     var showOcr by remember(attachment.id) { mutableStateOf(false) }
     val context = LocalContext.current
@@ -427,7 +430,7 @@ private fun imageDimensions(file: File): Pair<Int, Int> = BitmapFactory.Options(
 
 @Composable
 private fun PdfPreview(file: File) {
-    var pageIndex by remember(file.absolutePath) { mutableStateOf(0) }
+    var pageIndex by remember(file.absolutePath) { mutableIntStateOf(0) }
     val rendered by produceState<PdfPageRender?>(null, file.absolutePath, pageIndex) {
         value = withContext(Dispatchers.IO) {
             runCatching {
@@ -436,7 +439,7 @@ private fun PdfPreview(file: File) {
                         val safePage = pageIndex.coerceIn(0, (renderer.pageCount - 1).coerceAtLeast(0))
                         renderer.openPage(safePage).use { page ->
                             val scale = minOf(2.5f, 1800f / page.width.coerceAtLeast(page.height))
-                            val bitmap = Bitmap.createBitmap(
+                            val bitmap = createBitmap(
                                 (page.width * scale).toInt().coerceAtLeast(1),
                                 (page.height * scale).toInt().coerceAtLeast(1),
                                 Bitmap.Config.ARGB_8888,
@@ -462,11 +465,11 @@ private fun PdfPreview(file: File) {
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { pageIndex = (pageIndex - 1).coerceAtLeast(0) }, enabled = page.pageIndex > 0) {
-                    Icon(Icons.Outlined.NavigateBefore, "Previous page")
+                    Icon(Icons.AutoMirrored.Outlined.NavigateBefore, "Previous page")
                 }
                 Text("Page ${page.pageIndex + 1} of ${page.pageCount}", style = MaterialTheme.typography.labelLarge)
                 IconButton(onClick = { pageIndex = (pageIndex + 1).coerceAtMost(page.pageCount - 1) }, enabled = page.pageIndex + 1 < page.pageCount) {
-                    Icon(Icons.Outlined.NavigateNext, "Next page")
+                    Icon(Icons.AutoMirrored.Outlined.NavigateNext, "Next page")
                 }
             }
         }

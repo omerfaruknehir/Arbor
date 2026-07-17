@@ -77,9 +77,10 @@ class GenerationWorker(
                 ?: TokenEstimator.estimate((current?.content.orEmpty()) + (current?.reasoning.orEmpty())).toLong()
             val cached = usage.sumOf { it.cachedInputTokens }
             val cost = usage.sumOf { it.costMicros }
+            val costKnown = usage.isNotEmpty() && usage.all { it.costKnown }
             repository.finish(
                 assistantId, if ((current?.streamOffset ?: 0) > 0) MessageStatus.INTERRUPTED else MessageStatus.ERROR,
-                safeError(error), input, output, cached, cost,
+                safeError(error), input, output, cached, cost, costKnown,
             )
             advanceQueue()
             Result.success()
@@ -185,7 +186,9 @@ class GenerationWorker(
             val input = inputTokens ?: if (received) outgoing.sumOf { TokenEstimator.estimate(it.content + it.reasoning).toLong() } else 0L
             val output = outputTokens ?: if (received) TokenEstimator.estimate(generatedText).toLong() else 0L
             val cached = cachedTokens ?: 0L
-            val cost = CostCalculator.micros(model, input, cached, output)
+            val calculatedCost = CostCalculator.micros(model, input, cached, output)
+            val cost = calculatedCost ?: 0L
+            val costKnown = calculatedCost != null
             val now = System.currentTimeMillis()
             repository.saveGenerationUsage(GenerationUsageEntity(
                 id = id,
@@ -204,7 +207,7 @@ class GenerationWorker(
                 createdAt = startedAt,
                 updatedAt = now,
             ))
-            if (input > 0 || output > 0 || cost > 0) repository.addUsage(conversationId, input, output, cost)
+            if (input > 0 || output > 0 || cost > 0) repository.addUsage(conversationId, input, output, cost, costKnown)
         }
 
         for (round in 0..MAX_TOOL_ROUNDS) {
@@ -462,6 +465,7 @@ class GenerationWorker(
             ?: TokenEstimator.estimate(final.content + final.reasoning).toLong()
         val cached = usage.sumOf { it.cachedInputTokens }
         val cost = usage.sumOf { it.costMicros }
+        val costKnown = usage.isNotEmpty() && usage.all { it.costKnown }
         val normalizedFinish = lastFinishReason?.lowercase().orEmpty()
         val reachedLimit = normalizedFinish in setOf("length", "max_tokens", "max_output_tokens", "max_tokens_reached") || normalizedFinish.contains("max_token")
         val abnormalFinish = normalizedFinish.isNotBlank() && normalizedFinish !in setOf("stop", "end_turn", "stop_sequence", "end", "finish_reason_unspecified")
@@ -471,7 +475,7 @@ class GenerationWorker(
             abnormalFinish -> "Provider finish reason: ${lastFinishReason?.take(120)}"
             else -> null
         }
-        repository.finish(assistantId, status, finishNotice, input, output, cached, cost)
+        repository.finish(assistantId, status, finishNotice, input, output, cached, cost, costKnown)
         if (repository.conversationNow(conversationId)?.autoTitle == true) {
             runCatching { container.auxiliaryModels.regenerateTitle(conversationId) }
         }

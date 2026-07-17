@@ -18,7 +18,8 @@ object TokenEstimator {
 }
 
 object CostCalculator {
-    fun micros(model: ModelEntity, input: Long, cached: Long, output: Long): Long {
+    fun micros(model: ModelEntity, input: Long, cached: Long, output: Long): Long? {
+        if (!model.pricingConfigured) return null
         val cachedSafe = cached.coerceIn(0, input)
         val miss = input - cachedSafe
         val dollars = cachedSafe * model.inputCacheHitUsdPerMillion / 1_000_000.0 +

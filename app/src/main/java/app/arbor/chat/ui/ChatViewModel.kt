@@ -517,6 +517,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
                 inputCacheHitUsdPerMillion = 0.0,
                 inputCacheMissUsdPerMillion = 0.0,
                 outputUsdPerMillion = 0.0,
+                pricingConfigured = false,
                 supportsThinking = candidate.supportsThinking ?: false,
             ))
         }

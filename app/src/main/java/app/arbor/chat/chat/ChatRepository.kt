@@ -61,6 +61,7 @@ class ChatRepository(private val database: ArborDatabase) {
             selectedModelId = template?.selectedModelId ?: "deepseek-v4-flash",
             contextPairs = template?.contextPairs ?: 24,
             contextTokenLimit = template?.contextTokenLimit ?: 64_000,
+            workingTokenLimit = template?.workingTokenLimit ?: 16_000,
             maxOutputTokens = template?.maxOutputTokens ?: 8_192,
             systemPrompt = template?.systemPrompt.orEmpty(),
             reasoningVisibility = template?.reasoningVisibility ?: app.arbor.chat.data.ReasoningVisibility.SHOW_WHILE_WORKING,
@@ -189,11 +190,11 @@ class ChatRepository(private val database: ArborDatabase) {
     suspend fun replaceWorkingState(nodeId: String, content: String, reasoning: String, toolTraceJson: String, timelineJson: String) =
         database.messageDao().replaceWorkingState(nodeId, content, reasoning, toolTraceJson, timelineJson, content.length + reasoning.length, System.currentTimeMillis())
 
-    suspend fun finish(nodeId: String, status: MessageStatus, error: String?, input: Long, output: Long, cached: Long, cost: Long) =
-        database.messageDao().finish(nodeId, status, error, input, output, cached, cost, System.currentTimeMillis())
+    suspend fun finish(nodeId: String, status: MessageStatus, error: String?, input: Long, output: Long, cached: Long, cost: Long, costKnown: Boolean) =
+        database.messageDao().finish(nodeId, status, error, input, output, cached, cost, costKnown, System.currentTimeMillis())
 
-    suspend fun addUsage(conversationId: String, input: Long, output: Long, cost: Long) =
-        database.conversationDao().addUsage(conversationId, input, output, cost, System.currentTimeMillis())
+    suspend fun addUsage(conversationId: String, input: Long, output: Long, cost: Long, costKnown: Boolean) =
+        database.conversationDao().addUsage(conversationId, input, output, cost, costKnown, System.currentTimeMillis())
 
     suspend fun saveGenerationUsage(value: GenerationUsageEntity) = database.generationUsageDao().upsert(value)
     suspend fun generationUsage(assistantId: String) = database.generationUsageDao().forAssistant(assistantId)
