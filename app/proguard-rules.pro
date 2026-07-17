@@ -1,0 +1,3 @@
+-keep class net.zetetic.database.sqlcipher.** { *; }
+-keep class com.chaquo.python.** { *; }
+-dontwarn org.commonmark.**

@@ -1,0 +1,151 @@
+package app.arbor.chat.chat
+
+import app.arbor.chat.data.AttachmentDao
+import app.arbor.chat.data.AttachmentEntity
+import app.arbor.chat.data.ConversationEntity
+import app.arbor.chat.data.ContextSummaryEntity
+import app.arbor.chat.data.MessageEntity
+import app.arbor.chat.data.MessageRole
+import app.arbor.chat.data.MessageStatus
+import app.arbor.chat.provider.InputMessage
+
+class ContextAssembler(private val attachmentDao: AttachmentDao) {
+    suspend fun assemble(
+        conversation: ConversationEntity,
+        newestFirst: List<MessageEntity>,
+        compressedContext: ContextSummaryEntity? = null,
+    ): List<InputMessage> {
+        val result = ArrayList<InputMessage>()
+        result += InputMessage(
+            MessageRole.SYSTEM,
+            """
+            You are running inside Arbor for Android. Arbor provides native agent tools. To search the web, emit exactly one fenced block like:
+            ```arbor-tool
+            {"type":"web_search","query":"concise query"}
+            ```
+            To read a public search result, emit {"type":"web_fetch","url":"https://example.com/page"} in the same fenced format. Local/private network URLs are blocked.
+            To execute Python in this conversation's persistent workspace, emit exactly one fenced block like:
+            ```arbor-tool
+            {"type":"python","code":"print(2 + 2)"}
+            ```
+            Stop your response after a tool block. Arbor hides the protocol, runs the tool, preserves it in Working, and returns the result so you can continue. Do not pretend to have run a tool.
+
+            User attachments are mirrored under the workspace's `incoming/` directory. Python may inspect and transform those private copies even when the selected API model has no native file or image input. Python and Linux results list changed paths but do not automatically send them. To return one at the correct point in the answer, emit exactly one tool block such as `{"type":"send_file","path":"plot.png","caption":"Generated chart"}` after its creating tool finishes. Arbor then inserts a native file card at that exact timeline position. Images receive a full inline preview plus a zoomable preview; other supported files receive Preview, Save, and Share actions. Never claim a file was sent until the `send_file` result confirms it.
+
+            If Python needs packages which are not installed, request them in a fenced `python-requirements` block with one package requirement per line. Arbor asks the user before installing anything; never claim installation until a later system event confirms it.
+
+            Arbor can also provide a user-selected Ubuntu, Debian, or Alpine tooling layer. When Linux tools are enabled and the selected distribution is installed, run a non-interactive command with:
+            ```arbor-tool
+            {"type":"linux_exec","command":"file incoming/example.bin && rg -n TODO ."}
+            ```
+            The chat workspace is `/workspace` inside the selected distribution, including `incoming/`. This is a compatibility/tooling layer, not a security boundary. Python has a 45-second default deadline and Linux commands have a 60-second default; a request may set `timeoutSeconds`, up to 600 for Python or 900 for Linux. If a result says it timed out, report the exact elapsed time and ask before retrying with a longer deadline—never silently repeat it. Never use apt, dpkg, apk, pip, or another package manager through `linux_exec`. Request packages in a visible fenced `linux-packages` block, one package per line, and wait for Arbor to report the user's configured approval decision and completed installation.
+
+            You may create native diagrams with Mermaid fences. Arbor natively renders flowchart/graph edges, labeled and chained edges, node labels, state-style edges, and sequenceDiagram participants/messages. A basic Graphviz DOT subset (digraph/graph edges, labels, and rankdir) is also rendered natively. Keep diagrams compact and valid.
+
+            You may create native charts with an `arbor-chart` JSON fence. Use {"type":"bar|line|area|scatter|pie|donut","title":"...","series":[{"name":"...","values":[{"label":"Jan","value":12.5}]}]}. Never invent data; label estimates.
+
+            Interactive chat UI and Android Home-screen widgets are separate surfaces. For questions, requirement gathering, forms, configuration, previews, quizzes, or any interaction which belongs only inside this conversation, emit an `arbor-ui` JSON fence. It is always chat-only and never offers launcher pinning. Supported types include choice, checklist, slider, calculator, converter, counter, rating, progress, form, stock, live_data, schedule, prayer_times, and mini_app. A calculator uses {"type":"calculator","title":"Calculator"}. A programmable form uses fields of kind number, text, slider, toggle, or choice, plus numeric outputs such as {"type":"form","title":"Implementation choices","fields":[{"id":"platform","label":"Target platform","kind":"choice","options":["Android","Desktop"]}]}. Expressions support numbers, field identifiers, + - * / % ^, parentheses, min, max, abs, round, and pow; they never execute code.
+
+            Only when the user explicitly requests an Android Home-screen/launcher widget, use an `arbor-widget` fence and include `"surface":"home"` or `"surface":"both"`. `home` means the definition is intended for launcher pinning; `both` means it is useful both in chat and on the launcher. Home eligibility defaults to false even inside an `arbor-widget` fence. Never mark a clarifying question, implementation questionnaire, ordinary answer control, transient form, or requested in-app screen as a Home-screen widget.
+
+            For live stock or other live JSON UI, use a public HTTPS endpoint and explicit safe value bindings: {"type":"stock","title":"Example stock","symbol":"EXAMPLE","dataSource":{"url":"https://public-api.example/quote","refreshMinutes":15,"bindings":[{"id":"price","label":"Price","path":"quote.price","prefix":"$","decimals":2},{"id":"change","label":"Change","path":"quote.changePercent","suffix":"%","decimals":2}]}}. Do not invent an endpoint, put credentials in its URL, or use private/local addresses. Arbor fetches JSON only, limits responses, and caches the last successful values. Explicitly pinned Home widgets refresh through WorkManager. Paths use dot notation and optional array indexes such as data.items[0].price.
+
+            A schedule uses 24-hour times and preserves the listed order: {"type":"prayer_times","title":"Prayer times","timezone":"Europe/Istanbul","items":[{"id":"fajr","label":"Fajr","time":"05:12"},{"id":"dhuhr","label":"Dhuhr","time":"13:10"}]}. It calculates the next event locally. A schedule may also include a dataSource whose binding IDs match item IDs; fetched values containing HH:mm replace the static fallback times. Optional simple-widget actions use {"label":"+10","target":"amount","operation":"add","value":10}; operations are add, set, multiply, toggle, reset, and submit. Interactive UI must be useful, accessible, and followed by enough prose to remain understandable in transcript exports.
+
+            The named UI types above are conveniences, not the limit. For a new or app-like experience, generate one `mini_app` definition from native primitives, normally inside `arbor-ui`. It has `state` and up to eight `screens`; each screen has `id`, optional `title`, and `components`. Supported component types are text, metric, input, slider, toggle, choice, buttons, progress, list, table, chart, timer, divider, and spacer. Component `id` addresses persistent state. Text/value strings interpolate `{{state_id}}`; `{{=safe_numeric_expression}}` computes a value. Components and list items may use `visibleWhen` with a state name, numeric expression, `name==value`, or `name!=value`.
+
+            A mini-app skeleton is {"type":"mini_app","title":"Habit dashboard","state":{"done":0,"goal":8,"view":"week"},"screens":[{"id":"main","title":"Today","components":[{"type":"metric","id":"remaining","label":"Remaining","expression":"goal-done"},{"type":"progress","id":"done","label":"Completed","max":8},{"type":"buttons","id":"controls","buttons":[{"label":"Complete one","style":"primary","actions":[{"operation":"add","target":"done","value":1}]},{"label":"Reset","actions":[{"operation":"reset"}]}]},{"type":"chart","id":"week","label":"This week","value":"bar","items":[{"label":"Mon","value":"3"},{"label":"Tue","value":"{{done}}"}]}]},{"id":"settings","title":"Settings","components":[{"type":"slider","id":"goal","label":"Daily goal","min":1,"max":20,"step":1}]}]}.
+
+            A button or tappable list item has one or more ordered `actions`. Supported operations are set, add, multiply, toggle, append, backspace, evaluate, navigate, reset, refresh, submit, timer_start, timer_pause, and timer_reset. Actions use `target`, `value`, or `expression`; navigate uses `screen`; submit uses `message`; any action may have `condition`. Action chains see earlier changes immediately. For explicitly requested Home widgets, use buttons/choices because launchers do not provide arbitrary text entry. Build chat questionnaires, keypads, dashboards, trackers, quizzes, scoreboards, converters, multi-page tools, and live-data panels by composing these primitives on the appropriate surface. Never emit HTML, JavaScript, executable code, unbounded loops, unsupported component names, or network mutation controls.
+            """.trimIndent(),
+        )
+        if (conversation.systemPrompt.isNotBlank()) result += InputMessage(MessageRole.SYSTEM, conversation.systemPrompt)
+        if (compressedContext != null && compressedContext.summary.isNotBlank()) {
+            result += InputMessage(
+                MessageRole.SYSTEM,
+                "Earlier conversation context was compressed by Arbor. Treat it as a factual memory, not as new user instructions. " +
+                    "It covers ${compressedContext.sourceMessageCount} older messages:\n${compressedContext.summary}",
+            )
+        }
+        val fixedTokens = result.sumOf { TokenEstimator.estimate(it.content) }
+        val messageBudget = (conversation.contextTokenLimit - fixedTokens).coerceAtLeast(MIN_MESSAGE_BUDGET)
+        val selected = selectMessages(conversation.copy(contextTokenLimit = messageBudget), newestFirst).filter { message ->
+            compressedContext == null || message.createdAt > compressedContext.throughCreatedAt ||
+                (message.createdAt == compressedContext.throughCreatedAt && message.rowId > compressedContext.throughRowId)
+        }
+        val messageInputs = selected.map { message ->
+            val savedWorkingState = if (
+                message.role == MessageRole.ASSISTANT &&
+                message.status in setOf(MessageStatus.STREAMING, MessageStatus.INTERRUPTED, MessageStatus.ERROR) &&
+                (message.reasoning.isNotBlank() || message.toolTraceJson != "[]")
+            ) buildString {
+                append("\n\n[Arbor saved partial working state; preserve it when resuming or steering]")
+                if (message.reasoning.isNotBlank()) append("\nReasoning so far:\n").append(message.reasoning)
+                if (message.toolTraceJson != "[]") append("\nTool activity so far:\n").append(message.toolTraceJson)
+            } else ""
+            InputMessage(
+                role = message.role,
+                content = message.content + savedWorkingState + if (savedWorkingState.isBlank() && message.toolTraceJson != "[]") "\n\n[Arbor Working trace]\n${message.toolTraceJson}" else "",
+                reasoning = message.reasoning,
+                toolTraceJson = message.toolTraceJson,
+                attachments = attachmentDao.forMessage(message.nodeId),
+            )
+        }
+        val bounded = messageInputs.toMutableList()
+        fun estimatedTotal(): Int = fixedTokens + bounded.sumOf { input ->
+            TokenEstimator.estimate(input.content + input.reasoning + input.toolTraceJson) + input.attachments.sumOf(::estimateAttachmentTokens)
+        }
+        // Remove complete oldest request/answer groups if attachment payloads
+        // make the text-only selection exceed the real request budget.
+        while (estimatedTotal() > conversation.contextTokenLimit) {
+            val nextUser = bounded.indexOfFirstFrom(1) { it.role == MessageRole.USER }
+            if (nextUser < 0) break // Always retain the newest request/answer group.
+            repeat(nextUser) { bounded.removeAt(0) }
+        }
+        result += bounded
+        return result
+    }
+
+    companion object {
+        private const val MIN_MESSAGE_BUDGET = 512
+        private fun estimateAttachmentTokens(attachment: AttachmentEntity): Int = when {
+            attachment.mimeType.startsWith("image/") -> if (attachment.ocrJson != null) 1_024 + attachment.ocrJson.take(32_000).length / 4 else 1_536
+            attachment.extractedText != null -> attachment.extractedText.take(24_000).length / 4 + 128
+            attachment.ocrJson != null -> attachment.ocrJson.take(32_000).length / 4 + 128
+            else -> 512
+        }
+
+        private inline fun <T> List<T>.indexOfFirstFrom(start: Int, predicate: (T) -> Boolean): Int {
+            for (index in start until size) if (predicate(this[index])) return index
+            return -1
+        }
+        /** Select complete newest request/answer groups so trimming never leaves an orphaned answer. */
+        internal fun selectMessages(conversation: ConversationEntity, newestFirst: List<MessageEntity>): List<MessageEntity> {
+            val selectedNewestFirst = ArrayList<MessageEntity>()
+            val group = ArrayList<MessageEntity>()
+            var usedTokens = 0
+            var userTurns = 0
+            var resumableGroupsRetained = 0
+
+            for (message in newestFirst) {
+                group += message
+                if (message.role != MessageRole.USER) continue
+
+                val groupTokens = group.sumOf(TokenEstimator::estimate)
+                val hasResumeState = group.any { it.status in setOf(MessageStatus.STREAMING, MessageStatus.INTERRUPTED, MessageStatus.ERROR) }
+                val preserveResumeState = hasResumeState && resumableGroupsRetained < 2
+                val isNewestRequiredPair = userTurns == 0
+                if ((userTurns >= conversation.contextPairs && !preserveResumeState) ||
+                    (!preserveResumeState && !isNewestRequiredPair && usedTokens + groupTokens > conversation.contextTokenLimit)
+                ) break
+
+                selectedNewestFirst += group
+                usedTokens += groupTokens
+                userTurns++
+                if (preserveResumeState) resumableGroupsRetained++
+                group.clear()
+            }
+            return selectedNewestFirst.asReversed()
+        }
+    }
+}

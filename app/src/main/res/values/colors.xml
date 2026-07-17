@@ -1,0 +1,8 @@
+<resources>
+    <color name="arbor_icon_bg">#123B2C</color>
+    <color name="widget_background">#F5F7FC</color>
+    <color name="widget_text">#171B24</color>
+    <color name="widget_text_secondary">#5A6070</color>
+    <color name="widget_accent">#315DAD</color>
+    <color name="widget_outline">#D4D9E4</color>
+</resources>

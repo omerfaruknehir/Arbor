@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Arbor</string>
+    <string name="generation_channel_name">AI responses</string>
+    <string name="generation_channel_description">Responses which continue while Arbor is in the background</string>
+    <string name="home_widget_name">Arbor generated widget</string>
+    <string name="home_widget_description">A native home-screen widget generated in an Arbor conversation</string>
+</resources>
