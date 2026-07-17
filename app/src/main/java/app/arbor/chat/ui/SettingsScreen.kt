@@ -411,7 +411,7 @@ private fun PrivacySettingsPage(
 
 @Composable
 private fun AboutSettingsPage() = SettingsPage {
-    SectionTitle("Arbor 0.14.0", "Native Android BYOK model workspace.")
+    SectionTitle("Arbor 0.15.0", "Native Android BYOK model workspace.")
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Built for long-running, tool-using chats", fontWeight = FontWeight.SemiBold)

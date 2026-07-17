@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.15.0
+
+- Rebuilt the composer around the compact Option B layout: tool controls sit above the message field, while the input row contains only Add, message entry, and Send/Stop.
+- Removed the unexplained context progress strip and all controls below the input field.
+- Kept only two persistent composer chips: a compact Think chip with an effort dropdown and a direct Search toggle. Files, photos, camera, Deep Research, Python, and Linux remain in the Add sheet.
+- Shortened thinking labels to Min/Low/Med/High so the composer remains readable on narrow phones.
+- Bumped the debug package to version code 22.
+
 ## 0.14.0
 
 - Replaced the wide composer thinking controls with one compact persistent chip. Tapping the label toggles thinking; the arrow opens a Minimal/Low/Medium/High effort menu.

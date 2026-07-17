@@ -64,7 +64,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Switch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ListItem
@@ -732,6 +731,46 @@ private fun Composer(viewModel: ChatViewModel, model: ModelEntity?, generating: 
                     }
                 }
             }
+            conversation?.let { current ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 48.dp, end = 56.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ThinkingComposerChip(
+                        enabled = current.thinkingEnabled,
+                        effort = current.thinkingEffort,
+                        supported = model?.supportsThinking != false,
+                        onToggle = { viewModel.updateConversation { it.copy(thinkingEnabled = !it.thinkingEnabled) } },
+                        onEffort = { effort ->
+                            viewModel.updateConversation { it.copy(thinkingEnabled = true, thinkingEffort = effort) }
+                        },
+                    )
+                    FilterChip(
+                        selected = current.webSearchEnabled,
+                        onClick = {
+                            viewModel.updateConversation {
+                                val enabled = !it.webSearchEnabled
+                                it.copy(
+                                    webSearchEnabled = enabled,
+                                    deepResearchEnabled = it.deepResearchEnabled && enabled,
+                                )
+                            }
+                        },
+                        label = { Text(if (current.deepResearchEnabled) "Research" else "Search") },
+                        leadingIcon = {
+                            Icon(
+                                if (current.deepResearchEnabled) Icons.Outlined.TravelExplore else Icons.Outlined.Search,
+                                null,
+                                Modifier.size(17.dp),
+                            )
+                        },
+                    )
+                }
+            }
+
             Row(verticalAlignment = Alignment.Bottom) {
                 IconButton(onClick = { plusMenu = true }, enabled = !importing) {
                     Icon(Icons.Outlined.Add, "Add files, images, camera, or tools")
@@ -766,38 +805,6 @@ private fun Composer(viewModel: ChatViewModel, model: ModelEntity?, generating: 
                 }
             }
 
-            conversation?.let { current ->
-                Row(
-                    Modifier.fillMaxWidth().padding(start = 44.dp, end = 4.dp, top = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    ThinkingComposerChip(
-                        enabled = current.thinkingEnabled,
-                        effort = current.thinkingEffort,
-                        supported = model?.supportsThinking != false,
-                        onToggle = { viewModel.updateConversation { it.copy(thinkingEnabled = !it.thinkingEnabled) } },
-                        onEffort = { effort ->
-                            viewModel.updateConversation { it.copy(thinkingEnabled = true, thinkingEffort = effort) }
-                        },
-                    )
-                    Spacer(Modifier.weight(1f))
-                    if (current.deepResearchEnabled) {
-                        AssistChip(
-                            onClick = { plusMenu = true },
-                            label = { Text("Research") },
-                            leadingIcon = { Icon(Icons.Outlined.TravelExplore, null, Modifier.size(16.dp)) },
-                        )
-                    }
-                }
-            }
-
-            val modelContext = model?.contextWindow ?: 1
-            val limit = conversation?.contextTokenLimit ?: 0
-            LinearProgressIndicator(
-                progress = { (limit.toFloat() / modelContext).coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 54.dp, vertical = 2.dp),
-            )
         }
     }
 
@@ -916,9 +923,9 @@ private fun ThinkingComposerChip(
                     Icon(Icons.Outlined.Psychology, null, Modifier.size(17.dp))
                     Text(
                         when {
-                            !supported -> "Thinking unavailable"
-                            enabled -> "Thinking · ${effort.displayName}"
-                            else -> "Thinking off"
+                            !supported -> "Think unavailable"
+                            enabled -> "Think · ${effort.composerName}"
+                            else -> "Think"
                         },
                         style = MaterialTheme.typography.labelLarge,
                     )
@@ -972,6 +979,14 @@ private val ThinkingEffort.effortDescription: String
 
 private val ThinkingEffort.displayName: String
     get() = name.lowercase().replaceFirstChar(Char::uppercase)
+
+private val ThinkingEffort.composerName: String
+    get() = when (this) {
+        ThinkingEffort.MINIMAL -> "Min"
+        ThinkingEffort.LOW -> "Low"
+        ThinkingEffort.MEDIUM -> "Med"
+        ThinkingEffort.HIGH -> "High"
+    }
 
 @Composable
 private fun ComposerActionRow(
