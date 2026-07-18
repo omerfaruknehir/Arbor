@@ -334,11 +334,11 @@ private fun ConversationRow(item: ConversationListItem, selected: Boolean, onCli
 
 @Composable
 private fun ArborMark(modifier: Modifier = Modifier) {
-    Surface(modifier, shape = RoundedCornerShape(15.dp), color = MaterialTheme.colorScheme.primary) {
-        Box(contentAlignment = Alignment.Center) {
-            Image(painterResource(R.drawable.ic_arbor_foreground), contentDescription = null, modifier = Modifier.size(42.dp))
-        }
-    }
+    Image(
+        painter = painterResource(R.drawable.ic_arbor_mark),
+        contentDescription = "Arbor",
+        modifier = modifier,
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

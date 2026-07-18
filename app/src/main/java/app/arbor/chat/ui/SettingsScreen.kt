@@ -620,7 +620,7 @@ private fun LocalCodeExecutionSettingsPage(
 
 @Composable
 private fun AboutSettingsPage() = SettingsPage {
-    SectionTitle("Arbor 0.16.4", "Native Android BYOK model workspace.")
+    SectionTitle("Arbor 0.16.5", "Native Android BYOK model workspace.")
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Built for long-running, tool-using chats", fontWeight = FontWeight.SemiBold)
