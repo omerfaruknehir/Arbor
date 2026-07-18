@@ -15,8 +15,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 
 /**
- * A collapsing app bar with genuine backdrop blur. The background tint remains
- * constant while the blur radius grows smoothly with the collapse fraction.
+ * A collapsing app bar with genuine backdrop blur. Both blur radius and the
+ * directional surface tint grow smoothly with the collapse fraction.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,7 +38,7 @@ fun CollapsingTranslucentTopBar(
                 enabled = blurEnabled,
                 progress = collapse,
                 strength = blurStrength,
-                tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.16f),
+                tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
             ),
     ) {
         LargeTopAppBar(

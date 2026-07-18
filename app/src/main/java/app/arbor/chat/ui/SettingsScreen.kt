@@ -468,7 +468,7 @@ private fun AppearanceSettingsPage(
             valueRange = 0f..1f,
         )
         Text(
-            "The tint stays constant; only the blur radius increases smoothly with scroll.",
+            "Blur radius and overlay tint now increase smoothly with scroll, and the tint fades toward the content edge.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

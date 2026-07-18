@@ -1,3 +1,7 @@
+# 0.16.9
+
+- Strengthened gradual blur and made the overlay itself fade smoothly.
+
 # 0.16.8
 
 - Fixed gradual interface blur and back navigation.

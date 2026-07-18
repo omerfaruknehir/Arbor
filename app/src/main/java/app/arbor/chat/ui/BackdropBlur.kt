@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
@@ -107,11 +108,10 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
 
 internal fun arborBlurProgress(progress: Float): Float {
     val p = progress.coerceIn(0f, 1f)
-    val smooth = p * p * (3f - 2f * p)
-    return 0.28f + 0.72f * smooth
+    return p * p * (3f - 2f * p)
 }
 
-/** Registers one chrome edge and paints its stable translucent tint. */
+/** Registers one chrome edge and paints a directional, gradually fading tint. */
 fun Modifier.arborBackdropBlur(
     state: ArborBackdropBlurState,
     enabled: Boolean,
@@ -119,11 +119,12 @@ fun Modifier.arborBackdropBlur(
     strength: Float,
     tint: Color,
     edge: ArborBlurEdge = ArborBlurEdge.TOP,
-    maxRadius: Dp = 8.dp,
+    maxRadius: Dp = DEFAULT_MAX_RADIUS_DP.dp,
     fadeDistance: Dp = if (edge == ArborBlurEdge.TOP) DEFAULT_TOP_FADE_DP.dp else DEFAULT_BOTTOM_FADE_DP.dp,
 ): Modifier = composed {
+    val easedProgress = arborBlurProgress(progress)
     val radiusDp = if (enabled) {
-        maxRadius.value * strength.coerceIn(0f, 1f) * arborBlurProgress(progress)
+        maxRadius.value * strength.coerceIn(0f, 1f) * easedProgress
     } else {
         0f
     }
@@ -132,14 +133,37 @@ fun Modifier.arborBackdropBlur(
     DisposableEffect(state, edge) { onDispose { state.clear(edge) } }
 
     this.drawWithContent {
-        drawRect(if (enabled) tint else tint.copy(alpha = 0.96f))
+        if (enabled) {
+            val peak = tint.copy(alpha = tint.alpha * easedProgress)
+            val shoulder = tint.copy(alpha = tint.alpha * easedProgress * 0.92f)
+            val brush = when (edge) {
+                ArborBlurEdge.TOP -> Brush.verticalGradient(
+                    colorStops = arrayOf(
+                        0f to peak,
+                        0.72f to shoulder,
+                        1f to Color.Transparent,
+                    ),
+                )
+                ArborBlurEdge.BOTTOM -> Brush.verticalGradient(
+                    colorStops = arrayOf(
+                        0f to Color.Transparent,
+                        0.28f to shoulder,
+                        1f to peak,
+                    ),
+                )
+            }
+            drawRect(brush = brush)
+        } else {
+            drawRect(tint.copy(alpha = 0.96f))
+        }
         drawContent()
     }
 }
 
 private const val MIN_VISIBLE_RADIUS_PX = 0.35f
-private const val DEFAULT_TOP_FADE_DP = 148f
-private const val DEFAULT_BOTTOM_FADE_DP = 112f
+private const val DEFAULT_MAX_RADIUS_DP = 24f
+private const val DEFAULT_TOP_FADE_DP = 180f
+private const val DEFAULT_BOTTOM_FADE_DP = 152f
 
 /** Fixed nine-tap separable kernel derived from Agora's gradient blur. */
 private val EDGE_BLUR_SHADER = """

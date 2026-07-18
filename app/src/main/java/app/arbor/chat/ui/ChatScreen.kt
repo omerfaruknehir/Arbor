@@ -240,7 +240,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         enabled = chromeBlurEnabled,
                         progress = collapse,
                         strength = chromeBlurStrength,
-                        tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.16f),
+                        tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
                     ),
             ) {
                 LargeTopAppBar(
@@ -784,6 +784,8 @@ private fun Composer(
         camera.launch(uri)
     }
 
+    val composerOverlayProgress = arborBlurProgress(chromeProgress)
+
     Box(
         Modifier
             .fillMaxWidth()
@@ -792,7 +794,7 @@ private fun Composer(
                 enabled = chromeBlurEnabled,
                 progress = chromeProgress,
                 strength = chromeBlurStrength,
-                tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.16f),
+                tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.30f),
                 edge = ArborBlurEdge.BOTTOM,
             ),
     ) {
@@ -800,7 +802,9 @@ private fun Composer(
             shadowElevation = 8.dp,
             tonalElevation = 1.dp,
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = if (chromeBlurEnabled) .46f else 1f),
+            color = MaterialTheme.colorScheme.surfaceContainerLow.copy(
+                alpha = if (chromeBlurEnabled) 0.10f + 0.56f * composerOverlayProgress else 1f,
+            ),
         ) {
             Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 10.dp, vertical = 8.dp)) {
             if (pending.isNotEmpty()) Text(

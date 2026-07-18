@@ -12,7 +12,7 @@ class BackdropBlurTest {
         values.zipWithNext().forEach { (a, b) -> assertTrue(b >= a) }
     }
     @Test fun endpointsAreStable() {
-        assertEquals(.28f, arborBlurProgress(0f), .0001f)
+        assertEquals(0f, arborBlurProgress(0f), .0001f)
         assertEquals(1f, arborBlurProgress(1f), .0001f)
     }
 }
