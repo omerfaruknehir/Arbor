@@ -13,7 +13,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Refresh
@@ -67,7 +66,7 @@ import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SandboxScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+fun SandboxScreen(viewModel: ChatViewModel) {
     val appName = stringResource(R.string.app_name)
     val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsState()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
@@ -174,8 +173,8 @@ fun SandboxScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 blurEnabled = chromeBlurEnabled,
                 blurStrength = chromeBlurStrength,
                 navigationIcon = {
-                    IconButton(onClick = { openDrawer?.invoke() ?: run { viewModel.screen.value = Screen.CHAT } }) {
-                        Icon(if (openDrawer != null) Icons.Outlined.Menu else Icons.AutoMirrored.Outlined.ArrowBack, "Back")
+                    IconButton(onClick = { viewModel.screen.value = Screen.SETTINGS }) {
+                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to Settings")
                     }
                 },
             )

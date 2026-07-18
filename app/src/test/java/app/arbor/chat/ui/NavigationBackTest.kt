@@ -12,4 +12,12 @@ class NavigationBackTest {
         assertEquals(Screen.SETTINGS, backDestination(Screen.TERMINAL))
     }
     @Test fun chatIsTheActivityRoot() { assertNull(backDestination(Screen.CHAT)) }
+
+    @Test fun screenDepthMatchesNavigationHierarchy() {
+        assertEquals(0, screenDepth(Screen.CHAT))
+        assertEquals(1, screenDepth(Screen.SEARCH))
+        assertEquals(1, screenDepth(Screen.SETTINGS))
+        assertEquals(2, screenDepth(Screen.SANDBOX))
+        assertEquals(2, screenDepth(Screen.TERMINAL))
+    }
 }

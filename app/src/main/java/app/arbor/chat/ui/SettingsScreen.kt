@@ -1,6 +1,5 @@
 package app.arbor.chat.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -144,63 +143,71 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val registeredProviders = remember(providers, credentialRevision) { viewModel.registeredProviders(providers) }
     val configuredProviders = remember(providers, credentialRevision) { viewModel.configuredProviders(providers) }
     var route by rememberSaveable { mutableStateOf(SettingsRoute.HOME) }
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
-    val blurState = rememberArborBackdropBlurState()
 
-    BackHandler(enabled = route != SettingsRoute.HOME) { route = SettingsRoute.HOME }
+    PredictiveNavigationHost(
+        targetState = route,
+        backTarget = SettingsRoute.HOME.takeIf { route != SettingsRoute.HOME },
+        onBack = { route = it },
+        depth = { if (it == SettingsRoute.HOME) 0 else 1 },
+        modifier = Modifier.fillMaxSize(),
+        label = "SettingsPageNavigation",
+    ) { currentRoute ->
+        val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+        val blurState = rememberArborBackdropBlurState()
 
-    Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        contentWindowInsets = WindowInsets(0),
-        topBar = {
-            CollapsingTranslucentTopBar(
-                title = route.title,
-                scrollBehavior = scrollBehavior,
-                blurState = blurState,
-                blurEnabled = chromeBlurEnabled,
-                blurStrength = chromeBlurStrength,
-                navigationIcon = {
-                    IconButton(onClick = {
-                        if (route != SettingsRoute.HOME) route = SettingsRoute.HOME
-                        else if (openDrawer != null) openDrawer()
-                        else viewModel.screen.value = Screen.CHAT
-                    }) {
-                        Icon(
-                            if (route == SettingsRoute.HOME && openDrawer != null) Icons.Outlined.Menu else Icons.AutoMirrored.Outlined.ArrowBack,
-                            "Back",
+        Scaffold(
+            modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+            contentWindowInsets = WindowInsets(0),
+            topBar = {
+                CollapsingTranslucentTopBar(
+                    title = currentRoute.title,
+                    scrollBehavior = scrollBehavior,
+                    blurState = blurState,
+                    blurEnabled = chromeBlurEnabled,
+                    blurStrength = chromeBlurStrength,
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            if (currentRoute != SettingsRoute.HOME) route = SettingsRoute.HOME
+                            else if (openDrawer != null) openDrawer()
+                            else viewModel.screen.value = Screen.CHAT
+                        }) {
+                            Icon(
+                                if (currentRoute == SettingsRoute.HOME && openDrawer != null) Icons.Outlined.Menu else Icons.AutoMirrored.Outlined.ArrowBack,
+                                "Back",
+                            )
+                        }
+                    },
+                )
+            },
+        ) { padding ->
+            Box(Modifier.fillMaxSize().arborBackdropSource(blurState)) {
+                CompositionLocalProvider(LocalSettingsScaffoldPadding provides padding) {
+                    when (currentRoute) {
+                        SettingsRoute.HOME -> SettingsHome(
+                            providerCount = registeredProviders.size,
+                            onOpen = { route = it },
                         )
+                        SettingsRoute.DEFAULTS -> NewChatDefaultsSettings(defaults, configuredProviders, viewModel)
+                        SettingsRoute.AUTOMATION -> AutomationSettingsPage(automation, configuredProviders, viewModel)
+                        SettingsRoute.APPEARANCE -> AppearanceSettingsPage(
+                            themeMode = themeMode,
+                            amoled = amoled,
+                            palette = palette,
+                            chromeBlurEnabled = chromeBlurEnabled,
+                            chromeBlurStrength = chromeBlurStrength,
+                            viewModel = viewModel,
+                        )
+                        SettingsRoute.PRIVACY -> PrivacySettingsPage(renderSafeMode, viewModel)
+                        SettingsRoute.LOCAL_EXECUTION -> LocalCodeExecutionSettingsPage(defaults, automation, configuredProviders, viewModel)
+                        SettingsRoute.SYSTEM_PROMPTS -> SystemPromptProfilesPage(promptProfiles, defaults.systemPromptProfileId, viewModel)
+                        SettingsRoute.PROVIDERS -> ProviderSettings(
+                            providers = providers,
+                            registeredProviders = registeredProviders,
+                            conversationProviderId = null,
+                            viewModel = viewModel,
+                        )
+                        SettingsRoute.ABOUT -> AboutSettingsPage()
                     }
-                },
-            )
-        },
-    ) { padding ->
-        Box(Modifier.fillMaxSize().arborBackdropSource(blurState)) {
-            CompositionLocalProvider(LocalSettingsScaffoldPadding provides padding) {
-                when (route) {
-                SettingsRoute.HOME -> SettingsHome(
-                    providerCount = registeredProviders.size,
-                    onOpen = { route = it },
-                )
-                SettingsRoute.DEFAULTS -> NewChatDefaultsSettings(defaults, configuredProviders, viewModel)
-                SettingsRoute.AUTOMATION -> AutomationSettingsPage(automation, configuredProviders, viewModel)
-                SettingsRoute.APPEARANCE -> AppearanceSettingsPage(
-                    themeMode = themeMode,
-                    amoled = amoled,
-                    palette = palette,
-                    chromeBlurEnabled = chromeBlurEnabled,
-                    chromeBlurStrength = chromeBlurStrength,
-                    viewModel = viewModel,
-                )
-                SettingsRoute.PRIVACY -> PrivacySettingsPage(renderSafeMode, viewModel)
-                SettingsRoute.LOCAL_EXECUTION -> LocalCodeExecutionSettingsPage(defaults, automation, configuredProviders, viewModel)
-                SettingsRoute.SYSTEM_PROMPTS -> SystemPromptProfilesPage(promptProfiles, defaults.systemPromptProfileId, viewModel)
-                SettingsRoute.PROVIDERS -> ProviderSettings(
-                    providers = providers,
-                    registeredProviders = registeredProviders,
-                    conversationProviderId = null,
-                    viewModel = viewModel,
-                )
-                    SettingsRoute.ABOUT -> AboutSettingsPage()
                 }
             }
         }

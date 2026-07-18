@@ -16,7 +16,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.DeleteSweep
-import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
@@ -60,7 +59,7 @@ private data class TerminalEntry(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LinuxTerminalScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+fun LinuxTerminalScreen(viewModel: ChatViewModel) {
     val appName = stringResource(R.string.app_name)
     val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsState()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
@@ -101,8 +100,8 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 blurEnabled = chromeBlurEnabled,
                 blurStrength = chromeBlurStrength,
                 navigationIcon = {
-                    IconButton(onClick = { openDrawer?.invoke() ?: run { viewModel.screen.value = Screen.SETTINGS } }) {
-                        Icon(if (openDrawer != null) Icons.Outlined.Menu else Icons.AutoMirrored.Outlined.ArrowBack, "Back")
+                    IconButton(onClick = { viewModel.screen.value = Screen.SETTINGS }) {
+                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to Settings")
                     }
                 },
                 actions = {

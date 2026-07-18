@@ -106,7 +106,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.zIndex
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -146,6 +145,17 @@ import java.util.UUID
 
 private val ChatMessageJson = Json { ignoreUnknownKeys = true }
 
+internal fun calculateComposerChromeProgress(
+    firstVisibleItemIndex: Int,
+    firstVisibleItemScrollOffset: Int,
+    startPx: Int,
+    endPx: Int,
+): Float {
+    if (firstVisibleItemIndex > 0) return 1f
+    if (endPx <= startPx) return if (firstVisibleItemScrollOffset > startPx) 1f else 0f
+    return ((firstVisibleItemScrollOffset - startPx).toFloat() / (endPx - startPx).toFloat()).coerceIn(0f, 1f)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
@@ -172,7 +182,12 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val topAppBarScrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
     val blurState = rememberArborBackdropBlurState()
     val scrollScope = rememberCoroutineScope()
-    val latestThresholdPx = with(LocalDensity.current) { 48.dp.roundToPx() }
+    val density = LocalDensity.current
+    val latestThresholdPx = with(density) { 48.dp.roundToPx() }
+    val chromeStartPx = with(density) { 56.dp.roundToPx() }
+    val chromeEndPx = with(density) { 176.dp.roundToPx() }
+    val headerStartPx = with(density) { 20.dp.roundToPx() }
+    val headerEndPx = with(density) { 148.dp.roundToPx() }
     var followLatest by remember(conversation?.id) { mutableStateOf(true) }
     var searchFocusHandled by remember(conversation?.id, focusedMessageNodeId) { mutableStateOf(false) }
     val isAtLatest by remember(messageListState, latestThresholdPx) {
@@ -182,16 +197,39 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     messageListState.firstVisibleItemScrollOffset <= latestThresholdPx)
         }
     }
-    val composerChromeProgress by remember(messageListState, latestThresholdPx) {
+    val composerChromeProgress by remember(messageListState, chromeStartPx, chromeEndPx) {
         derivedStateOf {
-            when {
-                messageListState.firstVisibleItemIndex > 0 -> 1f
-                latestThresholdPx <= 0 -> 0f
-                else -> (messageListState.firstVisibleItemScrollOffset / latestThresholdPx.toFloat()).coerceIn(0f, 1f)
-            }
+            calculateComposerChromeProgress(
+                firstVisibleItemIndex = messageListState.firstVisibleItemIndex,
+                firstVisibleItemScrollOffset = messageListState.firstVisibleItemScrollOffset,
+                startPx = chromeStartPx,
+                endPx = chromeEndPx,
+            )
+        }
+    }
+    val headerCollapseProgress by remember(messageListState, headerStartPx, headerEndPx) {
+        derivedStateOf {
+            calculateComposerChromeProgress(
+                firstVisibleItemIndex = messageListState.firstVisibleItemIndex,
+                firstVisibleItemScrollOffset = messageListState.firstVisibleItemScrollOffset,
+                startPx = headerStartPx,
+                endPx = headerEndPx,
+            )
         }
     }
     val latestMessage = paging.itemSnapshotList.items.firstOrNull()
+
+    LaunchedEffect(conversation?.id) {
+        modelMenu = false
+        chatMenu = false
+        followLatest = true
+        messageListState.scrollToItem(0)
+    }
+
+    LaunchedEffect(headerCollapseProgress, topAppBarState.heightOffsetLimit) {
+        val limit = topAppBarState.heightOffsetLimit
+        if (limit < 0f) topAppBarState.heightOffset = limit * headerCollapseProgress
+    }
 
     LaunchedEffect(messageListState, conversation?.id, latestThresholdPx) {
         snapshotFlow {
@@ -234,12 +272,11 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     }
 
     Scaffold(
-        modifier = Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
+        modifier = Modifier,
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            val collapse = topAppBarState.collapsedFraction.coerceIn(0f, 1f)
+            val collapse = headerCollapseProgress
             val titleTravel = arborBlurProgress(collapse)
-            val density = LocalDensity.current
             val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             Box(
                 Modifier
@@ -271,16 +308,19 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 )
 
                 val expandedTitleY = statusTop + 78.dp
-                val collapsedTitleY = statusTop + 18.dp
+                val collapsedTitleY = statusTop + 7.dp
                 val titleY = expandedTitleY + (collapsedTitleY - expandedTitleY) * titleTravel
-                val titleScale = 1.16f - 0.16f * titleTravel
+                val titleScale = 1.16f - 0.18f * titleTravel
                 Text(
                     conversation?.title ?: stringResource(R.string.app_name),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 72.dp)
                         .offset { IntOffset(0, with(density) { titleY.roundToPx() }) }
-                        .graphicsLayer { scaleX = titleScale; scaleY = titleScale }
+                        .graphicsLayer {
+                            scaleX = titleScale
+                            scaleY = titleScale
+                        }
                         .zIndex(2f),
                     fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.titleLarge,
@@ -289,15 +329,25 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     overflow = TextOverflow.Ellipsis,
                 )
 
-                val modelAlpha = (1f - collapse / 0.62f).coerceIn(0f, 1f)
-                if (modelAlpha > 0.02f) Box(
+                val expandedModelY = statusTop + 116.dp
+                val collapsedModelY = statusTop + 39.dp
+                val modelY = expandedModelY + (collapsedModelY - expandedModelY) * titleTravel
+                val modelScale = 1f - 0.10f * titleTravel
+                Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .offset(y = statusTop + 116.dp - 44.dp * titleTravel)
-                        .graphicsLayer { alpha = modelAlpha }
-                        .zIndex(2f),
+                        .offset { IntOffset(0, with(density) { modelY.roundToPx() }) }
+                        .graphicsLayer {
+                            scaleX = modelScale
+                            scaleY = modelScale
+                        }
+                        .zIndex(3f),
                 ) {
-                    Surface(onClick = { modelMenu = true }, color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .55f), shape = MaterialTheme.shapes.small) {
+                    Surface(
+                        onClick = { modelMenu = true },
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .62f),
+                        shape = MaterialTheme.shapes.small,
+                    ) {
                         Row(Modifier.padding(horizontal = 8.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Outlined.Psychology, null, Modifier.size(14.dp))
                             Text(
@@ -338,34 +388,44 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             )
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().arborBackdropSource(blurState)) {
-            if (paging.itemCount == 0 && recoverable.isEmpty()) EmptyConversation()
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                state = messageListState,
-                reverseLayout = true,
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    start = 12.dp,
-                    end = 12.dp,
-                    top = padding.calculateTopPadding() + 18.dp,
-                    bottom = padding.calculateBottomPadding() + 18.dp,
-                ),
-            ) {
-                items(
-                    count = paging.itemCount,
-                    key = { index -> paging.peek(index)?.nodeId ?: index },
-                    contentType = { index -> paging.peek(index)?.role },
-                ) { index ->
-                    paging[index]?.let { message ->
-                        MessageCard(
-                            message, viewModel,
-                            conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
-                            models.firstOrNull { it.modelId == conversation?.selectedModelId },
-                        )
+        Box(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().arborBackdropSource(blurState)) {
+                if (paging.itemCount == 0 && recoverable.isEmpty()) {
+                    EmptyConversation(
+                        modifier = Modifier.padding(
+                            top = padding.calculateTopPadding(),
+                            bottom = padding.calculateBottomPadding(),
+                        ),
+                    )
+                }
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    state = messageListState,
+                    reverseLayout = true,
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        start = 12.dp,
+                        end = 12.dp,
+                        top = padding.calculateTopPadding() + 18.dp,
+                        bottom = padding.calculateBottomPadding() + 18.dp,
+                    ),
+                ) {
+                    items(
+                        count = paging.itemCount,
+                        key = { index -> paging.peek(index)?.nodeId ?: index },
+                        contentType = { index -> paging.peek(index)?.role },
+                    ) { index ->
+                        paging[index]?.let { message ->
+                            MessageCard(
+                                message, viewModel,
+                                conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
+                                models.firstOrNull { it.modelId == conversation?.selectedModelId },
+                            )
+                        }
                     }
                 }
             }
+
             AnimatedVisibility(
                 visible = paging.itemCount > 0 && !isAtLatest,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = padding.calculateBottomPadding() + 16.dp),
@@ -458,8 +518,8 @@ private fun ProviderModelMenuRows(
 }
 
 @Composable
-private fun EmptyConversation() {
-    Column(Modifier.fillMaxSize().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+private fun EmptyConversation(modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxSize().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Text(stringResource(R.string.app_name), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
         Text("One native workspace for every model.", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.size(12.dp))
@@ -790,20 +850,21 @@ private fun Composer(
         camera.launch(uri)
     }
 
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .arborBackdropBlur(
-                state = blurState,
-                enabled = chromeBlurEnabled,
-                progress = chromeProgress,
-                strength = chromeBlurStrength,
-                tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.46f),
-                edge = ArborBlurEdge.BOTTOM,
-                fadeDistance = 196.dp,
-            ),
-    ) {
-        Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 10.dp, vertical = 8.dp)) {
+    Box(Modifier.fillMaxWidth().imePadding()) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .arborBackdropBlur(
+                    state = blurState,
+                    enabled = chromeBlurEnabled,
+                    progress = chromeProgress,
+                    strength = chromeBlurStrength,
+                    tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.46f),
+                    edge = ArborBlurEdge.BOTTOM,
+                    fadeDistance = 112.dp,
+                ),
+        ) {
+            Column(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp)) {
             if (pending.isNotEmpty()) Text(
                 "${pending.size} message${if (pending.size == 1) "" else "s"} queued",
                 style = MaterialTheme.typography.labelMedium,
@@ -909,6 +970,7 @@ private fun Composer(
                 }
             }
 
+            }
         }
     }
 

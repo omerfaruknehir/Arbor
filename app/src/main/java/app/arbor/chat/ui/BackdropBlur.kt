@@ -18,7 +18,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -39,6 +40,8 @@ class ArborBackdropBlurState internal constructor() {
     internal var bottomRadiusDp by mutableFloatStateOf(0f)
     internal var topFadeDp by mutableFloatStateOf(DEFAULT_TOP_FADE_DP)
     internal var bottomFadeDp by mutableFloatStateOf(DEFAULT_BOTTOM_FADE_DP)
+    internal var sourceTopInRootPx by mutableFloatStateOf(0f)
+    internal var bottomEdgeInRootPx by mutableFloatStateOf(Float.NaN)
 
     internal fun update(edge: ArborBlurEdge, radiusDp: Float, fadeDp: Float) {
         when (edge) {
@@ -53,10 +56,21 @@ class ArborBackdropBlurState internal constructor() {
         }
     }
 
+    internal fun updateSource(topInRootPx: Float) {
+        sourceTopInRootPx = topInRootPx
+    }
+
+    internal fun updateBottomEdge(bottomInRootPx: Float) {
+        bottomEdgeInRootPx = bottomInRootPx
+    }
+
     internal fun clear(edge: ArborBlurEdge) {
         when (edge) {
             ArborBlurEdge.TOP -> topRadiusDp = 0f
-            ArborBlurEdge.BOTTOM -> bottomRadiusDp = 0f
+            ArborBlurEdge.BOTTOM -> {
+                bottomRadiusDp = 0f
+                bottomEdgeInRootPx = Float.NaN
+            }
         }
     }
 }
@@ -78,22 +92,33 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
     val topFadePx = state.topFadeDp * density
     val bottomFadePx = state.bottomFadeDp * density
     var contentHeightPx by remember { mutableFloatStateOf(0f) }
-    val measured = this.onSizeChanged { contentHeightPx = it.height.toFloat().coerceAtLeast(1f) }
+    val measured = this.onGloballyPositioned { coordinates ->
+        contentHeightPx = coordinates.size.height.toFloat().coerceAtLeast(1f)
+        state.updateSource(coordinates.boundsInRoot().top)
+    }
     if (contentHeightPx <= 0f) return@composed measured
 
-    val horizontalShader = remember(topRadiusPx, bottomRadiusPx, topFadePx, bottomFadePx, contentHeightPx) {
+    val bottomEdgePx = state.bottomEdgeInRootPx
+        .takeIf { it.isFinite() }
+        ?.minus(state.sourceTopInRootPx)
+        ?.coerceIn(0f, contentHeightPx)
+        ?: contentHeightPx
+
+    val horizontalShader = remember(topRadiusPx, bottomRadiusPx, topFadePx, bottomFadePx, contentHeightPx, bottomEdgePx) {
         RuntimeShader(EDGE_BLUR_SHADER).apply {
             setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
             setFloatUniform("uFade", topFadePx, bottomFadePx)
             setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
+            setFloatUniform("uBottomEdge", bottomEdgePx)
             setFloatUniform("uDirection", 1f, 0f)
         }
     }
-    val verticalShader = remember(topRadiusPx, bottomRadiusPx, topFadePx, bottomFadePx, contentHeightPx) {
+    val verticalShader = remember(topRadiusPx, bottomRadiusPx, topFadePx, bottomFadePx, contentHeightPx, bottomEdgePx) {
         RuntimeShader(EDGE_BLUR_SHADER).apply {
             setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
             setFloatUniform("uFade", topFadePx, bottomFadePx)
             setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
+            setFloatUniform("uBottomEdge", bottomEdgePx)
             setFloatUniform("uDirection", 0f, 1f)
         }
     }
@@ -132,7 +157,15 @@ fun Modifier.arborBackdropBlur(
     SideEffect { state.update(edge, radiusDp, fadeDistance.value) }
     DisposableEffect(state, edge) { onDispose { state.clear(edge) } }
 
-    this.drawWithContent {
+    val anchored = if (edge == ArborBlurEdge.BOTTOM) {
+        this.onGloballyPositioned { coordinates ->
+            state.updateBottomEdge(coordinates.boundsInRoot().bottom)
+        }
+    } else {
+        this
+    }
+
+    anchored.drawWithContent {
         val overlayProgress = if (enabled) easedProgress else 1f
         val peak = tint.copy(alpha = tint.alpha * overlayProgress)
         val middle = tint.copy(alpha = tint.alpha * overlayProgress * 0.58f)
@@ -177,11 +210,13 @@ private val EDGE_BLUR_SHADER = """
     uniform float2 uBlur;
     uniform float2 uFade;
     uniform float uHeight;
+    uniform float uBottomEdge;
     uniform float2 uDirection;
 
     half4 main(float2 coord) {
         float topMix = saturate(1.0 - coord.y / max(uFade.x, 1.0));
-        float bottomMix = saturate(1.0 - (uHeight - coord.y) / max(uFade.y, 1.0));
+        float bottomEdge = clamp(uBottomEdge, 0.0, uHeight);
+        float bottomMix = saturate(1.0 - (bottomEdge - coord.y) / max(uFade.y, 1.0));
         float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
         if (radius < 0.35) return content.eval(coord);
 

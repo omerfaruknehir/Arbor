@@ -1,6 +1,5 @@
 package app.arbor.chat.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,13 +39,6 @@ fun ArborApp(viewModel: ChatViewModel) {
     val snackbar = remember { SnackbarHostState() }
     val openDrawer = { scope.launch { drawerState.open() }; Unit }
 
-    BackHandler(enabled = drawerState.isClosed && screen != Screen.CHAT) {
-        viewModel.screen.value = backDestination(screen) ?: return@BackHandler
-    }
-    BackHandler(enabled = drawerState.isOpen) {
-        scope.launch { drawerState.close() }
-    }
-
     LaunchedEffect(viewModel) {
         viewModel.notices.collect { snackbar.showSnackbar(it) }
     }
@@ -63,14 +55,26 @@ fun ArborApp(viewModel: ChatViewModel) {
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 840.dp
-        val content: @Composable () -> Unit = {
-            when (screen) {
+        val screenContent: @Composable (Screen) -> Unit = { destination ->
+            when (destination) {
                 Screen.CHAT -> ChatScreen(viewModel, if (wide) null else openDrawer)
                 Screen.SEARCH -> SearchScreen(viewModel, if (wide) null else openDrawer)
                 Screen.SETTINGS -> SettingsScreen(viewModel, if (wide) null else openDrawer)
-                Screen.SANDBOX -> SandboxScreen(viewModel, if (wide) null else openDrawer)
-                Screen.TERMINAL -> LinuxTerminalScreen(viewModel, if (wide) null else openDrawer)
+                Screen.SANDBOX -> SandboxScreen(viewModel)
+                Screen.TERMINAL -> LinuxTerminalScreen(viewModel)
             }
+        }
+        val content: @Composable () -> Unit = {
+            PredictiveNavigationHost(
+                targetState = screen,
+                backTarget = backDestination(screen),
+                onBack = { viewModel.screen.value = it },
+                depth = ::screenDepth,
+                backEnabled = drawerState.isClosed,
+                modifier = Modifier.fillMaxSize(),
+                label = "ArborPageNavigation",
+                content = screenContent,
+            )
         }
         if (wide) {
             Row(Modifier.fillMaxSize()) {
@@ -101,7 +105,7 @@ fun ArborApp(viewModel: ChatViewModel) {
             ModalNavigationDrawer(
                 drawerState = drawerState,
                 drawerContent = {
-                    ModalDrawerSheet {
+                    ModalDrawerSheet(drawerState = drawerState) {
                         ConversationSidebar(
                             conversations = if (showArchived) archivedConversations else conversations,
                             projects = projects,
@@ -136,4 +140,10 @@ internal fun backDestination(screen: Screen): Screen? = when (screen) {
     Screen.SANDBOX, Screen.TERMINAL -> Screen.SETTINGS
     Screen.SEARCH, Screen.SETTINGS -> Screen.CHAT
     Screen.CHAT -> null
+}
+
+internal fun screenDepth(screen: Screen): Int = when (screen) {
+    Screen.CHAT -> 0
+    Screen.SEARCH, Screen.SETTINGS -> 1
+    Screen.SANDBOX, Screen.TERMINAL -> 2
 }
