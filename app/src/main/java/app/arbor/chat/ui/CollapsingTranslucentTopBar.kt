@@ -14,11 +14,14 @@ import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
+/**
+ * A collapsing app bar whose tint stays constant while blur increases smoothly
+ * as the title collapses. Blur can be disabled globally from Appearance.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CollapsingTranslucentTopBar(
@@ -26,13 +29,14 @@ fun CollapsingTranslucentTopBar(
     scrollBehavior: TopAppBarScrollBehavior,
     navigationIcon: @Composable () -> Unit,
     actions: @Composable RowScope.() -> Unit = {},
+    blurEnabled: Boolean = true,
+    blurStrength: Float = 0.7f,
 ) {
     val collapse = scrollBehavior.state.collapsedFraction.coerceIn(0f, 1f)
-    val blurRadius = (6f + 14f * collapse).dp
-    val topAlpha = 0.80f + 0.16f * collapse
-    val middleAlpha = 0.38f + 0.36f * collapse
-    val bottomAlpha = 0.05f + 0.23f * collapse
+    val strength = blurStrength.coerceIn(0f, 1f)
+    val blurRadius = if (blurEnabled) (24f * strength * collapse).dp else 0.dp
     val appBarHeight = (152f - 88f * collapse).dp
+    val tintAlpha = if (blurEnabled) 0.22f else 0.94f
 
     Box(Modifier.fillMaxWidth()) {
         Box(
@@ -40,15 +44,7 @@ fun CollapsingTranslucentTopBar(
                 .fillMaxWidth()
                 .height(appBarHeight)
                 .blur(blurRadius)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.surface.copy(alpha = topAlpha),
-                            MaterialTheme.colorScheme.surface.copy(alpha = middleAlpha),
-                            MaterialTheme.colorScheme.surface.copy(alpha = bottomAlpha),
-                        ),
-                    ),
-                ),
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = tintAlpha)),
         )
         LargeTopAppBar(
             title = { Text(title, fontWeight = FontWeight.SemiBold) },

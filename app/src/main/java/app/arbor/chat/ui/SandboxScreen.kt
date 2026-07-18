@@ -66,6 +66,8 @@ import kotlinx.coroutines.delay
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SandboxScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+    val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsState()
+    val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
     var code by remember {
         mutableStateOf(
             "from pathlib import Path\n\n" +
@@ -164,6 +166,8 @@ fun SandboxScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             CollapsingTranslucentTopBar(
                 title = "Local Code Execution",
                 scrollBehavior = scrollBehavior,
+                blurEnabled = chromeBlurEnabled,
+                blurStrength = chromeBlurStrength,
                 navigationIcon = {
                     IconButton(onClick = { openDrawer?.invoke() ?: run { viewModel.screen.value = Screen.CHAT } }) {
                         Icon(if (openDrawer != null) Icons.Outlined.Menu else Icons.AutoMirrored.Outlined.ArrowBack, "Back")

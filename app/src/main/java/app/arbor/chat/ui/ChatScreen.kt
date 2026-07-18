@@ -143,6 +143,8 @@ private val ChatMessageJson = Json { ignoreUnknownKeys = true }
 @Composable
 fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val conversation by viewModel.conversation.collectAsStateWithLifecycle()
+    val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsStateWithLifecycle()
+    val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsStateWithLifecycle()
     val models by viewModel.models.collectAsStateWithLifecycle()
     val allProviders by viewModel.providers.collectAsStateWithLifecycle()
     val credentialRevision by viewModel.credentialRevision.collectAsStateWithLifecycle()
@@ -228,18 +230,14 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         contentWindowInsets = WindowInsets(0),
         topBar = {
             Box(Modifier.fillMaxWidth()) {
+                val collapse = topAppBarState.collapsedFraction.coerceIn(0f, 1f)
+                val blurRadius = if (chromeBlurEnabled) (24f * chromeBlurStrength.coerceIn(0f, 1f) * collapse).dp else 0.dp
                 Box(
                     Modifier
                         .matchParentSize()
-                        .blur((8f + 14f * topAppBarState.collapsedFraction.coerceIn(0f, 1f)).dp)
+                        .blur(blurRadius)
                         .background(
-                            Brush.verticalGradient(
-                                listOf(
-                                    MaterialTheme.colorScheme.surface.copy(alpha = .72f + .20f * topAppBarState.collapsedFraction.coerceIn(0f, 1f)),
-                                    MaterialTheme.colorScheme.surface.copy(alpha = .56f + .18f * topAppBarState.collapsedFraction.coerceIn(0f, 1f)),
-                                    MaterialTheme.colorScheme.surface.copy(alpha = .18f + .18f * topAppBarState.collapsedFraction.coerceIn(0f, 1f)),
-                                ),
-                            ),
+                            MaterialTheme.colorScheme.surface.copy(alpha = if (chromeBlurEnabled) .22f else .94f),
                         ),
                 )
                 LargeTopAppBar(
@@ -735,6 +733,8 @@ private fun Composer(
     chromeProgress: Float,
 ) {
     val conversation by viewModel.conversation.collectAsStateWithLifecycle()
+    val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsStateWithLifecycle()
+    val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsStateWithLifecycle()
     val draft by viewModel.draft.collectAsState()
     val staged by viewModel.stagedAttachments.collectAsState()
     val importing by viewModel.importing.collectAsState()
@@ -770,25 +770,21 @@ private fun Composer(
     }
 
     Box(Modifier.fillMaxWidth()) {
+        val blurProgress = chromeProgress.coerceIn(0f, 1f)
+        val blurRadius = if (chromeBlurEnabled) (24f * chromeBlurStrength.coerceIn(0f, 1f) * blurProgress).dp else 0.dp
         Box(
             Modifier
                 .matchParentSize()
-                .blur((8f + 14f * chromeProgress.coerceIn(0f, 1f)).dp)
+                .blur(blurRadius)
                 .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color.Transparent,
-                            MaterialTheme.colorScheme.surface.copy(alpha = .20f + .16f * chromeProgress.coerceIn(0f, 1f)),
-                            MaterialTheme.colorScheme.surface.copy(alpha = .58f + .22f * chromeProgress.coerceIn(0f, 1f)),
-                        ),
-                    ),
+                    MaterialTheme.colorScheme.surface.copy(alpha = if (chromeBlurEnabled) .22f else .94f),
                 ),
         )
         Surface(
             shadowElevation = 8.dp,
             tonalElevation = 1.dp,
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = .66f + .16f * chromeProgress.coerceIn(0f, 1f)),
+            color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = if (chromeBlurEnabled) .72f else 1f),
         ) {
             Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 10.dp, vertical = 8.dp)) {
             if (pending.isNotEmpty()) Text(

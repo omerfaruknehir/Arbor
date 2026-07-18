@@ -58,6 +58,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -127,6 +128,8 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val amoled by viewModel.amoled.collectAsState()
     val palette by viewModel.palette.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
+    val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsState()
+    val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
     val renderSafeMode by viewModel.renderSafeMode.collectAsState()
     val registeredProviders = remember(providers, credentialRevision) { viewModel.registeredProviders(providers) }
     val configuredProviders = remember(providers, credentialRevision) { viewModel.configuredProviders(providers) }
@@ -140,6 +143,8 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             CollapsingTranslucentTopBar(
                 title = route.title,
                 scrollBehavior = scrollBehavior,
+                blurEnabled = chromeBlurEnabled,
+                blurStrength = chromeBlurStrength,
                 navigationIcon = {
                     IconButton(onClick = {
                         if (route != SettingsRoute.HOME) route = SettingsRoute.HOME
@@ -163,7 +168,14 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 )
                 SettingsRoute.DEFAULTS -> NewChatDefaultsSettings(defaults, configuredProviders, viewModel)
                 SettingsRoute.AUTOMATION -> AutomationSettingsPage(automation, configuredProviders, viewModel)
-                SettingsRoute.APPEARANCE -> AppearanceSettingsPage(themeMode, amoled, palette, viewModel)
+                SettingsRoute.APPEARANCE -> AppearanceSettingsPage(
+                    themeMode = themeMode,
+                    amoled = amoled,
+                    palette = palette,
+                    chromeBlurEnabled = chromeBlurEnabled,
+                    chromeBlurStrength = chromeBlurStrength,
+                    viewModel = viewModel,
+                )
                 SettingsRoute.PRIVACY -> PrivacySettingsPage(renderSafeMode, viewModel)
                 SettingsRoute.LOCAL_EXECUTION -> LocalCodeExecutionSettingsPage(defaults, automation, configuredProviders, viewModel)
                 SettingsRoute.SYSTEM_PROMPTS -> SystemPromptProfilesPage(promptProfiles, defaults.systemPromptProfileId, viewModel)
@@ -367,6 +379,8 @@ private fun AppearanceSettingsPage(
     themeMode: ThemeMode,
     amoled: Boolean,
     palette: ColorPalette,
+    chromeBlurEnabled: Boolean,
+    chromeBlurStrength: Float,
     viewModel: ChatViewModel,
 ) = SettingsPage {
     SectionTitle("Theme mode", "Choose whether Arbor follows Android or stays light or dark.")
@@ -412,6 +426,32 @@ private fun AppearanceSettingsPage(
     }
     SettingsSwitch("AMOLED black", amoled, viewModel::setAmoled, enabled = themeMode != ThemeMode.LIGHT)
     Text("AMOLED black only changes dark mode surfaces.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+    HorizontalDivider()
+    SectionTitle("Interface blur", "Use a gradual blur behind app bars and the message composer as content moves underneath them.")
+    SettingsSwitch("Gradual blur", chromeBlurEnabled, viewModel::setChromeBlurEnabled)
+    if (chromeBlurEnabled) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Blur strength", modifier = Modifier.weight(1f))
+            Text("${(chromeBlurStrength * 100).toInt()}%", color = MaterialTheme.colorScheme.primary)
+        }
+        Slider(
+            value = chromeBlurStrength,
+            onValueChange = viewModel::setChromeBlurStrength,
+            valueRange = 0f..1f,
+        )
+        Text(
+            "The tint stays constant; only the blur radius increases smoothly with scroll.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    } else {
+        Text(
+            "Disabled bars use an opaque surface for readability.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
     Spacer(Modifier.padding(bottom = 24.dp))
 }
 
@@ -579,7 +619,7 @@ private fun LocalCodeExecutionSettingsPage(
 
 @Composable
 private fun AboutSettingsPage() = SettingsPage {
-    SectionTitle("Arbor 0.16.2", "Native Android BYOK model workspace.")
+    SectionTitle("Arbor 0.16.3", "Native Android BYOK model workspace.")
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Built for long-running, tool-using chats", fontWeight = FontWeight.SemiBold)

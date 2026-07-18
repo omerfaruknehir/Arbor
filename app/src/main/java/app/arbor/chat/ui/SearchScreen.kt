@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+    val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsState()
+    val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
     val query by viewModel.searchQuery.collectAsState()
     val results by viewModel.searchResults.collectAsState()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
@@ -42,6 +44,8 @@ fun SearchScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             CollapsingTranslucentTopBar(
                 title = "Search history",
                 scrollBehavior = scrollBehavior,
+                blurEnabled = chromeBlurEnabled,
+                blurStrength = chromeBlurStrength,
                 navigationIcon = {
                     IconButton(onClick = { openDrawer?.invoke() ?: run { viewModel.screen.value = Screen.CHAT } }) {
                         Icon(if (openDrawer != null) Icons.Outlined.Menu else Icons.AutoMirrored.Outlined.ArrowBack, "Back")

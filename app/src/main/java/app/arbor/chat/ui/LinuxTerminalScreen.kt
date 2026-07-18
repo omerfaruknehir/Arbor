@@ -59,6 +59,8 @@ private data class TerminalEntry(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LinuxTerminalScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+    val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsState()
+    val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
     val status by viewModel.ubuntuStatus.collectAsState()
     val selectedDistribution by viewModel.linuxDistribution.collectAsState()
     val scope = rememberCoroutineScope()
@@ -91,6 +93,8 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             CollapsingTranslucentTopBar(
                 title = "Linux terminal",
                 scrollBehavior = scrollBehavior,
+                blurEnabled = chromeBlurEnabled,
+                blurStrength = chromeBlurStrength,
                 navigationIcon = {
                     IconButton(onClick = { openDrawer?.invoke() ?: run { viewModel.screen.value = Screen.SETTINGS } }) {
                         Icon(if (openDrawer != null) Icons.Outlined.Menu else Icons.AutoMirrored.Outlined.ArrowBack, "Back")
