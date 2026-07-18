@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.18
+
+- Replaced reverse-layout oldest-message inference with a stable keyed header anchor inside the chat list.
+- Made sticky-title collapse independent of paging indices and transient LazyColumn measurements, eliminating jumps and incorrect expanded states.
+- Kept one fixed title with direct scroll-linked movement and no independent animation.
+
 ## 0.16.17
 
 - Rebuilt the chat title as a single clipped, fixed collapsing header instead of a permanently full-height overlay.

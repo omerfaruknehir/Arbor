@@ -151,6 +151,7 @@ import java.io.File
 import java.util.UUID
 
 private val ChatMessageJson = Json { ignoreUnknownKeys = true }
+private const val CHAT_HEADER_ANCHOR_KEY = "chat_header_anchor"
 
 internal fun calculateComposerChromeProgress(
     firstVisibleItemIndex: Int,
@@ -164,28 +165,25 @@ internal fun calculateComposerChromeProgress(
 }
 
 /**
- * Collapse progress for a reverse-layout chat list.
+ * Collapse progress for the fixed chat header.
  *
- * Item 0 is the newest message at the visual bottom, while the highest index is
- * the oldest message at the visual top. The large title must therefore be
- * expanded only while that oldest item is at the top edge. Once it scrolls
- * upward and out of view, the header remains fully collapsed.
+ * A dedicated spacer item is placed before the oldest message at the visual
+ * top of the reverse-layout list. Its stable key makes the header independent
+ * of paging indices, message insertion, and transient LazyColumn remeasurement.
+ * The header follows the spacer's physical displacement exactly; there is no
+ * separate animation clock or settling state.
  */
 internal fun calculateHeaderCollapseProgress(
-    totalItemsCount: Int,
-    oldestVisibleItemIndex: Int?,
-    oldestVisibleItemOffsetPx: Int?,
-    topContentPaddingPx: Int,
-    startPx: Int,
-    endPx: Int,
+    hasMessages: Boolean,
+    anchorOffsetPx: Int?,
+    viewportStartOffsetPx: Int,
+    collapseDistancePx: Int,
 ): Float {
-    if (totalItemsCount <= 0) return 0f
-    val oldestIndex = totalItemsCount - 1
-    if (oldestVisibleItemIndex != oldestIndex || oldestVisibleItemOffsetPx == null) return 1f
-
-    val displacementPx = (topContentPaddingPx - oldestVisibleItemOffsetPx).coerceAtLeast(0)
-    if (endPx <= startPx) return if (displacementPx > startPx) 1f else 0f
-    return ((displacementPx - startPx).toFloat() / (endPx - startPx).toFloat()).coerceIn(0f, 1f)
+    if (!hasMessages) return 0f
+    val offset = anchorOffsetPx ?: return 1f
+    val displacementPx = (viewportStartOffsetPx - offset).coerceAtLeast(0)
+    if (collapseDistancePx <= 0) return if (displacementPx > 0) 1f else 0f
+    return (displacementPx.toFloat() / collapseDistancePx.toFloat()).coerceIn(0f, 1f)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -217,12 +215,10 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val headerCompactHeight = 68.dp
     val headerExpandedHeight = 136.dp
     val headerReserve = statusTop + headerExpandedHeight
-    val headerReservePx = with(density) { headerReserve.roundToPx() }
+    val headerCollapseDistancePx = with(density) { (headerExpandedHeight - headerCompactHeight).roundToPx() }
     val latestThresholdPx = with(density) { 48.dp.roundToPx() }
     val chromeStartPx = with(density) { 56.dp.roundToPx() }
     val chromeEndPx = with(density) { 176.dp.roundToPx() }
-    val headerStartPx = with(density) { 12.dp.roundToPx() }
-    val headerEndPx = with(density) { 112.dp.roundToPx() }
     var followLatest by remember(conversation?.id) { mutableStateOf(true) }
     var searchFocusHandled by remember(conversation?.id, focusedMessageNodeId) { mutableStateOf(false) }
     val isAtLatest by remember(messageListState, latestThresholdPx) {
@@ -242,23 +238,21 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             )
         }
     }
-    val headerCollapseProgress by remember(messageListState, paging, headerReservePx, headerStartPx, headerEndPx) {
+    val headerCollapseProgress by remember(messageListState, paging, headerCollapseDistancePx) {
         derivedStateOf {
             val layoutInfo = messageListState.layoutInfo
             if (paging.itemCount > 0 && layoutInfo.totalItemsCount == 0) {
-                // Avoid briefly drawing the large title at the bottom before the
-                // first LazyColumn measure has completed.
+                // Avoid briefly drawing the expanded title before the first
+                // LazyColumn measure completes at the latest-message position.
                 1f
             } else {
-                val oldestIndex = layoutInfo.totalItemsCount - 1
-                val oldestItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == oldestIndex }
                 calculateHeaderCollapseProgress(
-                    totalItemsCount = layoutInfo.totalItemsCount,
-                    oldestVisibleItemIndex = oldestItem?.index,
-                    oldestVisibleItemOffsetPx = oldestItem?.offset,
-                    topContentPaddingPx = headerReservePx,
-                    startPx = headerStartPx,
-                    endPx = headerEndPx,
+                    hasMessages = paging.itemCount > 0,
+                    anchorOffsetPx = layoutInfo.visibleItemsInfo
+                        .firstOrNull { it.key == CHAT_HEADER_ANCHOR_KEY }
+                        ?.offset,
+                    viewportStartOffsetPx = layoutInfo.viewportStartOffset,
+                    collapseDistancePx = headerCollapseDistancePx,
                 )
             }
         }
@@ -358,7 +352,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
                         start = 12.dp,
                         end = 12.dp,
-                        top = headerReserve,
+                        top = 0.dp,
                         bottom = padding.calculateBottomPadding() + 18.dp,
                     ),
                 ) {
@@ -374,6 +368,18 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                 reasoningVisibility = conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
                                 activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
                             )
+                        }
+                    }
+                    if (paging.itemCount > 0) {
+                        item(
+                            key = CHAT_HEADER_ANCHOR_KEY,
+                            contentType = CHAT_HEADER_ANCHOR_KEY,
+                        ) {
+                            // This real list item replaces the old inferred
+                            // "oldest message offset" geometry. It reserves the
+                            // expanded header at the start of the conversation
+                            // and gives collapse tracking a stable physical anchor.
+                            Spacer(Modifier.fillMaxWidth().height(headerReserve))
                         }
                     }
                 }
