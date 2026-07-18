@@ -1,18 +1,26 @@
-# 0.16.10
+# Changelog
+
+## 0.16.12
+
+- Rebuilt the chat header around one persistent title and model selector, fixing reverse-layout collapse, duplicate geometry, and the selector disappearing away from the beginning of a conversation.
+- Shortened the top blur region to 64 dp throughout Chat, Search, Settings, and nested menus without reducing blur strength.
+- Added a staged Deep Research roadmap and compact web-search cards that show the query and used source sites instead of raw tool details.
+- Added tappable website/file reference pills and destination previews for all links.
+- Treated Android stream interruption during intentional Ubuntu cancellation, timeout, or teardown as a normal shutdown instead of an app crash.
+
+## 0.16.10
 
 - Replaced the sparse high-radius blur with a dense seventeen-tap Gaussian pass to eliminate the visible grid pattern.
 - Removed the full-width composer Surface and shadow; the input chrome now uses only a long feathered backdrop gradient.
 - Replaced Material 3's crossfading chat title with one title that physically moves and scales into the collapsed header.
 
-# 0.16.9
+## 0.16.9
 
 - Strengthened gradual blur and made the overlay itself fade smoothly.
 
-# 0.16.8
+## 0.16.8
 
 - Fixed gradual interface blur and back navigation.
-
-# Changelog
 
 ## 0.16.7
 

@@ -146,6 +146,7 @@ fun Modifier.arborBackdropBlur(
     edge: ArborBlurEdge = ArborBlurEdge.TOP,
     maxRadius: Dp = DEFAULT_MAX_RADIUS_DP.dp,
     fadeDistance: Dp = if (edge == ArborBlurEdge.TOP) DEFAULT_TOP_FADE_DP.dp else DEFAULT_BOTTOM_FADE_DP.dp,
+    overlayDistance: Dp = fadeDistance,
 ): Modifier = composed {
     val easedProgress = arborBlurProgress(progress)
     val radiusDp = if (enabled) {
@@ -165,37 +166,54 @@ fun Modifier.arborBackdropBlur(
         this
     }
 
+    val overlayDistancePx = with(LocalDensity.current) { overlayDistance.toPx() }
+
     anchored.drawWithContent {
         val overlayProgress = if (enabled) easedProgress else 1f
         val peak = tint.copy(alpha = tint.alpha * overlayProgress)
         val middle = tint.copy(alpha = tint.alpha * overlayProgress * 0.58f)
         val feather = tint.copy(alpha = tint.alpha * overlayProgress * 0.12f)
-        val brush = when (edge) {
-            ArborBlurEdge.TOP -> Brush.verticalGradient(
-                colorStops = arrayOf(
-                    0f to peak,
-                    0.30f to middle,
-                    0.58f to feather,
-                    1f to Color.Transparent,
-                ),
-            )
-            ArborBlurEdge.BOTTOM -> Brush.verticalGradient(
-                colorStops = arrayOf(
-                    0f to Color.Transparent,
-                    0.42f to feather,
-                    0.70f to middle,
-                    1f to peak,
-                ),
-            )
+        val extent = overlayDistancePx.coerceIn(1f, size.height.coerceAtLeast(1f))
+        when (edge) {
+            ArborBlurEdge.TOP -> {
+                val brush = Brush.verticalGradient(
+                    colorStops = arrayOf(
+                        0f to peak,
+                        0.30f to middle,
+                        0.62f to feather,
+                        1f to Color.Transparent,
+                    ),
+                    startY = 0f,
+                    endY = extent,
+                )
+                drawRect(brush = brush, size = androidx.compose.ui.geometry.Size(size.width, extent))
+            }
+            ArborBlurEdge.BOTTOM -> {
+                val startY = (size.height - extent).coerceAtLeast(0f)
+                val brush = Brush.verticalGradient(
+                    colorStops = arrayOf(
+                        0f to Color.Transparent,
+                        0.38f to feather,
+                        0.70f to middle,
+                        1f to peak,
+                    ),
+                    startY = startY,
+                    endY = size.height,
+                )
+                drawRect(
+                    brush = brush,
+                    topLeft = androidx.compose.ui.geometry.Offset(0f, startY),
+                    size = androidx.compose.ui.geometry.Size(size.width, extent),
+                )
+            }
         }
-        drawRect(brush = brush)
         drawContent()
     }
 }
 
 private const val MIN_VISIBLE_RADIUS_PX = 0.35f
 private const val DEFAULT_MAX_RADIUS_DP = 24f
-private const val DEFAULT_TOP_FADE_DP = 180f
+private const val DEFAULT_TOP_FADE_DP = 64f
 private const val DEFAULT_BOTTOM_FADE_DP = 152f
 
 /**

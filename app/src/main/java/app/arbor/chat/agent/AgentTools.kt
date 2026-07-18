@@ -284,10 +284,10 @@ private data class UbuntuToolResult(
 )
 
 @Serializable
-private data class WebSearchResponse(val query: String, val results: List<WebSearchResult>)
+internal data class WebSearchResponse(val query: String, val results: List<WebSearchResult>)
 
 @Serializable
-private data class WebSearchResult(val title: String, val url: String, val snippet: String)
+internal data class WebSearchResult(val title: String, val url: String, val snippet: String)
 
 @Serializable
-private data class WebFetchResponse(val url: String, val contentType: String, val text: String)
+internal data class WebFetchResponse(val url: String, val contentType: String, val text: String)

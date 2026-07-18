@@ -3,7 +3,20 @@ package app.arbor.chat.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Color as AndroidColor
+import android.net.Uri
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.TextPaint
+import android.text.method.LinkMovementMethod
+import android.text.style.ClickableSpan
+import android.text.style.ReplacementSpan
+import android.text.style.URLSpan
+import android.view.View
 import android.widget.TextView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.horizontalScroll
@@ -72,6 +85,7 @@ import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.net.URLEncoder
 import kotlin.math.roundToInt
 
 private sealed interface RichBlock {
@@ -295,11 +309,35 @@ private fun PackageRequestBlock(
     )
 }
 
+private enum class ReferenceKind { LINK, SOURCE, FILE }
+
+private data class PendingReference(
+    val kind: ReferenceKind,
+    val label: String,
+    val target: String,
+)
+
+private val ArborReferenceNotation = Regex(
+    """\[\[(source|file)\|([^|\]]{1,160})\|([^\]]{1,1500})]]""",
+    RegexOption.IGNORE_CASE,
+)
+
+internal fun prepareReferenceMarkdown(markdown: String): String = ArborReferenceNotation.replace(markdown) { match ->
+    val kind = match.groupValues[1].lowercase()
+    val label = match.groupValues[2].trim().replace("[", "(").replace("]", ")")
+    val target = URLEncoder.encode(match.groupValues[3].trim(), Charsets.UTF_8.name()).replace("+", "%20")
+    "[$label](arbor-$kind://reference?target=$target)"
+}
+
 @Composable
 private fun MarkdownBlock(markdown: String, key: String) {
     val context = LocalContext.current
     val color = MaterialTheme.colorScheme.onSurface
     val link = MaterialTheme.colorScheme.primary
+    val pillBackground = MaterialTheme.colorScheme.secondaryContainer
+    val pillForeground = MaterialTheme.colorScheme.onSecondaryContainer
+    var pendingReference by remember(key) { mutableStateOf<PendingReference?>(null) }
+    val renderedMarkdown = remember(markdown) { prepareReferenceMarkdown(markdown) }
     val markwon = remember(context) {
         Markwon.builder(context)
             .usePlugin(StrikethroughPlugin.create())
@@ -316,16 +354,179 @@ private fun MarkdownBlock(markdown: String, key: String) {
                 textSize = 16f
                 includeFontPadding = false
                 linksClickable = true
+                movementMethod = LinkMovementMethod.getInstance()
+                highlightColor = AndroidColor.TRANSPARENT
                 setLineSpacing(0f, 1.08f)
             }
         },
         update = { view ->
             view.setTextColor(color.toArgbCompat())
             view.setLinkTextColor(link.toArgbCompat())
-            markwon.setMarkdown(view, markdown)
+            markwon.setMarkdown(view, renderedMarkdown)
+            installReferenceSpans(
+                view = view,
+                linkColor = link.toArgbCompat(),
+                pillBackground = pillBackground.toArgbCompat(),
+                pillForeground = pillForeground.toArgbCompat(),
+                onClick = { pendingReference = it },
+            )
         },
         modifier = Modifier.fillMaxWidth(),
     )
+
+    pendingReference?.let { reference ->
+        val isOpenable = reference.kind != ReferenceKind.FILE &&
+            (reference.target.startsWith("https://") || reference.target.startsWith("http://"))
+        AlertDialog(
+            onDismissRequest = { pendingReference = null },
+            title = {
+                Text(
+                    when (reference.kind) {
+                        ReferenceKind.SOURCE -> "Source"
+                        ReferenceKind.FILE -> "File reference"
+                        ReferenceKind.LINK -> "Open link?"
+                    },
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(reference.label, fontWeight = FontWeight.SemiBold)
+                    if (reference.kind == ReferenceKind.FILE) {
+                        Text("Referenced file: ${reference.target}", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        val host = runCatching { Uri.parse(reference.target).host }.getOrNull().orEmpty()
+                        if (host.isNotBlank()) Text(host, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+                        Text(reference.target, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                    }
+                    Text(
+                        if (reference.kind == ReferenceKind.FILE) "This pill identifies the file used in the answer."
+                        else "Arbor shows link details before leaving the app.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            dismissButton = { OutlinedButton(onClick = { pendingReference = null }) { Text("Close") } },
+            confirmButton = {
+                if (isOpenable) Button(onClick = {
+                    val target = reference.target
+                    pendingReference = null
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target))) }
+                }) { Text("Open") }
+            },
+        )
+    }
+}
+
+private fun installReferenceSpans(
+    view: TextView,
+    linkColor: Int,
+    pillBackground: Int,
+    pillForeground: Int,
+    onClick: (PendingReference) -> Unit,
+) {
+    val source = view.text as? Spanned ?: return
+    val text = SpannableString(source)
+    text.getSpans(0, text.length, URLSpan::class.java).forEach { span ->
+        val start = text.getSpanStart(span)
+        val end = text.getSpanEnd(span)
+        if (start < 0 || end <= start) return@forEach
+        val raw = span.url.orEmpty()
+        val parsed = Uri.parse(raw)
+        val kind = when (parsed.scheme?.lowercase()) {
+            "arbor-source" -> ReferenceKind.SOURCE
+            "arbor-file" -> ReferenceKind.FILE
+            else -> ReferenceKind.LINK
+        }
+        val target = if (kind == ReferenceKind.LINK) raw else parsed.getQueryParameter("target").orEmpty()
+        val label = text.subSequence(start, end).toString()
+        text.removeSpan(span)
+        text.setSpan(
+            PreviewClickableSpan(linkColor) { onClick(PendingReference(kind, label, target)) },
+            start,
+            end,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+        if (kind != ReferenceKind.LINK) {
+            text.setSpan(
+                LinkPillSpan(
+                    icon = if (kind == ReferenceKind.FILE) "📎" else "🌐",
+                    backgroundColor = pillBackground,
+                    foregroundColor = pillForeground,
+                ),
+                start,
+                end,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
+    }
+    view.text = text
+    view.movementMethod = LinkMovementMethod.getInstance()
+}
+
+private class PreviewClickableSpan(
+    private val color: Int,
+    private val click: () -> Unit,
+) : ClickableSpan() {
+    override fun onClick(widget: View) = click()
+    override fun updateDrawState(ds: TextPaint) {
+        ds.color = color
+        ds.isUnderlineText = false
+    }
+}
+
+private class LinkPillSpan(
+    private val icon: String,
+    private val backgroundColor: Int,
+    private val foregroundColor: Int,
+) : ReplacementSpan() {
+    private val horizontalPadding = 9f
+    private val verticalPadding = 3f
+    private val iconGap = 5f
+
+    override fun getSize(
+        paint: Paint,
+        text: CharSequence,
+        start: Int,
+        end: Int,
+        fm: Paint.FontMetricsInt?,
+    ): Int = (horizontalPadding * 2 + paint.measureText(icon) + iconGap + paint.measureText(text, start, end)).roundToInt()
+
+    override fun draw(
+        canvas: Canvas,
+        text: CharSequence,
+        start: Int,
+        end: Int,
+        x: Float,
+        top: Int,
+        y: Int,
+        bottom: Int,
+        paint: Paint,
+    ) {
+        val oldColor = paint.color
+        val oldStyle = paint.style
+        val oldAntiAlias = paint.isAntiAlias
+        paint.isAntiAlias = true
+        val width = getSize(paint, text, start, end, null).toFloat()
+        val fm = paint.fontMetrics
+        val rect = RectF(
+            x,
+            y + fm.ascent - verticalPadding,
+            x + width,
+            y + fm.descent + verticalPadding,
+        )
+        paint.color = backgroundColor
+        paint.style = Paint.Style.FILL
+        canvas.drawRoundRect(rect, rect.height() / 2f, rect.height() / 2f, paint)
+        paint.color = foregroundColor
+        val iconX = x + horizontalPadding
+        canvas.drawText(icon, iconX, y.toFloat(), paint)
+        val labelX = iconX + paint.measureText(icon) + iconGap
+        canvas.drawText(text, start, end, labelX, y.toFloat(), paint)
+        paint.color = oldColor
+        paint.style = oldStyle
+        paint.isAntiAlias = oldAntiAlias
+    }
 }
 
 @Composable

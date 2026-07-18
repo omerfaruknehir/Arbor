@@ -1,5 +1,6 @@
 package app.arbor.chat.ui
 
+import android.content.Intent
 import android.net.Uri
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -77,7 +79,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ListItem
-import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -85,8 +87,6 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -130,6 +130,8 @@ import app.arbor.chat.data.ReasoningVisibility
 import app.arbor.chat.data.SendMode
 import app.arbor.chat.data.ThinkingEffort
 import app.arbor.chat.agent.ToolTraceEvent
+import app.arbor.chat.agent.WebFetchResponse
+import app.arbor.chat.agent.WebSearchResponse
 import app.arbor.chat.provider.ThinkingLevelOption
 import app.arbor.chat.provider.supportedThinkingLevels
 import app.arbor.chat.agent.MessageTimelineEvent
@@ -156,6 +158,31 @@ internal fun calculateComposerChromeProgress(
     return ((firstVisibleItemScrollOffset - startPx).toFloat() / (endPx - startPx).toFloat()).coerceIn(0f, 1f)
 }
 
+/**
+ * Collapse progress for a reverse-layout chat list.
+ *
+ * Item 0 is the newest message at the visual bottom, while the highest index is
+ * the oldest message at the visual top. The large title must therefore be
+ * expanded only while that oldest item is at the top edge. Once it scrolls
+ * upward and out of view, the header remains fully collapsed.
+ */
+internal fun calculateHeaderCollapseProgress(
+    totalItemsCount: Int,
+    oldestVisibleItemIndex: Int?,
+    oldestVisibleItemOffsetPx: Int?,
+    topContentPaddingPx: Int,
+    startPx: Int,
+    endPx: Int,
+): Float {
+    if (totalItemsCount <= 0) return 0f
+    val oldestIndex = totalItemsCount - 1
+    if (oldestVisibleItemIndex != oldestIndex || oldestVisibleItemOffsetPx == null) return 1f
+
+    val displacementPx = (topContentPaddingPx - oldestVisibleItemOffsetPx).coerceAtLeast(0)
+    if (endPx <= startPx) return if (displacementPx > startPx) 1f else 0f
+    return ((displacementPx - startPx).toFloat() / (endPx - startPx).toFloat()).coerceIn(0f, 1f)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
@@ -178,8 +205,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     var showHistory by remember { mutableStateOf(false) }
     var showChatConfiguration by remember { mutableStateOf(false) }
     val messageListState = rememberLazyListState()
-    val topAppBarState = rememberTopAppBarState()
-    val topAppBarScrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
     val blurState = rememberArborBackdropBlurState()
     val scrollScope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -207,14 +232,25 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             )
         }
     }
-    val headerCollapseProgress by remember(messageListState, headerStartPx, headerEndPx) {
+    val headerCollapseProgress by remember(messageListState, paging, headerStartPx, headerEndPx) {
         derivedStateOf {
-            calculateComposerChromeProgress(
-                firstVisibleItemIndex = messageListState.firstVisibleItemIndex,
-                firstVisibleItemScrollOffset = messageListState.firstVisibleItemScrollOffset,
-                startPx = headerStartPx,
-                endPx = headerEndPx,
-            )
+            val layoutInfo = messageListState.layoutInfo
+            if (paging.itemCount > 0 && layoutInfo.totalItemsCount == 0) {
+                // Avoid briefly drawing the large title at the bottom before the
+                // first LazyColumn measure has completed.
+                1f
+            } else {
+                val oldestIndex = layoutInfo.totalItemsCount - 1
+                val oldestItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == oldestIndex }
+                calculateHeaderCollapseProgress(
+                    totalItemsCount = layoutInfo.totalItemsCount,
+                    oldestVisibleItemIndex = oldestItem?.index,
+                    oldestVisibleItemOffsetPx = oldestItem?.offset,
+                    topContentPaddingPx = layoutInfo.afterContentPadding,
+                    startPx = headerStartPx,
+                    endPx = headerEndPx,
+                )
+            }
         }
     }
     val latestMessage = paging.itemSnapshotList.items.firstOrNull()
@@ -224,11 +260,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         chatMenu = false
         followLatest = true
         messageListState.scrollToItem(0)
-    }
-
-    LaunchedEffect(headerCollapseProgress, topAppBarState.heightOffsetLimit) {
-        val limit = topAppBarState.heightOffsetLimit
-        if (limit < 0f) topAppBarState.heightOffset = limit * headerCollapseProgress
     }
 
     LaunchedEffect(messageListState, conversation?.id, latestThresholdPx) {
@@ -274,107 +305,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     Scaffold(
         modifier = Modifier,
         contentWindowInsets = WindowInsets(0),
-        topBar = {
-            val collapse = headerCollapseProgress
-            val titleTravel = arborBlurProgress(collapse)
-            val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .arborBackdropBlur(
-                        state = blurState,
-                        enabled = chromeBlurEnabled,
-                        progress = collapse,
-                        strength = chromeBlurStrength,
-                        tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
-                    ),
-            ) {
-                LargeTopAppBar(
-                    navigationIcon = { if (openDrawer != null) IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Conversations") } },
-                    title = {},
-                    actions = {
-                        if (pending.isNotEmpty()) Badge { Text(pending.size.toString()) }
-                        Box {
-                            IconButton(onClick = { chatMenu = true }) { Icon(Icons.Outlined.MoreVert, "Chat actions") }
-                            DropdownMenu(expanded = chatMenu, onDismissRequest = { chatMenu = false }) {
-                                DropdownMenuItem(text = { Text("Regenerate chat name") }, onClick = { viewModel.regenerateTitle(); chatMenu = false })
-                                DropdownMenuItem(text = { Text("Chat configuration") }, leadingIcon = { Icon(Icons.Outlined.Tune, null) }, onClick = { showChatConfiguration = true; chatMenu = false })
-                                DropdownMenuItem(text = { Text("Edited message history (${revisionHistory.size})") }, leadingIcon = { Icon(Icons.Outlined.History, null) }, onClick = { showHistory = true; chatMenu = false })
-                            }
-                        }
-                    },
-                    scrollBehavior = topAppBarScrollBehavior,
-                    colors = TopAppBarDefaults.largeTopAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent),
-                )
-
-                val expandedTitleY = statusTop + 78.dp
-                val collapsedTitleY = statusTop + 7.dp
-                val titleY = expandedTitleY + (collapsedTitleY - expandedTitleY) * titleTravel
-                val titleScale = 1.16f - 0.18f * titleTravel
-                Text(
-                    conversation?.title ?: stringResource(R.string.app_name),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 72.dp)
-                        .offset { IntOffset(0, with(density) { titleY.roundToPx() }) }
-                        .graphicsLayer {
-                            scaleX = titleScale
-                            scaleY = titleScale
-                        }
-                        .zIndex(2f),
-                    fontWeight = FontWeight.SemiBold,
-                    style = MaterialTheme.typography.titleLarge,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-
-                val expandedModelY = statusTop + 116.dp
-                val collapsedModelY = statusTop + 39.dp
-                val modelY = expandedModelY + (collapsedModelY - expandedModelY) * titleTravel
-                val modelScale = 1f - 0.10f * titleTravel
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .offset { IntOffset(0, with(density) { modelY.roundToPx() }) }
-                        .graphicsLayer {
-                            scaleX = modelScale
-                            scaleY = modelScale
-                        }
-                        .zIndex(3f),
-                ) {
-                    Surface(
-                        onClick = { modelMenu = true },
-                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .62f),
-                        shape = MaterialTheme.shapes.small,
-                    ) {
-                        Row(Modifier.padding(horizontal = 8.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Outlined.Psychology, null, Modifier.size(14.dp))
-                            Text(
-                                buildString {
-                                    val provider = usableProviders.firstOrNull { it.id == conversation?.selectedProviderId }
-                                    if (provider != null && usableProviders.size > 1) append(provider.displayName).append(" · ")
-                                    append(models.firstOrNull { it.modelId == conversation?.selectedModelId }?.displayName ?: conversation?.selectedModelId ?: "Choose model")
-                                },
-                                Modifier.padding(start = 4.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                    DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
-                        usableProviders.forEach { provider ->
-                            ProviderModelMenuRows(provider, viewModel, conversation?.selectedProviderId, conversation?.selectedModelId) { providerId, modelId ->
-                                viewModel.selectModel(providerId, modelId)
-                                modelMenu = false
-                            }
-                        }
-                        if (usableProviders.isEmpty()) DropdownMenuItem(text = { Text("Open the left menu → Settings to add a provider") }, onClick = { modelMenu = false })
-                    }
-                }
-            }
-        },
+        topBar = {},
         bottomBar = {
             Composer(
                 viewModel = viewModel,
@@ -388,12 +319,14 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             )
         },
     ) { padding ->
+        val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val headerReserve = statusTop + 148.dp
         Box(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxSize().arborBackdropSource(blurState)) {
                 if (paging.itemCount == 0 && recoverable.isEmpty()) {
                     EmptyConversation(
                         modifier = Modifier.padding(
-                            top = padding.calculateTopPadding(),
+                            top = statusTop + 88.dp,
                             bottom = padding.calculateBottomPadding(),
                         ),
                     )
@@ -406,7 +339,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
                         start = 12.dp,
                         end = 12.dp,
-                        top = padding.calculateTopPadding() + 18.dp,
+                        top = headerReserve,
                         bottom = padding.calculateBottomPadding() + 18.dp,
                     ),
                 ) {
@@ -417,9 +350,11 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     ) { index ->
                         paging[index]?.let { message ->
                             MessageCard(
-                                message, viewModel,
-                                conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
-                                models.firstOrNull { it.modelId == conversation?.selectedModelId },
+                                message = message,
+                                viewModel = viewModel,
+                                reasoningVisibility = conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
+                                activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
+                                deepResearchEnabled = conversation?.deepResearchEnabled == true,
                             )
                         }
                     }
@@ -442,7 +377,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 }
             }
             val interrupted = recoverable.firstOrNull { it.status == MessageStatus.INTERRUPTED || it.status == MessageStatus.ERROR }
-            AnimatedVisibility(interrupted != null, modifier = Modifier.align(Alignment.TopCenter).padding(top = padding.calculateTopPadding())) {
+            AnimatedVisibility(interrupted != null, modifier = Modifier.align(Alignment.TopCenter).padding(top = statusTop + 88.dp)) {
                 interrupted?.let { message ->
                     Surface(
                         color = MaterialTheme.colorScheme.errorContainer,
@@ -457,6 +392,117 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             }
                             AssistChip(onClick = { viewModel.resume(message) }, label = { Text("Resume") })
                         }
+                    }
+                }
+            }
+
+            val collapse = headerCollapseProgress
+            val titleTravel = arborBlurProgress(collapse)
+            Box(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(statusTop + 148.dp)
+                    .zIndex(10f)
+                    .arborBackdropBlur(
+                        state = blurState,
+                        enabled = chromeBlurEnabled,
+                        progress = collapse,
+                        strength = chromeBlurStrength,
+                        tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
+                        fadeDistance = 64.dp,
+                        overlayDistance = 64.dp,
+                    ),
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .height(64.dp)
+                        .padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (openDrawer != null) {
+                        IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Conversations") }
+                    } else {
+                        Spacer(Modifier.size(48.dp))
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (pending.isNotEmpty()) Badge { Text(pending.size.toString()) }
+                    Box {
+                        IconButton(onClick = { chatMenu = true }) { Icon(Icons.Outlined.MoreVert, "Chat actions") }
+                        DropdownMenu(expanded = chatMenu, onDismissRequest = { chatMenu = false }) {
+                            DropdownMenuItem(text = { Text("Regenerate chat name") }, onClick = { viewModel.regenerateTitle(); chatMenu = false })
+                            DropdownMenuItem(text = { Text("Chat configuration") }, leadingIcon = { Icon(Icons.Outlined.Tune, null) }, onClick = { showChatConfiguration = true; chatMenu = false })
+                            DropdownMenuItem(text = { Text("Edited message history (${revisionHistory.size})") }, leadingIcon = { Icon(Icons.Outlined.History, null) }, onClick = { showHistory = true; chatMenu = false })
+                        }
+                    }
+                }
+
+                val expandedTitleY = statusTop + 72.dp
+                val collapsedTitleY = statusTop + 9.dp
+                val titleY = expandedTitleY + (collapsedTitleY - expandedTitleY) * titleTravel
+                val titleScale = 1.14f - 0.14f * titleTravel
+                Text(
+                    conversation?.title ?: stringResource(R.string.app_name),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 72.dp)
+                        .offset { IntOffset(0, with(density) { titleY.roundToPx() }) }
+                        .graphicsLayer {
+                            scaleX = titleScale
+                            scaleY = titleScale
+                        }
+                        .zIndex(2f),
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.titleLarge,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+
+                val expandedModelY = statusTop + 111.dp
+                val collapsedModelY = statusTop + 41.dp
+                val modelY = expandedModelY + (collapsedModelY - expandedModelY) * titleTravel
+                val modelScale = 1f - 0.08f * titleTravel
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset { IntOffset(0, with(density) { modelY.roundToPx() }) }
+                        .graphicsLayer {
+                            scaleX = modelScale
+                            scaleY = modelScale
+                        }
+                        .zIndex(3f),
+                ) {
+                    Surface(
+                        onClick = { modelMenu = true },
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .78f),
+                        shape = CircleShape,
+                    ) {
+                        Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.Psychology, null, Modifier.size(14.dp))
+                            Text(
+                                buildString {
+                                    val provider = usableProviders.firstOrNull { it.id == conversation?.selectedProviderId }
+                                    if (provider != null && usableProviders.size > 1) append(provider.displayName).append(" · ")
+                                    append(models.firstOrNull { it.modelId == conversation?.selectedModelId }?.displayName ?: conversation?.selectedModelId ?: "Choose model")
+                                },
+                                Modifier.padding(start = 4.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
+                        usableProviders.forEach { provider ->
+                            ProviderModelMenuRows(provider, viewModel, conversation?.selectedProviderId, conversation?.selectedModelId) { providerId, modelId ->
+                                viewModel.selectModel(providerId, modelId)
+                                modelMenu = false
+                            }
+                        }
+                        if (usableProviders.isEmpty()) DropdownMenuItem(text = { Text("Open the left menu → Settings to add a provider") }, onClick = { modelMenu = false })
                     }
                 }
             }
@@ -528,7 +574,13 @@ private fun EmptyConversation(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun MessageCard(message: app.arbor.chat.data.MessageEntity, viewModel: ChatViewModel, reasoningVisibility: ReasoningVisibility, activeModel: ModelEntity?) {
+private fun MessageCard(
+    message: app.arbor.chat.data.MessageEntity,
+    viewModel: ChatViewModel,
+    reasoningVisibility: ReasoningVisibility,
+    activeModel: ModelEntity?,
+    deepResearchEnabled: Boolean,
+) {
     val attachments by viewModel.run { containerAttachments(message.nodeId) }.collectAsStateWithLifecycle(initialValue = emptyList())
     val user = message.role == MessageRole.USER
     var editing by remember(message.nodeId) { mutableStateOf(false) }
@@ -561,9 +613,23 @@ private fun MessageCard(message: app.arbor.chat.data.MessageEntity, viewModel: C
                     }
                 }
                 if (timeline.isNotEmpty()) {
-                    OrderedMessageTimeline(message.nodeId, timeline, attachments, message.status == MessageStatus.STREAMING, reasoningVisibility, viewModel)
+                    OrderedMessageTimeline(
+                        message.nodeId,
+                        timeline,
+                        attachments,
+                        message.status == MessageStatus.STREAMING,
+                        reasoningVisibility,
+                        deepResearchEnabled,
+                        viewModel,
+                    )
                 } else {
-                    LegacyWorkingBlock(message.reasoning, message.toolTraceJson, message.status == MessageStatus.STREAMING, reasoningVisibility)
+                    LegacyWorkingBlock(
+                        message.reasoning,
+                        message.toolTraceJson,
+                        message.status == MessageStatus.STREAMING,
+                        reasoningVisibility,
+                        deepResearchEnabled,
+                    )
                     if (message.content.isNotBlank()) RichMessage(
                         operationScope = message.nodeId,
                         text = message.content,
@@ -639,6 +705,7 @@ private fun OrderedMessageTimeline(
     attachments: List<AttachmentEntity>,
     streaming: Boolean,
     visibility: ReasoningVisibility,
+    deepResearchEnabled: Boolean,
     viewModel: ChatViewModel,
 ) {
     val orderedEvents = remember(events, attachments) {
@@ -656,7 +723,14 @@ private fun OrderedMessageTimeline(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         segments.forEachIndexed { index, segment ->
             if (segment.working) {
-                TimelineWorkingBlock(segment.events, streaming, streaming && index == segments.lastIndex, visibility, viewModel)
+                TimelineWorkingBlock(
+                    segment.events,
+                    streaming,
+                    streaming && index == segments.lastIndex,
+                    visibility,
+                    deepResearchEnabled,
+                    viewModel,
+                )
             } else {
                 segment.events.forEach { event ->
                     if (event.kind == "file") {
@@ -686,7 +760,14 @@ private fun OrderedMessageTimeline(
 }
 
 @Composable
-private fun TimelineWorkingBlock(events: List<MessageTimelineEvent>, streaming: Boolean, active: Boolean, visibility: ReasoningVisibility, viewModel: ChatViewModel) {
+private fun TimelineWorkingBlock(
+    events: List<MessageTimelineEvent>,
+    streaming: Boolean,
+    active: Boolean,
+    visibility: ReasoningVisibility,
+    deepResearchEnabled: Boolean,
+    viewModel: ChatViewModel,
+) {
     val initiallyExpanded = when (visibility) {
         ReasoningVisibility.ALWAYS -> true
         ReasoningVisibility.SHOW_WHILE_WORKING -> streaming
@@ -710,6 +791,9 @@ private fun TimelineWorkingBlock(events: List<MessageTimelineEvent>, streaming: 
                     fontWeight = FontWeight.Medium,
                 )
                 Text(if (expanded) "Collapse" else "Expand", style = MaterialTheme.typography.labelMedium)
+            }
+            if (deepResearchEnabled) {
+                ResearchRoadmap(events = events, streaming = streaming, modifier = Modifier.padding(top = 12.dp))
             }
             AnimatedVisibility(expanded) {
                 Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -746,7 +830,13 @@ private fun TimelineWorkingBlock(events: List<MessageTimelineEvent>, streaming: 
 }
 
 @Composable
-private fun LegacyWorkingBlock(text: String, toolTraceJson: String, streaming: Boolean, visibility: ReasoningVisibility) {
+private fun LegacyWorkingBlock(
+    text: String,
+    toolTraceJson: String,
+    streaming: Boolean,
+    visibility: ReasoningVisibility,
+    deepResearchEnabled: Boolean,
+) {
     val traces = remember(toolTraceJson) {
         runCatching { ChatMessageJson.decodeFromString<List<ToolTraceEvent>>(toolTraceJson) }.getOrDefault(emptyList())
     }
@@ -771,6 +861,33 @@ private fun LegacyWorkingBlock(text: String, toolTraceJson: String, streaming: B
                 Text("Working", Modifier.padding(start = 8.dp).weight(1f), fontWeight = FontWeight.Medium)
                 Text(if (expanded) "Collapse" else "Expand", style = MaterialTheme.typography.labelMedium)
             }
+            if (deepResearchEnabled) {
+                val roadmapEvents = remember(text, traces) {
+                    buildList {
+                        if (text.isNotBlank()) add(MessageTimelineEvent(kind = "reasoning", content = text, startedAt = 0L))
+                        traces.forEach { trace ->
+                            add(
+                                MessageTimelineEvent(
+                                    id = trace.id,
+                                    kind = when {
+                                        trace.type.contains("search", true) -> "search"
+                                        trace.type.contains("fetch", true) -> "fetch"
+                                        trace.type.contains("ubuntu", true) || trace.type.contains("linux", true) -> "ubuntu"
+                                        else -> "python"
+                                    },
+                                    label = trace.label,
+                                    status = trace.status,
+                                    input = trace.input,
+                                    output = trace.output,
+                                    startedAt = trace.startedAt,
+                                    finishedAt = trace.finishedAt,
+                                ),
+                            )
+                        }
+                    }
+                }
+                ResearchRoadmap(events = roadmapEvents, streaming = streaming, modifier = Modifier.padding(top = 12.dp))
+            }
             AnimatedVisibility(expanded) {
                 Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (text.isNotBlank()) Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -790,15 +907,189 @@ private fun LegacyWorkingBlock(text: String, toolTraceJson: String, streaming: B
 @Composable
 private fun ToolStepDetails(kind: String, input: String, output: String, status: String, viewModel: ChatViewModel) {
     val language = if (kind == "python") "python" else if (kind == "ubuntu") "bash" else "text"
-    if (input.isNotBlank()) CodeSourcePanel(language, input, when (kind) { "python" -> "PYTHON CODE"; "ubuntu" -> "SHELL COMMAND"; "search" -> "SEARCH QUERY"; "fetch" -> "URL"; else -> "INPUT" })
-    if (output.isNotBlank()) {
-        val json = ChatMessageJson
-        when (kind) {
-            "python" -> runCatching { json.decodeFromString<ExecutionResult>(output) }.getOrNull()?.let { PythonExecutionCard(it, "Python tool result") }
-                ?: GenericToolOutputCard(output, failed = status == "error")
-            "ubuntu" -> runCatching { json.decodeFromString<UbuntuExecutionResult>(output) }.getOrNull()?.let { UbuntuExecutionCard(it, "Ubuntu tool result") }
-                ?: GenericToolOutputCard(output, failed = status == "error")
-            else -> GenericToolOutputCard(output, failed = status == "error")
+    when (kind) {
+        "search" -> CompactSearchToolCard(input, output, status)
+        "fetch" -> CompactFetchToolCard(input, output, status)
+        else -> {
+            if (input.isNotBlank()) CodeSourcePanel(
+                language,
+                input,
+                when (kind) {
+                    "python" -> "PYTHON CODE"
+                    "ubuntu" -> "SHELL COMMAND"
+                    else -> "INPUT"
+                },
+            )
+            if (output.isNotBlank()) {
+                val json = ChatMessageJson
+                when (kind) {
+                    "python" -> runCatching { json.decodeFromString<ExecutionResult>(output) }.getOrNull()?.let { PythonExecutionCard(it, "Python tool result") }
+                        ?: GenericToolOutputCard(output, failed = status == "error")
+                    "ubuntu" -> runCatching { json.decodeFromString<UbuntuExecutionResult>(output) }.getOrNull()?.let { UbuntuExecutionCard(it, "Ubuntu tool result") }
+                        ?: GenericToolOutputCard(output, failed = status == "error")
+                    else -> GenericToolOutputCard(output, failed = status == "error")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactSearchToolCard(query: String, output: String, status: String) {
+    val parsed = remember(output) { runCatching { ChatMessageJson.decodeFromString<WebSearchResponse>(output) }.getOrNull() }
+    val sites = remember(parsed) { parsed?.results.orEmpty().distinctBy { runCatching { Uri.parse(it.url).host }.getOrNull() }.take(8) }
+    var selected by remember { mutableStateOf<app.arbor.chat.agent.WebSearchResult?>(null) }
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Search, null, Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
+                Text("Search", Modifier.padding(start = 7.dp), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.weight(1f))
+                Text(if (status == "running") "Searching…" else "${sites.size} sites", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(parsed?.query ?: query, style = MaterialTheme.typography.bodyMedium)
+            if (sites.isNotEmpty()) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(sites.size) { index ->
+                        val result = sites[index]
+                        val host = runCatching { Uri.parse(result.url).host }.getOrNull().orEmpty().removePrefix("www.")
+                        AssistChip(
+                            onClick = { selected = result },
+                            label = { Text(host.ifBlank { result.title }, maxLines = 1) },
+                            leadingIcon = { Icon(Icons.Outlined.TravelExplore, null, Modifier.size(15.dp)) },
+                        )
+                    }
+                }
+            } else if (output.isNotBlank() && status == "error") {
+                Text(output.take(500), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+        }
+    }
+    selected?.let { result ->
+        WebReferenceDialog(result.title, result.url, result.snippet) { selected = null }
+    }
+}
+
+@Composable
+private fun CompactFetchToolCard(url: String, output: String, status: String) {
+    val parsed = remember(output) { runCatching { ChatMessageJson.decodeFromString<WebFetchResponse>(output) }.getOrNull() }
+    var show by remember { mutableStateOf(false) }
+    val target = parsed?.url ?: url
+    Surface(
+        onClick = { if (target.isNotBlank()) show = true },
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.TravelExplore, null, Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
+            Column(Modifier.padding(start = 8.dp).weight(1f)) {
+                Text(if (status == "running") "Reading source…" else "Source read", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                Text(runCatching { Uri.parse(target).host }.getOrNull().orEmpty().removePrefix("www.").ifBlank { target }, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+    if (show) WebReferenceDialog("Fetched source", target, parsed?.contentType.orEmpty()) { show = false }
+}
+
+@Composable
+private fun WebReferenceDialog(title: String, url: String, detail: String, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title.ifBlank { "Website" }) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val host = runCatching { Uri.parse(url).host }.getOrNull().orEmpty()
+                if (host.isNotBlank()) Text(host, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                if (detail.isNotBlank()) Text(detail.take(500), style = MaterialTheme.typography.bodySmall)
+                Text(url, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
+                Text("Arbor shows the destination before opening it.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        dismissButton = { AssistChip(onClick = onDismiss, label = { Text("Close") }) },
+        confirmButton = {
+            Button(onClick = {
+                onDismiss()
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            }, enabled = url.startsWith("https://") || url.startsWith("http://")) { Text("Open") }
+        },
+    )
+}
+
+private enum class ResearchStageState { WAITING, ACTIVE, COMPLETE }
+
+private data class ResearchStage(val label: String, val state: ResearchStageState)
+
+@Composable
+private fun ResearchRoadmap(
+    events: List<MessageTimelineEvent>,
+    streaming: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val searchEvents = events.filter { it.kind == "search" }
+    val fetchEvents = events.filter { it.kind == "fetch" }
+    val fetchedHosts = remember(fetchEvents) {
+        fetchEvents.mapNotNull { event ->
+            val parsed = runCatching { ChatMessageJson.decodeFromString<WebFetchResponse>(event.output) }.getOrNull()
+            runCatching { Uri.parse(parsed?.url ?: event.input).host }.getOrNull()
+        }.distinct()
+    }
+    val hasPlan = events.any { it.kind == "reasoning" && it.content.isNotBlank() } || events.isNotEmpty()
+    val discovered = searchEvents.any { it.status == "complete" }
+    val read = fetchEvents.any { it.status == "complete" }
+    val verified = fetchedHosts.size >= 2 || fetchEvents.count { it.status == "complete" } >= 2
+    val anyRunningTool = events.any { it.status == "running" && it.kind in setOf("search", "fetch", "python", "ubuntu") }
+    val synthesizing = streaming && !anyRunningTool && (discovered || read)
+    val stages = listOf(
+        ResearchStage("Plan", if (hasPlan) ResearchStageState.COMPLETE else if (streaming) ResearchStageState.ACTIVE else ResearchStageState.WAITING),
+        ResearchStage("Discover", if (discovered) ResearchStageState.COMPLETE else if (searchEvents.any { it.status == "running" }) ResearchStageState.ACTIVE else ResearchStageState.WAITING),
+        ResearchStage("Read", if (read) ResearchStageState.COMPLETE else if (fetchEvents.any { it.status == "running" } || discovered) ResearchStageState.ACTIVE else ResearchStageState.WAITING),
+        ResearchStage("Verify", if (verified) ResearchStageState.COMPLETE else if (read) ResearchStageState.ACTIVE else ResearchStageState.WAITING),
+        ResearchStage("Synthesize", if (!streaming) ResearchStageState.COMPLETE else if (synthesizing || verified) ResearchStageState.ACTIVE else ResearchStageState.WAITING),
+    )
+    val completed = stages.count { it.state == ResearchStageState.COMPLETE }
+    val activeFraction = if (stages.any { it.state == ResearchStageState.ACTIVE }) .45f else 0f
+    val progress = ((completed + activeFraction) / stages.size).coerceIn(0f, 1f)
+    val activeLabel = stages.firstOrNull { it.state == ResearchStageState.ACTIVE }?.label
+        ?: stages.lastOrNull { it.state == ResearchStageState.COMPLETE }?.label
+        ?: "Preparing"
+
+    Surface(
+        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = .42f),
+        shape = MaterialTheme.shapes.large,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.TravelExplore, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.tertiary)
+                Text("Research roadmap", Modifier.padding(start = 7.dp).weight(1f), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                Text(activeLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
+            }
+            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(stages.size) { index ->
+                    val stage = stages[index]
+                    Surface(
+                        color = when (stage.state) {
+                            ResearchStageState.COMPLETE -> MaterialTheme.colorScheme.primaryContainer
+                            ResearchStageState.ACTIVE -> MaterialTheme.colorScheme.tertiaryContainer
+                            ResearchStageState.WAITING -> MaterialTheme.colorScheme.surfaceContainer
+                        },
+                        shape = CircleShape,
+                    ) {
+                        Row(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                            if (stage.state == ResearchStageState.COMPLETE) Icon(Icons.Outlined.Check, null, Modifier.size(13.dp))
+                            else if (stage.state == ResearchStageState.ACTIVE) CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp)
+                            Text(stage.label, Modifier.padding(start = if (stage.state == ResearchStageState.WAITING) 0.dp else 4.dp), style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -1270,7 +1561,7 @@ private fun SearchComposerChip(
 ) {
     var menu by remember { mutableStateOf(false) }
     val label = when {
-        deepResearchEnabled -> "Research"
+        deepResearchEnabled -> "Deep research"
         webEnabled -> "Search"
         else -> "Search off"
     }
@@ -1281,8 +1572,16 @@ private fun SearchComposerChip(
     Box {
         Surface(
             onClick = { menu = true },
-            color = if (webEnabled) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = if (webEnabled) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = when {
+                deepResearchEnabled -> MaterialTheme.colorScheme.tertiaryContainer
+                webEnabled -> MaterialTheme.colorScheme.secondaryContainer
+                else -> MaterialTheme.colorScheme.surfaceContainerHigh
+            },
+            contentColor = when {
+                deepResearchEnabled -> MaterialTheme.colorScheme.onTertiaryContainer
+                webEnabled -> MaterialTheme.colorScheme.onSecondaryContainer
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            },
             shape = CircleShape,
         ) {
             Row(

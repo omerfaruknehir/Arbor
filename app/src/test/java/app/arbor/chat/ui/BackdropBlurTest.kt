@@ -23,4 +23,15 @@ class BackdropBlurTest {
         assertEquals(1f, calculateComposerChromeProgress(1, 0, 56, 176), .0001f)
     }
 
+    @Test fun reverseChatHeaderIsExpandedAtOldestMessageAndCollapsedAtLatest() {
+        // Oldest item (index 9) aligned with the visual top: large title.
+        assertEquals(0f, calculateHeaderCollapseProgress(10, 9, 180, 180, 20, 148), .0001f)
+        // It collapses smoothly while the oldest item moves under the header.
+        assertEquals(.5f, calculateHeaderCollapseProgress(10, 9, 96, 180, 20, 148), .0001f)
+        // Once the oldest item is no longer visible, we are below the beginning.
+        assertEquals(1f, calculateHeaderCollapseProgress(10, 8, 180, 180, 20, 148), .0001f)
+        // An empty conversation keeps the large-title state.
+        assertEquals(0f, calculateHeaderCollapseProgress(0, null, null, 180, 20, 148), .0001f)
+    }
+
 }

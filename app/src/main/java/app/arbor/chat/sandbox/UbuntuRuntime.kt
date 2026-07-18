@@ -6,8 +6,12 @@ import android.os.Build
 import android.os.StatFs
 import androidx.core.content.edit
 import java.io.File
+import java.io.IOException
+import java.io.InterruptedIOException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -501,8 +505,17 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
         val process = builder.start()
         val stdout = StringBuilder()
         val stderr = StringBuilder()
-        val outThread = Thread { copyCapped(process.inputStream, stdout) }.apply { start() }
-        val errThread = Thread { copyCapped(process.errorStream, stderr) }.apply { start() }
+        val closingStreams = AtomicBoolean(false)
+        val stdoutFailure = AtomicReference<IOException?>(null)
+        val stderrFailure = AtomicReference<IOException?>(null)
+        val outThread = Thread(
+            { copyCapped(process.inputStream, stdout, closingStreams, stdoutFailure) },
+            "arbor-linux-stdout",
+        ).apply { isDaemon = true; start() }
+        val errThread = Thread(
+            { copyCapped(process.errorStream, stderr, closingStreams, stderrFailure) },
+            "arbor-linux-stderr",
+        ).apply { isDaemon = true; start() }
         var complete = false
         var timedOut = false
         try {
@@ -520,14 +533,20 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
             process.destroyForcibly()
             throw cancelled
         } finally {
+            closingStreams.set(true)
             if (timedOut) process.waitFor(2, TimeUnit.SECONDS)
+            runCatching { process.inputStream.close() }
+            runCatching { process.errorStream.close() }
             outThread.join(2_000)
             errThread.join(2_000)
         }
         val after = fileState(workspace)
+        val captureWarning = listOfNotNull(stdoutFailure.get(), stderrFailure.get())
+            .distinctBy { it::class.java.name to it.message }
+            .joinToString("\n") { "Output capture warning: ${it.message ?: it::class.java.simpleName}" }
         UbuntuExecutionResult(
             stdout = stdout.toString(),
-            stderr = stderr.toString(),
+            stderr = listOf(stderr.toString(), captureWarning).filter(String::isNotBlank).joinToString("\n"),
             exitCode = if (complete) process.exitValue() else -1,
             files = after.filter { (path, state) -> before[path] != state }.keys.take(500),
             elapsedMs = System.currentTimeMillis() - started,
@@ -644,12 +663,28 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
 
     private fun directorySize(root: File): Long = root.walkTopDown().filter(File::isFile).sumOf(File::length)
     private fun fileState(root: File): Map<String, Pair<Long, Long>> = root.walkTopDown().filter(File::isFile).associate { it.relativeTo(root).path to (it.length() to it.lastModified()) }
-    private fun copyCapped(input: java.io.InputStream, output: StringBuilder, limit: Int = 1_000_000) = input.bufferedReader().use { reader ->
-        val buffer = CharArray(8_192)
-        while (output.length < limit) {
-            val count = reader.read(buffer, 0, minOf(buffer.size, limit - output.length))
-            if (count < 0) break
-            output.append(buffer, 0, count)
+    private fun copyCapped(
+        input: java.io.InputStream,
+        output: StringBuilder,
+        closing: AtomicBoolean,
+        failure: AtomicReference<IOException?>,
+        limit: Int = 1_000_000,
+    ) {
+        try {
+            input.bufferedReader().use { reader ->
+                val buffer = CharArray(8_192)
+                while (output.length < limit) {
+                    val count = reader.read(buffer, 0, minOf(buffer.size, limit - output.length))
+                    if (count < 0) break
+                    output.append(buffer, 0, count)
+                }
+            }
+        } catch (_: InterruptedIOException) {
+            // Android closes Process streams from another thread during timeout,
+            // cancellation, and process teardown. That is a normal end-of-stream,
+            // not an application crash.
+        } catch (error: IOException) {
+            if (!closing.get()) failure.compareAndSet(null, error)
         }
     }
 
