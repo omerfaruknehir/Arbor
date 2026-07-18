@@ -369,7 +369,8 @@ class GenerationWorker(
             return candidate to result.tokens
         }
 
-        for (round in 0..maxToolRounds) {
+        var finalizationRequested = false
+        for (round in 0..(maxToolRounds + 1)) {
             val beforeContentLength = savedContent.length
             val beforeReasoningLength = savedReasoning.length
             var pendingCharacters = 0
@@ -505,8 +506,14 @@ class GenerationWorker(
             val passReasoning = savedReasoning.substring(beforeReasoningLength.coerceAtMost(savedReasoning.length))
 
             if (passToolCalls.isNotEmpty()) {
-                if (round >= maxToolRounds) {
-                    val notice = "\n\n*Arbor stopped after too many consecutive tool calls.*"
+                if (round >= maxToolRounds || finalizationRequested) {
+                    if (!finalizationRequested) {
+                        finalizationRequested = true
+                        nativeToolsDisabled = true
+                        messages += InputMessage(MessageRole.SYSTEM, TOOL_BUDGET_FINALIZATION_INSTRUCTION)
+                        continue
+                    }
+                    val notice = "\n\n*The model kept requesting tools after Arbor asked it to synthesize. The gathered evidence is preserved; retry to continue from it.*"
                     savedContent += notice
                     appendTimeline("text", notice)
                     persistTimeline()
@@ -558,8 +565,19 @@ class GenerationWorker(
                     else timeline[lastTextIndex] = textEvent.copy(content = cleaned)
                 }
             }
-            if (round >= maxToolRounds) {
-                val notice = "\n\n*Arbor stopped after too many consecutive tool calls.*"
+            if (round >= maxToolRounds || finalizationRequested) {
+                if (!finalizationRequested) {
+                    finalizationRequested = true
+                    nativeToolsDisabled = true
+                    messages += InputMessage(
+                        MessageRole.ASSISTANT,
+                        directive.visibleText,
+                        reasoning = passReasoning,
+                    )
+                    messages += InputMessage(MessageRole.SYSTEM, TOOL_BUDGET_FINALIZATION_INSTRUCTION)
+                    continue
+                }
+                val notice = "\n\n*The model kept requesting tools after Arbor asked it to synthesize. The gathered evidence is preserved; retry to continue from it.*"
                 savedContent += notice
                 appendTimeline("text", notice)
                 persistTimeline()
@@ -669,8 +687,12 @@ class GenerationWorker(
         const val KEY_ASSISTANT_ID = "assistant_id"
         const val KEY_CONTINUATION = "continuation"
         const val CHANNEL_ID = "arbor_generation"
-        private const val MAX_TOOL_ROUNDS = 6
-        private const val MAX_DEEP_RESEARCH_TOOL_ROUNDS = 14
+        private const val MAX_TOOL_ROUNDS = 8
+        private const val MAX_DEEP_RESEARCH_TOOL_ROUNDS = 24
+        private const val TOOL_BUDGET_FINALIZATION_INSTRUCTION =
+            "Arbor's tool budget for this response is exhausted. Do not call, request, or print any tool protocol. " +
+                "Use only the evidence and tool results already present. Produce the best complete answer or research report now, " +
+                "state concrete limitations and missing evidence, and report an explicit final or blocked research-state update when Deep Research is active."
         private const val MAX_TOOL_OUTPUT_CHARS = 40_000
         private const val MAX_BACKGROUND_RETRIES = 5
         private const val STREAM_FLUSH_CHARACTERS = 512

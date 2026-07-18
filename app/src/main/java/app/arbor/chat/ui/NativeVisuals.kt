@@ -126,8 +126,8 @@ internal object NativeDiagramParser {
         val nodes = linkedMapOf<String, NativeDiagramNode>()
         val edges = mutableListOf<NativeDiagramEdge>()
         val direction = Regex("(?i)rankdir\\s*=\\s*(LR|RL|TB|BT)").find(source)?.groupValues?.get(1)?.uppercase() ?: "TB"
-        val edge = Regex("([A-Za-z0-9_.-]+)\\s*(->|--)\\s*([A-Za-z0-9_.-]+)(?:\\s*\\[([^]]*)])?")
-        val node = Regex("^\\s*([A-Za-z0-9_.-]+)\\s*\\[([^]]*)]\\s*$")
+        val edge = Regex("([A-Za-z0-9_.-]+)\\s*(->|--)\\s*([A-Za-z0-9_.-]+)(?:\\s*\\[([^\\]]*)\\])?")
+        val node = Regex("^\\s*([A-Za-z0-9_.-]+)\\s*\\[([^\\]]*)\\]\\s*$")
         source.replace('{', ';').replace('}', ';').split(';', '\n').forEach { raw ->
             val line = raw.trim()
             edge.find(line)?.let { match ->
@@ -148,11 +148,32 @@ internal object NativeDiagramParser {
 
     private fun parseNodeToken(raw: String): NativeDiagramNode? {
         val cleaned = raw.trim().substringBefore(":::").trim()
-        val match = Regex("^([A-Za-z0-9_.-]+)(?:\\s*(?:\\[([^]]*)]|\\(([^)]*)\\)|\\{([^}]*)}))?").find(cleaned) ?: return null
-        val id = match.groupValues[1]
-        val label = match.groupValues.drop(2).firstOrNull { it.isNotBlank() } ?: id
+        if (cleaned.isEmpty()) return null
+
+        // Avoid a delimiter-heavy regular expression here. Android 16's ICU
+        // engine rejects some patterns which the desktop JDK accepts, and that
+        // used to crash message rendering before Arbor could fall back safely.
+        val idEnd = cleaned.indexOfFirst { it !in NODE_ID_CHARS }
+            .let { if (it < 0) cleaned.length else it }
+        if (idEnd == 0) return null
+
+        val id = cleaned.substring(0, idEnd)
+        val suffix = cleaned.substring(idEnd).trimStart()
+        if (suffix.isEmpty()) return NativeDiagramNode(id, id)
+
+        val closingDelimiter = when (suffix.first()) {
+            '[' -> ']'
+            '(' -> ')'
+            '{' -> '}'
+            else -> return NativeDiagramNode(id, id)
+        }
+        val closingIndex = suffix.indexOf(closingDelimiter, startIndex = 1)
+        val label = if (closingIndex > 1) suffix.substring(1, closingIndex) else id
         return NativeDiagramNode(id, cleanLabel(label))
     }
+
+    private val NODE_ID_CHARS =
+        (('A'..'Z') + ('a'..'z') + ('0'..'9') + listOf('_', '.', '-')).toSet()
 
     private fun merge(old: NativeDiagramNode?, new: NativeDiagramNode) = if (old == null || new.label != new.id) new else old
     private fun cleanLabel(value: String) = value.trim().trim('"', '\'', '`').replace(Regex("<br\\s*/?>", RegexOption.IGNORE_CASE), " ").take(140)

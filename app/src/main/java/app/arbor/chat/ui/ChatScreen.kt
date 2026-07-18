@@ -1,6 +1,5 @@
 package app.arbor.chat.ui
 
-import android.content.Intent
 import android.net.Uri
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -208,6 +207,10 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val blurState = rememberArborBackdropBlurState()
     val scrollScope = rememberCoroutineScope()
     val density = LocalDensity.current
+    val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val headerExpandedHeight = 132.dp
+    val headerReserve = statusTop + headerExpandedHeight
+    val headerReservePx = with(density) { headerReserve.roundToPx() }
     val latestThresholdPx = with(density) { 48.dp.roundToPx() }
     val chromeStartPx = with(density) { 56.dp.roundToPx() }
     val chromeEndPx = with(density) { 176.dp.roundToPx() }
@@ -232,7 +235,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             )
         }
     }
-    val headerCollapseProgress by remember(messageListState, paging, headerStartPx, headerEndPx) {
+    val headerCollapseProgress by remember(messageListState, paging, headerReservePx, headerStartPx, headerEndPx) {
         derivedStateOf {
             val layoutInfo = messageListState.layoutInfo
             if (paging.itemCount > 0 && layoutInfo.totalItemsCount == 0) {
@@ -246,7 +249,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     totalItemsCount = layoutInfo.totalItemsCount,
                     oldestVisibleItemIndex = oldestItem?.index,
                     oldestVisibleItemOffsetPx = oldestItem?.offset,
-                    topContentPaddingPx = layoutInfo.afterContentPadding,
+                    topContentPaddingPx = headerReservePx,
                     startPx = headerStartPx,
                     endPx = headerEndPx,
                 )
@@ -319,8 +322,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             )
         },
     ) { padding ->
-        val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-        val headerReserve = statusTop + 148.dp
         Box(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxSize().arborBackdropSource(blurState)) {
                 if (paging.itemCount == 0 && recoverable.isEmpty()) {
@@ -354,7 +355,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                 viewModel = viewModel,
                                 reasoningVisibility = conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
                                 activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
-                                deepResearchEnabled = conversation?.deepResearchEnabled == true,
                             )
                         }
                     }
@@ -402,7 +402,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .height(statusTop + 148.dp)
+                    .height(headerReserve)
                     .zIndex(10f)
                     .arborBackdropBlur(
                         state = blurState,
@@ -439,17 +439,20 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     }
                 }
 
-                val expandedTitleY = statusTop + 72.dp
-                val collapsedTitleY = statusTop + 9.dp
-                val titleY = expandedTitleY + (collapsedTitleY - expandedTitleY) * titleTravel
-                val titleScale = 1.14f - 0.14f * titleTravel
+                val expandedTitleTop = statusTop + 67.dp
+                val collapsedTitleTop = statusTop + 10.dp
+                val titleTranslationPx = with(density) {
+                    ((expandedTitleTop - collapsedTitleTop) * (1f - titleTravel)).toPx()
+                }
+                val titleScale = 1f + 0.14f * (1f - titleTravel)
                 Text(
                     conversation?.title ?: stringResource(R.string.app_name),
                     modifier = Modifier
+                        .align(Alignment.TopCenter)
                         .fillMaxWidth()
-                        .padding(horizontal = 72.dp)
-                        .offset { IntOffset(0, with(density) { titleY.roundToPx() }) }
+                        .padding(start = 72.dp, end = 72.dp, top = collapsedTitleTop)
                         .graphicsLayer {
+                            translationY = titleTranslationPx
                             scaleX = titleScale
                             scaleY = titleScale
                         }
@@ -461,18 +464,16 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     overflow = TextOverflow.Ellipsis,
                 )
 
-                val expandedModelY = statusTop + 111.dp
-                val collapsedModelY = statusTop + 41.dp
-                val modelY = expandedModelY + (collapsedModelY - expandedModelY) * titleTravel
-                val modelScale = 1f - 0.08f * titleTravel
+                val expandedModelTop = statusTop + 106.dp
+                val collapsedModelTop = statusTop + 45.dp
+                val modelTranslationPx = with(density) {
+                    ((expandedModelTop - collapsedModelTop) * (1f - titleTravel)).toPx()
+                }
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .offset { IntOffset(0, with(density) { modelY.roundToPx() }) }
-                        .graphicsLayer {
-                            scaleX = modelScale
-                            scaleY = modelScale
-                        }
+                        .padding(top = collapsedModelTop)
+                        .graphicsLayer { translationY = modelTranslationPx }
                         .zIndex(3f),
                 ) {
                     Surface(
@@ -579,10 +580,30 @@ private fun MessageCard(
     viewModel: ChatViewModel,
     reasoningVisibility: ReasoningVisibility,
     activeModel: ModelEntity?,
-    deepResearchEnabled: Boolean,
 ) {
     val attachments by viewModel.run { containerAttachments(message.nodeId) }.collectAsStateWithLifecycle(initialValue = emptyList())
     val user = message.role == MessageRole.USER
+    val rawTimeline = remember(message.timelineJson) {
+        runCatching { ChatMessageJson.decodeFromString<List<MessageTimelineEvent>>(message.timelineJson) }.getOrDefault(emptyList())
+    }
+    val deepResearchResponse = remember(message.role, message.requestSnapshotJson) {
+        ResearchStateProtocol.isDeepResearchResponse(message.role, message.requestSnapshotJson)
+    }
+    val researchState = remember(deepResearchResponse, rawTimeline, message.reasoning, message.content) {
+        if (!deepResearchResponse) null
+        else ResearchStateProtocol.latest(
+            if (rawTimeline.isNotEmpty()) rawTimeline.map { it.content }
+            else listOf(message.reasoning, message.content),
+        )
+    }
+    val timeline = remember(rawTimeline) {
+        rawTimeline.map { event -> event.copy(content = ResearchStateProtocol.extract(event.content).cleanedText) }
+            .filterNot { event ->
+                event.kind in setOf("text", "reasoning") && event.content.isBlank() && event.input.isBlank() && event.output.isBlank()
+            }
+    }
+    val displayReasoning = remember(message.reasoning) { ResearchStateProtocol.extract(message.reasoning).cleanedText }
+    val displayContent = remember(message.content) { ResearchStateProtocol.extract(message.content).cleanedText }
     var editing by remember(message.nodeId) { mutableStateOf(false) }
     var editedText by remember(message.nodeId) { mutableStateOf(message.content) }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (user) Arrangement.End else Arrangement.Start) {
@@ -592,9 +613,6 @@ private fun MessageCard(
             modifier = Modifier.fillMaxWidth(if (user) .88f else 1f),
         ) {
             Column(Modifier.padding(if (user) 14.dp else 4.dp)) {
-                val timeline = remember(message.timelineJson) {
-                    runCatching { ChatMessageJson.decodeFromString<List<MessageTimelineEvent>>(message.timelineJson) }.getOrDefault(emptyList())
-                }
                 if (attachments.isNotEmpty() && (user || timeline.isEmpty())) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 10.dp)) {
                         attachments.forEach { attachment ->
@@ -612,6 +630,13 @@ private fun MessageCard(
                         }
                     }
                 }
+                if (deepResearchResponse) {
+                    ReportedResearchRoadmap(
+                        state = researchState,
+                        streaming = message.status == MessageStatus.STREAMING,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                }
                 if (timeline.isNotEmpty()) {
                     OrderedMessageTimeline(
                         message.nodeId,
@@ -619,20 +644,18 @@ private fun MessageCard(
                         attachments,
                         message.status == MessageStatus.STREAMING,
                         reasoningVisibility,
-                        deepResearchEnabled,
                         viewModel,
                     )
                 } else {
                     LegacyWorkingBlock(
-                        message.reasoning,
+                        displayReasoning,
                         message.toolTraceJson,
                         message.status == MessageStatus.STREAMING,
                         reasoningVisibility,
-                        deepResearchEnabled,
                     )
-                    if (message.content.isNotBlank()) RichMessage(
+                    if (displayContent.isNotBlank()) RichMessage(
                         operationScope = message.nodeId,
-                        text = message.content,
+                        text = displayContent,
                         streaming = message.status == MessageStatus.STREAMING,
                         onRunPython = viewModel::executePython,
                         onRunUbuntu = viewModel::executeUbuntu,
@@ -705,7 +728,6 @@ private fun OrderedMessageTimeline(
     attachments: List<AttachmentEntity>,
     streaming: Boolean,
     visibility: ReasoningVisibility,
-    deepResearchEnabled: Boolean,
     viewModel: ChatViewModel,
 ) {
     val orderedEvents = remember(events, attachments) {
@@ -720,6 +742,13 @@ private fun OrderedMessageTimeline(
         (events + synthetic).sortedBy(MessageTimelineEvent::startedAt)
     }
     val segments = remember(orderedEvents) { groupOrderedTimeline(orderedEvents) }
+    val usedSourceUrls = remember(orderedEvents) {
+        orderedEvents.filter { it.kind == "fetch" && it.status == "complete" }.mapNotNull { event ->
+            runCatching { ChatMessageJson.decodeFromString<WebFetchResponse>(event.output).url }.getOrNull()
+                ?.takeIf(String::isNotBlank)
+                ?: event.input.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+        }.toSet()
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         segments.forEachIndexed { index, segment ->
             if (segment.working) {
@@ -728,7 +757,7 @@ private fun OrderedMessageTimeline(
                     streaming,
                     streaming && index == segments.lastIndex,
                     visibility,
-                    deepResearchEnabled,
+                    usedSourceUrls,
                     viewModel,
                 )
             } else {
@@ -765,7 +794,7 @@ private fun TimelineWorkingBlock(
     streaming: Boolean,
     active: Boolean,
     visibility: ReasoningVisibility,
-    deepResearchEnabled: Boolean,
+    usedSourceUrls: Set<String>,
     viewModel: ChatViewModel,
 ) {
     val initiallyExpanded = when (visibility) {
@@ -792,9 +821,6 @@ private fun TimelineWorkingBlock(
                 )
                 Text(if (expanded) "Collapse" else "Expand", style = MaterialTheme.typography.labelMedium)
             }
-            if (deepResearchEnabled) {
-                ResearchRoadmap(events = events, streaming = streaming, modifier = Modifier.padding(top = 12.dp))
-            }
             AnimatedVisibility(expanded) {
                 Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     events.forEachIndexed { index, event ->
@@ -811,7 +837,7 @@ private fun TimelineWorkingBlock(
                                 color = if (event.status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                             )
                             if (event.content.isNotBlank()) Text(event.content, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (event.kind in setOf("python", "ubuntu", "search", "fetch")) ToolStepDetails(event.kind, event.input, event.output, event.status, viewModel)
+                            if (event.kind in setOf("python", "ubuntu", "search", "fetch")) ToolStepDetails(event.kind, event.input, event.output, event.status, usedSourceUrls, viewModel)
                             else {
                                 if (event.input.isNotBlank()) AutoLintedCodeText(
                                     language = event.kind,
@@ -835,7 +861,6 @@ private fun LegacyWorkingBlock(
     toolTraceJson: String,
     streaming: Boolean,
     visibility: ReasoningVisibility,
-    deepResearchEnabled: Boolean,
 ) {
     val traces = remember(toolTraceJson) {
         runCatching { ChatMessageJson.decodeFromString<List<ToolTraceEvent>>(toolTraceJson) }.getOrDefault(emptyList())
@@ -861,33 +886,6 @@ private fun LegacyWorkingBlock(
                 Text("Working", Modifier.padding(start = 8.dp).weight(1f), fontWeight = FontWeight.Medium)
                 Text(if (expanded) "Collapse" else "Expand", style = MaterialTheme.typography.labelMedium)
             }
-            if (deepResearchEnabled) {
-                val roadmapEvents = remember(text, traces) {
-                    buildList {
-                        if (text.isNotBlank()) add(MessageTimelineEvent(kind = "reasoning", content = text, startedAt = 0L))
-                        traces.forEach { trace ->
-                            add(
-                                MessageTimelineEvent(
-                                    id = trace.id,
-                                    kind = when {
-                                        trace.type.contains("search", true) -> "search"
-                                        trace.type.contains("fetch", true) -> "fetch"
-                                        trace.type.contains("ubuntu", true) || trace.type.contains("linux", true) -> "ubuntu"
-                                        else -> "python"
-                                    },
-                                    label = trace.label,
-                                    status = trace.status,
-                                    input = trace.input,
-                                    output = trace.output,
-                                    startedAt = trace.startedAt,
-                                    finishedAt = trace.finishedAt,
-                                ),
-                            )
-                        }
-                    }
-                }
-                ResearchRoadmap(events = roadmapEvents, streaming = streaming, modifier = Modifier.padding(top = 12.dp))
-            }
             AnimatedVisibility(expanded) {
                 Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (text.isNotBlank()) Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -905,10 +903,10 @@ private fun LegacyWorkingBlock(
 }
 
 @Composable
-private fun ToolStepDetails(kind: String, input: String, output: String, status: String, viewModel: ChatViewModel) {
+private fun ToolStepDetails(kind: String, input: String, output: String, status: String, usedSourceUrls: Set<String>, viewModel: ChatViewModel) {
     val language = if (kind == "python") "python" else if (kind == "ubuntu") "bash" else "text"
     when (kind) {
-        "search" -> CompactSearchToolCard(input, output, status)
+        "search" -> CompactSearchToolCard(input, output, status, usedSourceUrls)
         "fetch" -> CompactFetchToolCard(input, output, status)
         else -> {
             if (input.isNotBlank()) CodeSourcePanel(
@@ -935,10 +933,16 @@ private fun ToolStepDetails(kind: String, input: String, output: String, status:
 }
 
 @Composable
-private fun CompactSearchToolCard(query: String, output: String, status: String) {
+private fun CompactSearchToolCard(query: String, output: String, status: String, usedSourceUrls: Set<String>) {
     val parsed = remember(output) { runCatching { ChatMessageJson.decodeFromString<WebSearchResponse>(output) }.getOrNull() }
-    val sites = remember(parsed) { parsed?.results.orEmpty().distinctBy { runCatching { Uri.parse(it.url).host }.getOrNull() }.take(8) }
-    var selected by remember { mutableStateOf<app.arbor.chat.agent.WebSearchResult?>(null) }
+    val usedHosts = remember(usedSourceUrls) { usedSourceUrls.mapNotNull { runCatching { Uri.parse(it).host }.getOrNull() }.toSet() }
+    val sites = remember(parsed, usedHosts) {
+        parsed?.results.orEmpty()
+            .filter { result -> usedHosts.isNotEmpty() && runCatching { Uri.parse(result.url).host }.getOrNull() in usedHosts }
+            .distinctBy { runCatching { Uri.parse(it.url).host }.getOrNull() }
+            .take(8)
+    }
+    var selectedUrl by remember { mutableStateOf<String?>(null) }
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = MaterialTheme.shapes.large,
@@ -949,7 +953,7 @@ private fun CompactSearchToolCard(query: String, output: String, status: String)
                 Icon(Icons.Outlined.Search, null, Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
                 Text("Search", Modifier.padding(start = 7.dp), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.weight(1f))
-                Text(if (status == "running") "Searching…" else "${sites.size} sites", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(if (status == "running") "Searching…" else if (sites.isEmpty()) "No opened sources" else "${sites.size} used", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(parsed?.query ?: query, style = MaterialTheme.typography.bodyMedium)
             if (sites.isNotEmpty()) {
@@ -957,20 +961,35 @@ private fun CompactSearchToolCard(query: String, output: String, status: String)
                     items(sites.size) { index ->
                         val result = sites[index]
                         val host = runCatching { Uri.parse(result.url).host }.getOrNull().orEmpty().removePrefix("www.")
-                        AssistChip(
-                            onClick = { selected = result },
-                            label = { Text(host.ifBlank { result.title }, maxLines = 1) },
-                            leadingIcon = { Icon(Icons.Outlined.TravelExplore, null, Modifier.size(15.dp)) },
-                        )
+                        Box {
+                            AssistChip(
+                                onClick = { selectedUrl = result.url },
+                                label = { Text(host.ifBlank { result.title }, maxLines = 1) },
+                                leadingIcon = { Icon(Icons.Outlined.TravelExplore, null, Modifier.size(15.dp)) },
+                            )
+                            DropdownMenu(
+                                expanded = selectedUrl == result.url,
+                                onDismissRequest = { selectedUrl = null },
+                                modifier = Modifier.width(330.dp),
+                            ) {
+                                LinkPreviewDetails(
+                                    reference = LinkReferencePreview(
+                                        kind = LinkReferenceKind.SOURCE,
+                                        label = result.title,
+                                        target = result.url,
+                                        description = result.snippet,
+                                    ),
+                                    onDismiss = { selectedUrl = null },
+                                    modifier = Modifier.padding(14.dp),
+                                )
+                            }
+                        }
                     }
                 }
             } else if (output.isNotBlank() && status == "error") {
                 Text(output.take(500), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
-    }
-    selected?.let { result ->
-        WebReferenceDialog(result.title, result.url, result.snippet) { selected = null }
     }
 }
 
@@ -979,113 +998,94 @@ private fun CompactFetchToolCard(url: String, output: String, status: String) {
     val parsed = remember(output) { runCatching { ChatMessageJson.decodeFromString<WebFetchResponse>(output) }.getOrNull() }
     var show by remember { mutableStateOf(false) }
     val target = parsed?.url ?: url
-    Surface(
-        onClick = { if (target.isNotBlank()) show = true },
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = MaterialTheme.shapes.large,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.TravelExplore, null, Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
-            Column(Modifier.padding(start = 8.dp).weight(1f)) {
-                Text(if (status == "running") "Reading source…" else "Source read", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                Text(runCatching { Uri.parse(target).host }.getOrNull().orEmpty().removePrefix("www.").ifBlank { target }, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Box {
+        Surface(
+            onClick = { if (target.isNotBlank()) show = true },
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.TravelExplore, null, Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
+                Column(Modifier.padding(start = 8.dp).weight(1f)) {
+                    Text(if (status == "running") "Reading source…" else "Source read", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    Text(runCatching { Uri.parse(target).host }.getOrNull().orEmpty().removePrefix("www.").ifBlank { target }, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
+        DropdownMenu(
+            expanded = show,
+            onDismissRequest = { show = false },
+            modifier = Modifier.width(330.dp),
+        ) {
+            LinkPreviewDetails(
+                reference = LinkReferencePreview(
+                    kind = LinkReferenceKind.SOURCE,
+                    label = "Fetched source",
+                    target = target,
+                    description = parsed?.contentType.orEmpty(),
+                ),
+                onDismiss = { show = false },
+                modifier = Modifier.padding(14.dp),
+            )
+        }
     }
-    if (show) WebReferenceDialog("Fetched source", target, parsed?.contentType.orEmpty()) { show = false }
 }
 
 @Composable
-private fun WebReferenceDialog(title: String, url: String, detail: String, onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title.ifBlank { "Website" }) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                val host = runCatching { Uri.parse(url).host }.getOrNull().orEmpty()
-                if (host.isNotBlank()) Text(host, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                if (detail.isNotBlank()) Text(detail.take(500), style = MaterialTheme.typography.bodySmall)
-                Text(url, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
-                Text("Arbor shows the destination before opening it.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        },
-        dismissButton = { AssistChip(onClick = onDismiss, label = { Text("Close") }) },
-        confirmButton = {
-            Button(onClick = {
-                onDismiss()
-                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-            }, enabled = url.startsWith("https://") || url.startsWith("http://")) { Text("Open") }
-        },
-    )
-}
-
-private enum class ResearchStageState { WAITING, ACTIVE, COMPLETE }
-
-private data class ResearchStage(val label: String, val state: ResearchStageState)
-
-@Composable
-private fun ResearchRoadmap(
-    events: List<MessageTimelineEvent>,
+private fun ReportedResearchRoadmap(
+    state: ReportedResearchState?,
     streaming: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val searchEvents = events.filter { it.kind == "search" }
-    val fetchEvents = events.filter { it.kind == "fetch" }
-    val fetchedHosts = remember(fetchEvents) {
-        fetchEvents.mapNotNull { event ->
-            val parsed = runCatching { ChatMessageJson.decodeFromString<WebFetchResponse>(event.output) }.getOrNull()
-            runCatching { Uri.parse(parsed?.url ?: event.input).host }.getOrNull()
-        }.distinct()
+    val effectiveStatus = state?.status?.takeIf(String::isNotBlank)
+        ?: if (streaming) "Waiting for the model to report its roadmap…" else "The model did not report research state."
+    val progress = state?.progress?.coerceIn(0f, 1f) ?: 0f
+    val steps = state?.steps.orEmpty()
+    val stateLabel = when (state?.reportState) {
+        "planning" -> "Planning"
+        "researching" -> "Researching"
+        "synthesizing" -> "Writing report"
+        "complete" -> "Complete"
+        "blocked" -> "Blocked"
+        else -> if (streaming) "Starting" else "Unreported"
     }
-    val hasPlan = events.any { it.kind == "reasoning" && it.content.isNotBlank() } || events.isNotEmpty()
-    val discovered = searchEvents.any { it.status == "complete" }
-    val read = fetchEvents.any { it.status == "complete" }
-    val verified = fetchedHosts.size >= 2 || fetchEvents.count { it.status == "complete" } >= 2
-    val anyRunningTool = events.any { it.status == "running" && it.kind in setOf("search", "fetch", "python", "ubuntu") }
-    val synthesizing = streaming && !anyRunningTool && (discovered || read)
-    val stages = listOf(
-        ResearchStage("Plan", if (hasPlan) ResearchStageState.COMPLETE else if (streaming) ResearchStageState.ACTIVE else ResearchStageState.WAITING),
-        ResearchStage("Discover", if (discovered) ResearchStageState.COMPLETE else if (searchEvents.any { it.status == "running" }) ResearchStageState.ACTIVE else ResearchStageState.WAITING),
-        ResearchStage("Read", if (read) ResearchStageState.COMPLETE else if (fetchEvents.any { it.status == "running" } || discovered) ResearchStageState.ACTIVE else ResearchStageState.WAITING),
-        ResearchStage("Verify", if (verified) ResearchStageState.COMPLETE else if (read) ResearchStageState.ACTIVE else ResearchStageState.WAITING),
-        ResearchStage("Synthesize", if (!streaming) ResearchStageState.COMPLETE else if (synthesizing || verified) ResearchStageState.ACTIVE else ResearchStageState.WAITING),
-    )
-    val completed = stages.count { it.state == ResearchStageState.COMPLETE }
-    val activeFraction = if (stages.any { it.state == ResearchStageState.ACTIVE }) .45f else 0f
-    val progress = ((completed + activeFraction) / stages.size).coerceIn(0f, 1f)
-    val activeLabel = stages.firstOrNull { it.state == ResearchStageState.ACTIVE }?.label
-        ?: stages.lastOrNull { it.state == ResearchStageState.COMPLETE }?.label
-        ?: "Preparing"
 
     Surface(
         color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = .42f),
         shape = MaterialTheme.shapes.large,
         modifier = modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.TravelExplore, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.tertiary)
                 Text("Research roadmap", Modifier.padding(start = 7.dp).weight(1f), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                Text(activeLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                Text(stateLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
             }
+            Text(effectiveStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
             LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(stages.size) { index ->
-                    val stage = stages[index]
-                    Surface(
-                        color = when (stage.state) {
-                            ResearchStageState.COMPLETE -> MaterialTheme.colorScheme.primaryContainer
-                            ResearchStageState.ACTIVE -> MaterialTheme.colorScheme.tertiaryContainer
-                            ResearchStageState.WAITING -> MaterialTheme.colorScheme.surfaceContainer
-                        },
-                        shape = CircleShape,
-                    ) {
-                        Row(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                            if (stage.state == ResearchStageState.COMPLETE) Icon(Icons.Outlined.Check, null, Modifier.size(13.dp))
-                            else if (stage.state == ResearchStageState.ACTIVE) CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp)
-                            Text(stage.label, Modifier.padding(start = if (stage.state == ResearchStageState.WAITING) 0.dp else 4.dp), style = MaterialTheme.typography.labelSmall)
+            if (steps.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    steps.forEach { step ->
+                        val containerColor = when (step.state) {
+                            "complete" -> MaterialTheme.colorScheme.primaryContainer
+                            "active" -> MaterialTheme.colorScheme.tertiaryContainer
+                            "blocked" -> MaterialTheme.colorScheme.errorContainer
+                            else -> MaterialTheme.colorScheme.surfaceContainer
+                        }
+                        Surface(color = containerColor, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                            Row(Modifier.padding(horizontal = 9.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                when (step.state) {
+                                    "complete" -> Icon(Icons.Outlined.Check, null, Modifier.size(15.dp))
+                                    "active" -> CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 1.7.dp)
+                                    "blocked" -> Icon(Icons.Outlined.Close, null, Modifier.size(15.dp), tint = MaterialTheme.colorScheme.error)
+                                    else -> Icon(Icons.Outlined.Schedule, null, Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Column(Modifier.padding(start = 7.dp).weight(1f)) {
+                                    Text(step.title, style = MaterialTheme.typography.labelMedium, fontWeight = if (step.state == "active") FontWeight.SemiBold else FontWeight.Normal)
+                                    if (step.detail.isNotBlank()) Text(step.detail, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
                         }
                     }
                 }

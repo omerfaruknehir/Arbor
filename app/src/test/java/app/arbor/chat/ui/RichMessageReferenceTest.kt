@@ -20,6 +20,14 @@ class RichMessageReferenceTest {
         assertTrue(rendered.contains("logs%2Fbuild%20output.txt"))
     }
 
+    @Test fun longReferenceLabelsAreShortenedForCompactPills() {
+        val rendered = prepareReferenceMarkdown(
+            "[[source|This is an excessively long source label which should not make a huge pill|https://example.com]]",
+        )
+        assertTrue(rendered.contains("…](arbor-source://"))
+        assertFalse(rendered.contains("excessively long source label which should not make a huge pill"))
+    }
+
     @Test fun ordinaryMarkdownLinksArePreservedForPreviewInterception() {
         val link = "[Example](https://example.com/path)"
         assertTrue(prepareReferenceMarkdown(link).contains(link))

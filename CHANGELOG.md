@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.16.14
+
+- Replaced Mermaid node-token regex parsing with a delimiter scanner, eliminating the Android 16 ICU `PatternSyntaxException` in native diagrams.
+- Escaped Graphviz bracket patterns explicitly for Android's stricter regex engine.
+- Added regression coverage for square, round, decision, and malformed Mermaid node delimiters.
+
+## 0.16.13
+
+- Corrected reverse-layout chat header collapse using the physical top content reserve; the title now expands only at the oldest/start of the chat and moves smoothly into the compact header toward the latest messages.
+- Reworked Settings/Search/Sandbox/Terminal title motion around one persistent title and increased their top blur region from 64 dp to 88 dp without changing blur strength.
+- Made Deep Research presentation immutable per response: only messages submitted with Deep Research enabled can show research state, and the roadmap/progress UI is rendered solely from explicit model-reported state rather than guessed tool counts.
+- Added a task-specific research-state protocol and instructed models to report factual roadmap, progress, blocked steps, synthesis, and final report state.
+- Replaced abrupt tool-round termination with a no-tools final synthesis pass, raised research tool capacity, and preserved gathered evidence when a model still refuses to finalize.
+- Simplified web-search cards to the query and sources actually opened by the model.
+- Made source/file pills smaller and shortened oversized labels; all links and reference pills now open an anchored preview with title, domain, description, destination, and explicit Open action.
+- Disabled Android smart-selection on rendered Markdown links, fixing the Samsung/Android 16 `SmartSelectSprite` crash when tapping links inside tables.
+
 ## 0.16.12
 
 - Rebuilt the chat header around one persistent title and model selector, fixing reverse-layout collapse, duplicate geometry, and the selector disappearing away from the beginning of a conversation.

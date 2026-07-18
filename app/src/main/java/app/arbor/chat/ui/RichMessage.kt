@@ -3,7 +3,6 @@ package app.arbor.chat.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
@@ -17,6 +16,7 @@ import android.text.style.ClickableSpan
 import android.text.style.ReplacementSpan
 import android.text.style.URLSpan
 import android.view.View
+import android.view.textclassifier.TextClassifier
 import android.widget.TextView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.horizontalScroll
@@ -61,6 +61,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.arbor.chat.sandbox.ExecutionResult
@@ -309,14 +310,6 @@ private fun PackageRequestBlock(
     )
 }
 
-private enum class ReferenceKind { LINK, SOURCE, FILE }
-
-private data class PendingReference(
-    val kind: ReferenceKind,
-    val label: String,
-    val target: String,
-)
-
 private val ArborReferenceNotation = Regex(
     """\[\[(source|file)\|([^|\]]{1,160})\|([^\]]{1,1500})]]""",
     RegexOption.IGNORE_CASE,
@@ -324,7 +317,8 @@ private val ArborReferenceNotation = Regex(
 
 internal fun prepareReferenceMarkdown(markdown: String): String = ArborReferenceNotation.replace(markdown) { match ->
     val kind = match.groupValues[1].lowercase()
-    val label = match.groupValues[2].trim().replace("[", "(").replace("]", ")")
+    val rawLabel = match.groupValues[2].trim().replace("[", "(").replace("]", ")")
+    val label = if (rawLabel.length <= 30) rawLabel else rawLabel.take(29).trimEnd() + "…"
     val target = URLEncoder.encode(match.groupValues[3].trim(), Charsets.UTF_8.name()).replace("+", "%20")
     "[$label](arbor-$kind://reference?target=$target)"
 }
@@ -336,7 +330,7 @@ private fun MarkdownBlock(markdown: String, key: String) {
     val link = MaterialTheme.colorScheme.primary
     val pillBackground = MaterialTheme.colorScheme.secondaryContainer
     val pillForeground = MaterialTheme.colorScheme.onSecondaryContainer
-    var pendingReference by remember(key) { mutableStateOf<PendingReference?>(null) }
+    var pendingReference by remember(key) { mutableStateOf<LinkReferencePreview?>(null) }
     val renderedMarkdown = remember(markdown) { prepareReferenceMarkdown(markdown) }
     val markwon = remember(context) {
         Markwon.builder(context)
@@ -349,7 +343,8 @@ private fun MarkdownBlock(markdown: String, key: String) {
     AndroidView(
         factory = {
             TextView(it).apply {
-                setTextIsSelectable(true)
+                setTextIsSelectable(false)
+                setTextClassifier(TextClassifier.NO_OP)
                 setBackgroundColor(AndroidColor.TRANSPARENT)
                 textSize = 16f
                 includeFontPadding = false
@@ -375,46 +370,7 @@ private fun MarkdownBlock(markdown: String, key: String) {
     )
 
     pendingReference?.let { reference ->
-        val isOpenable = reference.kind != ReferenceKind.FILE &&
-            (reference.target.startsWith("https://") || reference.target.startsWith("http://"))
-        AlertDialog(
-            onDismissRequest = { pendingReference = null },
-            title = {
-                Text(
-                    when (reference.kind) {
-                        ReferenceKind.SOURCE -> "Source"
-                        ReferenceKind.FILE -> "File reference"
-                        ReferenceKind.LINK -> "Open link?"
-                    },
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(reference.label, fontWeight = FontWeight.SemiBold)
-                    if (reference.kind == ReferenceKind.FILE) {
-                        Text("Referenced file: ${reference.target}", style = MaterialTheme.typography.bodySmall)
-                    } else {
-                        val host = runCatching { Uri.parse(reference.target).host }.getOrNull().orEmpty()
-                        if (host.isNotBlank()) Text(host, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
-                        Text(reference.target, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-                    }
-                    Text(
-                        if (reference.kind == ReferenceKind.FILE) "This pill identifies the file used in the answer."
-                        else "Arbor shows link details before leaving the app.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            dismissButton = { OutlinedButton(onClick = { pendingReference = null }) { Text("Close") } },
-            confirmButton = {
-                if (isOpenable) Button(onClick = {
-                    val target = reference.target
-                    pendingReference = null
-                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target))) }
-                }) { Text("Open") }
-            },
-        )
+        AnchoredLinkPreview(reference = reference, onDismiss = { pendingReference = null })
     }
 }
 
@@ -423,7 +379,7 @@ private fun installReferenceSpans(
     linkColor: Int,
     pillBackground: Int,
     pillForeground: Int,
-    onClick: (PendingReference) -> Unit,
+    onClick: (LinkReferencePreview) -> Unit,
 ) {
     val source = view.text as? Spanned ?: return
     val text = SpannableString(source)
@@ -434,23 +390,32 @@ private fun installReferenceSpans(
         val raw = span.url.orEmpty()
         val parsed = Uri.parse(raw)
         val kind = when (parsed.scheme?.lowercase()) {
-            "arbor-source" -> ReferenceKind.SOURCE
-            "arbor-file" -> ReferenceKind.FILE
-            else -> ReferenceKind.LINK
+            "arbor-source" -> LinkReferenceKind.SOURCE
+            "arbor-file" -> LinkReferenceKind.FILE
+            else -> LinkReferenceKind.LINK
         }
-        val target = if (kind == ReferenceKind.LINK) raw else parsed.getQueryParameter("target").orEmpty()
+        val target = if (kind == LinkReferenceKind.LINK) raw else parsed.getQueryParameter("target").orEmpty()
         val label = text.subSequence(start, end).toString()
         text.removeSpan(span)
         text.setSpan(
-            PreviewClickableSpan(linkColor) { onClick(PendingReference(kind, label, target)) },
+            PreviewClickableSpan(linkColor) { widget ->
+                onClick(
+                    LinkReferencePreview(
+                        kind = kind,
+                        label = label,
+                        target = target,
+                        anchorBoundsInWindow = spanBoundsInWindow(widget as? TextView, start, end),
+                    ),
+                )
+            },
             start,
             end,
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
         )
-        if (kind != ReferenceKind.LINK) {
+        if (kind != LinkReferenceKind.LINK) {
             text.setSpan(
                 LinkPillSpan(
-                    icon = if (kind == ReferenceKind.FILE) "📎" else "🌐",
+                    icon = if (kind == LinkReferenceKind.FILE) "▣" else "↗",
                     backgroundColor = pillBackground,
                     foregroundColor = pillForeground,
                 ),
@@ -466,13 +431,42 @@ private fun installReferenceSpans(
 
 private class PreviewClickableSpan(
     private val color: Int,
-    private val click: () -> Unit,
+    private val click: (View) -> Unit,
 ) : ClickableSpan() {
-    override fun onClick(widget: View) = click()
+    override fun onClick(widget: View) = click(widget)
     override fun updateDrawState(ds: TextPaint) {
         ds.color = color
         ds.isUnderlineText = false
     }
+}
+
+private fun spanBoundsInWindow(view: TextView?, start: Int, end: Int): IntRect {
+    if (view == null) return IntRect(0, 0, 1, 1)
+    val location = IntArray(2)
+    view.getLocationInWindow(location)
+    val layout = view.layout
+    if (layout == null || start !in 0..view.text.length || end !in 0..view.text.length) {
+        return IntRect(location[0], location[1], location[0] + view.width.coerceAtLeast(1), location[1] + view.height.coerceAtLeast(1))
+    }
+    val safeEnd = end.coerceAtLeast(start + 1).coerceAtMost(view.text.length)
+    val startLine = layout.getLineForOffset(start.coerceAtMost(view.text.length))
+    val endLine = layout.getLineForOffset((safeEnd - 1).coerceAtLeast(0))
+    val left = if (startLine == endLine) {
+        minOf(layout.getPrimaryHorizontal(start), layout.getPrimaryHorizontal(safeEnd))
+    } else layout.getLineLeft(startLine)
+    val right = if (startLine == endLine) {
+        maxOf(layout.getPrimaryHorizontal(start), layout.getPrimaryHorizontal(safeEnd))
+    } else layout.getLineRight(startLine)
+    val localLeft = (left + view.totalPaddingLeft - view.scrollX).roundToInt()
+    val localRight = (right + view.totalPaddingLeft - view.scrollX).roundToInt().coerceAtLeast(localLeft + 1)
+    val localTop = layout.getLineTop(startLine) + view.totalPaddingTop - view.scrollY
+    val localBottom = layout.getLineBottom(startLine) + view.totalPaddingTop - view.scrollY
+    return IntRect(
+        left = location[0] + localLeft,
+        top = location[1] + localTop,
+        right = location[0] + localRight,
+        bottom = location[1] + localBottom,
+    )
 }
 
 private class LinkPillSpan(
@@ -480,9 +474,10 @@ private class LinkPillSpan(
     private val backgroundColor: Int,
     private val foregroundColor: Int,
 ) : ReplacementSpan() {
-    private val horizontalPadding = 9f
-    private val verticalPadding = 3f
-    private val iconGap = 5f
+    private val horizontalPadding = 5f
+    private val verticalPadding = 1f
+    private val iconGap = 3f
+    private val textScale = 0.84f
 
     override fun getSize(
         paint: Paint,
@@ -490,7 +485,13 @@ private class LinkPillSpan(
         start: Int,
         end: Int,
         fm: Paint.FontMetricsInt?,
-    ): Int = (horizontalPadding * 2 + paint.measureText(icon) + iconGap + paint.measureText(text, start, end)).roundToInt()
+    ): Int {
+        val oldSize = paint.textSize
+        paint.textSize = oldSize * textScale
+        val width = horizontalPadding * 2 + paint.measureText(icon) + iconGap + paint.measureText(text, start, end)
+        paint.textSize = oldSize
+        return width.roundToInt()
+    }
 
     override fun draw(
         canvas: Canvas,
@@ -506,26 +507,30 @@ private class LinkPillSpan(
         val oldColor = paint.color
         val oldStyle = paint.style
         val oldAntiAlias = paint.isAntiAlias
+        val oldTextSize = paint.textSize
         paint.isAntiAlias = true
-        val width = getSize(paint, text, start, end, null).toFloat()
+        paint.textSize = oldTextSize * textScale
+        val width = (horizontalPadding * 2 + paint.measureText(icon) + iconGap + paint.measureText(text, start, end))
         val fm = paint.fontMetrics
+        val baseline = (top + bottom - fm.ascent - fm.descent) / 2f
         val rect = RectF(
             x,
-            y + fm.ascent - verticalPadding,
+            baseline + fm.ascent - verticalPadding,
             x + width,
-            y + fm.descent + verticalPadding,
+            baseline + fm.descent + verticalPadding,
         )
         paint.color = backgroundColor
         paint.style = Paint.Style.FILL
         canvas.drawRoundRect(rect, rect.height() / 2f, rect.height() / 2f, paint)
         paint.color = foregroundColor
         val iconX = x + horizontalPadding
-        canvas.drawText(icon, iconX, y.toFloat(), paint)
+        canvas.drawText(icon, iconX, baseline, paint)
         val labelX = iconX + paint.measureText(icon) + iconGap
-        canvas.drawText(text, start, end, labelX, y.toFloat(), paint)
+        canvas.drawText(text, start, end, labelX, baseline, paint)
         paint.color = oldColor
         paint.style = oldStyle
         paint.isAntiAlias = oldAntiAlias
+        paint.textSize = oldTextSize
     }
 }
 
