@@ -14,7 +14,6 @@ import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,10 +26,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -89,6 +85,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -103,12 +101,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -116,6 +111,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
@@ -147,12 +143,11 @@ import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import java.io.File
 import java.util.UUID
 
 private val ChatMessageJson = Json { ignoreUnknownKeys = true }
-private const val CHAT_HEADER_ANCHOR_KEY = "chat_header_anchor"
-
 internal fun calculateComposerChromeProgress(
     firstVisibleItemIndex: Int,
     firstVisibleItemScrollOffset: Int,
@@ -162,28 +157,6 @@ internal fun calculateComposerChromeProgress(
     if (firstVisibleItemIndex > 0) return 1f
     if (endPx <= startPx) return if (firstVisibleItemScrollOffset > startPx) 1f else 0f
     return ((firstVisibleItemScrollOffset - startPx).toFloat() / (endPx - startPx).toFloat()).coerceIn(0f, 1f)
-}
-
-/**
- * Collapse progress for the fixed chat header.
- *
- * A dedicated spacer item is placed before the oldest message at the visual
- * top of the reverse-layout list. Its stable key makes the header independent
- * of paging indices, message insertion, and transient LazyColumn remeasurement.
- * The header follows the spacer's physical displacement exactly; there is no
- * separate animation clock or settling state.
- */
-internal fun calculateHeaderCollapseProgress(
-    hasMessages: Boolean,
-    anchorOffsetPx: Int?,
-    viewportStartOffsetPx: Int,
-    collapseDistancePx: Int,
-): Float {
-    if (!hasMessages) return 0f
-    val offset = anchorOffsetPx ?: return 1f
-    val displacementPx = (viewportStartOffsetPx - offset).coerceAtLeast(0)
-    if (collapseDistancePx <= 0) return if (displacementPx > 0) 1f else 0f
-    return (displacementPx.toFloat() / collapseDistancePx.toFloat()).coerceIn(0f, 1f)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -211,11 +184,8 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val blurState = rememberArborBackdropBlurState()
     val scrollScope = rememberCoroutineScope()
     val density = LocalDensity.current
-    val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val headerCompactHeight = 68.dp
-    val headerExpandedHeight = 136.dp
-    val headerReserve = statusTop + headerExpandedHeight
-    val headerCollapseDistancePx = with(density) { (headerExpandedHeight - headerCompactHeight).roundToPx() }
+    val topAppBarState = rememberTopAppBarState()
+    val topAppBarScrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
     val latestThresholdPx = with(density) { 48.dp.roundToPx() }
     val chromeStartPx = with(density) { 56.dp.roundToPx() }
     val chromeEndPx = with(density) { 176.dp.roundToPx() }
@@ -238,30 +208,21 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             )
         }
     }
-    val headerCollapseProgress by remember(messageListState, paging, headerCollapseDistancePx) {
-        derivedStateOf {
-            val layoutInfo = messageListState.layoutInfo
-            if (paging.itemCount > 0 && layoutInfo.totalItemsCount == 0) {
-                // Avoid briefly drawing the expanded title before the first
-                // LazyColumn measure completes at the latest-message position.
-                1f
-            } else {
-                calculateHeaderCollapseProgress(
-                    hasMessages = paging.itemCount > 0,
-                    anchorOffsetPx = layoutInfo.visibleItemsInfo
-                        .firstOrNull { it.key == CHAT_HEADER_ANCHOR_KEY }
-                        ?.offset,
-                    viewportStartOffsetPx = layoutInfo.viewportStartOffset,
-                    collapseDistancePx = headerCollapseDistancePx,
-                )
-            }
-        }
-    }
     LaunchedEffect(conversation?.id) {
         modelMenu = false
         chatMenu = false
         followLatest = true
         messageListState.scrollToItem(0)
+        topAppBarState.contentOffset = 0f
+        topAppBarState.heightOffset = 0f
+
+        // Chat uses the same Material scroll controller as Settings. A loaded
+        // conversation starts compact at the latest message; subsequent title
+        // movement is driven only by nested-scroll distance.
+        val collapsedOffset = snapshotFlow {
+            topAppBarState.heightOffsetLimit to paging.itemCount
+        }.first { (limit, count) -> limit < 0f && count > 0 }.first
+        topAppBarState.heightOffset = collapsedOffset
     }
 
     LaunchedEffect(messageListState, conversation?.id, latestThresholdPx) {
@@ -318,9 +279,68 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     }
 
     Scaffold(
-        modifier = Modifier,
+        modifier = Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
         contentWindowInsets = WindowInsets(0),
-        topBar = {},
+        topBar = {
+            ChatCollapsingTranslucentTopBar(
+                title = conversation?.title ?: stringResource(R.string.app_name),
+                scrollBehavior = topAppBarScrollBehavior,
+                blurState = blurState,
+                blurEnabled = chromeBlurEnabled,
+                blurStrength = chromeBlurStrength,
+                navigationIcon = {
+                    if (openDrawer != null) {
+                        IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Conversations") }
+                    } else {
+                        Spacer(Modifier.size(48.dp))
+                    }
+                },
+                actions = {
+                    if (pending.isNotEmpty()) Badge { Text(pending.size.toString()) }
+                    Box {
+                        IconButton(onClick = { chatMenu = true }) { Icon(Icons.Outlined.MoreVert, "Chat actions") }
+                        DropdownMenu(expanded = chatMenu, onDismissRequest = { chatMenu = false }) {
+                            DropdownMenuItem(text = { Text("Regenerate chat name") }, onClick = { viewModel.regenerateTitle(); chatMenu = false })
+                            DropdownMenuItem(text = { Text("Chat configuration") }, leadingIcon = { Icon(Icons.Outlined.Tune, null) }, onClick = { showChatConfiguration = true; chatMenu = false })
+                            DropdownMenuItem(text = { Text("Edited message history (${revisionHistory.size})") }, leadingIcon = { Icon(Icons.Outlined.History, null) }, onClick = { showHistory = true; chatMenu = false })
+                        }
+                    }
+                },
+                modelSelector = {
+                    Box {
+                        Surface(
+                            onClick = { modelMenu = true },
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .78f),
+                            shape = CircleShape,
+                        ) {
+                            Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Outlined.Psychology, null, Modifier.size(14.dp))
+                                Text(
+                                    buildString {
+                                        val provider = usableProviders.firstOrNull { it.id == conversation?.selectedProviderId }
+                                        if (provider != null && usableProviders.size > 1) append(provider.displayName).append(" · ")
+                                        append(models.firstOrNull { it.modelId == conversation?.selectedModelId }?.displayName ?: conversation?.selectedModelId ?: "Choose model")
+                                    },
+                                    Modifier.padding(start = 4.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                        DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
+                            usableProviders.forEach { provider ->
+                                ProviderModelMenuRows(provider, viewModel, conversation?.selectedProviderId, conversation?.selectedModelId) { providerId, modelId ->
+                                    viewModel.selectModel(providerId, modelId)
+                                    modelMenu = false
+                                }
+                            }
+                            if (usableProviders.isEmpty()) DropdownMenuItem(text = { Text("Open the left menu → Settings to add a provider") }, onClick = { modelMenu = false })
+                        }
+                    }
+                },
+            )
+        },
         bottomBar = {
             Composer(
                 viewModel = viewModel,
@@ -339,7 +359,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 if (paging.itemCount == 0 && recoverable.isEmpty()) {
                     EmptyConversation(
                         modifier = Modifier.padding(
-                            top = statusTop + 88.dp,
+                            top = padding.calculateTopPadding(),
                             bottom = padding.calculateBottomPadding(),
                         ),
                     )
@@ -352,7 +372,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
                         start = 12.dp,
                         end = 12.dp,
-                        top = 0.dp,
+                        top = padding.calculateTopPadding() + 12.dp,
                         bottom = padding.calculateBottomPadding() + 18.dp,
                     ),
                 ) {
@@ -368,18 +388,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                 reasoningVisibility = conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
                                 activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
                             )
-                        }
-                    }
-                    if (paging.itemCount > 0) {
-                        item(
-                            key = CHAT_HEADER_ANCHOR_KEY,
-                            contentType = CHAT_HEADER_ANCHOR_KEY,
-                        ) {
-                            // This real list item replaces the old inferred
-                            // "oldest message offset" geometry. It reserves the
-                            // expanded header at the start of the conversation
-                            // and gives collapse tracking a stable physical anchor.
-                            Spacer(Modifier.fillMaxWidth().height(headerReserve))
                         }
                     }
                 }
@@ -401,7 +409,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 }
             }
             val interrupted = recoverable.firstOrNull { it.status == MessageStatus.INTERRUPTED || it.status == MessageStatus.ERROR }
-            AnimatedVisibility(interrupted != null, modifier = Modifier.align(Alignment.TopCenter).padding(top = statusTop + 88.dp)) {
+            AnimatedVisibility(interrupted != null, modifier = Modifier.align(Alignment.TopCenter).padding(top = padding.calculateTopPadding() + 12.dp)) {
                 interrupted?.let { message ->
                     Surface(
                         color = MaterialTheme.colorScheme.errorContainer,
@@ -420,120 +428,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 }
             }
 
-            // Geometry follows list scroll one-to-one. Any smooth motion comes
-            // from the list itself, never from a separate header animation.
-            val collapse = headerCollapseProgress
-            val currentHeaderContentHeight = headerCompactHeight +
-                (headerExpandedHeight - headerCompactHeight) * (1f - collapse)
-            val currentHeaderHeight = statusTop + currentHeaderContentHeight
-            Box(
-                Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .height(currentHeaderHeight)
-                    .clipToBounds()
-                    .zIndex(10f)
-                    .arborBackdropBlur(
-                        state = blurState,
-                        enabled = chromeBlurEnabled,
-                        progress = collapse,
-                        strength = chromeBlurStrength,
-                        tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
-                        fadeDistance = 76.dp,
-                        overlayDistance = 76.dp,
-                    ),
-            ) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .height(headerCompactHeight)
-                        .padding(horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (openDrawer != null) {
-                        IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Conversations") }
-                    } else {
-                        Spacer(Modifier.size(48.dp))
-                    }
-                    Spacer(Modifier.weight(1f))
-                    if (pending.isNotEmpty()) Badge { Text(pending.size.toString()) }
-                    Box {
-                        IconButton(onClick = { chatMenu = true }) { Icon(Icons.Outlined.MoreVert, "Chat actions") }
-                        DropdownMenu(expanded = chatMenu, onDismissRequest = { chatMenu = false }) {
-                            DropdownMenuItem(text = { Text("Regenerate chat name") }, onClick = { viewModel.regenerateTitle(); chatMenu = false })
-                            DropdownMenuItem(text = { Text("Chat configuration") }, leadingIcon = { Icon(Icons.Outlined.Tune, null) }, onClick = { showChatConfiguration = true; chatMenu = false })
-                            DropdownMenuItem(text = { Text("Edited message history (${revisionHistory.size})") }, leadingIcon = { Icon(Icons.Outlined.History, null) }, onClick = { showHistory = true; chatMenu = false })
-                        }
-                    }
-                }
-
-                // One persistent title: it is part of the fixed header, never a
-                // floating list overlay and never cross-faded with a duplicate.
-                val expandedTitleTop = statusTop + 72.dp
-                val collapsedTitleTop = statusTop + 11.dp
-                val titleTop = collapsedTitleTop + (expandedTitleTop - collapsedTitleTop) * (1f - collapse)
-                val titleScale = 1f + 0.20f * (1f - collapse)
-                Text(
-                    conversation?.title ?: stringResource(R.string.app_name),
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .offset(y = titleTop)
-                        .padding(horizontal = 72.dp)
-                        .graphicsLayer {
-                            scaleX = titleScale
-                            scaleY = titleScale
-                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin.Center
-                        }
-                        .zIndex(2f),
-                    fontWeight = FontWeight.SemiBold,
-                    style = MaterialTheme.typography.titleLarge,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-
-                val expandedModelTop = statusTop + 108.dp
-                val collapsedModelTop = statusTop + 42.dp
-                val modelTop = collapsedModelTop + (expandedModelTop - collapsedModelTop) * (1f - collapse)
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .offset(y = modelTop)
-                        .zIndex(3f),
-                ) {
-                    Surface(
-                        onClick = { modelMenu = true },
-                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .78f),
-                        shape = CircleShape,
-                    ) {
-                        Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Outlined.Psychology, null, Modifier.size(14.dp))
-                            Text(
-                                buildString {
-                                    val provider = usableProviders.firstOrNull { it.id == conversation?.selectedProviderId }
-                                    if (provider != null && usableProviders.size > 1) append(provider.displayName).append(" · ")
-                                    append(models.firstOrNull { it.modelId == conversation?.selectedModelId }?.displayName ?: conversation?.selectedModelId ?: "Choose model")
-                                },
-                                Modifier.padding(start = 4.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                    DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
-                        usableProviders.forEach { provider ->
-                            ProviderModelMenuRows(provider, viewModel, conversation?.selectedProviderId, conversation?.selectedModelId) { providerId, modelId ->
-                                viewModel.selectModel(providerId, modelId)
-                                modelMenu = false
-                            }
-                        }
-                        if (usableProviders.isEmpty()) DropdownMenuItem(text = { Text("Open the left menu → Settings to add a provider") }, onClick = { modelMenu = false })
-                    }
-                }
-            }
         }
     }
     if (showHistory) ModalBottomSheet(onDismissRequest = { showHistory = false }) {

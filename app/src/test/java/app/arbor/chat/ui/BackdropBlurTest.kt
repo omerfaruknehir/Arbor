@@ -23,19 +23,5 @@ class BackdropBlurTest {
         assertEquals(1f, calculateComposerChromeProgress(1, 0, 56, 176), .0001f)
     }
 
-    @Test fun reverseChatHeaderTracksItsStableListAnchor() {
-        // The anchor aligned with the viewport start is the expanded state.
-        assertEquals(0f, calculateHeaderCollapseProgress(true, 0, 0, 68), .0001f)
-        // Moving the anchor half of the collapse distance contracts halfway.
-        assertEquals(.5f, calculateHeaderCollapseProgress(true, -34, 0, 68), .0001f)
-        // Progress clamps after the compact height has been reached.
-        assertEquals(1f, calculateHeaderCollapseProgress(true, -120, 0, 68), .0001f)
-        // Once the anchor is outside the measured viewport, the header is compact.
-        assertEquals(1f, calculateHeaderCollapseProgress(true, null, 0, 68), .0001f)
-        // An empty conversation keeps the large-title state.
-        assertEquals(0f, calculateHeaderCollapseProgress(false, null, 0, 68), .0001f)
-        // Non-zero viewport starts are handled without hard-coded padding assumptions.
-        assertEquals(.5f, calculateHeaderCollapseProgress(true, -24, 10, 68), .0001f)
-    }
 
 }

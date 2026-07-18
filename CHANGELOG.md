@@ -263,3 +263,6 @@
 ## 0.1.0
 
 - Initial native Android build.
+
+## 0.16.19
+- Chat header now uses the same Material scroll behavior as Settings; fixed compact settings-title alignment.

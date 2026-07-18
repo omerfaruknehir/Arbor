@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -20,27 +21,27 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 
 /**
- * Material's large bar is retained only as the scroll/height controller. Arbor
- * draws exactly one title above it and physically moves that title into the
- * compact header. No expanded/collapsed title crossfade is involved.
+ * Chat counterpart of [CollapsingTranslucentTopBar]. The Material top-app-bar
+ * state owns the collapse distance, exactly as it does on Settings screens.
+ * There is no message-index, anchor-item, timer, or independent animation state.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CollapsingTranslucentTopBar(
+fun ChatCollapsingTranslucentTopBar(
     title: String,
     scrollBehavior: TopAppBarScrollBehavior,
     navigationIcon: @Composable () -> Unit,
-    actions: @Composable RowScope.() -> Unit = {},
+    actions: @Composable RowScope.() -> Unit,
+    modelSelector: @Composable () -> Unit,
     blurState: ArborBackdropBlurState,
     blurEnabled: Boolean = true,
     blurStrength: Float = 0.7f,
-    blurArea: Dp = 88.dp,
 ) {
     val collapse = scrollBehavior.state.collapsedFraction.coerceIn(0f, 1f)
     val travel = arborBlurProgress(collapse)
@@ -55,8 +56,8 @@ fun CollapsingTranslucentTopBar(
                 progress = collapse,
                 strength = blurStrength,
                 tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
-                fadeDistance = blurArea,
-                overlayDistance = blurArea,
+                fadeDistance = 76.dp,
+                overlayDistance = 76.dp,
             ),
     ) {
         LargeTopAppBar(
@@ -70,39 +71,46 @@ fun CollapsingTranslucentTopBar(
             ),
         )
 
-        val expandedX = 16.dp
-        val collapsedX = 56.dp
-        val titleTranslationX = with(density) { ((expandedX - collapsedX) * (1f - travel)).toPx() }
-        // The compact title is centered in the same 64 dp row as the
-        // navigation icon. Translation starts from that exact baseline, so the
-        // fully collapsed state cannot drift upward with font metrics.
-        val titleTranslationY = with(density) { (58.dp * (1f - travel)).toPx() }
-        val titleScale = 1f + 0.18f * (1f - travel)
-
         Box(
             modifier = Modifier
-                .align(Alignment.TopStart)
+                .align(Alignment.TopCenter)
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .height(64.dp)
-                .graphicsLayer {
-                    translationX = titleTranslationX
-                    translationY = titleTranslationY
-                    scaleX = titleScale
-                    scaleY = titleScale
-                    transformOrigin = TransformOrigin(0f, 0.5f)
-                }
-                .padding(start = collapsedX, end = 80.dp)
-                .zIndex(2f),
-            contentAlignment = Alignment.CenterStart,
+                .height(64.dp),
         ) {
+            val titleTranslationY = with(density) { (61.dp * (1f - travel)).toPx() }
+            val titleScale = 1f + 0.20f * (1f - travel)
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .offset(y = 11.dp)
+                    .padding(horizontal = 72.dp)
+                    .graphicsLayer {
+                        translationY = titleTranslationY
+                        scaleX = titleScale
+                        scaleY = titleScale
+                        transformOrigin = TransformOrigin.Center
+                    }
+                    .zIndex(2f),
                 fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.titleLarge,
+                textAlign = TextAlign.Center,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+
+            val modelTranslationY = with(density) { (66.dp * (1f - travel)).toPx() }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = 42.dp)
+                    .graphicsLayer { translationY = modelTranslationY }
+                    .zIndex(3f),
+            ) {
+                modelSelector()
+            }
         }
     }
 }
