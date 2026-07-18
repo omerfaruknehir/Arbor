@@ -240,7 +240,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         enabled = chromeBlurEnabled,
                         progress = collapse,
                         strength = chromeBlurStrength,
-                        tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.24f),
+                        tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.16f),
                     ),
             ) {
                 LargeTopAppBar(
@@ -792,14 +792,14 @@ private fun Composer(
                 enabled = chromeBlurEnabled,
                 progress = chromeProgress,
                 strength = chromeBlurStrength,
-                tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.24f),
+                tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.16f),
             ),
     ) {
         Surface(
             shadowElevation = 8.dp,
             tonalElevation = 1.dp,
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = if (chromeBlurEnabled) .68f else 1f),
+            color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = if (chromeBlurEnabled) .46f else 1f),
         ) {
             Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 10.dp, vertical = 8.dp)) {
             if (pending.isNotEmpty()) Text(

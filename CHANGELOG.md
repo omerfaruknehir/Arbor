@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.16.7
+
+- Replaced the ineffective shared-layer blur toggle with a persistent per-surface backdrop layer, fixing deferred RenderEffect submission on Samsung/Android 16.
+- Added blur overscan so the top bar and composer no longer retain sharp edge strips.
+- Blur now has a visible baseline when enabled and increases smoothly with scrolling; tint opacity remains constant.
+- Reduced chrome tint opacity so the blurred content remains visible, while preserving an opaque fallback when blur is disabled or unsupported.
+- Added regression tests for clamped, monotonic blur progression.
+- Bumped the debug package to version code 32.
+
 ## 0.15.0
 
 - Rebuilt the composer around the compact Option B layout: tool controls sit above the message field, while the input row contains only Add, message entry, and Send/Stop.

@@ -38,7 +38,7 @@ fun CollapsingTranslucentTopBar(
                 enabled = blurEnabled,
                 progress = collapse,
                 strength = blurStrength,
-                tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.24f),
+                tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.16f),
             ),
     ) {
         LargeTopAppBar(
