@@ -1,3 +1,9 @@
+# 0.16.10
+
+- Replaced the sparse high-radius blur with a dense seventeen-tap Gaussian pass to eliminate the visible grid pattern.
+- Removed the full-width composer Surface and shadow; the input chrome now uses only a long feathered backdrop gradient.
+- Replaced Material 3's crossfading chat title with one title that physically moves and scales into the collapsed header.
+
 # 0.16.9
 
 - Strengthened gradual blur and made the overlay itself fade smoothly.

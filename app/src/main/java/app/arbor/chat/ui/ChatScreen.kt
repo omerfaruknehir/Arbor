@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,7 +24,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -98,14 +101,17 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -232,6 +238,9 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         contentWindowInsets = WindowInsets(0),
         topBar = {
             val collapse = topAppBarState.collapsedFraction.coerceIn(0f, 1f)
+            val titleTravel = arborBlurProgress(collapse)
+            val density = LocalDensity.current
+            val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -244,79 +253,76 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     ),
             ) {
                 LargeTopAppBar(
-                navigationIcon = { if (openDrawer != null) IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Conversations") } },
-                title = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            conversation?.title ?: stringResource(R.string.app_name),
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        AnimatedVisibility(visible = topAppBarState.collapsedFraction < .72f) {
+                    navigationIcon = { if (openDrawer != null) IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Conversations") } },
+                    title = {},
+                    actions = {
+                        if (pending.isNotEmpty()) Badge { Text(pending.size.toString()) }
                         Box {
-                            Surface(
-                                onClick = { modelMenu = true },
-                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .55f),
-                                shape = MaterialTheme.shapes.small,
-                            ) {
-                                Row(Modifier.padding(horizontal = 8.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Outlined.Psychology, null, Modifier.size(14.dp))
-                                    Text(
-                                        buildString {
-                                            val provider = usableProviders.firstOrNull { it.id == conversation?.selectedProviderId }
-                                            if (provider != null && usableProviders.size > 1) append(provider.displayName).append(" · ")
-                                            append(models.firstOrNull { it.modelId == conversation?.selectedModelId }?.displayName
-                                                ?: conversation?.selectedModelId ?: "Choose model")
-                                        },
-                                        Modifier.padding(start = 4.dp),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
+                            IconButton(onClick = { chatMenu = true }) { Icon(Icons.Outlined.MoreVert, "Chat actions") }
+                            DropdownMenu(expanded = chatMenu, onDismissRequest = { chatMenu = false }) {
+                                DropdownMenuItem(text = { Text("Regenerate chat name") }, onClick = { viewModel.regenerateTitle(); chatMenu = false })
+                                DropdownMenuItem(text = { Text("Chat configuration") }, leadingIcon = { Icon(Icons.Outlined.Tune, null) }, onClick = { showChatConfiguration = true; chatMenu = false })
+                                DropdownMenuItem(text = { Text("Edited message history (${revisionHistory.size})") }, leadingIcon = { Icon(Icons.Outlined.History, null) }, onClick = { showHistory = true; chatMenu = false })
                             }
                         }
-                        DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
-                            usableProviders.forEach { provider ->
-                                ProviderModelMenuRows(provider, viewModel, conversation?.selectedProviderId, conversation?.selectedModelId) { providerId, modelId ->
-                                    viewModel.selectModel(providerId, modelId)
-                                    modelMenu = false
-                                }
-                            }
-                            if (usableProviders.isEmpty()) DropdownMenuItem(text = { Text("Open the left menu → Settings to add a provider") }, onClick = { modelMenu = false })
-                        }
-                        }
-                    }
-                },
-                actions = {
-                    if (pending.isNotEmpty()) Badge { Text(pending.size.toString()) }
-                    Box {
-                        IconButton(onClick = { chatMenu = true }) { Icon(Icons.Outlined.MoreVert, "Chat actions") }
-                        DropdownMenu(expanded = chatMenu, onDismissRequest = { chatMenu = false }) {
-                            DropdownMenuItem(
-                                text = { Text("Regenerate chat name") },
-                                onClick = { viewModel.regenerateTitle(); chatMenu = false },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Chat configuration") },
-                                leadingIcon = { Icon(Icons.Outlined.Tune, null) },
-                                onClick = { showChatConfiguration = true; chatMenu = false },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Edited message history (${revisionHistory.size})") },
-                                leadingIcon = { Icon(Icons.Outlined.History, null) },
-                                onClick = { showHistory = true; chatMenu = false },
-                            )
-                        }
-                    }
-                },
-                scrollBehavior = topAppBarScrollBehavior,
-                colors = TopAppBarDefaults.largeTopAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                ),
+                    },
+                    scrollBehavior = topAppBarScrollBehavior,
+                    colors = TopAppBarDefaults.largeTopAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent),
                 )
+
+                val expandedTitleY = statusTop + 78.dp
+                val collapsedTitleY = statusTop + 18.dp
+                val titleY = expandedTitleY + (collapsedTitleY - expandedTitleY) * titleTravel
+                val titleScale = 1.16f - 0.16f * titleTravel
+                Text(
+                    conversation?.title ?: stringResource(R.string.app_name),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 72.dp)
+                        .offset { IntOffset(0, with(density) { titleY.roundToPx() }) }
+                        .graphicsLayer { scaleX = titleScale; scaleY = titleScale }
+                        .zIndex(2f),
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.titleLarge,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+
+                val modelAlpha = (1f - collapse / 0.62f).coerceIn(0f, 1f)
+                if (modelAlpha > 0.02f) Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = statusTop + 116.dp - 44.dp * titleTravel)
+                        .graphicsLayer { alpha = modelAlpha }
+                        .zIndex(2f),
+                ) {
+                    Surface(onClick = { modelMenu = true }, color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .55f), shape = MaterialTheme.shapes.small) {
+                        Row(Modifier.padding(horizontal = 8.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.Psychology, null, Modifier.size(14.dp))
+                            Text(
+                                buildString {
+                                    val provider = usableProviders.firstOrNull { it.id == conversation?.selectedProviderId }
+                                    if (provider != null && usableProviders.size > 1) append(provider.displayName).append(" · ")
+                                    append(models.firstOrNull { it.modelId == conversation?.selectedModelId }?.displayName ?: conversation?.selectedModelId ?: "Choose model")
+                                },
+                                Modifier.padding(start = 4.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
+                        usableProviders.forEach { provider ->
+                            ProviderModelMenuRows(provider, viewModel, conversation?.selectedProviderId, conversation?.selectedModelId) { providerId, modelId ->
+                                viewModel.selectModel(providerId, modelId)
+                                modelMenu = false
+                            }
+                        }
+                        if (usableProviders.isEmpty()) DropdownMenuItem(text = { Text("Open the left menu → Settings to add a provider") }, onClick = { modelMenu = false })
+                    }
+                }
             }
         },
         bottomBar = {
@@ -784,8 +790,6 @@ private fun Composer(
         camera.launch(uri)
     }
 
-    val composerOverlayProgress = arborBlurProgress(chromeProgress)
-
     Box(
         Modifier
             .fillMaxWidth()
@@ -794,19 +798,12 @@ private fun Composer(
                 enabled = chromeBlurEnabled,
                 progress = chromeProgress,
                 strength = chromeBlurStrength,
-                tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.30f),
+                tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.46f),
                 edge = ArborBlurEdge.BOTTOM,
+                fadeDistance = 196.dp,
             ),
     ) {
-        Surface(
-            shadowElevation = 8.dp,
-            tonalElevation = 1.dp,
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerLow.copy(
-                alpha = if (chromeBlurEnabled) 0.10f + 0.56f * composerOverlayProgress else 1f,
-            ),
-        ) {
-            Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 10.dp, vertical = 8.dp)) {
+        Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 10.dp, vertical = 8.dp)) {
             if (pending.isNotEmpty()) Text(
                 "${pending.size} message${if (pending.size == 1) "" else "s"} queued",
                 style = MaterialTheme.typography.labelMedium,
@@ -912,7 +909,6 @@ private fun Composer(
                 }
             }
 
-            }
         }
     }
 

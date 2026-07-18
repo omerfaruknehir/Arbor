@@ -133,29 +133,29 @@ fun Modifier.arborBackdropBlur(
     DisposableEffect(state, edge) { onDispose { state.clear(edge) } }
 
     this.drawWithContent {
-        if (enabled) {
-            val peak = tint.copy(alpha = tint.alpha * easedProgress)
-            val shoulder = tint.copy(alpha = tint.alpha * easedProgress * 0.92f)
-            val brush = when (edge) {
-                ArborBlurEdge.TOP -> Brush.verticalGradient(
-                    colorStops = arrayOf(
-                        0f to peak,
-                        0.72f to shoulder,
-                        1f to Color.Transparent,
-                    ),
-                )
-                ArborBlurEdge.BOTTOM -> Brush.verticalGradient(
-                    colorStops = arrayOf(
-                        0f to Color.Transparent,
-                        0.28f to shoulder,
-                        1f to peak,
-                    ),
-                )
-            }
-            drawRect(brush = brush)
-        } else {
-            drawRect(tint.copy(alpha = 0.96f))
+        val overlayProgress = if (enabled) easedProgress else 1f
+        val peak = tint.copy(alpha = tint.alpha * overlayProgress)
+        val middle = tint.copy(alpha = tint.alpha * overlayProgress * 0.58f)
+        val feather = tint.copy(alpha = tint.alpha * overlayProgress * 0.12f)
+        val brush = when (edge) {
+            ArborBlurEdge.TOP -> Brush.verticalGradient(
+                colorStops = arrayOf(
+                    0f to peak,
+                    0.30f to middle,
+                    0.58f to feather,
+                    1f to Color.Transparent,
+                ),
+            )
+            ArborBlurEdge.BOTTOM -> Brush.verticalGradient(
+                colorStops = arrayOf(
+                    0f to Color.Transparent,
+                    0.42f to feather,
+                    0.70f to middle,
+                    1f to peak,
+                ),
+            )
         }
+        drawRect(brush = brush)
         drawContent()
     }
 }
@@ -165,7 +165,13 @@ private const val DEFAULT_MAX_RADIUS_DP = 24f
 private const val DEFAULT_TOP_FADE_DP = 180f
 private const val DEFAULT_BOTTOM_FADE_DP = 152f
 
-/** Fixed nine-tap separable kernel derived from Agora's gradient blur. */
+/**
+ * Dense seventeen-tap separable Gaussian kernel.
+ *
+ * The old high-radius nine-tap kernel left large gaps between samples, which
+ * appeared as a grid on high-density displays. These taps cover the requested
+ * radius uniformly and rely on bilinear texture filtering between samples.
+ */
 private val EDGE_BLUR_SHADER = """
     uniform shader content;
     uniform float2 uBlur;
@@ -179,16 +185,24 @@ private val EDGE_BLUR_SHADER = """
         float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
         if (radius < 0.35) return content.eval(coord);
 
-        float2 axis = uDirection * radius;
-        half4 accum = half4(content.eval(coord)) * 0.24084130;
-        accum += half4(content.eval(coord + axis * 0.6)) * 0.20116756;
-        accum += half4(content.eval(coord - axis * 0.6)) * 0.20116756;
-        accum += half4(content.eval(coord + axis * 1.2)) * 0.11723004;
-        accum += half4(content.eval(coord - axis * 1.2)) * 0.11723004;
-        accum += half4(content.eval(coord + axis * 1.8)) * 0.04766218;
-        accum += half4(content.eval(coord - axis * 1.8)) * 0.04766218;
-        accum += half4(content.eval(coord + axis * 2.4)) * 0.01351957;
-        accum += half4(content.eval(coord - axis * 2.4)) * 0.01351957;
+        float2 sampleStep = uDirection * (radius / 8.0);
+        half4 accum = half4(content.eval(coord)) * 0.103152619;
+        accum += half4(content.eval(coord + sampleStep * 1.0)) * 0.099978946;
+        accum += half4(content.eval(coord - sampleStep * 1.0)) * 0.099978946;
+        accum += half4(content.eval(coord + sampleStep * 2.0)) * 0.091031867;
+        accum += half4(content.eval(coord - sampleStep * 2.0)) * 0.091031867;
+        accum += half4(content.eval(coord + sampleStep * 3.0)) * 0.077863682;
+        accum += half4(content.eval(coord - sampleStep * 3.0)) * 0.077863682;
+        accum += half4(content.eval(coord + sampleStep * 4.0)) * 0.062565226;
+        accum += half4(content.eval(coord - sampleStep * 4.0)) * 0.062565226;
+        accum += half4(content.eval(coord + sampleStep * 5.0)) * 0.047226710;
+        accum += half4(content.eval(coord - sampleStep * 5.0)) * 0.047226710;
+        accum += half4(content.eval(coord + sampleStep * 6.0)) * 0.033488752;
+        accum += half4(content.eval(coord - sampleStep * 6.0)) * 0.033488752;
+        accum += half4(content.eval(coord + sampleStep * 7.0)) * 0.022308318;
+        accum += half4(content.eval(coord - sampleStep * 7.0)) * 0.022308318;
+        accum += half4(content.eval(coord + sampleStep * 8.0)) * 0.013960189;
+        accum += half4(content.eval(coord - sampleStep * 8.0)) * 0.013960189;
         return accum;
     }
 """.trimIndent()
