@@ -21,6 +21,7 @@ import app.arbor.chat.data.GenerationUsageEntity
 import app.arbor.chat.data.PackageTransactionEntity
 import app.arbor.chat.data.SearchHit
 import app.arbor.chat.data.SendMode
+import app.arbor.chat.data.SystemPromptProfileEntity
 import app.arbor.chat.generation.GenerationRequestSnapshot
 import app.arbor.chat.settings.NewChatDefaults
 import kotlinx.coroutines.flow.Flow
@@ -33,6 +34,7 @@ class ChatRepository(private val database: ArborDatabase) {
     val archivedConversations: Flow<List<ConversationListItem>> = database.conversationDao().observeArchived()
     val projects: Flow<List<ProjectEntity>> = database.projectDao().observeAll()
     val automationSettings: Flow<AutomationSettingsEntity?> = database.automationSettingsDao().observe()
+    val systemPromptProfiles: Flow<List<SystemPromptProfileEntity>> = database.systemPromptProfileDao().observeAll()
 
     fun conversation(id: String) = database.conversationDao().observe(id)
     fun recoverable(id: String) = database.messageDao().observeRecoverable(id)
@@ -367,6 +369,31 @@ class ChatRepository(private val database: ArborDatabase) {
         database.projectDao().delete(id)
     }
 
+    suspend fun systemPromptProfile(id: String?) = id?.let { database.systemPromptProfileDao().get(it) }
+
+    suspend fun createSystemPromptProfile(name: String, prompt: String, mode: app.arbor.chat.data.SystemPromptMode): SystemPromptProfileEntity {
+        val cleanName = name.trim().replace(Regex("\\s+"), " ").take(80)
+        require(cleanName.isNotBlank()) { "Prompt name cannot be empty" }
+        val cleanPrompt = prompt.trim().take(64_000)
+        require(cleanPrompt.isNotBlank()) { "Prompt cannot be empty" }
+        val now = System.currentTimeMillis()
+        return SystemPromptProfileEntity(UUID.randomUUID().toString(), cleanName, cleanPrompt, mode, now, now).also {
+            database.systemPromptProfileDao().insert(it)
+        }
+    }
+
+    suspend fun updateSystemPromptProfile(value: SystemPromptProfileEntity) {
+        val cleanName = value.name.trim().replace(Regex("\\s+"), " ").take(80)
+        val cleanPrompt = value.prompt.trim().take(64_000)
+        require(cleanName.isNotBlank() && cleanPrompt.isNotBlank()) { "Prompt name and content are required" }
+        database.systemPromptProfileDao().update(value.copy(name = cleanName, prompt = cleanPrompt, updatedAt = System.currentTimeMillis()))
+    }
+
+    suspend fun deleteSystemPromptProfile(id: String) = database.withTransaction {
+        database.systemPromptProfileDao().detachFromConversations(id)
+        database.systemPromptProfileDao().delete(id)
+    }
+
     suspend fun automationSettingsNow(): AutomationSettingsEntity {
         val existing = database.automationSettingsDao().get()
         if (existing != null) return existing
@@ -393,7 +420,8 @@ class ChatRepository(private val database: ArborDatabase) {
         val model = requireNotNull(database.catalogDao().model(conversation.selectedProviderId, conversation.selectedModelId)) {
             "Model ${conversation.selectedModelId} is not configured"
         }
-        return Json.encodeToString(GenerationRequestSnapshot.capture(conversation, provider, model))
+        val promptProfile = systemPromptProfile(conversation.systemPromptProfileId)
+        return Json.encodeToString(GenerationRequestSnapshot.capture(conversation, provider, model, promptProfile))
     }
 
     fun search(text: String): Flow<List<SearchHit>> {

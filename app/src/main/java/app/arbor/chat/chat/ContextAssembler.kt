@@ -7,7 +7,14 @@ import app.arbor.chat.data.ContextSummaryEntity
 import app.arbor.chat.data.MessageEntity
 import app.arbor.chat.data.MessageRole
 import app.arbor.chat.data.MessageStatus
+import app.arbor.chat.data.SystemPromptMode
+import app.arbor.chat.data.SystemPromptProfileEntity
 import app.arbor.chat.provider.InputMessage
+import app.arbor.chat.settings.DEFAULT_ARBOR_SYSTEM_PROMPT
+import java.time.ZoneOffset
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 class ContextAssembler(private val attachmentDao: AttachmentDao) {
     suspend fun assemble(
@@ -15,7 +22,27 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
         newestFirst: List<MessageEntity>,
         compressedContext: ContextSummaryEntity? = null,
         nativeToolsAvailable: Boolean = false,
+        promptProfile: SystemPromptProfileEntity? = null,
     ): List<InputMessage> {
+        val now = ZonedDateTime.now()
+        val localFormatter = DateTimeFormatter.ofPattern("EEEE, d MMMM uuuu, HH:mm:ss XXX", Locale.getDefault())
+        val runtimeContext = buildString {
+            appendLine("Arbor runtime context (authoritative for this request):")
+            appendLine("- Current local date and time: ${now.format(localFormatter)}")
+            appendLine("- Device time zone: ${now.zone.id}")
+            appendLine("- Device locale: ${Locale.getDefault().toLanguageTag()}")
+            appendLine("- Platform: Android; do not infer the user's physical location from the time zone or locale")
+            appendLine("- Current UTC: ${now.withZoneSameInstant(ZoneOffset.UTC).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)}")
+            appendLine("- Web search and public-page fetching: ${if (conversation.webSearchEnabled) "enabled" else "disabled"}")
+            appendLine("- Deep Research mode: ${if (conversation.deepResearchEnabled) "enabled" else "disabled"}")
+            appendLine("- Local Code Execution (Python inside the selected Linux distribution, root/uid 0, per-chat virtual environment): ${if (conversation.agentPythonEnabled) "enabled" else "disabled"}")
+            appendLine("- Linux tooling layer: ${if (conversation.agentUbuntuEnabled) "enabled" else "disabled"}")
+            appendLine("- Deliberate thinking requested: ${if (conversation.thinkingEnabled) "enabled (${conversation.thinkingEffort.name.lowercase()})" else "disabled"}")
+            appendLine("- Uploaded attachments: available only when supplied in the conversation; never assume unseen files exist")
+            appendLine("- Native diagrams, charts, interactive chat UI, generated files, and eligible Home-screen widgets: available through Arbor's documented output formats")
+            appendLine("Treat the injected clock as current at request assembly time. Re-check with web tools when an answer depends on a rapidly changing external event rather than merely the local date or time.")
+        }.trim()
+
         val toolInstructions = if (nativeToolsAvailable) {
             """
             You are running inside Arbor for Android. Arbor exposes native functions for enabled web, Python, Linux, and file-delivery tools. Use those structured functions directly and call at most one side-effecting function at a time. Do not print function-call JSON or an `arbor-tool` fence while native functions are available. Stop the conversational answer when making a function call; Arbor runs it, records it in Working, and returns a structured result so you can continue. Never claim a tool ran until Arbor returns its result.
@@ -33,7 +60,7 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
             {"type":"web_search","query":"concise query"}
             ```
             To read a public search result, emit {"type":"web_fetch","url":"https://example.com/page"} in the same fenced format. Local/private network URLs are blocked.
-            To execute Python in this conversation's persistent workspace, emit exactly one fenced block like:
+            To execute Python as root inside this conversation's selected Linux distribution and persistent virtual environment, emit exactly one fenced block like:
             ```arbor-tool
             {"type":"python","code":"print(2 + 2)"}
             ```
@@ -45,20 +72,30 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
             Deep Research mode is active. Treat the request as a research task rather than a quick lookup. First form a concise research plan in Working, then gather evidence iteratively. Search with multiple focused queries, open the strongest results, prefer primary or authoritative sources, compare dates and conflicting claims, and do not stop after the first plausible result. Use uploaded files as sources when relevant. Keep the user able to steer the task: preserve progress after every tool call and respond to steering without discarding completed research. The final answer must be a structured report with inline source URLs or clearly identified source references, a short limitations section when evidence is incomplete, and no invented citations. Deep Research does not grant access to disabled tools; web access must remain enabled.
             """.trimIndent()
         } else ""
+        val personaPrompt = when {
+            promptProfile != null && promptProfile.mode == SystemPromptMode.OVERRIDE -> promptProfile.prompt
+            promptProfile != null -> promptProfile.prompt + "\n\n" + DEFAULT_ARBOR_SYSTEM_PROMPT
+            conversation.systemPrompt.isBlank() || conversation.systemPrompt == DEFAULT_ARBOR_SYSTEM_PROMPT -> DEFAULT_ARBOR_SYSTEM_PROMPT
+            else -> conversation.systemPrompt
+        }
         val result = ArrayList<InputMessage>()
         result += InputMessage(
             MessageRole.SYSTEM,
             """
+            $personaPrompt
+
+            $runtimeContext
+
             $toolInstructions
 
             $researchInstructions
 
-            User attachments are mirrored under the workspace's `incoming/` directory. Python may inspect and transform those private copies even when the selected API model has no native file or image input. Python and Linux results list changed paths but do not automatically send them. To return one at the correct point in the answer, call `send_file` after its creating tool finishes; use `{"type":"send_file","path":"plot.png","caption":"Generated chart"}` only inside the fallback `arbor-tool` fence when native functions are unavailable. Arbor then inserts a native file card at that exact timeline position. Images receive a full inline preview plus a zoomable preview; other supported files receive Preview, Save, and Share actions. Never claim a file was sent until the `send_file` result confirms it.
+            User attachments are mirrored under the workspace's `incoming/` directory. Distro Python may inspect and transform those private copies even when the selected API model has no native file or image input. Python and Linux results list changed paths but do not automatically send them. To return one at the correct point in the answer, call `send_file` after its creating tool finishes; use `{"type":"send_file","path":"plot.png","caption":"Generated chart"}` only inside the fallback `arbor-tool` fence when native functions are unavailable. Arbor then inserts a native file card at that exact timeline position. Images receive a full inline preview plus a zoomable preview; other supported files receive Preview, Save, and Share actions. Never claim a file was sent until the `send_file` result confirms it.
 
-            If Python needs packages which are not installed, request them in a fenced `python-requirements` block with one package requirement per line. Arbor asks the user before installing anything; never claim installation until a later system event confirms it.
+            If Python needs packages which are not installed, request them in a fenced `python-requirements` block with one package requirement per line. Arbor installs them with pip into `/workspace/.arbor-venv` inside the selected distribution after approval. Arbor asks the user before installing anything; never claim installation until a later system event confirms it.
 
             Arbor can also provide a user-selected Ubuntu, Debian, or Alpine tooling layer. When Linux tools are enabled and the selected distribution is installed, call `linux_exec` with a non-interactive command such as `file incoming/example.bin && rg -n TODO .`; use the equivalent JSON only inside a fallback `arbor-tool` fence when native functions are unavailable.
-            The chat workspace is `/workspace` inside the selected distribution, including `incoming/`. This is a compatibility/tooling layer, not a security boundary. Python has a 45-second default deadline and Linux commands have a 60-second default; a request may set `timeoutSeconds`, up to 600 for Python or 900 for Linux. If a result says it timed out, report the exact elapsed time and ask before retrying with a longer deadline—never silently repeat it. Never use apt, dpkg, apk, pip, or another package manager through `linux_exec`. Request packages in a visible fenced `linux-packages` block, one package per line, and wait for Arbor to report the user's configured approval decision and completed installation.
+            The chat workspace is `/workspace` inside the selected distribution, including `incoming/`. Python and Linux commands run as root (uid 0) inside PRoot. This is a compatibility/tooling layer, not a security boundary; Android still confines the app. Python has a 45-second default deadline and Linux commands have a 60-second default; a request may set `timeoutSeconds`, up to 600 for Python or 900 for Linux. If a result says it timed out, report the exact elapsed time and ask before retrying with a longer deadline—never silently repeat it. Never use apt, dpkg, apk, pip, or another package manager through `linux_exec`. Request packages in a visible fenced `linux-packages` block, one package per line, and wait for Arbor to report the user's configured approval decision and completed installation.
 
             You may create native diagrams with Mermaid fences. Arbor natively renders flowchart/graph edges, labeled and chained edges, node labels, state-style edges, and sequenceDiagram participants/messages. A basic Graphviz DOT subset (digraph/graph edges, labels, and rankdir) is also rendered natively. Keep diagrams compact and valid.
 
@@ -79,7 +116,7 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
             A button or tappable list item has one or more ordered `actions`. Supported operations are set, add, multiply, toggle, append, backspace, evaluate, navigate, reset, refresh, submit, timer_start, timer_pause, and timer_reset. Actions use `target`, `value`, or `expression`; navigate uses `screen`; submit uses `message`; any action may have `condition`. Action chains see earlier changes immediately. For explicitly requested Home widgets, use buttons/choices because launchers do not provide arbitrary text entry. Build chat questionnaires, keypads, dashboards, trackers, quizzes, scoreboards, converters, multi-page tools, and live-data panels by composing these primitives on the appropriate surface. Never emit HTML, JavaScript, executable code, unbounded loops, unsupported component names, or network mutation controls.
             """.trimIndent(),
         )
-        if (conversation.systemPrompt.isNotBlank()) result += InputMessage(MessageRole.SYSTEM, conversation.systemPrompt)
+
         if (compressedContext != null && compressedContext.summary.isNotBlank()) {
             result += InputMessage(
                 MessageRole.SYSTEM,

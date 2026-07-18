@@ -21,6 +21,8 @@ import app.arbor.chat.data.ModelEntity
 import app.arbor.chat.data.ProviderEntity
 import app.arbor.chat.data.ProviderKind
 import app.arbor.chat.data.ProjectEntity
+import app.arbor.chat.data.SystemPromptMode
+import app.arbor.chat.data.SystemPromptProfileEntity
 import app.arbor.chat.data.SendMode
 import app.arbor.chat.data.AuxiliaryMode
 import app.arbor.chat.data.PackageApprovalMode
@@ -89,6 +91,8 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     val conversations = container.repository.conversations.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val archivedConversations = container.repository.archivedConversations.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val projects = container.repository.projects.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val systemPromptProfiles = container.repository.systemPromptProfiles
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val automationSettings = container.repository.automationSettings
         .map { it ?: AutomationSettingsEntity() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AutomationSettingsEntity())
@@ -133,7 +137,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         _pythonRun.value = PythonRunState(started, code, timeoutSeconds)
         pythonRunJob = viewModelScope.launch {
             try {
-                val result = container.pythonSandbox.execute(conversationId, code, timeoutSeconds)
+                val result = container.ubuntuRuntime.executePython(conversationId, code, timeoutSeconds)
                 _pythonRun.value = _pythonRun.value?.copy(running = false, result = result)
             } catch (cancelled: CancellationException) {
                 _pythonRun.value = _pythonRun.value?.copy(running = false, error = "Stopped by user")
@@ -144,8 +148,6 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     }
 
     fun stopPythonRun() {
-        val conversationId = selectedConversationId.value ?: draftConversation.value?.id ?: return
-        container.pythonSandbox.requestCancel(conversationId)
         pythonRunJob?.cancel()
     }
 
@@ -544,6 +546,25 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
 
     fun modelsFor(providerId: String) = container.repository.observeModels(providerId)
 
+    fun createSystemPromptProfile(name: String, prompt: String, mode: SystemPromptMode, selectForNewChats: Boolean = true) = launchAction {
+        val profile = container.repository.createSystemPromptProfile(name, prompt, mode)
+        if (selectForNewChats) updateNewChatDefaults { it.copy(systemPromptProfileId = profile.id) }
+        notices.emit("Saved system prompt “${profile.name}”")
+    }
+
+    fun updateSystemPromptProfile(value: SystemPromptProfileEntity) = launchAction {
+        container.repository.updateSystemPromptProfile(value)
+        notices.emit("Updated system prompt “${value.name}”")
+    }
+
+    fun deleteSystemPromptProfile(id: String) = launchAction {
+        container.repository.deleteSystemPromptProfile(id)
+        if (newChatDefaults.value.systemPromptProfileId == id) updateNewChatDefaults { it.copy(systemPromptProfileId = null) }
+        notices.emit("Deleted system prompt")
+    }
+
+    fun selectSystemPromptProfileForCurrent(id: String?) = updateConversation { it.copy(systemPromptProfileId = id) }
+
     fun updateAutomationSettings(transform: (AutomationSettingsEntity) -> AutomationSettingsEntity) = launchAction {
         automationSettingsMutex.withLock {
             container.repository.saveAutomationSettings(transform(container.repository.automationSettingsNow()))
@@ -585,13 +606,13 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
 
     suspend fun executePython(code: String, timeoutSeconds: Int): ExecutionResult {
         val id = selectedConversationId.value ?: error("No conversation")
-        return container.pythonSandbox.execute(id, code, timeoutSeconds)
+        return container.ubuntuRuntime.executePython(id, code, timeoutSeconds)
     }
 
     suspend fun lintCode(language: String, code: String): CodeLintResult {
         val id = selectedConversationId.value ?: error("No conversation")
         return when (language.trim().lowercase()) {
-            "python", "py" -> container.pythonSandbox.lint(code)
+            "python", "py" -> container.ubuntuRuntime.lintPython(id, code)
             "bash", "sh", "shell", "zsh", "ubuntu" -> container.ubuntuRuntime.lintShell(id, code)
             else -> StaticCodeLinter.lint(language, code)
         }
@@ -600,7 +621,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     suspend fun installPythonPackages(requirements: String, approvedPlan: PackagePlan? = null): PackageInstallResult {
         val id = selectedConversationId.value ?: error("No conversation")
         val restrictions = container.repository.automationSettingsNow().packageRestrictionsEnabled
-        val result = container.pythonSandbox.install(id, requirements, restrictions, approvedPlan)
+        val result = container.ubuntuRuntime.installPythonPackages(id, requirements, restrictions, approvedPlan)
         if (result.success) {
             val imports = result.importNames.entries.joinToString("; ") { (distribution, names) ->
                 "$distribution imports as ${names.joinToString().ifBlank { "(no top-level module reported)" }}"
@@ -639,13 +660,13 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     suspend fun reviewPythonPackages(requirements: String): PackageReview {
         val id = selectedConversationId.value ?: error("No conversation")
         val restrictions = container.repository.automationSettingsNow().packageRestrictionsEnabled
-        return container.packageApprovals.review(id, container.pythonSandbox.preflight(id, requirements, restrictions))
+        return container.packageApprovals.review(id, container.ubuntuRuntime.preflightPythonPackages(id, requirements, restrictions))
     }
 
     suspend fun reviewPythonPackages(operationKey: String, requirements: String): PackageReview {
         val id = selectedConversationId.value ?: error("No conversation")
         val restrictions = container.repository.automationSettingsNow().packageRestrictionsEnabled
-        val plan = container.pythonSandbox.preflight(id, requirements, restrictions)
+        val plan = container.ubuntuRuntime.preflightPythonPackages(id, requirements, restrictions)
         return reviewDurablePackage(operationKey, id, requirements, plan)
     }
 
@@ -760,26 +781,29 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         ))
     }
 
+    suspend fun searchPythonPackages(query: String): List<app.arbor.chat.sandbox.PythonPackageSearchResult> =
+        container.ubuntuRuntime.searchPythonPackages(query)
+
     suspend fun pythonEnvironment(): PythonEnvironmentInfo {
         val id = selectedConversationId.value ?: error("No conversation")
-        return container.pythonSandbox.environment(id)
+        return container.ubuntuRuntime.pythonEnvironment(id)
     }
 
     suspend fun removePythonPackages(names: List<String>): PythonEnvironmentInfo {
         val id = selectedConversationId.value ?: error("No conversation")
-        val result = container.pythonSandbox.remove(id, names)
+        val result = container.ubuntuRuntime.removePythonPackages(id, names)
         container.repository.recordSystemEvent(id, "The user removed these Python packages from this conversation environment: ${names.joinToString()}.")
         return result
     }
 
     suspend fun repairPythonEnvironment(): PythonEnvironmentInfo {
         val id = selectedConversationId.value ?: error("No conversation")
-        return container.pythonSandbox.repair(id)
+        return container.ubuntuRuntime.repairPythonEnvironment(id)
     }
 
     suspend fun resetPythonSession() {
         val id = selectedConversationId.value ?: error("No conversation")
-        container.pythonSandbox.resetSession(id)
+        // Distro Python starts a fresh interpreter for each run; files and installed packages remain persistent.
     }
 
     fun openConversationFromIntent(id: String?) = launchAction { ensureInitialized(id) }
@@ -812,7 +836,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
 private fun Throwable.readableMessage(): String = message?.takeIf(String::isNotBlank)
     ?: this::class.java.simpleName
 
-enum class Screen { CHAT, SEARCH, SETTINGS, SANDBOX }
+enum class Screen { CHAT, SEARCH, SETTINGS, SANDBOX, TERMINAL }
 
 private const val PACKAGE_REVIEWED = "REVIEWED"
 private const val PACKAGE_INSTALLING = "INSTALLING"

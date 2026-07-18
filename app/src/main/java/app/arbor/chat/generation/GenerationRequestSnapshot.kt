@@ -5,6 +5,8 @@ import app.arbor.chat.data.ModelEntity
 import app.arbor.chat.data.ProviderEntity
 import app.arbor.chat.data.ProviderKind
 import app.arbor.chat.data.ThinkingEffort
+import app.arbor.chat.data.SystemPromptMode
+import app.arbor.chat.data.SystemPromptProfileEntity
 import kotlinx.serialization.Serializable
 
 /** Immutable request identity captured before work is queued. Secrets are deliberately excluded. */
@@ -33,6 +35,10 @@ data class GenerationRequestSnapshot(
     val workingTokenLimit: Int = 16_000,
     val requestedMaxOutputTokens: Int,
     val systemPrompt: String,
+    val systemPromptProfileId: String? = null,
+    val systemPromptProfileName: String = "",
+    val systemPromptProfileContent: String = "",
+    val systemPromptProfileMode: SystemPromptMode = SystemPromptMode.PREPEND,
     val thinkingEnabled: Boolean = true,
     val thinkingEffort: ThinkingEffort = ThinkingEffort.MEDIUM,
     val webSearchEnabled: Boolean = true,
@@ -79,6 +85,7 @@ data class GenerationRequestSnapshot(
             workingTokenLimit = workingTokenLimit.coerceIn(0, safeInput),
             maxOutputTokens = output,
             systemPrompt = systemPrompt,
+            systemPromptProfileId = systemPromptProfileId,
             thinkingEnabled = thinkingEnabled,
             thinkingEffort = thinkingEffort,
             webSearchEnabled = webSearchEnabled,
@@ -89,11 +96,22 @@ data class GenerationRequestSnapshot(
         )
     }
 
+    fun promptProfile(): SystemPromptProfileEntity? = systemPromptProfileId?.takeIf { systemPromptProfileContent.isNotBlank() }?.let { id ->
+        SystemPromptProfileEntity(
+            id = id,
+            name = systemPromptProfileName.ifBlank { "Saved prompt" },
+            prompt = systemPromptProfileContent,
+            mode = systemPromptProfileMode,
+            createdAt = 0,
+            updatedAt = 0,
+        )
+    }
+
     companion object {
         private const val SYSTEM_AND_TOOL_RESERVE_TOKENS = 12_000L
         private const val MIN_INPUT_TOKENS = 1_024
 
-        fun capture(conversation: ConversationEntity, provider: ProviderEntity, model: ModelEntity) = GenerationRequestSnapshot(
+        fun capture(conversation: ConversationEntity, provider: ProviderEntity, model: ModelEntity, promptProfile: SystemPromptProfileEntity? = null) = GenerationRequestSnapshot(
             providerId = provider.id,
             providerName = provider.displayName,
             providerKind = provider.kind,
@@ -117,6 +135,10 @@ data class GenerationRequestSnapshot(
             workingTokenLimit = conversation.workingTokenLimit,
             requestedMaxOutputTokens = conversation.maxOutputTokens,
             systemPrompt = conversation.systemPrompt,
+            systemPromptProfileId = promptProfile?.id ?: conversation.systemPromptProfileId,
+            systemPromptProfileName = promptProfile?.name.orEmpty(),
+            systemPromptProfileContent = promptProfile?.prompt.orEmpty(),
+            systemPromptProfileMode = promptProfile?.mode ?: SystemPromptMode.PREPEND,
             thinkingEnabled = conversation.thinkingEnabled,
             thinkingEffort = conversation.thinkingEffort,
             webSearchEnabled = conversation.webSearchEnabled,

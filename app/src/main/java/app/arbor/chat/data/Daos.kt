@@ -89,6 +89,28 @@ interface ConversationDao {
     suspend fun deleteTrulyEmpty()
 }
 
+
+@Dao
+interface SystemPromptProfileDao {
+    @Query("SELECT * FROM system_prompt_profiles ORDER BY name COLLATE NOCASE")
+    fun observeAll(): Flow<List<SystemPromptProfileEntity>>
+
+    @Query("SELECT * FROM system_prompt_profiles WHERE id = :id")
+    suspend fun get(id: String): SystemPromptProfileEntity?
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insert(value: SystemPromptProfileEntity)
+
+    @Update
+    suspend fun update(value: SystemPromptProfileEntity)
+
+    @Query("UPDATE conversations SET systemPromptProfileId = NULL WHERE systemPromptProfileId = :id")
+    suspend fun detachFromConversations(id: String)
+
+    @Query("DELETE FROM system_prompt_profiles WHERE id = :id")
+    suspend fun delete(id: String)
+}
+
 @Dao
 interface ProjectDao {
     @Query("SELECT * FROM projects ORDER BY name COLLATE NOCASE")

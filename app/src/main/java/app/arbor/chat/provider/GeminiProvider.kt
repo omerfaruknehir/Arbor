@@ -186,7 +186,9 @@ class GeminiProvider(
         app.arbor.chat.data.ThinkingEffort.MINIMAL -> if (modelId.contains("pro")) "low" else "minimal"
         app.arbor.chat.data.ThinkingEffort.LOW -> "low"
         app.arbor.chat.data.ThinkingEffort.MEDIUM -> "medium"
-        app.arbor.chat.data.ThinkingEffort.HIGH -> "high"
+        app.arbor.chat.data.ThinkingEffort.HIGH,
+        app.arbor.chat.data.ThinkingEffort.XHIGH,
+        app.arbor.chat.data.ThinkingEffort.MAX -> "high"
     }
 
     private val app.arbor.chat.data.ThinkingEffort.gemini25Budget: Int
@@ -194,7 +196,9 @@ class GeminiProvider(
             app.arbor.chat.data.ThinkingEffort.MINIMAL,
             app.arbor.chat.data.ThinkingEffort.LOW -> 1_024
             app.arbor.chat.data.ThinkingEffort.MEDIUM -> 8_192
-            app.arbor.chat.data.ThinkingEffort.HIGH -> 24_576
+            app.arbor.chat.data.ThinkingEffort.HIGH,
+            app.arbor.chat.data.ThinkingEffort.XHIGH,
+            app.arbor.chat.data.ThinkingEffort.MAX -> 24_576
         }
 
     internal class GeminiStreamState {

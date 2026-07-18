@@ -25,7 +25,6 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Archive
-import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Inbox
@@ -105,64 +104,93 @@ fun ConversationSidebar(
 
     Surface(modifier.fillMaxHeight(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
-                ArborMark(Modifier.size(42.dp))
-                Column(Modifier.padding(start = 12.dp)) {
-                    Text("Arbor", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text("Private model workspace", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) {
+                ArborMark(Modifier.size(34.dp))
+                Text("Arbor", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 10.dp))
             }
-            FilledTonalButton(onClick = onNew, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            FilledTonalButton(onClick = onNew, modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 4.dp)) {
                 Icon(Icons.Outlined.Add, null)
                 Text("New chat", Modifier.padding(start = 8.dp))
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                SidebarAction(Icons.Outlined.Search, "Search") { onScreen(Screen.SEARCH) }
-                SidebarAction(Icons.Outlined.Code, "Python") { onScreen(Screen.SANDBOX) }
-                SidebarAction(Icons.Outlined.Settings, "Settings") { onScreen(Screen.SETTINGS) }
-            }
-            HorizontalDivider(Modifier.padding(vertical = 10.dp))
-
-            NavigationDrawerItem(
-                label = { Text("All chats") },
-                icon = { Icon(Icons.Outlined.Inbox, null) },
-                selected = !showArchived && selectedProjectId == null,
-                onClick = { onShowArchived(false); onProjectFilter(null) },
-            )
-            NavigationDrawerItem(
-                label = { Text("Archived") },
-                icon = { Icon(Icons.Outlined.Archive, null) },
-                selected = showArchived,
-                onClick = { onShowArchived(true); onProjectFilter(null) },
-            )
-
-            Row(Modifier.fillMaxWidth().padding(start = 12.dp, top = 10.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("PROJECTS", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                IconButton(onClick = { createProjectForChat = null; creatingProject = true }, modifier = Modifier.size(34.dp)) {
-                    Icon(Icons.Outlined.Add, "New project", Modifier.size(18.dp))
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = MaterialTheme.shapes.extraLarge,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+                    .combinedClickable(
+                        onClick = { onScreen(Screen.SEARCH) },
+                        onLongClick = { onScreen(Screen.SEARCH) },
+                    ),
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Outlined.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Search chats and messages",
+                        Modifier.padding(start = 11.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
-            projects.forEach { project ->
-                NavigationDrawerItem(
-                    label = { Text(project.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    icon = { Icon(if (selectedProjectId == project.id) Icons.Outlined.FolderOpen else Icons.Outlined.Folder, null, tint = Color(project.colorArgb)) },
-                    selected = !showArchived && selectedProjectId == project.id,
-                    onClick = { onShowArchived(false); onProjectFilter(project.id) },
-                    modifier = Modifier.combinedClickable(
-                        onClick = { onShowArchived(false); onProjectFilter(project.id) },
-                        onLongClick = { projectTarget = project },
-                    ),
-                )
-            }
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
-            Text(
-                if (showArchived) "ARCHIVED CHATS" else if (selectedProjectId == null) "RECENT CHATS" else "PROJECT CHATS",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(12.dp, 10.dp, 12.dp, 4.dp),
-            )
-            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                items(visible, key = { it.conversation.id }) { item ->
+            LazyColumn(
+                Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 4.dp, bottom = 8.dp),
+            ) {
+                item("all-chats") {
+                    NavigationDrawerItem(
+                        label = { Text("All chats") },
+                        icon = { Icon(Icons.Outlined.Inbox, null) },
+                        selected = !showArchived && selectedProjectId == null,
+                        onClick = { onShowArchived(false); onProjectFilter(null) },
+                    )
+                }
+                item("archived") {
+                    NavigationDrawerItem(
+                        label = { Text("Archived") },
+                        icon = { Icon(Icons.Outlined.Archive, null) },
+                        selected = showArchived,
+                        onClick = { onShowArchived(true); onProjectFilter(null) },
+                    )
+                }
+                item("projects-header") {
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 12.dp, top = 8.dp, bottom = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("PROJECTS", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        IconButton(onClick = { createProjectForChat = null; creatingProject = true }, modifier = Modifier.size(34.dp)) {
+                            Icon(Icons.Outlined.Add, "New project", Modifier.size(18.dp))
+                        }
+                    }
+                }
+                items(projects, key = { "project:${it.id}" }) { project ->
+                    NavigationDrawerItem(
+                        label = { Text(project.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        icon = { Icon(if (selectedProjectId == project.id) Icons.Outlined.FolderOpen else Icons.Outlined.Folder, null, tint = Color(project.colorArgb)) },
+                        selected = !showArchived && selectedProjectId == project.id,
+                        onClick = { onShowArchived(false); onProjectFilter(project.id) },
+                        modifier = Modifier.combinedClickable(
+                            onClick = { onShowArchived(false); onProjectFilter(project.id) },
+                            onLongClick = { projectTarget = project },
+                        ),
+                    )
+                }
+                item("chats-header") {
+                    Text(
+                        if (showArchived) "ARCHIVED CHATS" else if (selectedProjectId == null) "RECENT CHATS" else "PROJECT CHATS",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(12.dp, 10.dp, 12.dp, 4.dp),
+                    )
+                }
+                items(visible, key = { "chat:${it.conversation.id}" }) { item ->
                     ConversationRow(
                         item = item,
                         selected = item.conversation.id == selectedId,
@@ -170,16 +198,25 @@ fun ConversationSidebar(
                         onLongClick = { actionTarget = item },
                     )
                 }
-                if (visible.isEmpty()) item {
-                    Text(
-                        if (showArchived) "Archived chats will appear here." else "No chats in this project yet.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(16.dp),
-                    )
+                if (visible.isEmpty()) {
+                    item("empty-chats") {
+                        Text(
+                            if (showArchived) "Archived chats will appear here." else "No chats in this project yet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(16.dp),
+                        )
+                    }
                 }
             }
-            Text("On-device history • BYOK", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(12.dp, 8.dp))
+            HorizontalDivider(Modifier.padding(top = 8.dp, bottom = 4.dp))
+            NavigationDrawerItem(
+                label = { Text("Settings") },
+                icon = { Icon(Icons.Outlined.Settings, null) },
+                selected = false,
+                onClick = { onScreen(Screen.SETTINGS) },
+            )
+            Text("On-device history • BYOK", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(12.dp, 4.dp, 12.dp, 0.dp))
         }
     }
 
@@ -239,7 +276,7 @@ fun ConversationSidebar(
         }
     }
     deleteTarget?.let { item ->
-        ConfirmDeleteDialog("Delete “${item.conversation.title}”?", "Its complete message history, attachments, and Python workspace records will be removed from Arbor.", onDismiss = { deleteTarget = null }) {
+        ConfirmDeleteDialog("Delete “${item.conversation.title}”?", "Its complete message history, attachments, and local code workspace records will be removed from Arbor.", onDismiss = { deleteTarget = null }) {
             onDelete(item.conversation.id); deleteTarget = null
         }
     }

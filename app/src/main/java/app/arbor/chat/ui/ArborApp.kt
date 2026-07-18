@@ -46,7 +46,7 @@ fun ArborApp(viewModel: ChatViewModel) {
         val activePython = pythonRun?.takeIf { it.running }
         val activeLinux = linuxRun?.takeIf { it.running }
         val active = activePython ?: activeLinux ?: return@LaunchedEffect
-        val label = if (activePython != null) "Python" else activeLinux!!.distribution.displayName
+        val label = if (activePython != null) "Local code execution" else activeLinux!!.distribution.displayName
         val deadline = if (activePython != null) activePython.timeoutSeconds else activeLinux!!.timeoutSeconds
         if (snackbar.showSnackbar("$label is running in the background • ${deadline}s deadline", "Stop", duration = SnackbarDuration.Indefinite) == SnackbarResult.ActionPerformed) {
             if (activePython != null) viewModel.stopPythonRun() else viewModel.stopLinuxRun()
@@ -61,6 +61,7 @@ fun ArborApp(viewModel: ChatViewModel) {
                 Screen.SEARCH -> SearchScreen(viewModel, if (wide) null else openDrawer)
                 Screen.SETTINGS -> SettingsScreen(viewModel, if (wide) null else openDrawer)
                 Screen.SANDBOX -> SandboxScreen(viewModel, if (wide) null else openDrawer)
+                Screen.TERMINAL -> LinuxTerminalScreen(viewModel, if (wide) null else openDrawer)
             }
         }
         if (wide) {

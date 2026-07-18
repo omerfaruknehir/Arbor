@@ -1,6 +1,7 @@
 package app.arbor.chat.ui
 
 import android.text.format.Formatter
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,9 +18,9 @@ import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.RestartAlt
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -31,6 +32,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -41,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -48,6 +52,7 @@ import app.arbor.chat.sandbox.ExecutionResult
 import app.arbor.chat.sandbox.CodeLintResult
 import app.arbor.chat.sandbox.PackageInstallResult
 import app.arbor.chat.sandbox.PythonEnvironmentInfo
+import app.arbor.chat.sandbox.PythonPackageSearchResult
 import app.arbor.chat.sandbox.PackageAction
 import app.arbor.chat.sandbox.PackageApprovalState
 import app.arbor.chat.sandbox.PackageReview
@@ -64,13 +69,16 @@ fun SandboxScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     var code by remember {
         mutableStateOf(
             "from pathlib import Path\n\n" +
-                "print('Hello from Arbor Python 3.12')\n" +
+                "print('Hello from Arbor distro Python')\n" +
                 "print('Workspace:', Path.cwd())\n",
         )
     }
     var codeLint by remember { mutableStateOf<CodeLintResult?>(null) }
     var codeLinting by remember { mutableStateOf(true) }
     var packages by remember { mutableStateOf("") }
+    var packageQuery by remember { mutableStateOf("") }
+    var packageSearching by remember { mutableStateOf(false) }
+    var packageSearchResults by remember { mutableStateOf<List<PythonPackageSearchResult>>(emptyList()) }
     var confirmInstall by remember { mutableStateOf(false) }
     var installing by remember { mutableStateOf(false) }
     var installResult by remember { mutableStateOf<PackageInstallResult?>(null) }
@@ -138,18 +146,35 @@ fun SandboxScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         ubuntuLint = runCatching { viewModel.lintCode("bash", ubuntuCommand) }.getOrNull()
         ubuntuLinting = false
     }
+    LaunchedEffect(packageQuery) {
+        delay(350)
+        if (packageQuery.trim().length < 2) {
+            packageSearchResults = emptyList()
+            return@LaunchedEffect
+        }
+        packageSearching = true
+        packageSearchResults = runCatching { viewModel.searchPythonPackages(packageQuery) }.getOrDefault(emptyList())
+        packageSearching = false
+    }
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("Tool workspaces") },
-                navigationIcon = { IconButton(onClick = { openDrawer?.invoke() ?: run { viewModel.screen.value = Screen.CHAT } }) { Icon(if (openDrawer != null) Icons.Outlined.Menu else Icons.AutoMirrored.Outlined.ArrowBack, "Back") } },
+            CollapsingTranslucentTopBar(
+                title = "Local Code Execution",
+                scrollBehavior = scrollBehavior,
+                navigationIcon = {
+                    IconButton(onClick = { openDrawer?.invoke() ?: run { viewModel.screen.value = Screen.CHAT } }) {
+                        Icon(if (openDrawer != null) Icons.Outlined.Menu else Icons.AutoMirrored.Outlined.ArrowBack, "Back")
+                    }
+                },
             )
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("Persistent per-chat workspace", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Text("Python runs locally under Android's app UID. Files, installed packages, and live variables belong to this chat. Runs are serialized so environments cannot overwrite each other's import path.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Persistent local workspace", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text("Python runs as root inside the selected Linux distribution. Each chat has a persistent /workspace and isolated .arbor-venv; Android still confines the whole app outside the PRoot distribution.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             environment?.let { info ->
                 Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -174,7 +199,7 @@ fun SandboxScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             OutlinedButton(
                                 onClick = { scope.launch { viewModel.resetPythonSession(); viewModel.clearPythonRun() } },
                                 enabled = !environmentBusy,
-                            ) { Icon(Icons.Outlined.RestartAlt, null); Text("Reset variables", Modifier.padding(start = 6.dp)) }
+                            ) { Icon(Icons.Outlined.RestartAlt, null); Text("Clear run state", Modifier.padding(start = 6.dp)) }
                         }
                     }
                 }
@@ -182,7 +207,32 @@ fun SandboxScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Install packages", fontWeight = FontWeight.SemiBold)
-                    Text("One package requirement per line. Arbor checks the current environment before applying your approval policy.", style = MaterialTheme.typography.bodySmall)
+                    Text("One package requirement per line. Search PyPI, then Arbor preflights the distro-backed virtual environment before applying your approval policy.", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        value = packageQuery,
+                        onValueChange = { packageQuery = it.take(100) },
+                        label = { Text("Search PyPI") },
+                        leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                        supportingText = { Text(if (packageSearching) "Searching…" else "Tap a result to add it to the install list") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    packageSearchResults.take(8).forEach { result ->
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                            shape = MaterialTheme.shapes.medium,
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                val existing = packages.lineSequence().map(String::trim).filter(String::isNotBlank).toMutableList()
+                                if (existing.none { it.substringBefore('=') == result.name }) existing += result.name
+                                packages = existing.joinToString("\n")
+                            },
+                        ) {
+                            Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+                                Text("${result.name} ${result.version}", fontWeight = FontWeight.SemiBold)
+                                if (result.summary.isNotBlank()) Text(result.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
                     OutlinedTextField(
                         packages, { packages = it },
                         label = { Text("requests==2.32.4\nnumpy==1.26.2") },
@@ -271,7 +321,7 @@ fun SandboxScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 code, { code = it },
                 textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                 minLines = 12,
-                label = { Text("Python 3.12") },
+                label = { Text("Distro Python (root)") },
                 modifier = Modifier.fillMaxWidth(),
             )
             CodeLintPanel(codeLint, codeLinting)

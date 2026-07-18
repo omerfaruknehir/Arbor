@@ -15,6 +15,8 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -24,11 +26,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.arbor.chat.data.ContextSummaryEntity
 import app.arbor.chat.data.ConversationEntity
 import app.arbor.chat.data.ReasoningVisibility
@@ -100,12 +107,37 @@ fun ChatConfigurationSheet(
 
             HorizontalDivider()
             Text("System prompt", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            OutlinedTextField(
+            val promptProfiles by viewModel.systemPromptProfiles.collectAsStateWithLifecycle()
+            var promptMenu by remember { mutableStateOf(false) }
+            val activePrompt = promptProfiles.firstOrNull { it.id == conversation.systemPromptProfileId }
+            androidx.compose.foundation.layout.Box {
+                OutlinedButton(onClick = { promptMenu = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(activePrompt?.let { "${it.name} · ${it.mode.name.lowercase()}" } ?: "Arbor default / one-off prompt", Modifier.weight(1f))
+                }
+                DropdownMenu(expanded = promptMenu, onDismissRequest = { promptMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Arbor default / one-off prompt") },
+                        onClick = { viewModel.selectSystemPromptProfileForCurrent(null); promptMenu = false },
+                    )
+                    promptProfiles.forEach { profile ->
+                        DropdownMenuItem(
+                            text = { Text("${profile.name} · ${profile.mode.name.lowercase()}") },
+                            onClick = { viewModel.selectSystemPromptProfileForCurrent(profile.id); promptMenu = false },
+                        )
+                    }
+                }
+            }
+            if (conversation.systemPromptProfileId == null) OutlinedTextField(
                 value = conversation.systemPrompt,
                 onValueChange = { prompt -> viewModel.updateConversation { it.copy(systemPrompt = prompt) } },
                 minLines = 3,
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Optional instructions for this chat") },
+                placeholder = { Text("Optional one-off instructions for this chat") },
+            ) else Text(
+                activePrompt?.prompt.orEmpty(),
+                maxLines = 5,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             contextSummary?.let { summary ->

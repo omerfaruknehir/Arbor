@@ -219,6 +219,8 @@ private val app.arbor.chat.data.ThinkingEffort.apiValue: String
         app.arbor.chat.data.ThinkingEffort.LOW -> "low"
         app.arbor.chat.data.ThinkingEffort.MEDIUM -> "medium"
         app.arbor.chat.data.ThinkingEffort.HIGH -> "high"
+        app.arbor.chat.data.ThinkingEffort.XHIGH,
+        app.arbor.chat.data.ThinkingEffort.MAX -> "xhigh"
     }
 
 }

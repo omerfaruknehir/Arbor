@@ -13,9 +13,10 @@ enum class MessageStatus { QUEUED, STREAMING, INTERRUPTED, COMPLETE, ERROR }
 enum class SendMode { SEND_NOW, QUEUE, STEER }
 @Serializable enum class ProviderKind { OPENAI_COMPATIBLE, ANTHROPIC, GEMINI }
 enum class ReasoningVisibility { ALWAYS, SHOW_WHILE_WORKING, COLLAPSED }
-enum class ThinkingEffort { MINIMAL, LOW, MEDIUM, HIGH }
+enum class ThinkingEffort { MINIMAL, LOW, MEDIUM, HIGH, XHIGH, MAX }
 enum class AuxiliaryMode { OFF, LOCAL, MODEL }
 enum class PackageApprovalMode { ALWAYS_ASK, TRUSTED_ONLY, MODEL_REVIEW, AUTO_APPROVE }
+enum class SystemPromptMode { PREPEND, OVERRIDE }
 
 @Entity(tableName = "conversations", indices = [Index("projectId")])
 data class ConversationEntity(
@@ -31,6 +32,7 @@ data class ConversationEntity(
     @ColumnInfo(defaultValue = "16000") val workingTokenLimit: Int = 16_000,
     val maxOutputTokens: Int = 8_192,
     val systemPrompt: String = "",
+    @ColumnInfo(defaultValue = "NULL") val systemPromptProfileId: String? = null,
     val totalInputTokens: Long = 0,
     val totalOutputTokens: Long = 0,
     val totalCostMicros: Long = 0,
@@ -57,6 +59,17 @@ data class ConversationListItem(
     val needsAttention: Boolean,
     val unreadCount: Int,
     val projectName: String? = null,
+)
+
+
+@Entity(tableName = "system_prompt_profiles", indices = [Index(value = ["name"], unique = true)])
+data class SystemPromptProfileEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val prompt: String,
+    @ColumnInfo(defaultValue = "'PREPEND'") val mode: SystemPromptMode = SystemPromptMode.PREPEND,
+    val createdAt: Long,
+    val updatedAt: Long,
 )
 
 @Entity(tableName = "projects", indices = [Index(value = ["name"], unique = true)])

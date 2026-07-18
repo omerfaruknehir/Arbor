@@ -135,6 +135,7 @@ class GenerationWorker(
             newest,
             compressedContext,
             nativeToolsAvailable = nativeToolDefinitions.isNotEmpty(),
+            promptProfile = snapshot.promptProfile(),
         ).toMutableList()
         var nativeToolsDisabled = false
         val effectiveContinuation = continuation || initial.streamOffset > 0
@@ -215,6 +216,7 @@ class GenerationWorker(
                 outputTokens = output,
                 cachedInputTokens = cached,
                 costMicros = cost,
+                costKnown = costKnown,
                 finishReason = finishReason,
                 status = status,
                 error = error?.let(::safeError),

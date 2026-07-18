@@ -134,9 +134,9 @@ class AgentTools(
         "python", "python_exec" -> {
             check(conversation.agentPythonEnabled) { "Agent Python is disabled for this conversation." }
             val code = requireNotNull(request.code) { "Python code is missing" }
-            val lint = python.lint(code)
+            val lint = ubuntu.lintPython(conversation.id, code)
             require(!lint.hasErrors) { "Python lint failed: ${lint.diagnostics.joinToString { it.message }}" }
-            val result = python.execute(conversation.id, code, (request.timeoutSeconds ?: DEFAULT_PYTHON_SECONDS).coerceIn(1, 600))
+            val result = ubuntu.executePython(conversation.id, code, (request.timeoutSeconds ?: DEFAULT_PYTHON_SECONDS).coerceIn(1, 600))
             AgentToolOutcome(json.encodeToString(result))
         }
         "ubuntu", "ubuntu_exec", "linux", "linux_exec", "shell" -> {
@@ -156,7 +156,7 @@ class AgentTools(
         "send_file", "file_send" -> {
             val relative = requireNotNull(request.path) { "File path is missing" }.trim().removePrefix("/workspace/")
             require(relative.isNotBlank() && !File(relative).isAbsolute) { "Use a path inside the conversation workspace" }
-            val workspace = python.workspace(conversation.id).canonicalFile
+            val workspace = ubuntu.workspace(conversation.id).canonicalFile
             val source = File(workspace, relative).canonicalFile
             require(source.isFile && source.path.startsWith(workspace.path + File.separator)) {
                 "The requested file does not exist in this conversation workspace"

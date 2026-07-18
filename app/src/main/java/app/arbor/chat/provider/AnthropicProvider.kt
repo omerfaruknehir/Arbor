@@ -219,6 +219,8 @@ class AnthropicProvider(
             app.arbor.chat.data.ThinkingEffort.LOW -> "low"
             app.arbor.chat.data.ThinkingEffort.MEDIUM -> "medium"
             app.arbor.chat.data.ThinkingEffort.HIGH -> "high"
+            app.arbor.chat.data.ThinkingEffort.XHIGH -> "xhigh"
+            app.arbor.chat.data.ThinkingEffort.MAX -> "max"
         }
 
     private fun legacyThinkingBudget(maxOutputTokens: Int, effort: app.arbor.chat.data.ThinkingEffort): Int {
@@ -227,6 +229,8 @@ class AnthropicProvider(
             app.arbor.chat.data.ThinkingEffort.LOW -> 4_096
             app.arbor.chat.data.ThinkingEffort.MEDIUM -> 8_192
             app.arbor.chat.data.ThinkingEffort.HIGH -> 16_000
+            app.arbor.chat.data.ThinkingEffort.XHIGH -> 24_000
+            app.arbor.chat.data.ThinkingEffort.MAX -> 32_000
         }
         return target.coerceAtMost(maxOutputTokens - 1).coerceAtLeast(1_024)
     }

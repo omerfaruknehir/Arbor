@@ -1,5 +1,6 @@
 package app.arbor.chat.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Menu
@@ -39,7 +41,7 @@ import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -59,6 +61,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -69,6 +73,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -84,7 +92,10 @@ import app.arbor.chat.data.ThinkingEffort
 import app.arbor.chat.data.AuxiliaryMode
 import app.arbor.chat.data.AutomationSettingsEntity
 import app.arbor.chat.data.PackageApprovalMode
+import app.arbor.chat.data.SystemPromptMode
+import app.arbor.chat.data.SystemPromptProfileEntity
 import app.arbor.chat.provider.DiscoveredModel
+import app.arbor.chat.provider.supportedThinkingLevels
 import app.arbor.chat.settings.ColorPalette
 import app.arbor.chat.settings.NewChatDefaults
 import app.arbor.chat.settings.ThemeMode
@@ -99,6 +110,8 @@ private enum class SettingsRoute(val title: String) {
     AUTOMATION("Automation"),
     APPEARANCE("Appearance"),
     PRIVACY("Privacy & safety"),
+    LOCAL_EXECUTION("Local Code Execution"),
+    SYSTEM_PROMPTS("System prompts"),
     PROVIDERS("Providers & models"),
     ABOUT("About"),
 }
@@ -109,6 +122,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val providers by viewModel.providers.collectAsStateWithLifecycle()
     val defaults by viewModel.newChatDefaults.collectAsStateWithLifecycle()
     val automation by viewModel.automationSettings.collectAsStateWithLifecycle()
+    val promptProfiles by viewModel.systemPromptProfiles.collectAsStateWithLifecycle()
     val credentialRevision by viewModel.credentialRevision.collectAsStateWithLifecycle()
     val amoled by viewModel.amoled.collectAsState()
     val palette by viewModel.palette.collectAsState()
@@ -117,12 +131,15 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val registeredProviders = remember(providers, credentialRevision) { viewModel.registeredProviders(providers) }
     val configuredProviders = remember(providers, credentialRevision) { viewModel.configuredProviders(providers) }
     var route by rememberSaveable { mutableStateOf(SettingsRoute.HOME) }
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text(route.title) },
+            CollapsingTranslucentTopBar(
+                title = route.title,
+                scrollBehavior = scrollBehavior,
                 navigationIcon = {
                     IconButton(onClick = {
                         if (route != SettingsRoute.HOME) route = SettingsRoute.HOME
@@ -148,6 +165,8 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 SettingsRoute.AUTOMATION -> AutomationSettingsPage(automation, configuredProviders, viewModel)
                 SettingsRoute.APPEARANCE -> AppearanceSettingsPage(themeMode, amoled, palette, viewModel)
                 SettingsRoute.PRIVACY -> PrivacySettingsPage(renderSafeMode, viewModel)
+                SettingsRoute.LOCAL_EXECUTION -> LocalCodeExecutionSettingsPage(defaults, automation, configuredProviders, viewModel)
+                SettingsRoute.SYSTEM_PROMPTS -> SystemPromptProfilesPage(promptProfiles, defaults.systemPromptProfileId, viewModel)
                 SettingsRoute.PROVIDERS -> ProviderSettings(
                     providers = providers,
                     registeredProviders = registeredProviders,
@@ -176,6 +195,12 @@ private fun SettingsHome(providerCount: Int, onOpen: (SettingsRoute) -> Unit) = 
             onClick = { onOpen(SettingsRoute.DEFAULTS) },
         )
         SettingsDestination(
+            icon = Icons.Outlined.Tune,
+            title = "System prompts",
+            subtitle = "Reusable prepend and override profiles",
+            onClick = { onOpen(SettingsRoute.SYSTEM_PROMPTS) },
+        )
+        SettingsDestination(
             icon = Icons.Outlined.AutoAwesome,
             title = "Automation",
             subtitle = "Naming, compression, and package approval",
@@ -194,6 +219,12 @@ private fun SettingsHome(providerCount: Int, onOpen: (SettingsRoute) -> Unit) = 
             title = "Privacy & safety",
             subtitle = "Generated UI safety and local-data behavior",
             onClick = { onOpen(SettingsRoute.PRIVACY) },
+        )
+        SettingsDestination(
+            icon = Icons.Outlined.Code,
+            title = "Local Code Execution",
+            subtitle = "Python, Linux tooling, packages, and workspace",
+            onClick = { onOpen(SettingsRoute.LOCAL_EXECUTION) },
         )
     }
     SettingsGroup("About") {
@@ -410,12 +441,149 @@ private fun PrivacySettingsPage(
 }
 
 @Composable
+private fun SystemPromptProfilesPage(
+    profiles: List<SystemPromptProfileEntity>,
+    selectedDefaultId: String?,
+    viewModel: ChatViewModel,
+) = SettingsPage {
+    var editing by remember { mutableStateOf<SystemPromptProfileEntity?>(null) }
+    var creating by remember { mutableStateOf(false) }
+    SectionTitle(
+        "Reusable prompts",
+        "Prepend adds instructions before Arbor's built-in capability prompt. Override replaces only Arbor's default persona; runtime, tool, date, and safety instructions remain active.",
+    )
+    FilledTonalButton(onClick = { creating = true }, modifier = Modifier.fillMaxWidth()) {
+        Icon(Icons.Outlined.Add, null)
+        Text("New system prompt", Modifier.padding(start = 8.dp))
+    }
+    if (profiles.isEmpty()) {
+        Text("No saved prompts yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    profiles.forEach { profile ->
+        Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(profile.name, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (profile.mode == SystemPromptMode.OVERRIDE) "Override Arbor persona" else "Prepend to Arbor persona",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    if (selectedDefaultId == profile.id) Text("Default", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                }
+                Text(profile.prompt, maxLines = 4, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { viewModel.updateNewChatDefaults { it.copy(systemPromptProfileId = profile.id) } }) { Text("Use for new chats") }
+                    IconButton(onClick = { editing = profile }) { Icon(Icons.Outlined.Edit, "Edit ${profile.name}") }
+                    IconButton(onClick = { viewModel.deleteSystemPromptProfile(profile.id) }) { Icon(Icons.Outlined.DeleteOutline, "Delete ${profile.name}") }
+                }
+            }
+        }
+    }
+    if (selectedDefaultId != null) OutlinedButton(
+        onClick = { viewModel.updateNewChatDefaults { it.copy(systemPromptProfileId = null) } },
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text("Use Arbor default for new chats") }
+    if (creating) SystemPromptEditorDialog(
+        title = "New system prompt",
+        initial = null,
+        onDismiss = { creating = false },
+        onSave = { name, prompt, mode -> viewModel.createSystemPromptProfile(name, prompt, mode); creating = false },
+    )
+    editing?.let { profile ->
+        SystemPromptEditorDialog(
+            title = "Edit system prompt",
+            initial = profile,
+            onDismiss = { editing = null },
+            onSave = { name, prompt, mode -> viewModel.updateSystemPromptProfile(profile.copy(name = name, prompt = prompt, mode = mode)); editing = null },
+        )
+    }
+}
+
+@Composable
+private fun SystemPromptEditorDialog(
+    title: String,
+    initial: SystemPromptProfileEntity?,
+    onDismiss: () -> Unit,
+    onSave: (String, String, SystemPromptMode) -> Unit,
+) {
+    var name by remember(initial?.id) { mutableStateOf(initial?.name.orEmpty()) }
+    var prompt by remember(initial?.id) { mutableStateOf(initial?.prompt.orEmpty()) }
+    var mode by remember(initial?.id) { mutableStateOf(initial?.mode ?: SystemPromptMode.PREPEND) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(name, { name = it.take(80) }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = mode == SystemPromptMode.PREPEND, onClick = { mode = SystemPromptMode.PREPEND }, label = { Text("Prepend") })
+                    FilterChip(selected = mode == SystemPromptMode.OVERRIDE, onClick = { mode = SystemPromptMode.OVERRIDE }, label = { Text("Override") })
+                }
+                OutlinedTextField(prompt, { prompt = it.take(64_000) }, label = { Text("Instructions") }, minLines = 8, maxLines = 16, modifier = Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = { Button(onClick = { onSave(name, prompt, mode) }, enabled = name.isNotBlank() && prompt.isNotBlank()) { Text("Save") } },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun LocalCodeExecutionSettingsPage(
+    defaults: NewChatDefaults,
+    automation: AutomationSettingsEntity,
+    providers: List<ProviderEntity>,
+    viewModel: ChatViewModel,
+) = SettingsPage {
+    SectionTitle(
+        "Local execution defaults",
+        "These settings apply to newly created chats. Existing chats keep their own tool permissions.",
+    )
+    SettingsSwitch(
+        "Enable Local Code Execution for new chats",
+        defaults.agentPythonEnabled,
+        { enabled -> viewModel.updateNewChatDefaults { it.copy(agentPythonEnabled = enabled) } },
+    )
+    SettingsSwitch(
+        "Enable Linux tooling for new chats",
+        defaults.agentUbuntuEnabled,
+        { enabled -> viewModel.updateNewChatDefaults { it.copy(agentUbuntuEnabled = enabled) } },
+    )
+    Text(
+        "Local Python runs from a per-chat virtual environment inside the selected Linux distribution. Arbor and the AI execute as root (uid 0) inside that PRoot distribution; Android still confines the app outside it.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Button(
+        onClick = { viewModel.screen.value = Screen.SANDBOX },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Icon(Icons.Outlined.Code, null)
+        Text("Open package manager & Python workspace", Modifier.padding(start = 8.dp))
+    }
+    OutlinedButton(
+        onClick = { viewModel.screen.value = Screen.TERMINAL },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Icon(Icons.Outlined.Tune, null)
+        Text("Open advanced root terminal", Modifier.padding(start = 8.dp))
+    }
+    SectionTitle(
+        "Package installation",
+        "Choose when Arbor may install Python or Linux packages and which sources are trusted.",
+    )
+    PackageApprovalEditor(automation, providers, viewModel)
+}
+
+@Composable
 private fun AboutSettingsPage() = SettingsPage {
-    SectionTitle("Arbor 0.15.0", "Native Android BYOK model workspace.")
+    SectionTitle("Arbor 0.16.0", "Native Android BYOK model workspace.")
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Built for long-running, tool-using chats", fontWeight = FontWeight.SemiBold)
-            Text("On-device encrypted history, provider-native tool calls, persistent Python/Linux workspaces, Deep Research, and per-chat generation controls.", style = MaterialTheme.typography.bodySmall)
+            Text("On-device encrypted history, provider-native tool calls, persistent local code/Linux workspaces, Deep Research, and per-chat generation controls.", style = MaterialTheme.typography.bodySmall)
             HorizontalDivider()
             Text("Debug builds use Android's debug certificate and are not production releases.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -488,7 +656,8 @@ private fun ChatOptionsEditor(
     ThinkingDefaultsControl(
         enabled = thinkingEnabled,
         effort = thinkingEffort,
-        supported = activeModel?.supportsThinking != false,
+        provider = providers.firstOrNull { it.id == providerId },
+        model = activeModel,
         onEnabled = onThinkingEnabled,
         onEffort = onThinkingEffort,
     )
@@ -497,7 +666,7 @@ private fun ChatOptionsEditor(
     SettingsSwitch("Web search", webEnabled, onWeb)
     SettingsSwitch("Deep Research", deepResearchEnabled, onDeepResearch, enabled = webEnabled || !deepResearchEnabled)
     Text("Deep Research plans, searches iteratively, verifies sources, and produces a cited report. Enabling it also enables web search.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    SettingsSwitch("Python", pythonEnabled, onPython)
+    SettingsSwitch("Local Code Execution", pythonEnabled, onPython)
     SettingsSwitch("Linux", linuxEnabled, onLinux)
 
     HorizontalDivider()
@@ -538,11 +707,16 @@ private fun ChatOptionsEditor(
 private fun ThinkingDefaultsControl(
     enabled: Boolean,
     effort: ThinkingEffort,
-    supported: Boolean,
+    provider: ProviderEntity?,
+    model: ModelEntity?,
     onEnabled: (Boolean) -> Unit,
     onEffort: (ThinkingEffort) -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
+    val options = remember(provider?.id, provider?.kind, model?.modelId, model?.supportsThinking) {
+        supportedThinkingLevels(provider, model)
+    }
+    val supported = options.isNotEmpty()
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.SmartToy, null, tint = MaterialTheme.colorScheme.primary)
@@ -554,16 +728,20 @@ private fun ThinkingDefaultsControl(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Switch(checked = enabled && supported, onCheckedChange = onEnabled, enabled = supported)
+            Switch(
+                checked = enabled && supported,
+                onCheckedChange = onEnabled,
+                enabled = supported && options.any { !it.enabled },
+            )
             Box {
                 IconButton(onClick = { menu = true }, enabled = supported) { Icon(Icons.Outlined.ExpandMore, "Thinking effort") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    ThinkingEffort.entries.forEach { option ->
+                    options.filter { it.enabled }.forEach { option ->
                         DropdownMenuItem(
-                            text = { Text(option.displayName) },
-                            leadingIcon = if (enabled && effort == option) ({ Icon(Icons.Outlined.CheckCircle, null) }) else null,
+                            text = { Text(option.label) },
+                            leadingIcon = if (enabled && effort == option.effort) ({ Icon(Icons.Outlined.CheckCircle, null) }) else null,
                             onClick = {
-                                onEffort(option)
+                                option.effort?.let(onEffort)
                                 if (!enabled) onEnabled(true)
                                 menu = false
                             },
@@ -573,7 +751,7 @@ private fun ThinkingDefaultsControl(
             }
         }
     }
-    Text("Some providers cannot fully disable reasoning on every model; Arbor requests off only where the API supports it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text("Available levels follow the selected model. Some models cannot fully disable reasoning.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
@@ -647,7 +825,14 @@ private fun NumberSetting(label: String, value: Int, range: IntRange, onValue: (
 }
 
 private val ThinkingEffort.displayName: String
-    get() = name.lowercase().replaceFirstChar(Char::uppercase)
+    get() = when (this) {
+        ThinkingEffort.MINIMAL -> "Minimal"
+        ThinkingEffort.LOW -> "Low"
+        ThinkingEffort.MEDIUM -> "Medium"
+        ThinkingEffort.HIGH -> "High"
+        ThinkingEffort.XHIGH -> "Extra high"
+        ThinkingEffort.MAX -> "Max"
+    }
 
 private val ReasoningVisibility.shortLabel: String
     get() = when (this) {

@@ -22,8 +22,9 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         ContextSummaryEntity::class,
         GenerationUsageEntity::class,
         PackageTransactionEntity::class,
+        SystemPromptProfileEntity::class,
     ],
-    version = 11,
+    version = 13,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -34,6 +35,7 @@ abstract class ArborDatabase : RoomDatabase() {
     abstract fun catalogDao(): CatalogDao
     abstract fun pendingDao(): PendingDao
     abstract fun projectDao(): ProjectDao
+    abstract fun systemPromptProfileDao(): SystemPromptProfileDao
     abstract fun automationSettingsDao(): AutomationSettingsDao
     abstract fun contextSummaryDao(): ContextSummaryDao
     abstract fun generationUsageDao(): GenerationUsageDao
@@ -45,7 +47,7 @@ abstract class ArborDatabase : RoomDatabase() {
             val factory = SupportOpenHelperFactory(passphrase)
             return Room.databaseBuilder(context, ArborDatabase::class.java, "arbor.db")
                 .openHelperFactory(factory)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
@@ -183,6 +185,40 @@ abstract class ArborDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE conversations ADD COLUMN deepResearchEnabled INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE conversations ADD COLUMN hybridTokenCountingEnabled INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 0.12–0.15 stored a calculated generation cost but accidentally left
+                // generation_usage.costKnown at its default false value. Repair rows
+                // where a non-zero calculated price proves the cost is known.
+                db.execSQL("UPDATE generation_usage SET costKnown = 1 WHERE costMicros > 0")
+                db.execSQL("UPDATE messages SET costKnown = 1 WHERE costMicros > 0")
+                db.execSQL(
+                    "UPDATE conversations SET hasUnknownCost = CASE WHEN EXISTS (" +
+                        "SELECT 1 FROM messages WHERE messages.conversationId = conversations.id " +
+                        "AND (messages.inputTokens > 0 OR messages.outputTokens > 0) AND messages.costKnown = 0" +
+                    ") THEN 1 ELSE 0 END",
+                )
+            }
+        }
+
+
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE conversations ADD COLUMN systemPromptProfileId TEXT")
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS system_prompt_profiles (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        prompt TEXT NOT NULL,
+                        mode TEXT NOT NULL DEFAULT 'PREPEND',
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL
+                    )""".trimIndent(),
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_system_prompt_profiles_name ON system_prompt_profiles(name)")
             }
         }
 

@@ -10,6 +10,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 enum class ColorPalette { ARBOR, SYSTEM, GRAPHITE }
+
+val DEFAULT_ARBOR_SYSTEM_PROMPT = """
+You are Arbor, a capable assistant running inside a native Android BYOK workspace.
+
+Be accurate, direct, and practical. Do not pretend to have used a tool, opened a file, checked the web, executed code, or created an artifact until Arbor returns the corresponding result. Distinguish verified facts from estimates and assumptions. For date-sensitive or current claims, use web search when it is enabled; otherwise state that you cannot verify freshness.
+
+Use the user's language unless they request another. Preserve technical precision, explain consequential assumptions, and avoid unnecessary filler. Prefer concise structure for simple questions and fuller analysis for complex work.
+
+Arbor may provide uploaded files, image/OCR content, web search and page fetching, persistent local code execution, an optional Linux tooling layer, generated files, native charts and diagrams, interactive chat UI, and Android Home-screen widgets. The runtime context supplied with each request is authoritative: use only capabilities marked enabled, follow their tool protocol exactly, and never infer access to disabled capabilities.
+
+When creating files or structured outputs, make them usable and complete. When research is requested, verify sources, compare conflicting evidence, cite the material actually used, and report limitations rather than inventing support.
+""".trimIndent()
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 data class NewChatDefaults(
@@ -19,7 +31,8 @@ data class NewChatDefaults(
     val contextTokenLimit: Int = 64_000,
     val workingTokenLimit: Int = 16_000,
     val maxOutputTokens: Int = 8_192,
-    val systemPrompt: String = "",
+    val systemPrompt: String = DEFAULT_ARBOR_SYSTEM_PROMPT,
+    val systemPromptProfileId: String? = null,
     val reasoningVisibility: ReasoningVisibility = ReasoningVisibility.SHOW_WHILE_WORKING,
     val thinkingEnabled: Boolean = true,
     val thinkingEffort: ThinkingEffort = ThinkingEffort.MEDIUM,
@@ -37,6 +50,7 @@ data class NewChatDefaults(
         workingTokenLimit = workingTokenLimit,
         maxOutputTokens = maxOutputTokens,
         systemPrompt = systemPrompt,
+        systemPromptProfileId = systemPromptProfileId,
         reasoningVisibility = reasoningVisibility,
         thinkingEnabled = thinkingEnabled,
         thinkingEffort = thinkingEffort,
@@ -56,6 +70,7 @@ data class NewChatDefaults(
             workingTokenLimit = conversation.workingTokenLimit,
             maxOutputTokens = conversation.maxOutputTokens,
             systemPrompt = conversation.systemPrompt,
+            systemPromptProfileId = conversation.systemPromptProfileId,
             reasoningVisibility = conversation.reasoningVisibility,
             thinkingEnabled = conversation.thinkingEnabled,
             thinkingEffort = conversation.thinkingEffort,
@@ -112,6 +127,7 @@ class AppPreferences(context: Context) {
             putInt(KEY_DEFAULT_WORKING_TOKENS, normalized.workingTokenLimit)
             putInt(KEY_DEFAULT_OUTPUT_TOKENS, normalized.maxOutputTokens)
             putString(KEY_DEFAULT_SYSTEM_PROMPT, normalized.systemPrompt)
+            putString(KEY_DEFAULT_SYSTEM_PROMPT_PROFILE, normalized.systemPromptProfileId)
             putString(KEY_DEFAULT_REASONING_VISIBILITY, normalized.reasoningVisibility.name)
             putBoolean(KEY_DEFAULT_THINKING_ENABLED, normalized.thinkingEnabled)
             putString(KEY_DEFAULT_THINKING_EFFORT, normalized.thinkingEffort.name)
@@ -134,7 +150,8 @@ class AppPreferences(context: Context) {
         contextTokenLimit = preferences.getInt(KEY_DEFAULT_CONTEXT_TOKENS, 64_000),
         workingTokenLimit = preferences.getInt(KEY_DEFAULT_WORKING_TOKENS, 16_000),
         maxOutputTokens = preferences.getInt(KEY_DEFAULT_OUTPUT_TOKENS, 8_192),
-        systemPrompt = preferences.getString(KEY_DEFAULT_SYSTEM_PROMPT, null).orEmpty(),
+        systemPrompt = preferences.getString(KEY_DEFAULT_SYSTEM_PROMPT, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_ARBOR_SYSTEM_PROMPT,
+        systemPromptProfileId = preferences.getString(KEY_DEFAULT_SYSTEM_PROMPT_PROFILE, null),
         reasoningVisibility = enumValue(KEY_DEFAULT_REASONING_VISIBILITY, ReasoningVisibility.SHOW_WHILE_WORKING),
         thinkingEnabled = preferences.getBoolean(KEY_DEFAULT_THINKING_ENABLED, true),
         thinkingEffort = enumValue(KEY_DEFAULT_THINKING_EFFORT, ThinkingEffort.MEDIUM),
@@ -159,6 +176,7 @@ class AppPreferences(context: Context) {
         const val KEY_DEFAULT_WORKING_TOKENS = "new_chat_working_tokens"
         const val KEY_DEFAULT_OUTPUT_TOKENS = "new_chat_output_tokens"
         const val KEY_DEFAULT_SYSTEM_PROMPT = "new_chat_system_prompt"
+        const val KEY_DEFAULT_SYSTEM_PROMPT_PROFILE = "new_chat_system_prompt_profile"
         const val KEY_DEFAULT_REASONING_VISIBILITY = "new_chat_reasoning_visibility"
         const val KEY_DEFAULT_THINKING_ENABLED = "new_chat_thinking_enabled"
         const val KEY_DEFAULT_THINKING_EFFORT = "new_chat_thinking_effort"

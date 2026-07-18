@@ -7,6 +7,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -24,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,17 +36,23 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.AltRoute
+import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
@@ -55,43 +64,50 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -108,9 +124,12 @@ import app.arbor.chat.data.ReasoningVisibility
 import app.arbor.chat.data.SendMode
 import app.arbor.chat.data.ThinkingEffort
 import app.arbor.chat.agent.ToolTraceEvent
+import app.arbor.chat.provider.ThinkingLevelOption
+import app.arbor.chat.provider.supportedThinkingLevels
 import app.arbor.chat.agent.MessageTimelineEvent
 import app.arbor.chat.agent.groupOrderedTimeline
 import app.arbor.chat.sandbox.ExecutionResult
+import coil.compose.AsyncImage
 import app.arbor.chat.sandbox.UbuntuExecutionResult
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -140,6 +159,8 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     var showHistory by remember { mutableStateOf(false) }
     var showChatConfiguration by remember { mutableStateOf(false) }
     val messageListState = rememberLazyListState()
+    val topAppBarState = rememberTopAppBarState()
+    val topAppBarScrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
     val scrollScope = rememberCoroutineScope()
     val latestThresholdPx = with(LocalDensity.current) { 48.dp.roundToPx() }
     var followLatest by remember(conversation?.id) { mutableStateOf(true) }
@@ -149,6 +170,15 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             messageListState.layoutInfo.totalItemsCount == 0 ||
                 (messageListState.firstVisibleItemIndex == 0 &&
                     messageListState.firstVisibleItemScrollOffset <= latestThresholdPx)
+        }
+    }
+    val composerChromeProgress by remember(messageListState, latestThresholdPx) {
+        derivedStateOf {
+            when {
+                messageListState.firstVisibleItemIndex > 0 -> 1f
+                latestThresholdPx <= 0 -> 0f
+                else -> (messageListState.firstVisibleItemScrollOffset / latestThresholdPx.toFloat()).coerceIn(0f, 1f)
+            }
         }
     }
     val latestMessage = paging.itemSnapshotList.items.firstOrNull()
@@ -194,19 +224,35 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     }
 
     Scaffold(
+        modifier = Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            CenterAlignedTopAppBar(
+            Box(Modifier.fillMaxWidth()) {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .blur((8f + 14f * topAppBarState.collapsedFraction.coerceIn(0f, 1f)).dp)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.surface.copy(alpha = .72f + .20f * topAppBarState.collapsedFraction.coerceIn(0f, 1f)),
+                                    MaterialTheme.colorScheme.surface.copy(alpha = .56f + .18f * topAppBarState.collapsedFraction.coerceIn(0f, 1f)),
+                                    MaterialTheme.colorScheme.surface.copy(alpha = .18f + .18f * topAppBarState.collapsedFraction.coerceIn(0f, 1f)),
+                                ),
+                            ),
+                        ),
+                )
+                LargeTopAppBar(
                 navigationIcon = { if (openDrawer != null) IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Conversations") } },
                 title = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             conversation?.title ?: "Arbor",
-                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        AnimatedVisibility(visible = topAppBarState.collapsedFraction < .72f) {
                         Box {
                             Surface(
                                 onClick = { modelMenu = true },
@@ -239,6 +285,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             }
                             if (usableProviders.isEmpty()) DropdownMenuItem(text = { Text("Open the left menu → Settings to add a provider") }, onClick = { modelMenu = false })
                         }
+                        }
                     }
                 },
                 actions = {
@@ -263,11 +310,24 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         }
                     }
                 },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = .96f)),
-            )
+                scrollBehavior = topAppBarScrollBehavior,
+                colors = TopAppBarDefaults.largeTopAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                ),
+                )
+            }
         },
         bottomBar = {
-            Composer(viewModel, models.firstOrNull { it.modelId == conversation?.selectedModelId }, generating)
+            Composer(
+                viewModel = viewModel,
+                provider = allProviders.firstOrNull { it.id == conversation?.selectedProviderId },
+                model = models.firstOrNull {
+                    it.providerId == conversation?.selectedProviderId && it.modelId == conversation?.selectedModelId
+                },
+                generating = generating,
+                chromeProgress = composerChromeProgress,
+            )
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
@@ -390,7 +450,7 @@ private fun EmptyConversation() {
         Text("Arbor", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
         Text("One native workspace for every model.", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.size(12.dp))
-        Text("Attach files, run Python, branch long chats, or hold Send to queue and steer.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Attach files, run local code, branch long chats, or hold Send to queue and steer.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -455,8 +515,11 @@ private fun MessageCard(message: app.arbor.chat.data.MessageEntity, viewModel: C
                         buildString {
                             if (!message.modelId.isNullOrBlank()) append(message.modelId)
                             if (tokens > 0) append(" • $tokens tok")
-                            if (message.costKnown && cost > 0) append(" • $").append("%.5f".format(cost))
-                            else if (!message.costKnown && tokens > 0) append(" • cost unavailable")
+                            when {
+                                message.costKnown -> append(" • $").append("%.5f".format(cost))
+                                cost > 0 -> append(" • $").append("%.5f".format(cost)).append(" partial")
+                                tokens > 0 -> append(" • cost unavailable")
+                            }
                             if (message.status !in setOf(MessageStatus.COMPLETE, MessageStatus.STREAMING)) append(" • ${message.status.name.lowercase()}")
                         },
                         style = MaterialTheme.typography.labelSmall,
@@ -664,7 +727,13 @@ private fun ToolStepDetails(kind: String, input: String, output: String, status:
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
-private fun Composer(viewModel: ChatViewModel, model: ModelEntity?, generating: Boolean) {
+private fun Composer(
+    viewModel: ChatViewModel,
+    provider: ProviderEntity?,
+    model: ModelEntity?,
+    generating: Boolean,
+    chromeProgress: Float,
+) {
     val conversation by viewModel.conversation.collectAsStateWithLifecycle()
     val draft by viewModel.draft.collectAsState()
     val staged by viewModel.stagedAttachments.collectAsState()
@@ -700,13 +769,28 @@ private fun Composer(viewModel: ChatViewModel, model: ModelEntity?, generating: 
         camera.launch(uri)
     }
 
-    Surface(
-        shadowElevation = 10.dp,
-        tonalElevation = 2.dp,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-    ) {
-        Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 10.dp, vertical = 8.dp)) {
+    Box(Modifier.fillMaxWidth()) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .blur((8f + 14f * chromeProgress.coerceIn(0f, 1f)).dp)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.Transparent,
+                            MaterialTheme.colorScheme.surface.copy(alpha = .20f + .16f * chromeProgress.coerceIn(0f, 1f)),
+                            MaterialTheme.colorScheme.surface.copy(alpha = .58f + .22f * chromeProgress.coerceIn(0f, 1f)),
+                        ),
+                    ),
+                ),
+        )
+        Surface(
+            shadowElevation = 8.dp,
+            tonalElevation = 1.dp,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = .66f + .16f * chromeProgress.coerceIn(0f, 1f)),
+        ) {
+            Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 10.dp, vertical = 8.dp)) {
             if (pending.isNotEmpty()) Text(
                 "${pending.size} message${if (pending.size == 1) "" else "s"} queued",
                 style = MaterialTheme.typography.labelMedium,
@@ -714,60 +798,59 @@ private fun Composer(viewModel: ChatViewModel, model: ModelEntity?, generating: 
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
             )
             if (staged.isNotEmpty()) {
-                LazyColumn(Modifier.heightIn(max = 132.dp)) {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 96.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                ) {
                     items(staged.size, key = { staged[it].id }) { index ->
-                        val attachment = staged[index]
-                        AssistChip(
-                            onClick = { viewModel.removeStaged(attachment.id) },
-                            label = { Text("${attachment.displayName} • ${Formatter.formatShortFileSize(context, attachment.sizeBytes)}") },
-                            leadingIcon = {
-                                when {
-                                    attachment.ocrJson != null -> Badge { Text("OCR") }
-                                    attachment.mimeType.startsWith("image/") && model?.supportsVision == false -> Badge { Text("OCR ON SEND") }
-                                    else -> Icon(Icons.Outlined.AttachFile, null, Modifier.size(16.dp))
-                                }
-                            },
+                        StagedAttachmentPreview(
+                            attachment = staged[index],
+                            modelSupportsVision = model?.supportsVision != false,
+                            onRemove = { viewModel.removeStaged(staged[index].id) },
                         )
                     }
                 }
             }
             conversation?.let { current ->
-                Row(
+                LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 48.dp, end = 56.dp, bottom = 6.dp),
+                        .padding(start = 48.dp, end = 8.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(end = 48.dp),
                 ) {
-                    ThinkingComposerChip(
-                        enabled = current.thinkingEnabled,
-                        effort = current.thinkingEffort,
-                        supported = model?.supportsThinking != false,
-                        onToggle = { viewModel.updateConversation { it.copy(thinkingEnabled = !it.thinkingEnabled) } },
-                        onEffort = { effort ->
-                            viewModel.updateConversation { it.copy(thinkingEnabled = true, thinkingEffort = effort) }
-                        },
-                    )
-                    FilterChip(
-                        selected = current.webSearchEnabled,
-                        onClick = {
-                            viewModel.updateConversation {
-                                val enabled = !it.webSearchEnabled
-                                it.copy(
-                                    webSearchEnabled = enabled,
-                                    deepResearchEnabled = it.deepResearchEnabled && enabled,
-                                )
-                            }
-                        },
-                        label = { Text(if (current.deepResearchEnabled) "Research" else "Search") },
-                        leadingIcon = {
-                            Icon(
-                                if (current.deepResearchEnabled) Icons.Outlined.TravelExplore else Icons.Outlined.Search,
-                                null,
-                                Modifier.size(17.dp),
-                            )
-                        },
-                    )
+                    item {
+                        ThinkingComposerChip(
+                            enabled = current.thinkingEnabled,
+                            effort = current.thinkingEffort,
+                            provider = provider,
+                            model = model,
+                            onSelection = { enabled, effort ->
+                                viewModel.updateConversation {
+                                    it.copy(
+                                        thinkingEnabled = enabled,
+                                        thinkingEffort = effort ?: it.thinkingEffort,
+                                    )
+                                }
+                            },
+                        )
+                    }
+                    item {
+                        SearchComposerChip(
+                            webEnabled = current.webSearchEnabled,
+                            deepResearchEnabled = current.deepResearchEnabled,
+                            onSelection = { webEnabled, deepResearchEnabled ->
+                                viewModel.updateConversation {
+                                    it.copy(
+                                        webSearchEnabled = webEnabled,
+                                        deepResearchEnabled = deepResearchEnabled,
+                                    )
+                                }
+                            },
+                        )
+                    }
                 }
             }
 
@@ -778,7 +861,15 @@ private fun Composer(viewModel: ChatViewModel, model: ModelEntity?, generating: 
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { viewModel.draft.value = it },
-                    placeholder = { Text(if (generating) "Steer or queue a message…" else if (conversation?.deepResearchEnabled == true) "Describe the research outcome…" else "Message Arbor…") },
+                    placeholder = {
+                        Text(
+                            if (generating) "Steer or queue…"
+                            else if (conversation?.deepResearchEnabled == true) "Research request…"
+                            else "Message Arbor…",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
                     modifier = Modifier.weight(1f).heightIn(min = 54.dp, max = 170.dp),
                     shape = MaterialTheme.shapes.extraLarge,
                     maxLines = 7,
@@ -805,6 +896,7 @@ private fun Composer(viewModel: ChatViewModel, model: ModelEntity?, generating: 
                 }
             }
 
+            }
         }
     }
 
@@ -832,7 +924,7 @@ private fun Composer(viewModel: ChatViewModel, model: ModelEntity?, generating: 
                     ComposerToggleRow(Icons.Outlined.TravelExplore, "Deep Research", "Plan, search repeatedly, verify sources, and write a cited report", current.deepResearchEnabled) { enabled ->
                         viewModel.updateConversation { it.copy(deepResearchEnabled = enabled, webSearchEnabled = it.webSearchEnabled || enabled) }
                     }
-                    ComposerToggleRow(Icons.Outlined.Code, "Python", "Run code in this chat's persistent workspace", current.agentPythonEnabled) { enabled ->
+                    ComposerToggleRow(Icons.Outlined.Code, "Local Code Execution", "Run Python locally in this chat's persistent workspace", current.agentPythonEnabled) { enabled ->
                         viewModel.updateConversation { it.copy(agentPythonEnabled = enabled) }
                     }
                     ComposerToggleRow(Icons.Outlined.Terminal, "Linux", "Use the selected Linux tooling workspace", current.agentUbuntuEnabled) { enabled ->
@@ -887,83 +979,187 @@ private fun Composer(viewModel: ChatViewModel, model: ModelEntity?, generating: 
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun StagedAttachmentPreview(
+    attachment: AttachmentEntity,
+    modelSupportsVision: Boolean,
+    onRemove: () -> Unit,
+) {
+    val isImage = attachment.mimeType.startsWith("image/") && attachment.mimeType != "image/svg+xml"
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = .92f),
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier
+            .width(if (isImage) 86.dp else 176.dp)
+            .height(82.dp),
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            if (isImage) {
+                AsyncImage(
+                    model = File(attachment.thumbnailPath ?: attachment.localPath),
+                    contentDescription = attachment.displayName,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, Color.Black.copy(alpha = .62f)),
+                                startY = 20f,
+                            ),
+                        ),
+                )
+                Text(
+                    attachment.displayName,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, end = 28.dp, bottom = 7.dp),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            } else {
+                Row(
+                    Modifier.fillMaxSize().padding(start = 10.dp, end = 30.dp, top = 10.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        stagedFileIcon(attachment),
+                        null,
+                        Modifier.size(30.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Column(Modifier.padding(start = 9.dp)) {
+                        Text(attachment.displayName, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
+                        Text(
+                            Formatter.formatShortFileSize(LocalContext.current, attachment.sizeBytes),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            IconButton(
+                onClick = onRemove,
+                modifier = Modifier.align(Alignment.TopEnd).size(30.dp),
+            ) {
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.scrim.copy(alpha = if (isImage) .58f else .12f)) {
+                    Icon(
+                        Icons.Outlined.Close,
+                        "Remove ${attachment.displayName}",
+                        Modifier.padding(5.dp).size(15.dp),
+                        tint = if (isImage) Color.White else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+            if (attachment.ocrJson != null || (isImage && !modelSupportsVision)) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .94f),
+                    shape = CircleShape,
+                    modifier = Modifier.align(Alignment.TopStart).padding(5.dp),
+                ) {
+                    Text(
+                        if (attachment.ocrJson != null) "OCR" else "OCR on send",
+                        Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun stagedFileIcon(attachment: AttachmentEntity) = when {
+    attachment.mimeType == "application/pdf" -> Icons.Outlined.PictureAsPdf
+    attachment.mimeType.startsWith("text/") || attachment.extractedText != null -> Icons.Outlined.Description
+    attachment.mimeType.startsWith("audio/") -> Icons.Outlined.AudioFile
+    attachment.mimeType.contains("zip") || attachment.mimeType.contains("archive") || attachment.mimeType.contains("compressed") -> Icons.Outlined.Archive
+    else -> Icons.AutoMirrored.Outlined.InsertDriveFile
+}
 
 @Composable
 private fun ThinkingComposerChip(
     enabled: Boolean,
     effort: ThinkingEffort,
-    supported: Boolean,
-    onToggle: () -> Unit,
-    onEffort: (ThinkingEffort) -> Unit,
+    provider: ProviderEntity?,
+    model: ModelEntity?,
+    onSelection: (Boolean, ThinkingEffort?) -> Unit,
 ) {
-    var effortMenu by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
+    val options = remember(provider?.id, provider?.kind, model?.modelId, model?.supportsThinking) {
+        supportedThinkingLevels(provider, model)
+    }
+    val selectedIndex = remember(options, enabled, effort) {
+        options.indexOfFirst { option ->
+            if (!enabled) !option.enabled else option.enabled && option.effort == effort
+        }.takeIf { it >= 0 } ?: options.indexOfFirst { it.enabled }.coerceAtLeast(0)
+    }
+    var sliderValue by remember(options, selectedIndex, menu) { mutableFloatStateOf(selectedIndex.toFloat()) }
+    val selected = options.getOrNull(selectedIndex)
+
     Box {
         Surface(
-            color = when {
-                !supported -> MaterialTheme.colorScheme.surfaceContainer
-                enabled -> MaterialTheme.colorScheme.secondaryContainer
-                else -> MaterialTheme.colorScheme.surfaceContainerHigh
-            },
-            contentColor = when {
-                !supported -> MaterialTheme.colorScheme.onSurfaceVariant
-                enabled -> MaterialTheme.colorScheme.onSecondaryContainer
-                else -> MaterialTheme.colorScheme.onSurfaceVariant
-            },
+            onClick = { if (options.isNotEmpty()) menu = true },
+            enabled = options.isNotEmpty(),
+            color = if (enabled && options.isNotEmpty()) MaterialTheme.colorScheme.secondaryContainer
+            else MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = if (enabled && options.isNotEmpty()) MaterialTheme.colorScheme.onSecondaryContainer
+            else MaterialTheme.colorScheme.onSurfaceVariant,
             shape = CircleShape,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Row(
-                    Modifier
-                        .clickable(enabled = supported, onClick = onToggle)
-                        .padding(start = 12.dp, end = 4.dp, top = 7.dp, bottom = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Icon(Icons.Outlined.Psychology, null, Modifier.size(17.dp))
-                    Text(
-                        when {
-                            !supported -> "Think unavailable"
-                            enabled -> "Think · ${effort.composerName}"
-                            else -> "Think"
-                        },
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                }
-                IconButton(
-                    onClick = { effortMenu = true },
-                    enabled = supported,
-                    modifier = Modifier.size(36.dp),
-                ) {
-                    Icon(Icons.Outlined.ExpandMore, "Choose thinking effort", Modifier.size(19.dp))
-                }
+            Row(
+                Modifier.padding(start = 12.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(Icons.Outlined.Psychology, null, Modifier.size(17.dp))
+                Text(
+                    if (options.isEmpty()) "Thinking unavailable"
+                    else "Think · ${selected?.label ?: if (enabled) effort.composerName else "Off"}",
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Icon(Icons.Outlined.ExpandLess, "Choose thinking level", Modifier.size(19.dp))
             }
         }
-        DropdownMenu(expanded = effortMenu, onDismissRequest = { effortMenu = false }) {
-            ThinkingEffort.entries.forEach { option ->
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(option.displayName)
-                            Text(option.effortDescription, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    },
-                    leadingIcon = if (enabled && effort == option) ({ Icon(Icons.Outlined.Check, null) }) else null,
-                    onClick = {
-                        onEffort(option)
-                        effortMenu = false
-                    },
-                )
-            }
-            if (enabled) {
-                HorizontalDivider()
-                DropdownMenuItem(
-                    text = { Text("Turn thinking off") },
-                    onClick = {
-                        onToggle()
-                        effortMenu = false
-                    },
-                )
+        DropdownMenu(
+            expanded = menu,
+            onDismissRequest = { menu = false },
+            modifier = Modifier.width(304.dp),
+        ) {
+            if (options.isNotEmpty()) {
+                val preview = options[sliderValue.roundToInt().coerceIn(options.indices)]
+                Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Think", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Text(preview.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Slider(
+                        value = sliderValue,
+                        onValueChange = { sliderValue = it },
+                        onValueChangeFinished = {
+                            val option = options[sliderValue.roundToInt().coerceIn(options.indices)]
+                            onSelection(option.enabled, option.effort)
+                        },
+                        valueRange = 0f..options.lastIndex.toFloat().coerceAtLeast(1f),
+                        steps = (options.size - 2).coerceAtLeast(0),
+                        enabled = options.size > 1,
+                    )
+                    Row(Modifier.fillMaxWidth()) {
+                        Text(options.first().label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.weight(1f))
+                        Text(options.last().label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text(
+                        preview.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
             }
         }
     }
@@ -975,6 +1171,8 @@ private val ThinkingEffort.effortDescription: String
         ThinkingEffort.LOW -> "Short reasoning"
         ThinkingEffort.MEDIUM -> "Balanced"
         ThinkingEffort.HIGH -> "More thorough reasoning"
+        ThinkingEffort.XHIGH -> "Extended reasoning"
+        ThinkingEffort.MAX -> "Maximum supported reasoning"
     }
 
 private val ThinkingEffort.displayName: String
@@ -986,7 +1184,62 @@ private val ThinkingEffort.composerName: String
         ThinkingEffort.LOW -> "Low"
         ThinkingEffort.MEDIUM -> "Med"
         ThinkingEffort.HIGH -> "High"
+        ThinkingEffort.XHIGH -> "XHigh"
+        ThinkingEffort.MAX -> "Max"
     }
+
+@Composable
+private fun SearchComposerChip(
+    webEnabled: Boolean,
+    deepResearchEnabled: Boolean,
+    onSelection: (Boolean, Boolean) -> Unit,
+) {
+    var menu by remember { mutableStateOf(false) }
+    val label = when {
+        deepResearchEnabled -> "Research"
+        webEnabled -> "Search"
+        else -> "Search off"
+    }
+    val icon = when {
+        deepResearchEnabled -> Icons.Outlined.TravelExplore
+        else -> Icons.Outlined.Search
+    }
+    Box {
+        Surface(
+            onClick = { menu = true },
+            color = if (webEnabled) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = if (webEnabled) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+            shape = CircleShape,
+        ) {
+            Row(
+                Modifier.padding(start = 12.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(icon, null, Modifier.size(17.dp))
+                Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Icon(Icons.Outlined.ExpandLess, "Choose search mode", Modifier.size(19.dp))
+            }
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(
+                text = { Text("Search off") },
+                onClick = { onSelection(false, false); menu = false },
+                leadingIcon = { Icon(Icons.Outlined.Close, null) },
+            )
+            DropdownMenuItem(
+                text = { Text("Web search") },
+                onClick = { onSelection(true, false); menu = false },
+                leadingIcon = { Icon(Icons.Outlined.Search, null) },
+            )
+            DropdownMenuItem(
+                text = { Text("Deep Research") },
+                onClick = { onSelection(true, true); menu = false },
+                leadingIcon = { Icon(Icons.Outlined.TravelExplore, null) },
+            )
+        }
+    }
+}
 
 @Composable
 private fun ComposerActionRow(
