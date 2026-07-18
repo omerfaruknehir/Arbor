@@ -151,10 +151,19 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 items(entries) { entry ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            "root@arbor-${selectedDistribution.id}:/workspace# ${entry.command}",
-                            color = Color(0xFFB7F7B7),
+                            "root@arbor-${selectedDistribution.id}:/workspace#",
+                            color = Color(0xFF91A391),
                             fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                        AutoLintedCodeText(
+                            language = "bash",
+                            code = entry.command,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = Color(0xFFB7F7B7),
+                                fontWeight = FontWeight.SemiBold,
+                            ),
+                            softWrap = true,
                         )
                         entry.result?.let { result ->
                             if (result.stdout.isNotBlank()) Text(result.stdout, color = Color(0xFFE4E9E4), fontFamily = FontFamily.Monospace)
@@ -173,6 +182,7 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 enabled = status.installed && !running,
                 label = { Text("root@arbor-${selectedDistribution.id}:/workspace#") },
                 textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                visualTransformation = rememberCodeVisualTransformation("bash"),
                 trailingIcon = { IconButton(onClick = ::submit, enabled = input.isNotBlank() && status.installed && !running) { Icon(Icons.Outlined.PlayArrow, "Run") } },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { submit() }),

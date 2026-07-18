@@ -56,6 +56,7 @@ import app.arbor.chat.sandbox.PackageAction
 import app.arbor.chat.sandbox.PackageApprovalState
 import app.arbor.chat.sandbox.PackageReview
 import app.arbor.chat.sandbox.PackagePlan
+import app.arbor.chat.sandbox.StaticCodeLinter
 import app.arbor.chat.sandbox.UbuntuExecutionResult
 import app.arbor.chat.sandbox.UbuntuPackageInstallResult
 import app.arbor.chat.widgets.ProgrammableWidgetBlock
@@ -157,7 +158,14 @@ private fun SafeGeneratedBlock(label: String, source: String, retry: () -> Unit)
                 OutlinedButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Collapse source" else "Show source") }
                 Button(onClick = retry) { Text("Try full rendering") }
             }
-            AnimatedVisibility(expanded) { Text(source, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
+            AnimatedVisibility(expanded) {
+                AutoLintedCodeText(
+                    language = "text",
+                    code = source,
+                    style = MaterialTheme.typography.bodySmall,
+                    softWrap = true,
+                )
+            }
         }
     }
 }
@@ -329,6 +337,7 @@ private fun CodeBlock(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val lint = remember(language, code) { StaticCodeLinter.lint(language, code) }
     var copied by remember { mutableStateOf(false) }
     var running by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<ExecutionResult?>(null) }
@@ -337,6 +346,7 @@ private fun CodeBlock(
         Column {
             Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(language.ifBlank { "code" }.uppercase(), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                CodeLintBadge(lint)
                 if (language.lowercase() in setOf("python", "py")) {
                     IconButton(onClick = {
                         scope.launch {
@@ -361,7 +371,13 @@ private fun CodeBlock(
                 }) { Icon(if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, "Copy") }
             }
             Box(Modifier.horizontalScroll(rememberScrollState()).padding(14.dp)) {
-                Text(highlightedCode(language, code), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium, softWrap = false)
+                AutoLintedCodeText(
+                    language = language,
+                    code = code,
+                    lintResult = lint,
+                    style = MaterialTheme.typography.bodyMedium,
+                    softWrap = false,
+                )
             }
             AnimatedVisibility(result != null) {
                 result?.let { output -> Column(Modifier.padding(10.dp)) { PythonExecutionCard(output) } }

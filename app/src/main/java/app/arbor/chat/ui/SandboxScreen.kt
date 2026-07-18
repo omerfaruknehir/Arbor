@@ -324,6 +324,7 @@ fun SandboxScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             OutlinedTextField(
                 code, { code = it },
                 textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                visualTransformation = rememberCodeVisualTransformation("python", if (codeLinting) null else codeLint?.diagnostics),
                 minLines = 12,
                 label = { Text("Distro Python (root)") },
                 modifier = Modifier.fillMaxWidth(),
@@ -393,6 +394,7 @@ fun SandboxScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     ubuntuCommand, { ubuntuCommand = it },
                     label = { Text("${ubuntuStatus.distribution.displayName} shell command") },
                     textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                    visualTransformation = rememberCodeVisualTransformation("bash", if (ubuntuLinting) null else ubuntuLint?.diagnostics),
                     minLines = 4,
                     modifier = Modifier.fillMaxWidth(),
                 )

@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -22,23 +23,51 @@ import androidx.compose.ui.unit.dp
 import app.arbor.chat.sandbox.CodeLintResult
 import app.arbor.chat.sandbox.ExecutionResult
 import app.arbor.chat.sandbox.LintSeverity
+import app.arbor.chat.sandbox.StaticCodeLinter
 import app.arbor.chat.sandbox.UbuntuExecutionResult
 
 @Composable
 fun CodeSourcePanel(language: String, code: String, title: String = language.ifBlank { "code" }.uppercase()) {
+    val lint = remember(language, code) { StaticCodeLinter.lint(language, code) }
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth()) {
         Column {
-            Text(title, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(title, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                CodeLintBadge(lint)
+            }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Text(
-                highlightedCode(language, code),
-                Modifier.horizontalScroll(rememberScrollState()).padding(12.dp),
-                fontFamily = FontFamily.Monospace,
+            AutoLintedCodeText(
+                language = language,
+                code = code,
+                lintResult = lint,
+                modifier = Modifier.horizontalScroll(rememberScrollState()).padding(12.dp),
                 style = MaterialTheme.typography.bodySmall,
                 softWrap = false,
             )
         }
     }
+}
+
+@Composable
+fun CodeLintBadge(result: CodeLintResult) {
+    val errors = result.diagnostics.count { it.severity == LintSeverity.ERROR }
+    val warnings = result.diagnostics.count { it.severity == LintSeverity.WARNING }
+    val infos = result.diagnostics.count { it.severity == LintSeverity.INFO }
+    val label = when {
+        errors > 0 -> "$errors error${if (errors == 1) "" else "s"}"
+        warnings > 0 -> "$warnings warning${if (warnings == 1) "" else "s"}"
+        infos > 0 -> "$infos note${if (infos == 1) "" else "s"}"
+        else -> "Lint clean"
+    }
+    Text(
+        label,
+        style = MaterialTheme.typography.labelSmall,
+        color = when {
+            errors > 0 -> MaterialTheme.colorScheme.error
+            warnings > 0 -> MaterialTheme.colorScheme.tertiary
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        },
+    )
 }
 
 @Composable

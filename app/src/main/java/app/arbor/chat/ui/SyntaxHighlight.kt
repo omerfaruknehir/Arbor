@@ -6,8 +6,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.Modifier
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.text.font.FontFamily
+import app.arbor.chat.sandbox.CodeDiagnostic
+import app.arbor.chat.sandbox.CodeLintResult
+import app.arbor.chat.sandbox.LintSeverity
+import app.arbor.chat.sandbox.StaticCodeLinter
 
 internal enum class SyntaxKind {
     KEYWORD, STRING, NUMBER, COMMENT, TYPE, FUNCTION, PROPERTY, ANNOTATION, OPERATOR,
@@ -194,46 +207,141 @@ private data class SyntaxPalette(
     val property: Color,
     val annotation: Color,
     val operator: Color,
+    val lintError: Color,
+    val lintWarning: Color,
+    val lintInfo: Color,
 )
 
 @Composable
-internal fun highlightedCode(language: String, code: String): AnnotatedString {
+private fun rememberSyntaxPalette(): SyntaxPalette {
     val dark = isSystemInDarkTheme()
-    val palette = remember(dark) {
+    return remember(dark) {
         if (dark) SyntaxPalette(
             keyword = Color(0xFFC792EA), string = Color(0xFFC3E88D), number = Color(0xFFF78C6C),
             comment = Color(0xFF81909C), type = Color(0xFF82AAFF), function = Color(0xFFFFCB6B),
             property = Color(0xFF89DDFF), annotation = Color(0xFFFF9CAC), operator = Color(0xFF89DDFF),
+            lintError = Color(0xFFFF6B6B), lintWarning = Color(0xFFFFC857), lintInfo = Color(0xFF72B7FF),
         ) else SyntaxPalette(
             keyword = Color(0xFF6F42C1), string = Color(0xFF2E7D32), number = Color(0xFFC2410C),
             comment = Color(0xFF667680), type = Color(0xFF1565C0), function = Color(0xFF8A6100),
             property = Color(0xFF007C91), annotation = Color(0xFFB4235A), operator = Color(0xFF455A64),
+            lintError = Color(0xFFBA1A1A), lintWarning = Color(0xFF8A5A00), lintInfo = Color(0xFF005DB7),
         )
     }
-    return remember(language, code, palette) {
-        buildAnnotatedString {
-            append(code)
-            syntaxSpans(language, code).forEach { span ->
-                val color = when (span.kind) {
-                    SyntaxKind.KEYWORD -> palette.keyword
-                    SyntaxKind.STRING -> palette.string
-                    SyntaxKind.NUMBER -> palette.number
-                    SyntaxKind.COMMENT -> palette.comment
-                    SyntaxKind.TYPE -> palette.type
-                    SyntaxKind.FUNCTION -> palette.function
-                    SyntaxKind.PROPERTY -> palette.property
-                    SyntaxKind.ANNOTATION -> palette.annotation
-                    SyntaxKind.OPERATOR -> palette.operator
-                }
-                addStyle(
-                    SpanStyle(
-                        color = color,
-                        fontWeight = if (span.kind in setOf(SyntaxKind.KEYWORD, SyntaxKind.TYPE, SyntaxKind.ANNOTATION)) FontWeight.SemiBold else null,
-                    ),
-                    span.start,
-                    span.endExclusive,
-                )
-            }
+}
+
+private fun diagnosticRange(code: String, diagnostic: CodeDiagnostic): IntRange? {
+    val lineNumber = diagnostic.line ?: return null
+    if (lineNumber < 1) return null
+    var line = 1
+    var start = 0
+    while (line < lineNumber && start < code.length) {
+        val newline = code.indexOf('\n', start)
+        if (newline < 0) return null
+        start = newline + 1
+        line++
+    }
+    if (start > code.length) return null
+    val lineEnd = code.indexOf('\n', start).let { if (it < 0) code.length else it }
+    if (lineEnd <= start) return null
+    val requested = (diagnostic.column ?: 1).coerceAtLeast(1) - 1
+    val markerStart = (start + requested).coerceIn(start, (lineEnd - 1).coerceAtLeast(start))
+    var markerEnd = markerStart + 1
+    while (markerEnd < lineEnd && (code[markerEnd].isLetterOrDigit() || code[markerEnd] == '_')) markerEnd++
+    return markerStart until markerEnd.coerceAtMost(code.length)
+}
+
+private fun renderHighlightedCode(
+    language: String,
+    code: String,
+    palette: SyntaxPalette,
+    diagnostics: List<CodeDiagnostic>,
+): AnnotatedString = buildAnnotatedString {
+    append(code)
+    syntaxSpans(language, code).forEach { span ->
+        val color = when (span.kind) {
+            SyntaxKind.KEYWORD -> palette.keyword
+            SyntaxKind.STRING -> palette.string
+            SyntaxKind.NUMBER -> palette.number
+            SyntaxKind.COMMENT -> palette.comment
+            SyntaxKind.TYPE -> palette.type
+            SyntaxKind.FUNCTION -> palette.function
+            SyntaxKind.PROPERTY -> palette.property
+            SyntaxKind.ANNOTATION -> palette.annotation
+            SyntaxKind.OPERATOR -> palette.operator
+        }
+        addStyle(
+            SpanStyle(
+                color = color,
+                fontWeight = if (span.kind in setOf(SyntaxKind.KEYWORD, SyntaxKind.TYPE, SyntaxKind.ANNOTATION)) FontWeight.SemiBold else null,
+            ),
+            span.start,
+            span.endExclusive,
+        )
+    }
+    diagnostics.forEach { diagnostic ->
+        val range = diagnosticRange(code, diagnostic) ?: return@forEach
+        val color = when (diagnostic.severity) {
+            LintSeverity.ERROR -> palette.lintError
+            LintSeverity.WARNING -> palette.lintWarning
+            LintSeverity.INFO -> palette.lintInfo
+        }
+        addStyle(
+            SpanStyle(
+                background = color.copy(alpha = .15f),
+                textDecoration = TextDecoration.Underline,
+            ),
+            range.first,
+            range.last + 1,
+        )
+    }
+}
+
+@Composable
+internal fun highlightedCode(
+    language: String,
+    code: String,
+    diagnostics: List<CodeDiagnostic> = emptyList(),
+): AnnotatedString {
+    val palette = rememberSyntaxPalette()
+    return remember(language, code, diagnostics, palette) {
+        renderHighlightedCode(language, code, palette, diagnostics)
+    }
+}
+
+@Composable
+internal fun rememberCodeVisualTransformation(
+    language: String,
+    diagnostics: List<CodeDiagnostic>? = null,
+): VisualTransformation {
+    val palette = rememberSyntaxPalette()
+    return remember(language, diagnostics, palette) {
+        VisualTransformation { input ->
+            val effectiveDiagnostics = diagnostics ?: StaticCodeLinter.lint(language, input.text).diagnostics
+            TransformedText(
+                renderHighlightedCode(language, input.text, palette, effectiveDiagnostics),
+                OffsetMapping.Identity,
+            )
         }
     }
+}
+
+@Composable
+internal fun AutoLintedCodeText(
+    language: String,
+    code: String,
+    modifier: Modifier = Modifier,
+    lintResult: CodeLintResult? = null,
+    style: TextStyle = MaterialTheme.typography.bodySmall,
+    softWrap: Boolean = false,
+) {
+    val automatic = remember(language, code) { StaticCodeLinter.lint(language, code) }
+    val diagnostics = lintResult?.diagnostics ?: automatic.diagnostics
+    Text(
+        highlightedCode(language, code, diagnostics),
+        modifier = modifier,
+        fontFamily = FontFamily.Monospace,
+        style = style,
+        softWrap = softWrap,
+    )
 }

@@ -79,6 +79,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -619,7 +620,7 @@ private fun LocalCodeExecutionSettingsPage(
 
 @Composable
 private fun AboutSettingsPage() = SettingsPage {
-    SectionTitle("Arbor 0.16.3", "Native Android BYOK model workspace.")
+    SectionTitle("Arbor 0.16.4", "Native Android BYOK model workspace.")
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Built for long-running, tool-using chats", fontWeight = FontWeight.SemiBold)
@@ -1128,7 +1129,15 @@ private fun ProviderEditor(
                 Icon(Icons.Outlined.ExpandMore, null)
             }
         }
-        if (advanced) OutlinedTextField(headers, onHeaders, label = { Text("Custom headers JSON") }, minLines = 3, modifier = Modifier.fillMaxWidth())
+        if (advanced) OutlinedTextField(
+            headers,
+            onHeaders,
+            label = { Text("Custom headers JSON") },
+            minLines = 3,
+            visualTransformation = rememberCodeVisualTransformation("json"),
+            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+            modifier = Modifier.fillMaxWidth(),
+        )
         Button(
             onClick = onSave,
             enabled = name.isNotBlank() && baseUrl.isNotBlank() && (!apiKeyRequired || key.isNotBlank()),
@@ -1264,7 +1273,15 @@ private fun AddProviderDialog(
                     Switch(checked = apiKeyRequired, onCheckedChange = { apiKeyRequired = it; invalidateDiscovery() })
                 }
                 HorizontalDivider()
-                OutlinedTextField(headers, { headers = it; invalidateDiscovery() }, label = { Text("Custom headers JSON") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    headers,
+                    { headers = it; invalidateDiscovery() },
+                    label = { Text("Custom headers JSON") },
+                    minLines = 2,
+                    visualTransformation = rememberCodeVisualTransformation("json"),
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 Button(
                     enabled = connectionReady && !discovering,
                     onClick = {

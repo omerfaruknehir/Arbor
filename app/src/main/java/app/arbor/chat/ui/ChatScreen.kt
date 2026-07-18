@@ -654,7 +654,12 @@ private fun TimelineWorkingBlock(events: List<MessageTimelineEvent>, streaming: 
                             if (event.content.isNotBlank()) Text(event.content, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (event.kind in setOf("python", "ubuntu", "search", "fetch")) ToolStepDetails(event.kind, event.input, event.output, event.status, viewModel)
                             else {
-                                if (event.input.isNotBlank()) Text(event.input, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (event.input.isNotBlank()) AutoLintedCodeText(
+                                    language = event.kind,
+                                    code = event.input,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    softWrap = true,
+                                )
                                 if (event.output.isNotBlank()) GenericToolOutputCard(event.output, failed = event.status == "error")
                             }
                         }

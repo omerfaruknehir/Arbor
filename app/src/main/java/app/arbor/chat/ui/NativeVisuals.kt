@@ -163,7 +163,12 @@ fun NativeDiagramBlock(source: String) {
     val diagram = remember(source) { NativeDiagramParser.parse(source) }
     var expanded by remember(source) { mutableStateOf(false) }
     VisualFrame("DIAGRAM • native", onExpand = { expanded = true }) {
-        if (diagram.nodes.isEmpty()) Text(source, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+        if (diagram.nodes.isEmpty()) AutoLintedCodeText(
+            language = "mermaid",
+            code = source,
+            style = MaterialTheme.typography.bodySmall,
+            softWrap = true,
+        )
         else DiagramCanvas(diagram, large = false)
     }
     if (expanded) VisualDialog("Diagram", onDismiss = { expanded = false }) { DiagramCanvas(diagram, large = true) }
