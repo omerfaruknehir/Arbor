@@ -207,7 +207,7 @@ abstract class ArborDatabase : RoomDatabase() {
 
         private val MIGRATION_12_13 = object : Migration(12, 13) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE conversations ADD COLUMN systemPromptProfileId TEXT")
+                db.execSQL("ALTER TABLE conversations ADD COLUMN systemPromptProfileId TEXT DEFAULT NULL")
                 db.execSQL(
                     """CREATE TABLE IF NOT EXISTS system_prompt_profiles (
                         id TEXT NOT NULL PRIMARY KEY,
