@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.17
+
+- Rebuilt the chat title as a single clipped, fixed collapsing header instead of a permanently full-height overlay.
+- The header is fully expanded only at the oldest/top of the conversation, follows scroll position directly and linearly, and contracts to a compact toolbar without crossfading, independent animation, or floating over messages.
+- Kept the model selector available in both expanded and compact states while clipping all header content to the live header height.
+
 ## 0.16.14
 
 - Replaced Mermaid node-token regex parsing with a delimiter scanner, eliminating the Android 16 ICU `PatternSyntaxException` in native diagrams.

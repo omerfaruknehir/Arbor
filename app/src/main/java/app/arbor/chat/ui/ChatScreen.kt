@@ -7,7 +7,6 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -104,6 +103,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -214,14 +214,15 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val scrollScope = rememberCoroutineScope()
     val density = LocalDensity.current
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val headerExpandedHeight = 132.dp
+    val headerCompactHeight = 68.dp
+    val headerExpandedHeight = 136.dp
     val headerReserve = statusTop + headerExpandedHeight
     val headerReservePx = with(density) { headerReserve.roundToPx() }
     val latestThresholdPx = with(density) { 48.dp.roundToPx() }
     val chromeStartPx = with(density) { 56.dp.roundToPx() }
     val chromeEndPx = with(density) { 176.dp.roundToPx() }
-    val headerStartPx = with(density) { 20.dp.roundToPx() }
-    val headerEndPx = with(density) { 148.dp.roundToPx() }
+    val headerStartPx = with(density) { 12.dp.roundToPx() }
+    val headerEndPx = with(density) { 112.dp.roundToPx() }
     var followLatest by remember(conversation?.id) { mutableStateOf(true) }
     var searchFocusHandled by remember(conversation?.id, focusedMessageNodeId) { mutableStateOf(false) }
     val isAtLatest by remember(messageListState, latestThresholdPx) {
@@ -262,12 +263,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             }
         }
     }
-    val animatedHeaderCollapse by animateFloatAsState(
-        targetValue = headerCollapseProgress,
-        animationSpec = tween(120, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)),
-        label = "ChatHeaderCollapse",
-    )
-
     LaunchedEffect(conversation?.id) {
         modelMenu = false
         chatMenu = false
@@ -419,13 +414,18 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 }
             }
 
-            val collapse = animatedHeaderCollapse
-            val titleTravel = arborBlurProgress(collapse)
+            // Geometry follows list scroll one-to-one. Any smooth motion comes
+            // from the list itself, never from a separate header animation.
+            val collapse = headerCollapseProgress
+            val currentHeaderContentHeight = headerCompactHeight +
+                (headerExpandedHeight - headerCompactHeight) * (1f - collapse)
+            val currentHeaderHeight = statusTop + currentHeaderContentHeight
             Box(
                 Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .height(headerReserve)
+                    .height(currentHeaderHeight)
+                    .clipToBounds()
                     .zIndex(10f)
                     .arborBackdropBlur(
                         state = blurState,
@@ -441,7 +441,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .height(64.dp)
+                        .height(headerCompactHeight)
                         .padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -462,22 +462,23 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     }
                 }
 
-                val expandedTitleTop = statusTop + 67.dp
-                val collapsedTitleTop = statusTop + 10.dp
-                val titleTranslationPx = with(density) {
-                    ((expandedTitleTop - collapsedTitleTop) * (1f - titleTravel)).toPx()
-                }
-                val titleScale = 1f + 0.14f * (1f - titleTravel)
+                // One persistent title: it is part of the fixed header, never a
+                // floating list overlay and never cross-faded with a duplicate.
+                val expandedTitleTop = statusTop + 72.dp
+                val collapsedTitleTop = statusTop + 11.dp
+                val titleTop = collapsedTitleTop + (expandedTitleTop - collapsedTitleTop) * (1f - collapse)
+                val titleScale = 1f + 0.20f * (1f - collapse)
                 Text(
                     conversation?.title ?: stringResource(R.string.app_name),
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
-                        .padding(start = 72.dp, end = 72.dp, top = collapsedTitleTop)
+                        .offset(y = titleTop)
+                        .padding(horizontal = 72.dp)
                         .graphicsLayer {
-                            translationY = titleTranslationPx
                             scaleX = titleScale
                             scaleY = titleScale
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin.Center
                         }
                         .zIndex(2f),
                     fontWeight = FontWeight.SemiBold,
@@ -487,16 +488,13 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     overflow = TextOverflow.Ellipsis,
                 )
 
-                val expandedModelTop = statusTop + 106.dp
-                val collapsedModelTop = statusTop + 45.dp
-                val modelTranslationPx = with(density) {
-                    ((expandedModelTop - collapsedModelTop) * (1f - titleTravel)).toPx()
-                }
+                val expandedModelTop = statusTop + 108.dp
+                val collapsedModelTop = statusTop + 42.dp
+                val modelTop = collapsedModelTop + (expandedModelTop - collapsedModelTop) * (1f - collapse)
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .padding(top = collapsedModelTop)
-                        .graphicsLayer { translationY = modelTranslationPx }
+                        .offset(y = modelTop)
                         .zIndex(3f),
                 ) {
                     Surface(
