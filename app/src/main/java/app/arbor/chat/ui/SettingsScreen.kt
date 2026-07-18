@@ -121,7 +121,7 @@ private enum class SettingsRoute(val title: String) {
     APPEARANCE("Appearance"),
     PRIVACY("Privacy & safety"),
     LOCAL_EXECUTION("Local Code Execution"),
-    SYSTEM_PROMPTS("System prompts"),
+    SYSTEM_PROMPTS("Custom instructions"),
     PROVIDERS("Providers & models"),
     ABOUT("About"),
 }
@@ -231,8 +231,8 @@ private fun SettingsHome(providerCount: Int, onOpen: (SettingsRoute) -> Unit) = 
         )
         SettingsDestination(
             icon = Icons.Outlined.Tune,
-            title = "System prompts",
-            subtitle = "Reusable prepend and override profiles",
+            title = "Custom instructions",
+            subtitle = "Reusable tone and workflow profiles",
             onClick = { onOpen(SettingsRoute.SYSTEM_PROMPTS) },
         )
         SettingsDestination(
@@ -346,7 +346,6 @@ private fun NewChatDefaultsSettings(
         workingTokenLimit = defaults.workingTokenLimit,
         maxOutputTokens = defaults.maxOutputTokens,
         reasoningVisibility = defaults.reasoningVisibility,
-        systemPrompt = defaults.systemPrompt,
         viewModel = viewModel,
         onModel = { providerId, modelId -> viewModel.updateNewChatDefaults { it.copy(selectedProviderId = providerId, selectedModelId = modelId) } },
         onThinkingEnabled = { enabled -> viewModel.updateNewChatDefaults { it.copy(thinkingEnabled = enabled) } },
@@ -361,7 +360,6 @@ private fun NewChatDefaultsSettings(
         onWorkingLimit = { value -> viewModel.updateNewChatDefaults { it.copy(workingTokenLimit = value) } },
         onOutputLimit = { value -> viewModel.updateNewChatDefaults { it.copy(maxOutputTokens = value) } },
         onReasoningVisibility = { value -> viewModel.updateNewChatDefaults { it.copy(reasoningVisibility = value) } },
-        onSystemPrompt = { value -> viewModel.updateNewChatDefaults { it.copy(systemPrompt = value) } },
     )
     Spacer(Modifier.padding(bottom = 24.dp))
 }
@@ -523,12 +521,12 @@ private fun SystemPromptProfilesPage(
     var editing by remember { mutableStateOf<SystemPromptProfileEntity?>(null) }
     var creating by remember { mutableStateOf(false) }
     SectionTitle(
-        "Reusable prompts",
-        "Prepend adds instructions before Arbor's built-in capability prompt. Override replaces only Arbor's default persona; runtime, tool, date, and safety instructions remain active.",
+        "Custom instruction profiles",
+        "Arbor's versioned core prompt is built into the app and updates with Arbor. Profiles can adjust tone or add preferences, but cannot replace the core capability, tool, research, date, privacy, or safety protocol.",
     )
     FilledTonalButton(onClick = { creating = true }, modifier = Modifier.fillMaxWidth()) {
         Icon(Icons.Outlined.Add, null)
-        Text("New system prompt", Modifier.padding(start = 8.dp))
+        Text("New custom profile", Modifier.padding(start = 8.dp))
     }
     if (profiles.isEmpty()) {
         Text("No saved prompts yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -540,7 +538,7 @@ private fun SystemPromptProfilesPage(
                     Column(Modifier.weight(1f)) {
                         Text(profile.name, fontWeight = FontWeight.SemiBold)
                         Text(
-                            if (profile.mode == SystemPromptMode.OVERRIDE) "Override Arbor persona" else "Prepend to Arbor persona",
+                            if (profile.mode == SystemPromptMode.OVERRIDE) "Override default tone/persona" else "Additional instructions",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -561,14 +559,14 @@ private fun SystemPromptProfilesPage(
         modifier = Modifier.fillMaxWidth(),
     ) { Text("Use Arbor default for new chats") }
     if (creating) SystemPromptEditorDialog(
-        title = "New system prompt",
+        title = "New custom profile",
         initial = null,
         onDismiss = { creating = false },
         onSave = { name, prompt, mode -> viewModel.createSystemPromptProfile(name, prompt, mode); creating = false },
     )
     editing?.let { profile ->
         SystemPromptEditorDialog(
-            title = "Edit system prompt",
+            title = "Edit custom profile",
             initial = profile,
             onDismiss = { editing = null },
             onSave = { name, prompt, mode -> viewModel.updateSystemPromptProfile(profile.copy(name = name, prompt = prompt, mode = mode)); editing = null },
@@ -704,7 +702,6 @@ private fun ChatOptionsEditor(
     workingTokenLimit: Int,
     maxOutputTokens: Int,
     reasoningVisibility: ReasoningVisibility,
-    systemPrompt: String,
     viewModel: ChatViewModel,
     onModel: (String, String) -> Unit,
     onThinkingEnabled: (Boolean) -> Unit,
@@ -719,7 +716,6 @@ private fun ChatOptionsEditor(
     onWorkingLimit: (Int) -> Unit,
     onOutputLimit: (Int) -> Unit,
     onReasoningVisibility: (ReasoningVisibility) -> Unit,
-    onSystemPrompt: (String) -> Unit,
 ) {
     val modelFlow = remember(providerId) { viewModel.modelsFor(providerId) }
     val models by modelFlow.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -768,14 +764,16 @@ private fun ChatOptionsEditor(
     }
 
     HorizontalDivider()
-    SectionTitle("System prompt", "Stored with this settings profile.")
-    OutlinedTextField(
-        value = systemPrompt,
-        onValueChange = onSystemPrompt,
-        label = { Text("System prompt") },
-        minLines = 3,
-        modifier = Modifier.fillMaxWidth(),
-    )
+    SectionTitle("Arbor core prompt", "Built into this app version and updated with Arbor. It is intentionally not editable or copied into chats.")
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.Security, null, tint = MaterialTheme.colorScheme.primary)
+            Column(Modifier.padding(start = 12.dp)) {
+                Text("Managed by Arbor", fontWeight = FontWeight.SemiBold)
+                Text("Use Custom instruction profiles for tone and workflow preferences.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
 }
 
 @Composable

@@ -109,17 +109,17 @@ fun ChatConfigurationSheet(
             }
 
             HorizontalDivider()
-            Text("System prompt", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Custom instructions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             val promptProfiles by viewModel.systemPromptProfiles.collectAsStateWithLifecycle()
             var promptMenu by remember { mutableStateOf(false) }
             val activePrompt = promptProfiles.firstOrNull { it.id == conversation.systemPromptProfileId }
             androidx.compose.foundation.layout.Box {
                 OutlinedButton(onClick = { promptMenu = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(activePrompt?.let { "${it.name} · ${it.mode.name.lowercase()}" } ?: "$appName default / one-off prompt", Modifier.weight(1f))
+                    Text(activePrompt?.let { "${it.name} · ${it.mode.name.lowercase()}" } ?: "$appName core prompt only", Modifier.weight(1f))
                 }
                 DropdownMenu(expanded = promptMenu, onDismissRequest = { promptMenu = false }) {
                     DropdownMenuItem(
-                        text = { Text("$appName default / one-off prompt") },
+                        text = { Text("$appName core prompt only") },
                         onClick = { viewModel.selectSystemPromptProfileForCurrent(null); promptMenu = false },
                     )
                     promptProfiles.forEach { profile ->
@@ -130,15 +130,13 @@ fun ChatConfigurationSheet(
                     }
                 }
             }
-            if (conversation.systemPromptProfileId == null) OutlinedTextField(
-                value = conversation.systemPrompt,
-                onValueChange = { prompt -> viewModel.updateConversation { it.copy(systemPrompt = prompt) } },
-                minLines = 3,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Optional one-off instructions for this chat") },
-            ) else Text(
-                activePrompt?.prompt.orEmpty(),
+            if (activePrompt != null) Text(
+                activePrompt.prompt,
                 maxLines = 5,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            ) else Text(
+                "$appName's built-in core prompt is versioned with the app and cannot be edited. Create reusable custom profiles in Settings.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

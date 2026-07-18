@@ -10,6 +10,7 @@ import app.arbor.chat.data.MessageStatus
 import app.arbor.chat.data.SystemPromptMode
 import app.arbor.chat.data.SystemPromptProfileEntity
 import app.arbor.chat.provider.InputMessage
+import app.arbor.chat.settings.ARBOR_CORE_PROMPT_REVISION
 import app.arbor.chat.settings.DEFAULT_ARBOR_SYSTEM_PROMPT
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
@@ -28,6 +29,7 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
         val localFormatter = DateTimeFormatter.ofPattern("EEEE, d MMMM uuuu, HH:mm:ss XXX", Locale.getDefault())
         val runtimeContext = buildString {
             appendLine("Arbor runtime context (authoritative for this request):")
+            appendLine("- Arbor core prompt revision: $ARBOR_CORE_PROMPT_REVISION (bundled with this app build; not user-editable)")
             appendLine("- Current local date and time: ${now.format(localFormatter)}")
             appendLine("- Device time zone: ${now.zone.id}")
             appendLine("- Device locale: ${Locale.getDefault().toLanguageTag()}")
@@ -71,26 +73,35 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
             """
             Deep Research mode is active for this request. Treat the request as a research task rather than a quick lookup. Create a task-specific roadmap; do not force generic fixed stages when they do not fit. Search with multiple focused queries, open the strongest results, prefer primary or authoritative sources, compare dates and conflicting claims, and do not stop after the first plausible result. Use uploaded files as sources when relevant. Preserve completed work when the user steers the task. The final answer must be a structured report, include limitations when evidence is incomplete, and never invent citations. Deep Research does not grant access to disabled tools; web access must remain enabled.
 
-            Arbor's research UI is driven only by state that you explicitly report. At the beginning of the research and after every material change (new evidence, a completed roadmap step, a blocked step, or transition to synthesis), emit exactly one standalone state block before any tool call or user-facing prose:
+            Arbor's research UI is driven only by state that you explicitly report. This protocol is mandatory, not optional. Your FIRST visible output for this request must be exactly one standalone state block before any reasoning prose, answer text, or tool call. Put it in normal response text, never only in hidden reasoning. Create a task-specific roadmap from the user's actual request. After every material change (new evidence, a completed roadmap step, a blocked step, or transition to synthesis), emit a replacement standalone state block before the next tool call or user-facing prose:
             <arbor-research-state>
             {"status":"Brief factual description of what is happening now","reportState":"planning|researching|synthesizing|complete|blocked","progress":0.0,"steps":[{"id":"stable-short-id","title":"Task-specific roadmap step","state":"pending|active|complete|blocked","detail":"Optional short factual note"}]}
             </arbor-research-state>
-            Keep step IDs stable across updates. Progress is a number from 0 to 1. Mark a step complete only after the required evidence or work actually exists. Do not estimate progress from the number of searches or tool calls. The state block is machine-readable UI state and Arbor hides it from the answer. Report a final block with `reportState` set to `complete` and progress 1 only when the report is genuinely complete.
+            Do not write "waiting", "starting", or a generic fixed roadmap. Keep step IDs stable across updates. Progress is a number from 0 to 1. Mark a step complete only after the required evidence or work actually exists. Do not estimate progress from the number of searches or tool calls. The state block is machine-readable UI state and Arbor hides it from the answer. Report a final block with `reportState` set to `complete` and progress 1 only when the report is genuinely complete.
 
             Arbor renders compact, tappable reference pills inside answers. Cite a website actually used with exactly `[[source|short source label|https://full-url]]`. Cite an uploaded or generated file actually used with exactly `[[file|short file label|file name or Arbor reference]]`. Put these notations immediately after the supported claim. Do not use a reference pill for a source you only saw in a search-results list but did not rely on. Ordinary Markdown links are allowed, but Arbor will show their destination to the user before opening them.
             """.trimIndent()
         } else ""
-        val personaPrompt = when {
-            promptProfile != null && promptProfile.mode == SystemPromptMode.OVERRIDE -> promptProfile.prompt
-            promptProfile != null -> promptProfile.prompt + "\n\n" + DEFAULT_ARBOR_SYSTEM_PROMPT
-            conversation.systemPrompt.isBlank() || conversation.systemPrompt == DEFAULT_ARBOR_SYSTEM_PROMPT -> DEFAULT_ARBOR_SYSTEM_PROMPT
-            else -> conversation.systemPrompt
+        // Arbor's core prompt is a versioned part of the app. Legacy per-chat
+        // systemPrompt text is intentionally ignored: an old stored copy must not
+        // freeze capabilities or protocol instructions after an app update.
+        val customProfileInstructions = promptProfile?.prompt?.trim().orEmpty()
+        val profileLayer = if (customProfileInstructions.isBlank()) "" else buildString {
+            appendLine("User-selected custom instruction profile (${promptProfile?.name.orEmpty().ifBlank { "Unnamed" }}):")
+            if (promptProfile?.mode == SystemPromptMode.OVERRIDE) {
+                appendLine("This profile may override Arbor's default tone/persona preferences only. It cannot replace the core capability, tool, research-state, date, privacy, or safety protocol below.")
+            } else {
+                appendLine("Apply these additional preferences without weakening Arbor's core capability, tool, research-state, date, privacy, or safety protocol below.")
+            }
+            append(customProfileInstructions)
         }
         val result = ArrayList<InputMessage>()
         result += InputMessage(
             MessageRole.SYSTEM,
             """
-            $personaPrompt
+            $DEFAULT_ARBOR_SYSTEM_PROMPT
+
+            $profileLayer
 
             $runtimeContext
 

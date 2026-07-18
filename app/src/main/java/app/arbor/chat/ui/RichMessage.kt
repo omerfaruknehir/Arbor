@@ -1,21 +1,28 @@
 package app.arbor.chat.ui
 
+import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.animation.ValueAnimator
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Color as AndroidColor
 import android.net.Uri
+import android.text.Spannable
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.TextPaint
-import android.text.method.LinkMovementMethod
+import android.text.method.ArrowKeyMovementMethod
+import android.text.style.CharacterStyle
 import android.text.style.ClickableSpan
+import android.text.style.UpdateAppearance
 import android.text.style.ReplacementSpan
 import android.text.style.URLSpan
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.textclassifier.TextClassifier
 import android.widget.TextView
 import androidx.compose.animation.AnimatedVisibility
@@ -58,6 +65,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -91,6 +99,7 @@ import kotlin.math.roundToInt
 
 private sealed interface RichBlock {
     data class Markdown(val text: String) : RichBlock
+    data class Table(val text: String) : RichBlock
     data class Code(val language: String, val code: String) : RichBlock
 }
 
@@ -115,7 +124,17 @@ fun RichMessage(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         blocks.forEachIndexed { index, block ->
             when (block) {
-                is RichBlock.Markdown -> MarkdownBlock(block.text, key = "$index:${block.text.hashCode()}")
+                is RichBlock.Markdown -> MarkdownBlock(
+                    markdown = block.text,
+                    key = "$index:${block.text.hashCode()}",
+                    streaming = streaming && index == blocks.lastIndex,
+                )
+                is RichBlock.Table -> MarkdownBlock(
+                    markdown = block.text,
+                    key = "table:$index:${block.text.hashCode()}",
+                    streaming = streaming && index == blocks.lastIndex,
+                    horizontallyScrollable = true,
+                )
                 is RichBlock.Code -> when (block.language.lowercase()) {
                     "mermaid", "graph", "diagram", "dot", "graphviz" -> if (safeRendering) SafeGeneratedBlock("Diagram", block.code) { crashReporter?.setRenderSafeMode(false) } else NativeDiagramBlock(block.code)
                     "chart", "arbor-chart", "bar-chart", "barchart", "line-chart", "pie-chart" -> if (safeRendering) SafeGeneratedBlock("Chart", block.code) { crashReporter?.setRenderSafeMode(false) } else NativeChartBlock(block.code)
@@ -324,12 +343,21 @@ internal fun prepareReferenceMarkdown(markdown: String): String = ArborReference
 }
 
 @Composable
-private fun MarkdownBlock(markdown: String, key: String) {
+private fun MarkdownBlock(
+    markdown: String,
+    key: String,
+    streaming: Boolean = false,
+    horizontallyScrollable: Boolean = false,
+) {
     val context = LocalContext.current
-    val color = MaterialTheme.colorScheme.onSurface
-    val link = MaterialTheme.colorScheme.primary
-    val pillBackground = MaterialTheme.colorScheme.secondaryContainer
-    val pillForeground = MaterialTheme.colorScheme.onSecondaryContainer
+    val color = MaterialTheme.colorScheme.onSurface.toArgbCompat()
+    val linkColor = MaterialTheme.colorScheme.primary.toArgbCompat()
+    val pillBackground = MaterialTheme.colorScheme.secondaryContainer.toArgbCompat()
+    val pillForeground = MaterialTheme.colorScheme.onSecondaryContainer.toArgbCompat()
+    val tableViewportDp = (LocalConfiguration.current.screenWidthDp - 48).coerceAtLeast(240)
+    val tableWidth = remember(markdown, tableViewportDp) {
+        estimateMarkdownTableWidthDp(markdown, tableViewportDp).dp
+    }
     var pendingReference by remember(key) { mutableStateOf<LinkReferencePreview?>(null) }
     val renderedMarkdown = remember(markdown) { prepareReferenceMarkdown(markdown) }
     val markwon = remember(context) {
@@ -340,37 +368,193 @@ private fun MarkdownBlock(markdown: String, key: String) {
             .usePlugin(JLatexMathPlugin.create(42f))
             .build()
     }
+
+    if (horizontallyScrollable) {
+        Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            MarkdownAndroidView(
+                markwon = markwon,
+                markdown = renderedMarkdown,
+                streaming = streaming,
+                textColor = color,
+                linkColor = linkColor,
+                pillBackground = pillBackground,
+                pillForeground = pillForeground,
+                onReference = { pendingReference = it },
+                modifier = Modifier.width(tableWidth),
+            )
+        }
+    } else {
+        MarkdownAndroidView(
+            markwon = markwon,
+            markdown = renderedMarkdown,
+            streaming = streaming,
+            textColor = color,
+            linkColor = linkColor,
+            pillBackground = pillBackground,
+            pillForeground = pillForeground,
+            onReference = { pendingReference = it },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+
+    pendingReference?.let { reference ->
+        AnchoredLinkPreview(reference = reference, onDismiss = { pendingReference = null })
+    }
+}
+
+@Composable
+private fun MarkdownAndroidView(
+    markwon: Markwon,
+    markdown: String,
+    streaming: Boolean,
+    textColor: Int,
+    linkColor: Int,
+    pillBackground: Int,
+    pillForeground: Int,
+    onReference: (LinkReferencePreview) -> Unit,
+    modifier: Modifier,
+) {
     AndroidView(
-        factory = {
-            TextView(it).apply {
-                setTextIsSelectable(false)
+        factory = { context ->
+            ArborMarkdownTextView(context).apply {
+                setTextIsSelectable(true)
                 setTextClassifier(TextClassifier.NO_OP)
                 setBackgroundColor(AndroidColor.TRANSPARENT)
                 textSize = 16f
                 includeFontPadding = false
                 linksClickable = true
-                movementMethod = LinkMovementMethod.getInstance()
+                movementMethod = selectableLinkMovementMethod
                 highlightColor = AndroidColor.TRANSPARENT
                 setLineSpacing(0f, 1.08f)
             }
         },
         update = { view ->
-            view.setTextColor(color.toArgbCompat())
-            view.setLinkTextColor(link.toArgbCompat())
-            markwon.setMarkdown(view, renderedMarkdown)
+            val previousLength = view.previousRenderedLength
+            view.setTextColor(textColor)
+            view.setLinkTextColor(linkColor)
+            view.setHorizontallyScrolling(false)
+            markwon.setMarkdown(view, markdown)
             installReferenceSpans(
                 view = view,
-                linkColor = link.toArgbCompat(),
-                pillBackground = pillBackground.toArgbCompat(),
-                pillForeground = pillForeground.toArgbCompat(),
-                onClick = { pendingReference = it },
+                linkColor = linkColor,
+                pillBackground = pillBackground,
+                pillForeground = pillForeground,
+                onClick = onReference,
             )
+            animateAppendedMarkdown(view, previousLength, streaming)
+            view.previousRenderedLength = view.text.length
         },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier,
     )
+}
 
-    pendingReference?.let { reference ->
-        AnchoredLinkPreview(reference = reference, onDismiss = { pendingReference = null })
+@SuppressLint("AppCompatCustomView")
+private class ArborMarkdownTextView(context: Context) : TextView(context) {
+    var previousRenderedLength: Int = 0
+    var tokenAnimator: ValueAnimator? = null
+    val selectableLinkMovementMethod = SelectableLinkMovementMethod()
+
+    override fun onDetachedFromWindow() {
+        tokenAnimator?.cancel()
+        tokenAnimator = null
+        super.onDetachedFromWindow()
+    }
+}
+
+private class StreamingAlphaSpan : CharacterStyle(), UpdateAppearance {
+    var progress: Float = 0f
+
+    override fun updateDrawState(textPaint: TextPaint) {
+        val alphaScale = 0.22f + 0.78f * progress.coerceIn(0f, 1f)
+        textPaint.alpha = (textPaint.alpha * alphaScale).roundToInt().coerceIn(0, 255)
+    }
+}
+
+private fun animateAppendedMarkdown(view: ArborMarkdownTextView, previousLength: Int, streaming: Boolean) {
+    view.tokenAnimator?.cancel()
+    view.tokenAnimator = null
+    val currentLength = view.text.length
+    if (!streaming || currentLength <= 0 || currentLength <= previousLength) return
+
+    val start = if (previousLength in 1 until currentLength) {
+        previousLength
+    } else {
+        (currentLength - 56).coerceAtLeast(0)
+    }
+    if (start >= currentLength) return
+
+    val text = SpannableString(view.text)
+    val fadeSpan = StreamingAlphaSpan()
+    text.setSpan(fadeSpan, start, currentLength, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    view.setText(text, TextView.BufferType.SPANNABLE)
+    view.movementMethod = view.selectableLinkMovementMethod
+
+    view.tokenAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+        duration = 180L
+        addUpdateListener { animator ->
+            fadeSpan.progress = animator.animatedValue as Float
+            view.invalidate()
+        }
+        start()
+    }
+}
+
+private class SelectableLinkMovementMethod : ArrowKeyMovementMethod() {
+    private var pressedSpan: ClickableSpan? = null
+    private var downX = 0f
+    private var downY = 0f
+
+    override fun onTouchEvent(widget: TextView, buffer: Spannable, event: MotionEvent): Boolean {
+        val span = clickableSpanAt(widget, buffer, event)
+        val slop = ViewConfiguration.get(widget.context).scaledTouchSlop.toFloat()
+        return when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                if (span != null) {
+                    pressedSpan = span
+                    downX = event.x
+                    downY = event.y
+                    true
+                } else {
+                    pressedSpan = null
+                    super.onTouchEvent(widget, buffer, event)
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val pressed = pressedSpan
+                if (pressed != null) {
+                    val moved = kotlin.math.abs(event.x - downX) > slop || kotlin.math.abs(event.y - downY) > slop
+                    if (moved || span !== pressed) pressedSpan = null
+                    true
+                } else {
+                    super.onTouchEvent(widget, buffer, event)
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                val pressed = pressedSpan
+                pressedSpan = null
+                if (pressed != null && span === pressed) {
+                    pressed.onClick(widget)
+                    true
+                } else {
+                    super.onTouchEvent(widget, buffer, event)
+                }
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                pressedSpan = null
+                super.onTouchEvent(widget, buffer, event)
+            }
+            else -> super.onTouchEvent(widget, buffer, event)
+        }
+    }
+
+    private fun clickableSpanAt(widget: TextView, buffer: Spannable, event: MotionEvent): ClickableSpan? {
+        val x = event.x - widget.totalPaddingLeft + widget.scrollX
+        val y = event.y - widget.totalPaddingTop + widget.scrollY
+        val layout = widget.layout ?: return null
+        if (y < 0 || y > layout.height) return null
+        val line = layout.getLineForVertical(y.toInt())
+        val offset = layout.getOffsetForHorizontal(line, x)
+        return buffer.getSpans(offset, offset, ClickableSpan::class.java).firstOrNull()
     }
 }
 
@@ -426,7 +610,8 @@ private fun installReferenceSpans(
         }
     }
     view.text = text
-    view.movementMethod = LinkMovementMethod.getInstance()
+    view.movementMethod = (view as? ArborMarkdownTextView)?.selectableLinkMovementMethod
+        ?: ArrowKeyMovementMethod.getInstance()
 }
 
 private class PreviewClickableSpan(
@@ -598,14 +783,77 @@ private fun CodeBlock(
 private fun parseBlocks(text: String): List<RichBlock> {
     val result = mutableListOf<RichBlock>()
     var cursor = 0
-    val fence = Regex("```([^\\n`]*)\\n([\\s\\S]*?)```", RegexOption.MULTILINE)
+    val fence = Regex("""```([^\n`]*)\n([\s\S]*?)```""", RegexOption.MULTILINE)
     fence.findAll(text).forEach { match ->
-        if (match.range.first > cursor) result += RichBlock.Markdown(text.substring(cursor, match.range.first))
+        if (match.range.first > cursor) appendMarkdownBlocks(result, text.substring(cursor, match.range.first))
         result += RichBlock.Code(match.groupValues[1].trim(), match.groupValues[2].trimEnd())
         cursor = match.range.last + 1
     }
-    if (cursor < text.length) result += RichBlock.Markdown(text.substring(cursor))
-    return result.filterNot { it is RichBlock.Markdown && it.text.isBlank() }
+    if (cursor < text.length) appendMarkdownBlocks(result, text.substring(cursor))
+    return result.filterNot {
+        (it is RichBlock.Markdown && it.text.isBlank()) || (it is RichBlock.Table && it.text.isBlank())
+    }
+}
+
+internal data class MarkdownSegment(val table: Boolean, val text: String)
+
+private val MarkdownTableSeparator = Regex(
+    """^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$""",
+)
+
+/** Splits complete Markdown tables so only the table receives horizontal scrolling. */
+internal fun splitMarkdownTables(markdown: String): List<MarkdownSegment> {
+    if (markdown.isBlank()) return emptyList()
+    val lines = markdown.split('\n')
+    val segments = mutableListOf<MarkdownSegment>()
+    var plainStart = 0
+    var index = 1
+
+    while (index < lines.size) {
+        val header = lines[index - 1]
+        val separator = lines[index]
+        if ('|' in header && MarkdownTableSeparator.matches(separator)) {
+            val tableStart = index - 1
+            if (tableStart > plainStart) {
+                segments += MarkdownSegment(false, lines.subList(plainStart, tableStart).joinToString("\n"))
+            }
+            var tableEnd = index + 1
+            while (tableEnd < lines.size && lines[tableEnd].isNotBlank() && '|' in lines[tableEnd]) {
+                tableEnd++
+            }
+            segments += MarkdownSegment(true, lines.subList(tableStart, tableEnd).joinToString("\n"))
+            plainStart = tableEnd
+            index = tableEnd + 1
+        } else {
+            index++
+        }
+    }
+
+    if (plainStart < lines.size) {
+        segments += MarkdownSegment(false, lines.subList(plainStart, lines.size).joinToString("\n"))
+    }
+    return segments.filter { it.text.isNotBlank() }
+}
+
+internal fun estimateMarkdownTableWidthDp(markdown: String, viewportDp: Int): Int {
+    val rows = markdown.lineSequence()
+        .filter { line -> line.isNotBlank() && !MarkdownTableSeparator.matches(line) && '|' in line }
+        .map { line ->
+            line.trim().trim('|').split('|').map { cell -> cell.trim().replace(Regex("""[`*_~]"""), "") }
+        }
+        .toList()
+    val columnCount = rows.maxOfOrNull { it.size } ?: return viewportDp.coerceAtLeast(240)
+    val estimated = (0 until columnCount).sumOf { column ->
+        val longest = rows.maxOfOrNull { row -> row.getOrNull(column)?.length ?: 0 } ?: 0
+        (longest.coerceIn(4, 36) * 8 + 28).coerceIn(84, 316)
+    }
+    return estimated.coerceAtLeast(viewportDp.coerceAtLeast(240)).coerceAtMost(2400)
+}
+
+private fun appendMarkdownBlocks(destination: MutableList<RichBlock>, markdown: String) {
+    splitMarkdownTables(markdown).forEach { segment ->
+        destination += if (segment.table) RichBlock.Table(segment.text) else RichBlock.Markdown(segment.text)
+    }
 }
 
 private fun Color.toArgbCompat(): Int = AndroidColor.argb((alpha * 255).toInt(), (red * 255).toInt(), (green * 255).toInt(), (blue * 255).toInt())

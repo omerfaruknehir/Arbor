@@ -508,14 +508,20 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
         val closingStreams = AtomicBoolean(false)
         val stdoutFailure = AtomicReference<IOException?>(null)
         val stderrFailure = AtomicReference<IOException?>(null)
-        val outThread = Thread(
-            { copyCapped(process.inputStream, stdout, closingStreams, stdoutFailure) },
-            "arbor-linux-stdout",
-        ).apply { isDaemon = true; start() }
-        val errThread = Thread(
-            { copyCapped(process.errorStream, stderr, closingStreams, stderrFailure) },
-            "arbor-linux-stderr",
-        ).apply { isDaemon = true; start() }
+        val outThread = startStreamPump(
+            name = "arbor-linux-stdout",
+            input = process.inputStream,
+            output = stdout,
+            closing = closingStreams,
+            failure = stdoutFailure,
+        )
+        val errThread = startStreamPump(
+            name = "arbor-linux-stderr",
+            input = process.errorStream,
+            output = stderr,
+            closing = closingStreams,
+            failure = stderrFailure,
+        )
         var complete = false
         var timedOut = false
         try {
@@ -663,6 +669,28 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
 
     private fun directorySize(root: File): Long = root.walkTopDown().filter(File::isFile).sumOf(File::length)
     private fun fileState(root: File): Map<String, Pair<Long, Long>> = root.walkTopDown().filter(File::isFile).associate { it.relativeTo(root).path to (it.length() to it.lastModified()) }
+    private fun startStreamPump(
+        name: String,
+        input: java.io.InputStream,
+        output: StringBuilder,
+        closing: AtomicBoolean,
+        failure: AtomicReference<IOException?>,
+    ): Thread = Thread({
+        try {
+            copyCapped(input, output, closing, failure)
+        } catch (error: Throwable) {
+            // Never let a process-reader daemon terminate through Android's
+            // global uncaught-exception handler. Process streams are routinely
+            // closed from the coroutine thread during cancellation/timeout.
+            if (!isExpectedStreamShutdown(error, closing.get())) {
+                failure.compareAndSet(null, error as? IOException ?: IOException("Output capture failed", error))
+            }
+        }
+    }, name).apply {
+        isDaemon = true
+        start()
+    }
+
     private fun copyCapped(
         input: java.io.InputStream,
         output: StringBuilder,
@@ -679,12 +707,20 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
                     output.append(buffer, 0, count)
                 }
             }
-        } catch (_: InterruptedIOException) {
-            // Android closes Process streams from another thread during timeout,
-            // cancellation, and process teardown. That is a normal end-of-stream,
-            // not an application crash.
-        } catch (error: IOException) {
-            if (!closing.get()) failure.compareAndSet(null, error)
+        } catch (error: Throwable) {
+            if (!isExpectedStreamShutdown(error, closing.get())) {
+                failure.compareAndSet(null, error as? IOException ?: IOException("Output capture failed", error))
+            }
+        }
+    }
+
+    private fun isExpectedStreamShutdown(error: Throwable, closing: Boolean): Boolean {
+        if (closing) return true
+        return generateSequence(error as Throwable?) { it.cause }.any { cause ->
+            cause is InterruptedIOException ||
+                cause.message?.contains("read interrupted by close", ignoreCase = true) == true ||
+                cause.message?.contains("stream closed", ignoreCase = true) == true ||
+                cause.message?.contains("closed", ignoreCase = true) == true && cause is IOException
         }
     }
 

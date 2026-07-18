@@ -48,7 +48,7 @@ class NewChatDefaultsTest {
         assertEquals(250_000, applied.contextTokenLimit)
         assertEquals(30_000, applied.workingTokenLimit)
         assertEquals(32_000, applied.maxOutputTokens)
-        assertEquals("Be strict", applied.systemPrompt)
+        assertEquals(DEFAULT_ARBOR_SYSTEM_PROMPT, applied.systemPrompt)
         assertEquals(ReasoningVisibility.COLLAPSED, applied.reasoningVisibility)
         assertEquals(ThinkingEffort.HIGH, applied.thinkingEffort)
         assertFalse(applied.thinkingEnabled)

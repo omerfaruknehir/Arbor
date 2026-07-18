@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.asStateFlow
 
 enum class ColorPalette { ARBOR, SYSTEM, GRAPHITE }
 
+const val ARBOR_CORE_PROMPT_REVISION = "0.16.16"
+
 val DEFAULT_ARBOR_SYSTEM_PROMPT = """
 You are Arbor, a capable assistant running inside a native Android BYOK workspace.
 
@@ -49,7 +51,9 @@ data class NewChatDefaults(
         contextTokenLimit = contextTokenLimit,
         workingTokenLimit = workingTokenLimit,
         maxOutputTokens = maxOutputTokens,
-        systemPrompt = systemPrompt,
+        // The built-in Arbor core prompt is versioned with the app and is never
+        // copied from editable or legacy per-chat text.
+        systemPrompt = DEFAULT_ARBOR_SYSTEM_PROMPT,
         systemPromptProfileId = systemPromptProfileId,
         reasoningVisibility = reasoningVisibility,
         thinkingEnabled = thinkingEnabled,
@@ -69,7 +73,7 @@ data class NewChatDefaults(
             contextTokenLimit = conversation.contextTokenLimit,
             workingTokenLimit = conversation.workingTokenLimit,
             maxOutputTokens = conversation.maxOutputTokens,
-            systemPrompt = conversation.systemPrompt,
+            systemPrompt = DEFAULT_ARBOR_SYSTEM_PROMPT,
             systemPromptProfileId = conversation.systemPromptProfileId,
             reasoningVisibility = conversation.reasoningVisibility,
             thinkingEnabled = conversation.thinkingEnabled,
@@ -132,6 +136,7 @@ class AppPreferences(context: Context) {
             contextTokenLimit = value.contextTokenLimit.coerceIn(1_024, 2_000_000),
             workingTokenLimit = value.workingTokenLimit.coerceIn(0, 2_000_000),
             maxOutputTokens = value.maxOutputTokens.coerceIn(1, 384_000),
+            systemPrompt = DEFAULT_ARBOR_SYSTEM_PROMPT,
         )
         _newChatDefaults.value = normalized
         preferences.edit {
@@ -141,7 +146,9 @@ class AppPreferences(context: Context) {
             putInt(KEY_DEFAULT_CONTEXT_TOKENS, normalized.contextTokenLimit)
             putInt(KEY_DEFAULT_WORKING_TOKENS, normalized.workingTokenLimit)
             putInt(KEY_DEFAULT_OUTPUT_TOKENS, normalized.maxOutputTokens)
-            putString(KEY_DEFAULT_SYSTEM_PROMPT, normalized.systemPrompt)
+            // Old releases persisted an editable copy of Arbor's built-in prompt.
+            // Remove it so app updates always supply the current core prompt.
+            remove(KEY_DEFAULT_SYSTEM_PROMPT)
             putString(KEY_DEFAULT_SYSTEM_PROMPT_PROFILE, normalized.systemPromptProfileId)
             putString(KEY_DEFAULT_REASONING_VISIBILITY, normalized.reasoningVisibility.name)
             putBoolean(KEY_DEFAULT_THINKING_ENABLED, normalized.thinkingEnabled)
@@ -165,7 +172,7 @@ class AppPreferences(context: Context) {
         contextTokenLimit = preferences.getInt(KEY_DEFAULT_CONTEXT_TOKENS, 64_000),
         workingTokenLimit = preferences.getInt(KEY_DEFAULT_WORKING_TOKENS, 16_000),
         maxOutputTokens = preferences.getInt(KEY_DEFAULT_OUTPUT_TOKENS, 8_192),
-        systemPrompt = preferences.getString(KEY_DEFAULT_SYSTEM_PROMPT, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_ARBOR_SYSTEM_PROMPT,
+        systemPrompt = DEFAULT_ARBOR_SYSTEM_PROMPT,
         systemPromptProfileId = preferences.getString(KEY_DEFAULT_SYSTEM_PROMPT_PROFILE, null),
         reasoningVisibility = enumValue(KEY_DEFAULT_REASONING_VISIBILITY, ReasoningVisibility.SHOW_WHILE_WORKING),
         thinkingEnabled = preferences.getBoolean(KEY_DEFAULT_THINKING_ENABLED, true),

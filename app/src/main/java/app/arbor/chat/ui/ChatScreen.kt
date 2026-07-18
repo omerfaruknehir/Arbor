@@ -6,8 +6,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -141,6 +145,8 @@ import app.arbor.chat.sandbox.UbuntuExecutionResult
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.filterNotNull
 import java.io.File
 import java.util.UUID
 
@@ -256,7 +262,11 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             }
         }
     }
-    val latestMessage = paging.itemSnapshotList.items.firstOrNull()
+    val animatedHeaderCollapse by animateFloatAsState(
+        targetValue = headerCollapseProgress,
+        animationSpec = tween(120, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)),
+        label = "ChatHeaderCollapse",
+    )
 
     LaunchedEffect(conversation?.id) {
         modelMenu = false
@@ -279,14 +289,27 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         }
     }
 
-    LaunchedEffect(
-        conversation?.id,
-        paging.itemCount,
-        latestMessage?.nodeId,
-        latestMessage?.updatedAt,
-        followLatest,
-    ) {
-        if (followLatest && paging.itemCount > 0) messageListState.scrollToItem(0)
+    LaunchedEffect(conversation?.id, messageListState, paging) {
+        snapshotFlow {
+            paging.itemSnapshotList.items.firstOrNull()?.let { it.nodeId to it.updatedAt }
+        }
+            .filterNotNull()
+            .conflate()
+            .collect {
+                if (!followLatest || paging.itemCount <= 0 || messageListState.isScrollInProgress) return@collect
+                val index = messageListState.firstVisibleItemIndex
+                val offset = messageListState.firstVisibleItemScrollOffset
+                when {
+                    index > 0 -> messageListState.animateScrollToItem(0)
+                    offset > 8 -> messageListState.animateScrollBy(
+                        value = -offset.toFloat(),
+                        animationSpec = tween(
+                            durationMillis = (120 + offset / 3).coerceIn(140, 260),
+                            easing = CubicBezierEasing(0.2f, 0f, 0f, 1f),
+                        ),
+                    )
+                }
+            }
     }
 
     LaunchedEffect(focusedMessageNodeId, paging.itemSnapshotList.items.map { it.nodeId }, searchFocusHandled) {
@@ -396,7 +419,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 }
             }
 
-            val collapse = headerCollapseProgress
+            val collapse = animatedHeaderCollapse
             val titleTravel = arborBlurProgress(collapse)
             Box(
                 Modifier
@@ -410,8 +433,8 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         progress = collapse,
                         strength = chromeBlurStrength,
                         tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
-                        fadeDistance = 64.dp,
-                        overlayDistance = 64.dp,
+                        fadeDistance = 76.dp,
+                        overlayDistance = 76.dp,
                     ),
             ) {
                 Row(
@@ -630,7 +653,7 @@ private fun MessageCard(
                         }
                     }
                 }
-                if (deepResearchResponse) {
+                if (deepResearchResponse && researchState != null) {
                     ReportedResearchRoadmap(
                         state = researchState,
                         streaming = message.status == MessageStatus.STREAMING,
@@ -1034,15 +1057,15 @@ private fun CompactFetchToolCard(url: String, output: String, status: String) {
 
 @Composable
 private fun ReportedResearchRoadmap(
-    state: ReportedResearchState?,
+    state: ReportedResearchState,
     streaming: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val effectiveStatus = state?.status?.takeIf(String::isNotBlank)
-        ?: if (streaming) "Waiting for the model to report its roadmap…" else "The model did not report research state."
-    val progress = state?.progress?.coerceIn(0f, 1f) ?: 0f
-    val steps = state?.steps.orEmpty()
-    val stateLabel = when (state?.reportState) {
+    val effectiveStatus = state.status.takeIf(String::isNotBlank)
+        ?: if (streaming) "Research in progress" else "Research state reported"
+    val progress = state.progress.coerceIn(0f, 1f)
+    val steps = state.steps
+    val stateLabel = when (state.reportState) {
         "planning" -> "Planning"
         "researching" -> "Researching"
         "synthesizing" -> "Writing report"

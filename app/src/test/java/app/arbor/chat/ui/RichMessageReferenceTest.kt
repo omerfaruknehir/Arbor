@@ -32,4 +32,29 @@ class RichMessageReferenceTest {
         val link = "[Example](https://example.com/path)"
         assertTrue(prepareReferenceMarkdown(link).contains(link))
     }
+    @Test fun markdownTablesAreSplitFromSurroundingText() {
+        val segments = splitMarkdownTables(
+            """Intro
+
+| Name | Description |
+| --- | --- |
+| Arbor | A native Android chat client with a long description |
+
+Outro""",
+        )
+        assertTrue(segments.any { !it.table && "Intro" in it.text })
+        assertTrue(segments.any { it.table && "| Name | Description |" in it.text })
+        assertTrue(segments.any { !it.table && "Outro" in it.text })
+    }
+
+    @Test fun wideTablesReceiveAWidthLargerThanTheViewport() {
+        val width = estimateMarkdownTableWidthDp(
+            """| Package | Very long explanation | Platform | Status |
+| --- | --- | --- | --- |
+| Arbor | This column intentionally contains enough text to require horizontal scrolling | Android | Ready |""",
+            viewportDp = 360,
+        )
+        assertTrue(width > 360)
+    }
+
 }

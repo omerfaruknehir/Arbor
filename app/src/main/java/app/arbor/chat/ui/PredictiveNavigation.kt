@@ -5,8 +5,6 @@ import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -125,30 +123,30 @@ internal fun <T : Any> PredictiveNavigationHost(
                 } else {
                     val forward = depth(targetState) >= depth(initialState)
                     if (forward) {
-                        (slideInHorizontally(
-                            animationSpec = tween(340, easing = NavigationEasing),
-                            initialOffsetX = { it / 5 },
-                        ) + fadeIn(tween(220))) togetherWith
-                            (slideOutHorizontally(
-                                animationSpec = tween(300, easing = NavigationEasing),
-                                targetOffsetX = { -it / 10 },
-                            ) + fadeOut(tween(180)))
+                        slideInHorizontally(
+                            animationSpec = tween(170, easing = NavigationEasing),
+                            initialOffsetX = { it / 8 },
+                        ) togetherWith slideOutHorizontally(
+                            animationSpec = tween(150, easing = NavigationEasing),
+                            targetOffsetX = { -it / 18 },
+                        )
                     } else {
-                        (slideInHorizontally(
-                            animationSpec = tween(340, easing = NavigationEasing),
-                            initialOffsetX = { -it / 10 },
-                        ) + fadeIn(tween(220))) togetherWith
-                            (slideOutHorizontally(
-                                animationSpec = tween(300, easing = NavigationEasing),
-                                targetOffsetX = { it / 5 },
-                            ) + fadeOut(tween(180)))
+                        slideInHorizontally(
+                            animationSpec = tween(170, easing = NavigationEasing),
+                            initialOffsetX = { -it / 18 },
+                        ) togetherWith slideOutHorizontally(
+                            animationSpec = tween(150, easing = NavigationEasing),
+                            targetOffsetX = { it / 8 },
+                        )
                     }
                 }
             },
             contentKey = { it },
             label = label,
         ) { state ->
-            content(state)
+            Box(Modifier.fillMaxSize().graphicsLayer()) {
+                content(state)
+            }
         }
     }
 }
@@ -165,7 +163,7 @@ private fun <T : Any> PredictiveBackPreview(
     val p = progress.coerceIn(0f, 1f)
     val direction = if (swipeEdge == BackEventCompat.EDGE_RIGHT) -1f else 1f
     val density = LocalDensity.current
-    val maxShadowPx = with(density) { 18.dp.toPx() }
+    val maxShadowPx = with(density) { 5.dp.toPx() }
     val corner = 28.dp * p
 
     BoxWithConstraints(
@@ -180,10 +178,9 @@ private fun <T : Any> PredictiveBackPreview(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    translationX = -direction * widthPx * 0.075f * (1f - p)
-                    scaleX = 0.94f + 0.06f * p
-                    scaleY = 0.94f + 0.06f * p
-                    alpha = 0.58f + 0.42f * p
+                    translationX = -direction * widthPx * 0.045f * (1f - p)
+                    scaleX = 0.98f + 0.02f * p
+                    scaleY = 0.98f + 0.02f * p
                 },
         ) {
             content(destination)
@@ -193,9 +190,9 @@ private fun <T : Any> PredictiveBackPreview(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    translationX = direction * widthPx * 0.34f * p
-                    scaleX = 1f - 0.055f * p
-                    scaleY = 1f - 0.055f * p
+                    translationX = direction * widthPx * 0.30f * p
+                    scaleX = 1f - 0.025f * p
+                    scaleY = 1f - 0.025f * p
                     shadowElevation = maxShadowPx * p
                     shape = RoundedCornerShape(corner)
                     clip = p > 0.001f
