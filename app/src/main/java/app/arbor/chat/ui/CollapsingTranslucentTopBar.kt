@@ -4,7 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
@@ -32,11 +32,13 @@ fun CollapsingTranslucentTopBar(
     val topAlpha = 0.80f + 0.16f * collapse
     val middleAlpha = 0.38f + 0.36f * collapse
     val bottomAlpha = 0.05f + 0.23f * collapse
+    val appBarHeight = (152f - 88f * collapse).dp
 
     Box(Modifier.fillMaxWidth()) {
         Box(
             Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
+                .height(appBarHeight)
                 .blur(blurRadius)
                 .background(
                     Brush.verticalGradient(
