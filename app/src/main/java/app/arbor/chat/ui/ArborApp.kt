@@ -1,5 +1,6 @@
 package app.arbor.chat.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,6 +39,13 @@ fun ArborApp(viewModel: ChatViewModel) {
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     val openDrawer = { scope.launch { drawerState.open() }; Unit }
+
+    BackHandler(enabled = drawerState.isClosed && screen != Screen.CHAT) {
+        viewModel.screen.value = backDestination(screen) ?: return@BackHandler
+    }
+    BackHandler(enabled = drawerState.isOpen) {
+        scope.launch { drawerState.close() }
+    }
 
     LaunchedEffect(viewModel) {
         viewModel.notices.collect { snackbar.showSnackbar(it) }
@@ -122,4 +130,10 @@ fun ArborApp(viewModel: ChatViewModel) {
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
+}
+
+internal fun backDestination(screen: Screen): Screen? = when (screen) {
+    Screen.SANDBOX, Screen.TERMINAL -> Screen.SETTINGS
+    Screen.SEARCH, Screen.SETTINGS -> Screen.CHAT
+    Screen.CHAT -> null
 }

@@ -5,16 +5,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BackdropBlurTest {
-    @Test
-    fun enabledBlurHasVisibleBaseline() {
-        assertEquals(0.35f, arborBlurProgress(0f), 0.0001f)
-    }
-
-    @Test
-    fun blurProgressIsClampedAndMonotonic() {
+    @Test fun progressIsClampedAndMonotonic() {
         val values = listOf(-1f, 0f, .25f, .5f, .75f, 1f, 2f).map(::arborBlurProgress)
-        assertEquals(0.35f, values.first(), 0.0001f)
-        assertEquals(1f, values.last(), 0.0001f)
-        assertTrue(values.zipWithNext().all { (a, b) -> b >= a })
+        assertEquals(values.first(), values[1], 0f)
+        assertEquals(values[values.lastIndex - 1], values.last(), 0f)
+        values.zipWithNext().forEach { (a, b) -> assertTrue(b >= a) }
+    }
+    @Test fun endpointsAreStable() {
+        assertEquals(.28f, arborBlurProgress(0f), .0001f)
+        assertEquals(1f, arborBlurProgress(1f), .0001f)
     }
 }

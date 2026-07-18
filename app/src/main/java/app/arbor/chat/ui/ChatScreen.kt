@@ -793,6 +793,7 @@ private fun Composer(
                 progress = chromeProgress,
                 strength = chromeBlurStrength,
                 tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.16f),
+                edge = ArborBlurEdge.BOTTOM,
             ),
     ) {
         Surface(

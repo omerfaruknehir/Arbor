@@ -1,5 +1,6 @@
 package app.arbor.chat.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -145,6 +146,8 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     var route by rememberSaveable { mutableStateOf(SettingsRoute.HOME) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val blurState = rememberArborBackdropBlurState()
+
+    BackHandler(enabled = route != SettingsRoute.HOME) { route = SettingsRoute.HOME }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),

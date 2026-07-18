@@ -1,171 +1,170 @@
 package app.arbor.chat.ui
 
+import android.graphics.RenderEffect
+import android.graphics.RuntimeShader
 import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.BlurEffect
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.drawscope.withTransform
-import androidx.compose.ui.graphics.layer.GraphicsLayer
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalGraphicsContext
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.draw.drawWithContent
-import kotlin.math.ceil
-import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+
+enum class ArborBlurEdge { TOP, BOTTOM }
 
 /**
- * A frame-local capture of the screen content which sits behind Arbor's chrome.
+ * Shared configuration for the gradual blur applied to a screen's actual body.
  *
- * The capture layer itself never receives a RenderEffect. Every blurred surface
- * owns a second layer which records a cropped copy of this source and keeps its
- * blur effect attached until the frame is submitted. This is important on
- * Android's deferred renderer: applying an effect to the shared source and
- * clearing it immediately can result in the draw command being executed after
- * the effect has already been removed.
+ * Older Arbor builds captured the screen into a GraphicsLayer and replayed
+ * cropped copies behind app chrome. Compose renders those layers lazily, so the
+ * replay could be blank or one frame stale. This state instead lets the body
+ * itself receive an Agora-style two-pass AGSL edge blur.
  */
 @Stable
-class ArborBackdropBlurState internal constructor(
-    internal val sourceLayer: GraphicsLayer,
-) {
-    internal var sourcePosition by mutableStateOf(Offset.Zero)
-    internal var sourceSize by mutableStateOf(IntSize.Zero)
+class ArborBackdropBlurState internal constructor() {
+    internal var topRadiusDp by mutableFloatStateOf(0f)
+    internal var bottomRadiusDp by mutableFloatStateOf(0f)
+    internal var topFadeDp by mutableFloatStateOf(DEFAULT_TOP_FADE_DP)
+    internal var bottomFadeDp by mutableFloatStateOf(DEFAULT_BOTTOM_FADE_DP)
+
+    internal fun update(edge: ArborBlurEdge, radiusDp: Float, fadeDp: Float) {
+        when (edge) {
+            ArborBlurEdge.TOP -> {
+                topRadiusDp = radiusDp.coerceAtLeast(0f)
+                topFadeDp = fadeDp.coerceAtLeast(1f)
+            }
+            ArborBlurEdge.BOTTOM -> {
+                bottomRadiusDp = radiusDp.coerceAtLeast(0f)
+                bottomFadeDp = fadeDp.coerceAtLeast(1f)
+            }
+        }
+    }
+
+    internal fun clear(edge: ArborBlurEdge) {
+        when (edge) {
+            ArborBlurEdge.TOP -> topRadiusDp = 0f
+            ArborBlurEdge.BOTTOM -> bottomRadiusDp = 0f
+        }
+    }
 }
 
 @Composable
-fun rememberArborBackdropBlurState(): ArborBackdropBlurState {
-    val graphicsContext = LocalGraphicsContext.current
-    val layer = remember(graphicsContext) { graphicsContext.createGraphicsLayer() }
-    DisposableEffect(graphicsContext, layer) {
-        onDispose { graphicsContext.releaseGraphicsLayer(layer) }
+fun rememberArborBackdropBlurState(): ArborBackdropBlurState = remember { ArborBackdropBlurState() }
+
+/** Applies a spatially gradual blur directly to the scrolling content layer. */
+fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = composed {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return@composed this
+
+    val density = LocalDensity.current.density
+    val topRadiusPx = state.topRadiusDp * density
+    val bottomRadiusPx = state.bottomRadiusDp * density
+    if (topRadiusPx < MIN_VISIBLE_RADIUS_PX && bottomRadiusPx < MIN_VISIBLE_RADIUS_PX) {
+        return@composed this
     }
-    return remember(layer) { ArborBackdropBlurState(layer) }
+
+    val topFadePx = state.topFadeDp * density
+    val bottomFadePx = state.bottomFadeDp * density
+    var contentHeightPx by remember { mutableFloatStateOf(0f) }
+    val measured = this.onSizeChanged { contentHeightPx = it.height.toFloat().coerceAtLeast(1f) }
+    if (contentHeightPx <= 0f) return@composed measured
+
+    val horizontalShader = remember(topRadiusPx, bottomRadiusPx, topFadePx, bottomFadePx, contentHeightPx) {
+        RuntimeShader(EDGE_BLUR_SHADER).apply {
+            setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
+            setFloatUniform("uFade", topFadePx, bottomFadePx)
+            setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
+            setFloatUniform("uDirection", 1f, 0f)
+        }
+    }
+    val verticalShader = remember(topRadiusPx, bottomRadiusPx, topFadePx, bottomFadePx, contentHeightPx) {
+        RuntimeShader(EDGE_BLUR_SHADER).apply {
+            setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
+            setFloatUniform("uFade", topFadePx, bottomFadePx)
+            setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
+            setFloatUniform("uDirection", 0f, 1f)
+        }
+    }
+    val composeEffect = remember(horizontalShader, verticalShader) {
+        val horizontal = RenderEffect.createRuntimeShaderEffect(horizontalShader, "content")
+        val vertical = RenderEffect.createRuntimeShaderEffect(verticalShader, "content")
+        RenderEffect.createChainEffect(vertical, horizontal).asComposeRenderEffect()
+    }
+
+    measured.graphicsLayer { renderEffect = composeEffect }
 }
-
-/** Records the complete scrolling/body layer which top and bottom chrome sample. */
-fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier =
-    onGloballyPositioned { coordinates ->
-        state.sourcePosition = coordinates.positionInRoot()
-        state.sourceSize = coordinates.size
-    }.drawWithContent {
-        val captureSize = IntSize(size.width.roundToInt(), size.height.roundToInt())
-        if (captureSize.width <= 0 || captureSize.height <= 0) {
-            drawContent()
-            return@drawWithContent
-        }
-
-        state.sourceLayer.record(
-            density = this,
-            layoutDirection = layoutDirection,
-            size = captureSize,
-        ) {
-            this@drawWithContent.drawContent()
-        }
-        drawLayer(state.sourceLayer)
-    }
 
 internal fun arborBlurProgress(progress: Float): Float {
     val p = progress.coerceIn(0f, 1f)
-    // Keep a visible glass effect even before scrolling, then increase it
-    // smoothly as more content passes underneath the chrome.
     val smooth = p * p * (3f - 2f * p)
-    return 0.35f + 0.65f * smooth
+    return 0.28f + 0.72f * smooth
 }
 
-/**
- * Draws a genuine blurred copy of [state] behind this composable on Android 12+.
- *
- * A dedicated overscanned layer is used for each target. Overscan prevents the
- * usual hard/unchanged strip along the edge of a toolbar or composer and makes
- * the blur visibly continuous across the whole translucent surface.
- */
+/** Registers one chrome edge and paints its stable translucent tint. */
 fun Modifier.arborBackdropBlur(
     state: ArborBackdropBlurState,
     enabled: Boolean,
     progress: Float,
     strength: Float,
     tint: Color,
-    maxRadius: Dp = 48.dp,
+    edge: ArborBlurEdge = ArborBlurEdge.TOP,
+    maxRadius: Dp = 8.dp,
+    fadeDistance: Dp = if (edge == ArborBlurEdge.TOP) DEFAULT_TOP_FADE_DP.dp else DEFAULT_BOTTOM_FADE_DP.dp,
 ): Modifier = composed {
-    val graphicsContext = LocalGraphicsContext.current
-    val effectLayer = remember(graphicsContext) { graphicsContext.createGraphicsLayer() }
-    DisposableEffect(graphicsContext, effectLayer) {
-        onDispose { graphicsContext.releaseGraphicsLayer(effectLayer) }
+    val radiusDp = if (enabled) {
+        maxRadius.value * strength.coerceIn(0f, 1f) * arborBlurProgress(progress)
+    } else {
+        0f
     }
 
-    var effectPosition by remember { mutableStateOf(Offset.Zero) }
-    val density = LocalDensity.current
-    val radiusPx = with(density) {
-        (maxRadius * strength.coerceIn(0f, 1f) * arborBlurProgress(progress)).toPx()
+    SideEffect { state.update(edge, radiusDp, fadeDistance.value) }
+    DisposableEffect(state, edge) { onDispose { state.clear(edge) } }
+
+    this.drawWithContent {
+        drawRect(if (enabled) tint else tint.copy(alpha = 0.96f))
+        drawContent()
     }
-
-    this
-        .onGloballyPositioned { coordinates ->
-            effectPosition = coordinates.positionInRoot()
-        }
-        .drawWithContent {
-            val targetWidth = size.width.roundToInt()
-            val targetHeight = size.height.roundToInt()
-            val canBlur = enabled &&
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                radiusPx >= 0.5f &&
-                targetWidth > 0 && targetHeight > 0 &&
-                state.sourceSize.width > 0 && state.sourceSize.height > 0
-
-            if (canBlur) {
-                // Gaussian blur needs neighbouring pixels outside the visible
-                // target. Capture three radii on every side before clipping.
-                val overscan = ceil(radiusPx * 3f).toInt().coerceAtLeast(1)
-                val layerSize = IntSize(
-                    width = targetWidth + overscan * 2,
-                    height = targetHeight + overscan * 2,
-                )
-                val sourceOffset = effectPosition - state.sourcePosition
-
-                effectLayer.record(
-                    density = this,
-                    layoutDirection = layoutDirection,
-                    size = layerSize,
-                ) {
-                    withTransform({
-                        translate(
-                            left = -sourceOffset.x + overscan,
-                            top = -sourceOffset.y + overscan,
-                        )
-                    }) {
-                        drawLayer(state.sourceLayer)
-                    }
-                }
-                effectLayer.renderEffect = BlurEffect(
-                    radiusX = radiusPx,
-                    radiusY = radiusPx,
-                    edgeTreatment = TileMode.Clamp,
-                )
-
-                withTransform({ translate(-overscan.toFloat(), -overscan.toFloat()) }) {
-                    drawLayer(effectLayer)
-                }
-            } else {
-                effectLayer.renderEffect = null
-            }
-
-            // Tint opacity is deliberately constant. Scrolling changes only
-            // blur strength, never turns the bar into an opaque panel.
-            drawRect(if (enabled) tint else tint.copy(alpha = 0.96f))
-            drawContent()
-        }
 }
+
+private const val MIN_VISIBLE_RADIUS_PX = 0.35f
+private const val DEFAULT_TOP_FADE_DP = 148f
+private const val DEFAULT_BOTTOM_FADE_DP = 112f
+
+/** Fixed nine-tap separable kernel derived from Agora's gradient blur. */
+private val EDGE_BLUR_SHADER = """
+    uniform shader content;
+    uniform float2 uBlur;
+    uniform float2 uFade;
+    uniform float uHeight;
+    uniform float2 uDirection;
+
+    half4 main(float2 coord) {
+        float topMix = saturate(1.0 - coord.y / max(uFade.x, 1.0));
+        float bottomMix = saturate(1.0 - (uHeight - coord.y) / max(uFade.y, 1.0));
+        float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
+        if (radius < 0.35) return content.eval(coord);
+
+        float2 axis = uDirection * radius;
+        half4 accum = half4(content.eval(coord)) * 0.24084130;
+        accum += half4(content.eval(coord + axis * 0.6)) * 0.20116756;
+        accum += half4(content.eval(coord - axis * 0.6)) * 0.20116756;
+        accum += half4(content.eval(coord + axis * 1.2)) * 0.11723004;
+        accum += half4(content.eval(coord - axis * 1.2)) * 0.11723004;
+        accum += half4(content.eval(coord + axis * 1.8)) * 0.04766218;
+        accum += half4(content.eval(coord - axis * 1.8)) * 0.04766218;
+        accum += half4(content.eval(coord + axis * 2.4)) * 0.01351957;
+        accum += half4(content.eval(coord - axis * 2.4)) * 0.01351957;
+        return accum;
+    }
+""".trimIndent()

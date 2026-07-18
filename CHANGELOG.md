@@ -1,3 +1,7 @@
+# 0.16.8
+
+- Fixed gradual interface blur and back navigation.
+
 # Changelog
 
 ## 0.16.7
