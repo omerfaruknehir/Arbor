@@ -123,7 +123,7 @@ class ArborHomeWidgetProvider : AppWidgetProvider() {
         }
 
         private fun emptyViews(context: Context) = RemoteViews(context.packageName, R.layout.arbor_home_widget).apply {
-            setTextViewText(R.id.widget_title, "Arbor widget")
+            setTextViewText(R.id.widget_title, context.getString(R.string.app_name) + " widget")
             setTextViewText(R.id.widget_subtitle, "Pin a generated mini-app from a conversation")
             setTextViewText(R.id.widget_result, "Ready")
             ACTION_IDS.forEach { setViewVisibility(it, View.GONE) }

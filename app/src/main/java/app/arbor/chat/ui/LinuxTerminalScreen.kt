@@ -39,12 +39,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import app.arbor.chat.R
 import app.arbor.chat.sandbox.LinuxDistribution
 import app.arbor.chat.sandbox.UbuntuExecutionResult
 import app.arbor.chat.sandbox.UbuntuStage
@@ -59,6 +61,7 @@ private data class TerminalEntry(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LinuxTerminalScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+    val appName = stringResource(R.string.app_name)
     val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsState()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
     val status by viewModel.ubuntuStatus.collectAsState()
@@ -86,6 +89,7 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val blurState = rememberArborBackdropBlurState()
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         contentWindowInsets = WindowInsets(0),
@@ -93,6 +97,7 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             CollapsingTranslucentTopBar(
                 title = "Linux terminal",
                 scrollBehavior = scrollBehavior,
+                blurState = blurState,
                 blurEnabled = chromeBlurEnabled,
                 blurStrength = chromeBlurStrength,
                 navigationIcon = {
@@ -106,7 +111,18 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             )
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .arborBackdropSource(blurState)
+                .padding(
+                    start = 12.dp,
+                    end = 12.dp,
+                    top = padding.calculateTopPadding() + 12.dp,
+                    bottom = 12.dp,
+                ),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 LinuxDistribution.entries.forEach { distribution ->
                     FilterChip(
@@ -143,7 +159,7 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             ) {
                 item {
                     Text(
-                        "Arbor ${status.distribution.displayName} root terminal\nCommands run as uid 0 inside the selected PRoot distribution.",
+                        "$appName ${status.distribution.displayName} root terminal\nCommands run as uid 0 inside the selected PRoot distribution.",
                         color = Color(0xFF9CCB9C),
                         fontFamily = FontFamily.Monospace,
                     )

@@ -32,10 +32,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.arbor.chat.R
 import app.arbor.chat.data.ContextSummaryEntity
 import app.arbor.chat.data.ConversationEntity
 import app.arbor.chat.data.ReasoningVisibility
@@ -49,6 +51,7 @@ fun ChatConfigurationSheet(
     viewModel: ChatViewModel,
     onDismiss: () -> Unit,
 ) {
+    val appName = stringResource(R.string.app_name)
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
@@ -112,11 +115,11 @@ fun ChatConfigurationSheet(
             val activePrompt = promptProfiles.firstOrNull { it.id == conversation.systemPromptProfileId }
             androidx.compose.foundation.layout.Box {
                 OutlinedButton(onClick = { promptMenu = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(activePrompt?.let { "${it.name} · ${it.mode.name.lowercase()}" } ?: "Arbor default / one-off prompt", Modifier.weight(1f))
+                    Text(activePrompt?.let { "${it.name} · ${it.mode.name.lowercase()}" } ?: "$appName default / one-off prompt", Modifier.weight(1f))
                 }
                 DropdownMenu(expanded = promptMenu, onDismissRequest = { promptMenu = false }) {
                     DropdownMenuItem(
-                        text = { Text("Arbor default / one-off prompt") },
+                        text = { Text("$appName default / one-off prompt") },
                         onClick = { viewModel.selectSystemPromptProfileForCurrent(null); promptMenu = false },
                     )
                     promptProfiles.forEach { profile ->

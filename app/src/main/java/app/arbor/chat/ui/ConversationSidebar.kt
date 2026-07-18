@@ -58,6 +58,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -106,7 +107,7 @@ fun ConversationSidebar(
         Column(Modifier.padding(horizontal = 12.dp, vertical = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) {
                 ArborMark(Modifier.size(34.dp))
-                Text("Arbor", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 10.dp))
+                Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 10.dp))
             }
             FilledTonalButton(onClick = onNew, modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 4.dp)) {
                 Icon(Icons.Outlined.Add, null)
@@ -336,7 +337,7 @@ private fun ConversationRow(item: ConversationListItem, selected: Boolean, onCli
 private fun ArborMark(modifier: Modifier = Modifier) {
     Image(
         painter = painterResource(R.drawable.ic_arbor_mark),
-        contentDescription = "Arbor",
+        contentDescription = stringResource(R.string.app_name),
         modifier = modifier,
     )
 }

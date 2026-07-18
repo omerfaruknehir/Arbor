@@ -97,7 +97,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -112,9 +111,11 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
+import app.arbor.chat.R
 import app.arbor.chat.data.MessageRole
 import app.arbor.chat.data.MessageStatus
 import app.arbor.chat.data.AttachmentEntity
@@ -163,6 +164,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val messageListState = rememberLazyListState()
     val topAppBarState = rememberTopAppBarState()
     val topAppBarScrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
+    val blurState = rememberArborBackdropBlurState()
     val scrollScope = rememberCoroutineScope()
     val latestThresholdPx = with(LocalDensity.current) { 48.dp.roundToPx() }
     var followLatest by remember(conversation?.id) { mutableStateOf(true) }
@@ -229,23 +231,24 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         modifier = Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            Box(Modifier.fillMaxWidth()) {
-                val collapse = topAppBarState.collapsedFraction.coerceIn(0f, 1f)
-                val blurRadius = if (chromeBlurEnabled) (24f * chromeBlurStrength.coerceIn(0f, 1f) * collapse).dp else 0.dp
-                Box(
-                    Modifier
-                        .matchParentSize()
-                        .blur(blurRadius)
-                        .background(
-                            MaterialTheme.colorScheme.surface.copy(alpha = if (chromeBlurEnabled) .22f else .94f),
-                        ),
-                )
+            val collapse = topAppBarState.collapsedFraction.coerceIn(0f, 1f)
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .arborBackdropBlur(
+                        state = blurState,
+                        enabled = chromeBlurEnabled,
+                        progress = collapse,
+                        strength = chromeBlurStrength,
+                        tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.24f),
+                    ),
+            ) {
                 LargeTopAppBar(
                 navigationIcon = { if (openDrawer != null) IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Conversations") } },
                 title = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            conversation?.title ?: "Arbor",
+                            conversation?.title ?: stringResource(R.string.app_name),
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -325,17 +328,23 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 },
                 generating = generating,
                 chromeProgress = composerChromeProgress,
+                blurState = blurState,
             )
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
+        Box(Modifier.fillMaxSize().arborBackdropSource(blurState)) {
             if (paging.itemCount == 0 && recoverable.isEmpty()) EmptyConversation()
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 state = messageListState,
                 reverseLayout = true,
                 verticalArrangement = Arrangement.spacedBy(14.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 18.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    start = 12.dp,
+                    end = 12.dp,
+                    top = padding.calculateTopPadding() + 18.dp,
+                    bottom = padding.calculateBottomPadding() + 18.dp,
+                ),
             ) {
                 items(
                     count = paging.itemCount,
@@ -353,7 +362,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             }
             AnimatedVisibility(
                 visible = paging.itemCount > 0 && !isAtLatest,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = padding.calculateBottomPadding() + 16.dp),
             ) {
                 SmallFloatingActionButton(
                     onClick = {
@@ -367,7 +376,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 }
             }
             val interrupted = recoverable.firstOrNull { it.status == MessageStatus.INTERRUPTED || it.status == MessageStatus.ERROR }
-            AnimatedVisibility(interrupted != null, modifier = Modifier.align(Alignment.TopCenter)) {
+            AnimatedVisibility(interrupted != null, modifier = Modifier.align(Alignment.TopCenter).padding(top = padding.calculateTopPadding())) {
                 interrupted?.let { message ->
                     Surface(
                         color = MaterialTheme.colorScheme.errorContainer,
@@ -445,7 +454,7 @@ private fun ProviderModelMenuRows(
 @Composable
 private fun EmptyConversation() {
     Column(Modifier.fillMaxSize().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Text("Arbor", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+        Text(stringResource(R.string.app_name), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
         Text("One native workspace for every model.", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.size(12.dp))
         Text("Attach files, run local code, branch long chats, or hold Send to queue and steer.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -736,6 +745,7 @@ private fun Composer(
     model: ModelEntity?,
     generating: Boolean,
     chromeProgress: Float,
+    blurState: ArborBackdropBlurState,
 ) {
     val conversation by viewModel.conversation.collectAsStateWithLifecycle()
     val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsStateWithLifecycle()
@@ -774,22 +784,22 @@ private fun Composer(
         camera.launch(uri)
     }
 
-    Box(Modifier.fillMaxWidth()) {
-        val blurProgress = chromeProgress.coerceIn(0f, 1f)
-        val blurRadius = if (chromeBlurEnabled) (24f * chromeBlurStrength.coerceIn(0f, 1f) * blurProgress).dp else 0.dp
-        Box(
-            Modifier
-                .matchParentSize()
-                .blur(blurRadius)
-                .background(
-                    MaterialTheme.colorScheme.surface.copy(alpha = if (chromeBlurEnabled) .22f else .94f),
-                ),
-        )
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .arborBackdropBlur(
+                state = blurState,
+                enabled = chromeBlurEnabled,
+                progress = chromeProgress,
+                strength = chromeBlurStrength,
+                tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.24f),
+            ),
+    ) {
         Surface(
             shadowElevation = 8.dp,
             tonalElevation = 1.dp,
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = if (chromeBlurEnabled) .72f else 1f),
+            color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = if (chromeBlurEnabled) .68f else 1f),
         ) {
             Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 10.dp, vertical = 8.dp)) {
             if (pending.isNotEmpty()) Text(

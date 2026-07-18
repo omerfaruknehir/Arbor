@@ -639,7 +639,7 @@ class GenerationWorker(
         )
         return NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_arbor_monochrome)
-            .setContentTitle("Arbor • ${repositoryTitle()}")
+            .setContentTitle("${applicationContext.getString(R.string.app_name)} • ${repositoryTitle()}")
             .setContentText(text)
             .setContentIntent(openIntent)
             .setOngoing(indeterminate)

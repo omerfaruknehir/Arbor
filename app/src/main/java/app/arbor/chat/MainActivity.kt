@@ -26,6 +26,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.arbor.chat.ui.ArborApp
 import app.arbor.chat.ui.ChatViewModel
@@ -45,6 +46,7 @@ class MainActivity : ComponentActivity() {
             val palette by viewModel.palette.collectAsState()
             val themeMode by viewModel.themeMode.collectAsState()
             ArborTheme(amoled = amoled, palette = palette, themeMode = themeMode) {
+                val appName = stringResource(R.string.app_name)
                 ArborApp(viewModel)
                 val container = (application as ArborApplication).container
                 var crashReport by remember { mutableStateOf(container.crashReporter.read()) }
@@ -53,11 +55,11 @@ class MainActivity : ComponentActivity() {
                     val context = LocalContext.current
                     AlertDialog(
                         onDismissRequest = { container.crashReporter.clear(); crashReport = null },
-                        title = { Text("Arbor recovered a crash report") },
+                        title = { Text("$appName recovered a crash report") },
                         text = {
                             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                                 if (renderSafeMode) {
-                                    Text("Arbor reopened safely with generated widgets paused. Your chats and files were not deleted. You can dismiss this report and keep using the app, then retry full rendering when ready.\n")
+                                    Text("$appName reopened safely with generated widgets paused. Your chats and files were not deleted. You can dismiss this report and keep using the app, then retry full rendering when ready.\n")
                                     OutlinedButton(onClick = { viewModel.setRenderSafeMode(false) }) { Text("Try full rendering again") }
                                     Text("\n")
                                 }
@@ -70,7 +72,7 @@ class MainActivity : ComponentActivity() {
                         confirmButton = {
                             Button(onClick = {
                                 context.getSystemService(ClipboardManager::class.java)
-                                    .setPrimaryClip(ClipData.newPlainText("Arbor crash report", report))
+                                    .setPrimaryClip(ClipData.newPlainText("$appName crash report", report))
                             }) { Text("Copy report") }
                         },
                     )

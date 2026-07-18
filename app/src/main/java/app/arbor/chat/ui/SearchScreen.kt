@@ -1,7 +1,7 @@
 package app.arbor.chat.ui
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,6 +37,8 @@ fun SearchScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val query by viewModel.searchQuery.collectAsState()
     val results by viewModel.searchResults.collectAsState()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val blurState = rememberArborBackdropBlurState()
+
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         contentWindowInsets = WindowInsets(0),
@@ -44,6 +46,7 @@ fun SearchScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             CollapsingTranslucentTopBar(
                 title = "Search history",
                 scrollBehavior = scrollBehavior,
+                blurState = blurState,
                 blurEnabled = chromeBlurEnabled,
                 blurStrength = chromeBlurStrength,
                 navigationIcon = {
@@ -54,22 +57,29 @@ fun SearchScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             )
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            OutlinedTextField(
-                query, { viewModel.searchQuery.value = it },
-                leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                placeholder = { Text("Search messages, code, and reasoning") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-            )
-            LazyColumn {
-                items(results, key = { "${it.conversationId}:${it.nodeId}:${it.rank}:${it.snippet.hashCode()}" }) { result ->
-                    ListItem(
-                        headlineContent = { Text(result.snippet.replace("[", "").replace("]", ""), maxLines = 3) },
-                        supportingContent = { Text(result.conversationTitle, style = MaterialTheme.typography.labelSmall) },
-                        modifier = Modifier.clickable { viewModel.openSearchResult(result.conversationId, result.nodeId) },
-                    )
-                }
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().arborBackdropSource(blurState),
+            contentPadding = PaddingValues(
+                top = padding.calculateTopPadding() + 16.dp,
+                bottom = 16.dp,
+            ),
+        ) {
+            item {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { viewModel.searchQuery.value = it },
+                    leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                    placeholder = { Text("Search messages, code, and reasoning") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+            items(results, key = { "${it.conversationId}:${it.nodeId}:${it.rank}:${it.snippet.hashCode()}" }) { result ->
+                ListItem(
+                    headlineContent = { Text(result.snippet.replace("[", "").replace("]", ""), maxLines = 3) },
+                    supportingContent = { Text(result.conversationTitle, style = MaterialTheme.typography.labelSmall) },
+                    modifier = Modifier.clickable { viewModel.openSearchResult(result.conversationId, result.nodeId) },
+                )
             }
         }
     }

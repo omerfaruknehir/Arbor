@@ -44,10 +44,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.arbor.chat.R
 import app.arbor.chat.sandbox.ExecutionResult
 import app.arbor.chat.sandbox.CodeLintResult
 import app.arbor.chat.sandbox.PackageInstallResult
@@ -66,12 +68,13 @@ import kotlinx.coroutines.delay
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SandboxScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+    val appName = stringResource(R.string.app_name)
     val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsState()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
     var code by remember {
         mutableStateOf(
             "from pathlib import Path\n\n" +
-                "print('Hello from Arbor distro Python')\n" +
+                "print('Hello from $appName distro Python')\n" +
                 "print('Workspace:', Path.cwd())\n",
         )
     }
@@ -159,6 +162,7 @@ fun SandboxScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         packageSearching = false
     }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val blurState = rememberArborBackdropBlurState()
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         contentWindowInsets = WindowInsets(0),
@@ -166,6 +170,7 @@ fun SandboxScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             CollapsingTranslucentTopBar(
                 title = "Local Code Execution",
                 scrollBehavior = scrollBehavior,
+                blurState = blurState,
                 blurEnabled = chromeBlurEnabled,
                 blurStrength = chromeBlurStrength,
                 navigationIcon = {
@@ -176,7 +181,19 @@ fun SandboxScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             )
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .arborBackdropSource(blurState)
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = padding.calculateTopPadding() + 16.dp,
+                    bottom = 16.dp,
+                ),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
             Text("Persistent local workspace", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text("Python runs as root inside the selected Linux distribution. Each chat has a persistent /workspace and isolated .arbor-venv; Android still confines the whole app outside the PRoot distribution.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             environment?.let { info ->
@@ -520,7 +537,7 @@ fun SandboxScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         AlertDialog(
             onDismissRequest = { removePackage = null },
             title = { Text("Remove $name?") },
-            text = { Text("Arbor will remove this distribution from the current chat environment. Shared dependencies are kept unless you remove them separately.") },
+            text = { Text("$appName will remove this distribution from the current chat environment. Shared dependencies are kept unless you remove them separately.") },
             dismissButton = { OutlinedButton(onClick = { removePackage = null }) { Text("Cancel") } },
             confirmButton = {
                 Button(onClick = {

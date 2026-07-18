@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -65,6 +66,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -74,17 +77,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.arbor.chat.BuildConfig
+import app.arbor.chat.R
 import app.arbor.chat.data.ProviderEntity
 import app.arbor.chat.data.ProviderKind
 import app.arbor.chat.data.ModelEntity
@@ -105,6 +110,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
 import java.util.UUID
+
+
+private val LocalSettingsScaffoldPadding = compositionLocalOf { PaddingValues() }
 
 private enum class SettingsRoute(val title: String) {
     HOME("Settings"),
@@ -136,6 +144,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val configuredProviders = remember(providers, credentialRevision) { viewModel.configuredProviders(providers) }
     var route by rememberSaveable { mutableStateOf(SettingsRoute.HOME) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val blurState = rememberArborBackdropBlurState()
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -144,6 +153,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             CollapsingTranslucentTopBar(
                 title = route.title,
                 scrollBehavior = scrollBehavior,
+                blurState = blurState,
                 blurEnabled = chromeBlurEnabled,
                 blurStrength = chromeBlurStrength,
                 navigationIcon = {
@@ -161,8 +171,9 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             )
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            when (route) {
+        Box(Modifier.fillMaxSize().arborBackdropSource(blurState)) {
+            CompositionLocalProvider(LocalSettingsScaffoldPadding provides padding) {
+                when (route) {
                 SettingsRoute.HOME -> SettingsHome(
                     providerCount = registeredProviders.size,
                     onOpen = { route = it },
@@ -186,7 +197,8 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     conversationProviderId = null,
                     viewModel = viewModel,
                 )
-                SettingsRoute.ABOUT -> AboutSettingsPage()
+                    SettingsRoute.ABOUT -> AboutSettingsPage()
+                }
             }
         }
     }
@@ -282,8 +294,17 @@ private fun SettingsDestination(
 
 @Composable
 private fun SettingsPage(content: @Composable ColumnScope.() -> Unit) {
+    val scaffoldPadding = LocalSettingsScaffoldPadding.current
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(
+                start = 20.dp,
+                end = 20.dp,
+                top = scaffoldPadding.calculateTopPadding() + 20.dp,
+                bottom = scaffoldPadding.calculateBottomPadding() + 20.dp,
+            ),
         verticalArrangement = Arrangement.spacedBy(18.dp),
         content = content,
     )
@@ -384,7 +405,9 @@ private fun AppearanceSettingsPage(
     chromeBlurStrength: Float,
     viewModel: ChatViewModel,
 ) = SettingsPage {
-    SectionTitle("Theme mode", "Choose whether Arbor follows Android or stays light or dark.")
+    val appName = stringResource(R.string.app_name)
+    val appNamePossessive = stringResource(R.string.app_name_possessive)
+    SectionTitle("Theme mode", "Choose whether $appName follows Android or stays light or dark.")
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         ThemeMode.entries.forEach { option ->
             FilterChip(
@@ -397,7 +420,7 @@ private fun AppearanceSettingsPage(
     }
 
     HorizontalDivider()
-    SectionTitle("Color scheme", "Use Arbor green, a neutral graphite palette, or Android dynamic colors.")
+    SectionTitle("Color scheme", "Use $appName green, a neutral graphite palette, or Android dynamic colors.")
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         ColorPalette.entries.forEach { option ->
             Surface(
@@ -417,8 +440,8 @@ private fun AppearanceSettingsPage(
                         modifier = Modifier.size(28.dp),
                     ) {}
                     Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                        Text(option.displayName, fontWeight = FontWeight.SemiBold)
-                        Text(option.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(if (option == ColorPalette.ARBOR) appName else option.displayName, fontWeight = FontWeight.SemiBold)
+                        Text(if (option == ColorPalette.ARBOR) "$appNamePossessive green Material palette" else option.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (palette == option) Icon(Icons.Outlined.CheckCircle, "Selected", tint = MaterialTheme.colorScheme.primary)
                 }
@@ -620,7 +643,8 @@ private fun LocalCodeExecutionSettingsPage(
 
 @Composable
 private fun AboutSettingsPage() = SettingsPage {
-    SectionTitle("Arbor 0.16.5", "Native Android BYOK model workspace.")
+    val appName = stringResource(R.string.app_name)
+    SectionTitle("$appName ${BuildConfig.VERSION_NAME}", "Native Android BYOK model workspace.")
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Built for long-running, tool-using chats", fontWeight = FontWeight.SemiBold)
