@@ -1,3 +1,11 @@
+# 0.16.21
+
+- Restored the 0.16.19 two-pass gradual Gaussian chrome blur.
+- Replaced dual-screen navigation transitions with a single-layer animation to prevent UI-thread stalls.
+- Preserved each Settings page scroll and app-bar state across navigation.
+- Removed `requestScrollToItem` from streaming growth compensation so layout animations no longer reset active scrolling.
+- Standardized generated-widget expansion on the shared fade transition.
+
 # Changelog
 
 ## 0.16.20

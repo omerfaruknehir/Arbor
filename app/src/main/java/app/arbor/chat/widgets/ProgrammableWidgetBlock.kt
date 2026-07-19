@@ -1,6 +1,5 @@
 package app.arbor.chat.widgets
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
@@ -56,6 +55,7 @@ import java.time.ZonedDateTime
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import app.arbor.chat.ArborApplication
+import app.arbor.chat.ui.ArborFadeVisibility
 
 @Composable
 fun ProgrammableWidgetBlock(
@@ -74,7 +74,7 @@ fun ProgrammableWidgetBlock(
                 Text("Widget paused for crash recovery", fontWeight = FontWeight.SemiBold)
                 Text("The message is intact. Arbor is showing it without executing generated UI until you try full rendering again.", style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick = { sourceExpanded = !sourceExpanded }) { Text(if (sourceExpanded) "Collapse source" else "Show source") }
-                AnimatedVisibility(sourceExpanded) { Text(source, style = MaterialTheme.typography.bodySmall) }
+                ArborFadeVisibility(sourceExpanded) { Text(source, style = MaterialTheme.typography.bodySmall) }
                 Button(onClick = { crashReporter?.setRenderSafeMode(false) }) { Text("Try full rendering") }
             }
         }
@@ -125,7 +125,7 @@ fun ProgrammableWidgetBlock(
                         }
                         Text(if (securityExpanded) "Collapse" else "Review", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                     }
-                    AnimatedVisibility(securityExpanded) {
+                    ArborFadeVisibility(securityExpanded) {
                         WidgetSecurityDetails(
                             report = security,
                             aiReview = aiReview,

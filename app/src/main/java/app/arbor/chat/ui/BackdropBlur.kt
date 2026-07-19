@@ -121,9 +121,20 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         ?.coerceIn(0f, contentHeightPx)
         ?: contentHeightPx
 
-    val blurShader = remember { RuntimeShader(EDGE_BLUR_SHADER) }
-    val composeEffect = remember(blurShader) {
-        RenderEffect.createRuntimeShaderEffect(blurShader, "content").asComposeRenderEffect()
+    val horizontalShader = remember {
+        RuntimeShader(EDGE_BLUR_SHADER).apply {
+            setFloatUniform("uDirection", 1f, 0f)
+        }
+    }
+    val verticalShader = remember {
+        RuntimeShader(EDGE_BLUR_SHADER).apply {
+            setFloatUniform("uDirection", 0f, 1f)
+        }
+    }
+    val composeEffect = remember(horizontalShader, verticalShader) {
+        val horizontal = RenderEffect.createRuntimeShaderEffect(horizontalShader, "content")
+        val vertical = RenderEffect.createRuntimeShaderEffect(verticalShader, "content")
+        RenderEffect.createChainEffect(vertical, horizontal).asComposeRenderEffect()
     }
 
     measured.graphicsLayer {
@@ -134,10 +145,15 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
             return@graphicsLayer
         }
 
-        blurShader.setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
-        blurShader.setFloatUniform("uFade", topFadePx, bottomFadePx)
-        blurShader.setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
-        blurShader.setFloatUniform("uBottomEdge", bottomEdgePx)
+        horizontalShader.setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
+        horizontalShader.setFloatUniform("uFade", topFadePx, bottomFadePx)
+        horizontalShader.setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
+        horizontalShader.setFloatUniform("uBottomEdge", bottomEdgePx)
+
+        verticalShader.setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
+        verticalShader.setFloatUniform("uFade", topFadePx, bottomFadePx)
+        verticalShader.setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
+        verticalShader.setFloatUniform("uBottomEdge", bottomEdgePx)
 
         renderEffect = composeEffect
     }
@@ -245,11 +261,11 @@ private const val DEFAULT_TOP_FADE_DP = 64f
 private const val DEFAULT_BOTTOM_FADE_DP = 152f
 
 /**
- * Single-pass radial tent blur.
+ * Restored 0.16.19 two-pass seventeen-tap Gaussian kernel.
  *
- * This is still a real spatial blur, but it avoids the previous horizontal +
- * vertical Gaussian chain. Four near-axis and four wider diagonal samples use
- * bilinear filtering to produce a soft frosted result in nine reads total.
+ * The uniforms are updated from the graphics layer rather than Compose state,
+ * so the previous blur appearance is retained without recomposing the screen
+ * for each pixel of app-bar movement.
  */
 private val EDGE_BLUR_SHADER = """
     uniform shader content;
@@ -257,6 +273,7 @@ private val EDGE_BLUR_SHADER = """
     uniform float2 uFade;
     uniform float uHeight;
     uniform float uBottomEdge;
+    uniform float2 uDirection;
 
     half4 main(float2 coord) {
         float topMix = saturate(1.0 - coord.y / max(uFade.x, 1.0));
@@ -265,19 +282,24 @@ private val EDGE_BLUR_SHADER = """
         float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
         if (radius < 0.35) return content.eval(coord);
 
-        float nearRadius = radius * 0.46;
-        float farRadius = radius * 0.78;
-        float diagonal = farRadius * 0.70710678;
-
-        half4 accum = half4(content.eval(coord)) * 0.16;
-        accum += half4(content.eval(coord + float2( nearRadius, 0.0))) * 0.11;
-        accum += half4(content.eval(coord + float2(-nearRadius, 0.0))) * 0.11;
-        accum += half4(content.eval(coord + float2(0.0,  nearRadius))) * 0.11;
-        accum += half4(content.eval(coord + float2(0.0, -nearRadius))) * 0.11;
-        accum += half4(content.eval(coord + float2( diagonal,  diagonal))) * 0.10;
-        accum += half4(content.eval(coord + float2(-diagonal,  diagonal))) * 0.10;
-        accum += half4(content.eval(coord + float2( diagonal, -diagonal))) * 0.10;
-        accum += half4(content.eval(coord + float2(-diagonal, -diagonal))) * 0.10;
+        float2 sampleStep = uDirection * (radius / 8.0);
+        half4 accum = half4(content.eval(coord)) * 0.103152619;
+        accum += half4(content.eval(coord + sampleStep * 1.0)) * 0.099978946;
+        accum += half4(content.eval(coord - sampleStep * 1.0)) * 0.099978946;
+        accum += half4(content.eval(coord + sampleStep * 2.0)) * 0.091031867;
+        accum += half4(content.eval(coord - sampleStep * 2.0)) * 0.091031867;
+        accum += half4(content.eval(coord + sampleStep * 3.0)) * 0.077863682;
+        accum += half4(content.eval(coord - sampleStep * 3.0)) * 0.077863682;
+        accum += half4(content.eval(coord + sampleStep * 4.0)) * 0.062565226;
+        accum += half4(content.eval(coord - sampleStep * 4.0)) * 0.062565226;
+        accum += half4(content.eval(coord + sampleStep * 5.0)) * 0.047226710;
+        accum += half4(content.eval(coord - sampleStep * 5.0)) * 0.047226710;
+        accum += half4(content.eval(coord + sampleStep * 6.0)) * 0.033488752;
+        accum += half4(content.eval(coord - sampleStep * 6.0)) * 0.033488752;
+        accum += half4(content.eval(coord + sampleStep * 7.0)) * 0.022308318;
+        accum += half4(content.eval(coord - sampleStep * 7.0)) * 0.022308318;
+        accum += half4(content.eval(coord + sampleStep * 8.0)) * 0.013960189;
+        accum += half4(content.eval(coord - sampleStep * 8.0)) * 0.013960189;
         return accum;
     }
 """.trimIndent()

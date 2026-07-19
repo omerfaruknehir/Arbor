@@ -415,15 +415,17 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                         messageGrowthTracker.heightPx = size.height
                                         if (
                                             growthPx > 0 &&
+                                            generating &&
+                                            message.status == MessageStatus.STREAMING &&
                                             !followLatest &&
+                                            !messageListState.isScrollInProgress &&
                                             messageListState.firstVisibleItemIndex == 0
                                         ) {
-                                            // The active response grows toward the physical top in reverseLayout.
-                                            // Compensate by the same logical amount so released text stays fixed.
-                                            messageListState.requestScrollToItem(
-                                                index = 0,
-                                                scrollOffset = messageListState.firstVisibleItemScrollOffset + growthPx,
-                                            )
+                                            // Preserve the released viewport without scheduling a new
+                                            // lazy-list position. requestScrollToItem overrides flings,
+                                            // expansion animations, and pending measurement, which was
+                                            // the source of the visible scroll resets.
+                                            messageListState.dispatchRawDelta(growthPx.toFloat())
                                         }
                                     }
                                 }
