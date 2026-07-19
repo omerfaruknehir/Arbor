@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.29
+
+- Replaced the predictive-back commit snap with a short render-layer completion phase.
+- Faded the outgoing page only near the committed endpoint so the retained destination can become the sole visible layer before the atomic state swap.
+- Preserved the 0.16.28 saveable-state and scroll-retention behavior.
+
 ## 0.16.26
 
 - Restored the 0.16.19 UI and blur baseline.

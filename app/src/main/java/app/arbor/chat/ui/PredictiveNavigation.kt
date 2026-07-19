@@ -38,8 +38,28 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 private val NavigationEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+
+private const val CommitFadeStart = 0.62f
+
+/**
+ * The system may complete a predictive gesture before its last emitted progress
+ * reaches 1. Finishing the remaining render-layer distance prevents the source
+ * page from disappearing in a single frame.
+ */
+internal fun predictiveBackCompletionDurationMillis(progress: Float): Int {
+    val remaining = 1f - progress.coerceIn(0f, 1f)
+    return (80f + 70f * remaining).roundToInt().coerceIn(80, 150)
+}
+
+/** Fade only near the committed endpoint, leaving ordinary gesture tracking crisp. */
+internal fun predictiveBackOutgoingAlpha(progress: Float): Float {
+    val fadeProgress = ((progress.coerceIn(0f, 1f) - CommitFadeStart) /
+        (1f - CommitFadeStart)).coerceIn(0f, 1f)
+    return 1f - NavigationEasing.transform(fadeProgress)
+}
 
 /**
  * Screen host which keeps the active screen in the same composition for the whole
@@ -99,7 +119,18 @@ internal fun <T : Any> PredictiveNavigationHost(
                 gestureProgress.snapTo(event.progress.coerceIn(0f, 1f))
             }
 
-            gestureProgress.snapTo(1f)
+            // A committed Flow commonly ends before the last emitted value is
+            // exactly 1f. Complete only the cheap layer animation first; the
+            // outgoing page fades fully before the state swap, so there is no
+            // visible hard cut even with Animator duration scale set to 5x/10x.
+            val completionDuration = predictiveBackCompletionDurationMillis(gestureProgress.value)
+            gestureProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = completionDuration,
+                    easing = NavigationEasing,
+                ),
+            )
             suppressTransitionFor = destination
             latestOnBack(destination)
 
@@ -165,6 +196,7 @@ internal fun <T : Any> PredictiveNavigationHost(
                         translationX = direction * widthPx * 0.30f * p
                         scaleX = 1f - 0.025f * p
                         scaleY = 1f - 0.025f * p
+                        alpha = predictiveBackOutgoingAlpha(p)
                         shadowElevation = maxShadowPx * p
                         shape = fixedCornerShape
                         clip = p > 0.001f
@@ -172,6 +204,7 @@ internal fun <T : Any> PredictiveNavigationHost(
                         translationX = 0f
                         scaleX = 1f
                         scaleY = 1f
+                        alpha = 1f
                         shadowElevation = 0f
                         clip = false
                     }
