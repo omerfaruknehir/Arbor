@@ -108,12 +108,14 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
     val topProgressReader = state.topProgressReader
     val bottomProgressReader = state.bottomProgressReader
 
+    var contentWidthPx by remember { mutableFloatStateOf(0f) }
     var contentHeightPx by remember { mutableFloatStateOf(0f) }
     val measured = this.onGloballyPositioned { coordinates ->
+        contentWidthPx = coordinates.size.width.toFloat().coerceAtLeast(1f)
         contentHeightPx = coordinates.size.height.toFloat().coerceAtLeast(1f)
         state.updateSource(coordinates.boundsInRoot().top)
     }
-    if (contentHeightPx <= 0f) return@composed measured
+    if (contentWidthPx <= 0f || contentHeightPx <= 0f) return@composed measured
 
     val bottomEdgePx = state.bottomEdgeInRootPx
         .takeIf { it.isFinite() }
@@ -147,11 +149,13 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
 
         horizontalShader.setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
         horizontalShader.setFloatUniform("uFade", topFadePx, bottomFadePx)
+        horizontalShader.setFloatUniform("uWidth", contentWidthPx.coerceAtLeast(1f))
         horizontalShader.setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
         horizontalShader.setFloatUniform("uBottomEdge", bottomEdgePx)
 
         verticalShader.setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
         verticalShader.setFloatUniform("uFade", topFadePx, bottomFadePx)
+        verticalShader.setFloatUniform("uWidth", contentWidthPx.coerceAtLeast(1f))
         verticalShader.setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
         verticalShader.setFloatUniform("uBottomEdge", bottomEdgePx)
 
@@ -236,7 +240,12 @@ fun Modifier.arborBackdropBlur(
         }
 
         onDrawWithContent {
-            val overlayProgress = if (enabled) arborBlurProgress(stableProgressReader()) else 1f
+            val overlayProgress = if (enabled) {
+                MIN_CHROME_TINT_PROGRESS +
+                    (1f - MIN_CHROME_TINT_PROGRESS) * arborBlurProgress(stableProgressReader())
+            } else {
+                1f
+            }
             when (edge) {
                 ArborBlurEdge.TOP -> drawRect(
                     brush = brush,
@@ -261,51 +270,55 @@ fun Modifier.arborBackdropBlur(
 private val FULL_PROGRESS_READER: () -> Float = { 1f }
 
 private const val MIN_VISIBLE_RADIUS_PX = 0.35f
+private const val MIN_CHROME_TINT_PROGRESS = 0.68f
 private const val DEFAULT_MAX_RADIUS_DP = 24f
 private const val DEFAULT_TOP_FADE_DP = 64f
 private const val DEFAULT_BOTTOM_FADE_DP = 152f
 
 /**
- * Two-pass Gaussian blur with an effective 33-tap kernel per pass.
+ * Stable two-pass 17-tap Gaussian kernel.
  *
- * Adjacent Gaussian taps are combined into one fractional sample. Hardware
- * bilinear filtering reconstructs each pair, so this covers 33 taps using 17
- * texture reads per direction: the same read count as the old 17-tap kernel,
- * but enough spatial density for Arbor's much larger blur radius.
+ * Every sample is clamped to the source bounds. Android's runtime-shader child
+ * otherwise returns transparent black outside the layer, which destroyed alpha
+ * near the chrome edges at Arbor's larger radius.
  */
 private val EDGE_BLUR_SHADER = """
     uniform shader content;
     uniform float2 uBlur;
     uniform float2 uFade;
+    uniform float uWidth;
     uniform float uHeight;
     uniform float uBottomEdge;
     uniform float2 uDirection;
 
     half4 main(float2 coord) {
-        float topMix = saturate(1.0 - coord.y / max(uFade.x, 1.0));
+        float2 lower = float2(0.0, 0.0);
+        float2 upper = float2(max(uWidth - 1.0, 0.0), max(uHeight - 1.0, 0.0));
+        float2 safeCoord = clamp(coord, lower, upper);
+        float topMix = saturate(1.0 - safeCoord.y / max(uFade.x, 1.0));
         float bottomEdge = clamp(uBottomEdge, 0.0, uHeight);
-        float bottomMix = saturate(1.0 - (bottomEdge - coord.y) / max(uFade.y, 1.0));
+        float bottomMix = saturate(1.0 - (bottomEdge - safeCoord.y) / max(uFade.y, 1.0));
         float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
-        if (radius < 0.35) return content.eval(coord);
+        if (radius < 0.35) return content.eval(safeCoord);
 
-        float2 step = uDirection * (radius / 16.0);
-        half4 accum = half4(content.eval(coord)) * 0.051893312;
-        accum += half4(content.eval(coord + step * 1.494140893)) * 0.101786198;
-        accum += half4(content.eval(coord - step * 1.494140893)) * 0.101786198;
-        accum += half4(content.eval(coord + step * 3.486331531)) * 0.094165572;
-        accum += half4(content.eval(coord - step * 3.486331531)) * 0.094165572;
-        accum += half4(content.eval(coord + step * 5.478528838)) * 0.081857401;
-        accum += half4(content.eval(coord - step * 5.478528838)) * 0.081857401;
-        accum += half4(content.eval(coord + step * 7.470736607)) * 0.066863049;
-        accum += half4(content.eval(coord - step * 7.470736607)) * 0.066863049;
-        accum += half4(content.eval(coord + step * 9.462958613)) * 0.051318819;
-        accum += half4(content.eval(coord - step * 9.462958613)) * 0.051318819;
-        accum += half4(content.eval(coord + step * 11.455198604)) * 0.037010860;
-        accum += half4(content.eval(coord - step * 11.455198604)) * 0.037010860;
-        accum += half4(content.eval(coord + step * 13.447460292)) * 0.025080920;
-        accum += half4(content.eval(coord - step * 13.447460292)) * 0.025080920;
-        accum += half4(content.eval(coord + step * 15.439747346)) * 0.015970525;
-        accum += half4(content.eval(coord - step * 15.439747346)) * 0.015970525;
+        float2 sampleStep = uDirection * (radius / 8.0);
+        half4 accum = half4(content.eval(safeCoord)) * 0.103152619;
+        accum += half4(content.eval(clamp(safeCoord + sampleStep * 1.0, lower, upper))) * 0.099978946;
+        accum += half4(content.eval(clamp(safeCoord - sampleStep * 1.0, lower, upper))) * 0.099978946;
+        accum += half4(content.eval(clamp(safeCoord + sampleStep * 2.0, lower, upper))) * 0.091031867;
+        accum += half4(content.eval(clamp(safeCoord - sampleStep * 2.0, lower, upper))) * 0.091031867;
+        accum += half4(content.eval(clamp(safeCoord + sampleStep * 3.0, lower, upper))) * 0.077863682;
+        accum += half4(content.eval(clamp(safeCoord - sampleStep * 3.0, lower, upper))) * 0.077863682;
+        accum += half4(content.eval(clamp(safeCoord + sampleStep * 4.0, lower, upper))) * 0.062565226;
+        accum += half4(content.eval(clamp(safeCoord - sampleStep * 4.0, lower, upper))) * 0.062565226;
+        accum += half4(content.eval(clamp(safeCoord + sampleStep * 5.0, lower, upper))) * 0.047226710;
+        accum += half4(content.eval(clamp(safeCoord - sampleStep * 5.0, lower, upper))) * 0.047226710;
+        accum += half4(content.eval(clamp(safeCoord + sampleStep * 6.0, lower, upper))) * 0.033488752;
+        accum += half4(content.eval(clamp(safeCoord - sampleStep * 6.0, lower, upper))) * 0.033488752;
+        accum += half4(content.eval(clamp(safeCoord + sampleStep * 7.0, lower, upper))) * 0.022308318;
+        accum += half4(content.eval(clamp(safeCoord - sampleStep * 7.0, lower, upper))) * 0.022308318;
+        accum += half4(content.eval(clamp(safeCoord + sampleStep * 8.0, lower, upper))) * 0.013960189;
+        accum += half4(content.eval(clamp(safeCoord - sampleStep * 8.0, lower, upper))) * 0.013960189;
         return accum;
     }
 """.trimIndent()
