@@ -99,6 +99,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -526,6 +527,20 @@ private fun MarkdownAndroidView(
                     renderer.render(request.source, request.streaming)
                 } ?: return@collect
 
+                if (request.streaming && view.hasActiveFadeAtOrAfter(delta.replaceFrom)) {
+                    // Do not replace/re-layout the mutable Markdown tail while its
+                    // newly appended glyphs are still fading. That replacement was
+                    // starving the fade and made it advance in only a few frames.
+                    val deadline = SystemClock.uptimeMillis() + StreamingFadeDurationMillis + 40L
+                    while (
+                        view.hasActiveFadeAtOrAfter(delta.replaceFrom) &&
+                        SystemClock.uptimeMillis() < deadline
+                    ) {
+                        delay(16L)
+                    }
+                    if (view.lastSourceText != delta.source) return@collect
+                }
+
                 val applied = view.applyMarkdownDelta(
                     markwon = markwon,
                     delta = delta,
@@ -722,19 +737,20 @@ private class ArborMarkdownTextView(context: Context) : TextView(context) {
     var lastAppliedRevision: Long = -1L
     var lastDeltaReplaceFrom: Int = 0
 
+    private data class ActiveFade(
+        val span: StreamingAlphaSpan,
+        val start: Int,
+        val end: Int,
+    )
+
     private var fadeFrameScheduled = false
-    private var activeFadeSpan: StreamingAlphaSpan? = null
-    private var activeFadeStart = 0
+    private val activeFades = mutableListOf<ActiveFade>()
     private val fadeFrame = object : Runnable {
         override fun run() {
             fadeFrameScheduled = false
-            val span = activeFadeSpan
-            if (span == null) return
             val now = SystemClock.uptimeMillis()
-            if (span.isFinished(now)) {
-                clearStreamingAlphaSpan()
-                return
-            }
+            removeFinishedFades(now)
+            if (activeFades.isEmpty()) return
             postInvalidateOnAnimation()
             if (isAttachedToWindow) {
                 fadeFrameScheduled = true
@@ -771,8 +787,7 @@ private class ArborMarkdownTextView(context: Context) : TextView(context) {
         val delta = pendingMarkdownDelta ?: return
         val editable = editableBuffer()
         val from = delta.replaceFrom.coerceIn(0, editable.length)
-        val preservedFade = activeFadeSpan?.takeUnless { it.isFinished(SystemClock.uptimeMillis()) }
-        if (preservedFade != null) removeActiveFadeSpanFromText()
+        removeFadesAtOrAfter(from)
 
         lastDeltaReplaceFrom = from
         editable.replace(from, editable.length, parsed)
@@ -780,43 +795,51 @@ private class ArborMarkdownTextView(context: Context) : TextView(context) {
         pendingMarkdownDelta = null
 
         val fadeFrom = delta.fadeFrom
-        if (preservedFade != null && fadeFrom != null && fadeFrom < editable.length) {
-            setActiveFadeSpan(
-                span = preservedFade,
+        if (delta.nextStreaming && fadeFrom != null && fadeFrom < editable.length) {
+            startStreamingFade(
                 start = fadeFrom.coerceIn(0, editable.length),
                 end = editable.length,
+                durationMillis = scaledStreamingFadeDurationMillis(),
             )
-        } else if (preservedFade != null) {
-            activeFadeSpan = null
-            activeFadeStart = 0
         }
     }
 
-    fun startOrExtendStreamingFade(start: Int, end: Int, durationMillis: Long) {
+    fun startStreamingFade(start: Int, end: Int, durationMillis: Long) {
         if (end <= start || durationMillis <= 0L) return
-        val now = SystemClock.uptimeMillis()
-        val existing = activeFadeSpan?.takeUnless { it.isFinished(now) }
-        if (existing == null) {
-            clearStreamingAlphaSpan()
-            setActiveFadeSpan(
-                span = StreamingAlphaSpan(now, durationMillis),
-                start = start,
-                end = end,
-            )
-        } else {
-            removeActiveFadeSpanFromText()
-            setActiveFadeSpan(
-                span = existing,
-                start = minOf(activeFadeStart, start),
-                end = end,
-            )
+        val spannable = text as? Spannable ?: return
+        val safeStart = start.coerceIn(0, spannable.length)
+        val safeEnd = end.coerceIn(safeStart, spannable.length)
+        if (safeEnd <= safeStart) return
+
+        removeFinishedFades(SystemClock.uptimeMillis())
+        // Every appended range gets its own clock. Extending one old span made
+        // later tokens inherit an almost-finished animation and appear in only
+        // two or three frames.
+        val active = ActiveFade(
+            span = StreamingAlphaSpan(SystemClock.uptimeMillis(), durationMillis),
+            start = safeStart,
+            end = safeEnd,
+        )
+        activeFades += active
+        spannable.setSpan(active.span, safeStart, safeEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+        // Bound bookkeeping during extremely fast streams. Finished/old ranges
+        // are already visually opaque, so removing their spans is lossless.
+        while (activeFades.size > 12) {
+            val oldest = activeFades.removeAt(0)
+            spannable.removeSpan(oldest.span)
         }
         scheduleStreamingFadeFrame()
         postInvalidateOnAnimation()
     }
 
+    fun hasActiveFadeAtOrAfter(position: Int): Boolean {
+        removeFinishedFades(SystemClock.uptimeMillis())
+        return activeFades.any { it.end > position }
+    }
+
     fun finishStreamingFade() {
-        clearStreamingAlphaSpan()
+        clearStreamingAlphaSpans()
     }
 
     fun updateReferenceColors(linkColor: Int, pillBackground: Int, pillForeground: Int) {
@@ -831,24 +854,36 @@ private class ArborMarkdownTextView(context: Context) : TextView(context) {
         invalidate()
     }
 
-    private fun setActiveFadeSpan(span: StreamingAlphaSpan, start: Int, end: Int) {
-        val spannable = text as? Spannable ?: return
-        activeFadeSpan = span
-        activeFadeStart = start
-        spannable.setSpan(span, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    private fun removeFinishedFades(now: Long) {
+        val spannable = text as? Spannable
+        val iterator = activeFades.iterator()
+        while (iterator.hasNext()) {
+            val active = iterator.next()
+            if (active.span.isFinished(now)) {
+                spannable?.removeSpan(active.span)
+                iterator.remove()
+            }
+        }
     }
 
-    private fun removeActiveFadeSpanFromText() {
-        val span = activeFadeSpan ?: return
-        (text as? Spannable)?.removeSpan(span)
+    private fun removeFadesAtOrAfter(position: Int) {
+        val spannable = text as? Spannable
+        val iterator = activeFades.iterator()
+        while (iterator.hasNext()) {
+            val active = iterator.next()
+            if (active.end > position) {
+                spannable?.removeSpan(active.span)
+                iterator.remove()
+            }
+        }
     }
 
-    private fun clearStreamingAlphaSpan() {
+    private fun clearStreamingAlphaSpans() {
         if (fadeFrameScheduled) removeCallbacks(fadeFrame)
         fadeFrameScheduled = false
-        removeActiveFadeSpanFromText()
-        activeFadeSpan = null
-        activeFadeStart = 0
+        val spannable = text as? Spannable
+        activeFades.forEach { spannable?.removeSpan(it.span) }
+        activeFades.clear()
         invalidate()
     }
 
@@ -861,7 +896,7 @@ private class ArborMarkdownTextView(context: Context) : TextView(context) {
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        if (activeFadeSpan != null) scheduleStreamingFadeFrame()
+        if (activeFades.isNotEmpty()) scheduleStreamingFadeFrame()
     }
 
     override fun onDetachedFromWindow() {
@@ -927,13 +962,16 @@ private fun animateAppendedMarkdown(view: ArborMarkdownTextView, previousLength:
     val start = previousLength.coerceIn(0, currentLength)
     if (currentLength <= start) return
 
+    view.startStreamingFade(start, currentLength, scaledStreamingFadeDurationMillis())
+}
+
+private fun scaledStreamingFadeDurationMillis(): Long {
     val durationScale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         ValueAnimator.getDurationScale()
     } else {
         1f
     }
-    val durationMillis = (StreamingFadeDurationMillis * durationScale).roundToLong()
-    view.startOrExtendStreamingFade(start, currentLength, durationMillis)
+    return (StreamingFadeDurationMillis * durationScale).roundToLong()
 }
 
 private class SelectableLinkMovementMethod : ArrowKeyMovementMethod() {
