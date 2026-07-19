@@ -513,7 +513,9 @@ private fun MarkdownAndroidView(
             view.setHorizontallyScrolling(false)
             view.updateReferenceColors(linkColor, pillBackground, pillForeground)
             view.syncSourceText(markdown, streaming, animateAppend = streaming)
-            if (!streaming) view.finishStreamingFade()
+            // The final incremental Markdown delta owns fade completion. Clearing
+            // here exposes the raw append-only tail for a frame before Markwon
+            // reconciles it, which is the visible end-of-stream style flash.
         },
         modifier = modifier,
     )
@@ -531,7 +533,8 @@ private fun MarkdownAndroidView(
                     // Do not replace/re-layout the mutable Markdown tail while its
                     // newly appended glyphs are still fading. That replacement was
                     // starving the fade and made it advance in only a few frames.
-                    val deadline = SystemClock.uptimeMillis() + StreamingFadeDurationMillis + 40L
+                    val deadline = SystemClock.uptimeMillis() +
+                        scaledStreamingFadeDurationMillis() + 40L
                     while (
                         view.hasActiveFadeAtOrAfter(delta.replaceFrom) &&
                         SystemClock.uptimeMillis() < deadline
@@ -740,7 +743,8 @@ private class ArborMarkdownTextView(context: Context) : TextView(context) {
     private data class ActiveFade(
         val span: StreamingAlphaSpan,
         val start: Int,
-        val end: Int,
+        var end: Int,
+        val startedAtUptimeMillis: Long,
     )
 
     private var fadeFrameScheduled = false
@@ -811,21 +815,42 @@ private class ArborMarkdownTextView(context: Context) : TextView(context) {
         val safeEnd = end.coerceIn(safeStart, spannable.length)
         if (safeEnd <= safeStart) return
 
-        removeFinishedFades(SystemClock.uptimeMillis())
-        // Every appended range gets its own clock. Extending one old span made
-        // later tokens inherit an almost-finished animation and appear in only
-        // two or three frames.
-        val active = ActiveFade(
-            span = StreamingAlphaSpan(SystemClock.uptimeMillis(), durationMillis),
-            start = safeStart,
-            end = safeEnd,
-        )
-        activeFades += active
-        spannable.setSpan(active.span, safeStart, safeEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        val now = SystemClock.uptimeMillis()
+        removeFinishedFades(now)
 
-        // Bound bookkeeping during extremely fast streams. Finished/old ranges
-        // are already visually opaque, so removing their spans is lossless.
-        while (activeFades.size > 12) {
+        // Coalesce appends that land within roughly two display frames. This
+        // keeps the number of animated spans small without restarting the fade
+        // of older text. A later range gets a new clock instead of inheriting an
+        // almost-finished animation.
+        val previous = activeFades.lastOrNull()
+        if (
+            previous != null &&
+            previous.end == safeStart &&
+            now - previous.startedAtUptimeMillis <= StreamingFadeCohortWindowMillis
+        ) {
+            spannable.removeSpan(previous.span)
+            previous.end = safeEnd
+            spannable.setSpan(
+                previous.span,
+                previous.start,
+                previous.end,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        } else {
+            val active = ActiveFade(
+                span = StreamingAlphaSpan(now, durationMillis),
+                start = safeStart,
+                end = safeEnd,
+                startedAtUptimeMillis = now,
+            )
+            activeFades += active
+            spannable.setSpan(active.span, safeStart, safeEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+
+        // At normal animation scale this is only a handful of spans. The larger
+        // limit also preserves deliberately slowed 5x/10x animations instead of
+        // forcing old glyphs opaque after two or three frames.
+        while (activeFades.size > StreamingFadeMaximumCohorts) {
             val oldest = activeFades.removeAt(0)
             spannable.removeSpan(oldest.span)
         }
@@ -936,6 +961,9 @@ private fun ArborMarkdownTextView.applyMarkdownDelta(
     if (!streaming) finishStreamingFade()
     return lastAppliedRevision == delta.revision
 }
+
+private const val StreamingFadeCohortWindowMillis = 32L
+private const val StreamingFadeMaximumCohorts = 64
 
 private class StreamingAlphaSpan(
     private val startedAtUptimeMillis: Long,
