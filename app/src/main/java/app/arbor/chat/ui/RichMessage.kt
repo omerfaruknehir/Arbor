@@ -10,6 +10,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Color as AndroidColor
 import android.net.Uri
+import android.os.SystemClock
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.Spanned
@@ -25,7 +26,6 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.textclassifier.TextClassifier
 import android.widget.TextView
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -61,6 +61,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -88,6 +89,8 @@ import io.noties.markwon.ext.latex.JLatexMathPlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.tasklist.TaskListPlugin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.floatOrNull
@@ -101,6 +104,24 @@ private sealed interface RichBlock {
     data class Markdown(val text: String) : RichBlock
     data class Table(val text: String) : RichBlock
     data class Code(val language: String, val code: String) : RichBlock
+}
+
+private object ArborMarkwonProvider {
+    @Volatile
+    private var instance: Markwon? = null
+
+    fun get(context: Context): Markwon {
+        instance?.let { return it }
+        return synchronized(this) {
+            instance ?: Markwon.builder(context.applicationContext)
+                .usePlugin(StrikethroughPlugin.create())
+                .usePlugin(TablePlugin.create(context.applicationContext))
+                .usePlugin(TaskListPlugin.create(context.applicationContext))
+                .usePlugin(JLatexMathPlugin.create(42f))
+                .build()
+                .also { instance = it }
+        }
+    }
 }
 
 @Composable
@@ -120,7 +141,8 @@ fun RichMessage(
     val context = LocalContext.current
     val crashReporter = (context.applicationContext as? ArborApplication)?.container?.crashReporter
     val safeRendering by crashReporter?.renderSafeMode?.collectAsState() ?: remember { mutableStateOf(false) }
-    val blocks = remember(text) { parseBlocks(text) }
+    val renderedText = rememberStreamingRenderText(text, streaming)
+    val blocks = remember(renderedText) { parseBlocks(renderedText) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         blocks.forEachIndexed { index, block ->
             when (block) {
@@ -182,6 +204,41 @@ fun RichMessage(
 }
 
 @Composable
+internal fun StreamingMarkdownText(
+    text: String,
+    streaming: Boolean,
+    stableKey: String,
+    muted: Boolean = false,
+) {
+    val renderedText = rememberStreamingRenderText(text, streaming)
+    if (renderedText.isNotBlank()) {
+        MarkdownBlock(
+            markdown = renderedText,
+            key = stableKey,
+            streaming = streaming,
+            muted = muted,
+        )
+    }
+}
+
+/** Caps expensive Markdown parse/layout work while retaining the newest text. */
+@Composable
+private fun rememberStreamingRenderText(text: String, streaming: Boolean): String {
+    if (!streaming) return text
+
+    val latestText by rememberUpdatedState(text)
+    var renderedText by remember { mutableStateOf(text) }
+    LaunchedEffect(streaming) {
+        while (isActive) {
+            val latest = latestText
+            if (latest != renderedText) renderedText = latest
+            delay(ArborStreamFrameMillis)
+        }
+    }
+    return renderedText
+}
+
+@Composable
 private fun SafeGeneratedBlock(label: String, source: String, retry: () -> Unit) {
     var expanded by remember(source) { mutableStateOf(false) }
     Surface(color = MaterialTheme.colorScheme.errorContainer.copy(alpha = .35f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
@@ -192,7 +249,7 @@ private fun SafeGeneratedBlock(label: String, source: String, retry: () -> Unit)
                 OutlinedButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Collapse source" else "Show source") }
                 Button(onClick = retry) { Text("Try full rendering") }
             }
-            AnimatedVisibility(expanded) {
+            ArborFadeVisibility(expanded) {
                 AutoLintedCodeText(
                     language = "text",
                     code = source,
@@ -285,7 +342,7 @@ private fun PackageRequestBlock(
                 }
                 Text("${current.decidedBy}: ${current.reason}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "Collapse package plan" else "Show complete package plan") }
-                AnimatedVisibility(showDetails) {
+                ArborFadeVisibility(showDetails) {
                     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         current.plan.items.forEach { item ->
                             val status = when (item.action) {
@@ -348,9 +405,10 @@ private fun MarkdownBlock(
     key: String,
     streaming: Boolean = false,
     horizontallyScrollable: Boolean = false,
+    muted: Boolean = false,
 ) {
     val context = LocalContext.current
-    val color = MaterialTheme.colorScheme.onSurface.toArgbCompat()
+    val color = (if (muted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface).toArgbCompat()
     val linkColor = MaterialTheme.colorScheme.primary.toArgbCompat()
     val pillBackground = MaterialTheme.colorScheme.secondaryContainer.toArgbCompat()
     val pillForeground = MaterialTheme.colorScheme.onSecondaryContainer.toArgbCompat()
@@ -360,13 +418,8 @@ private fun MarkdownBlock(
     }
     var pendingReference by remember(key) { mutableStateOf<LinkReferencePreview?>(null) }
     val renderedMarkdown = remember(markdown) { prepareReferenceMarkdown(markdown) }
-    val markwon = remember(context) {
-        Markwon.builder(context)
-            .usePlugin(StrikethroughPlugin.create())
-            .usePlugin(TablePlugin.create(context))
-            .usePlugin(TaskListPlugin.create(context))
-            .usePlugin(JLatexMathPlugin.create(42f))
-            .build()
+    val markwon = remember(context.applicationContext) {
+        ArborMarkwonProvider.get(context.applicationContext)
     }
 
     if (horizontallyScrollable) {
@@ -429,20 +482,38 @@ private fun MarkdownAndroidView(
             }
         },
         update = { view ->
+            val contentChanged = view.renderedMarkdown != markdown
+            val paletteChanged = view.renderedTextColor != textColor ||
+                view.renderedLinkColor != linkColor ||
+                view.renderedPillBackground != pillBackground ||
+                view.renderedPillForeground != pillForeground
+
+            if (!contentChanged && !paletteChanged) return@AndroidView
+
             val previousLength = view.previousRenderedLength
-            view.setTextColor(textColor)
-            view.setLinkTextColor(linkColor)
+            if (view.renderedTextColor != textColor) view.setTextColor(textColor)
+            if (view.renderedLinkColor != linkColor) view.setLinkTextColor(linkColor)
             view.setHorizontallyScrolling(false)
-            markwon.setMarkdown(view, markdown)
-            installReferenceSpans(
-                view = view,
-                linkColor = linkColor,
-                pillBackground = pillBackground,
-                pillForeground = pillForeground,
-                onClick = onReference,
-            )
-            animateAppendedMarkdown(view, previousLength, streaming)
-            view.previousRenderedLength = view.text.length
+
+            if (contentChanged) markwon.setMarkdown(view, markdown)
+            if (contentChanged || paletteChanged) {
+                installReferenceSpans(
+                    view = view,
+                    linkColor = linkColor,
+                    pillBackground = pillBackground,
+                    pillForeground = pillForeground,
+                    onClick = onReference,
+                )
+            }
+            if (contentChanged) {
+                animateAppendedMarkdown(view, previousLength, streaming)
+                view.previousRenderedLength = view.text.length
+                view.renderedMarkdown = markdown
+            }
+            view.renderedTextColor = textColor
+            view.renderedLinkColor = linkColor
+            view.renderedPillBackground = pillBackground
+            view.renderedPillForeground = pillForeground
         },
         modifier = modifier,
     )
@@ -452,6 +523,12 @@ private fun MarkdownAndroidView(
 private class ArborMarkdownTextView(context: Context) : TextView(context) {
     var previousRenderedLength: Int = 0
     var tokenAnimator: ValueAnimator? = null
+    var lastTokenAnimationAt: Long = 0L
+    var renderedMarkdown: String? = null
+    var renderedTextColor: Int = Int.MIN_VALUE
+    var renderedLinkColor: Int = Int.MIN_VALUE
+    var renderedPillBackground: Int = Int.MIN_VALUE
+    var renderedPillForeground: Int = Int.MIN_VALUE
     val selectableLinkMovementMethod = SelectableLinkMovementMethod()
 
     override fun onDetachedFromWindow() {
@@ -471,10 +548,12 @@ private class StreamingAlphaSpan : CharacterStyle(), UpdateAppearance {
 }
 
 private fun animateAppendedMarkdown(view: ArborMarkdownTextView, previousLength: Int, streaming: Boolean) {
-    view.tokenAnimator?.cancel()
-    view.tokenAnimator = null
     val currentLength = view.text.length
     if (!streaming || currentLength <= 0 || currentLength <= previousLength) return
+
+    val now = SystemClock.uptimeMillis()
+    if (!ValueAnimator.areAnimatorsEnabled() || now - view.lastTokenAnimationAt < ArborStreamFrameMillis) return
+    view.lastTokenAnimationAt = now
 
     val start = if (previousLength in 1 until currentLength) {
         previousLength
@@ -483,14 +562,18 @@ private fun animateAppendedMarkdown(view: ArborMarkdownTextView, previousLength:
     }
     if (start >= currentLength) return
 
-    val text = SpannableString(view.text)
+    view.tokenAnimator?.cancel()
+    view.tokenAnimator = null
+    val text = (view.text as? Spannable) ?: SpannableString(view.text).also {
+        view.setText(it, TextView.BufferType.SPANNABLE)
+        view.movementMethod = view.selectableLinkMovementMethod
+    }
+    text.getSpans(0, text.length, StreamingAlphaSpan::class.java).forEach(text::removeSpan)
     val fadeSpan = StreamingAlphaSpan()
     text.setSpan(fadeSpan, start, currentLength, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-    view.setText(text, TextView.BufferType.SPANNABLE)
-    view.movementMethod = view.selectableLinkMovementMethod
 
     view.tokenAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 180L
+        duration = ArborFadeInMillis.toLong()
         addUpdateListener { animator ->
             fadeSpan.progress = animator.animatedValue as Float
             view.invalidate()
@@ -770,10 +853,10 @@ private fun CodeBlock(
                     softWrap = false,
                 )
             }
-            AnimatedVisibility(result != null) {
+            ArborFadeVisibility(result != null) {
                 result?.let { output -> Column(Modifier.padding(10.dp)) { PythonExecutionCard(output) } }
             }
-            AnimatedVisibility(ubuntuResult != null) {
+            ArborFadeVisibility(ubuntuResult != null) {
                 ubuntuResult?.let { output -> Column(Modifier.padding(10.dp)) { UbuntuExecutionCard(output) } }
             }
         }

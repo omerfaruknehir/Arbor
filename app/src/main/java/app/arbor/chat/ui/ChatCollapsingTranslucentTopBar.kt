@@ -43,9 +43,9 @@ fun ChatCollapsingTranslucentTopBar(
     blurEnabled: Boolean = true,
     blurStrength: Float = 0.7f,
 ) {
-    val collapse = scrollBehavior.state.collapsedFraction.coerceIn(0f, 1f)
-    val travel = arborBlurProgress(collapse)
     val density = LocalDensity.current
+    val titleTravelPx = with(density) { 61.dp.toPx() }
+    val modelTravelPx = with(density) { 66.dp.toPx() }
 
     Box(
         Modifier
@@ -53,7 +53,7 @@ fun ChatCollapsingTranslucentTopBar(
             .arborBackdropBlur(
                 state = blurState,
                 enabled = blurEnabled,
-                progress = collapse,
+                progress = { scrollBehavior.state.collapsedFraction },
                 strength = blurStrength,
                 tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
                 fadeDistance = 76.dp,
@@ -78,8 +78,6 @@ fun ChatCollapsingTranslucentTopBar(
                 .statusBarsPadding()
                 .height(64.dp),
         ) {
-            val titleTranslationY = with(density) { (61.dp * (1f - travel)).toPx() }
-            val titleScale = 1f + 0.20f * (1f - travel)
             Text(
                 text = title,
                 modifier = Modifier
@@ -88,7 +86,9 @@ fun ChatCollapsingTranslucentTopBar(
                     .offset(y = 11.dp)
                     .padding(horizontal = 72.dp)
                     .graphicsLayer {
-                        translationY = titleTranslationY
+                        val travel = arborBlurProgress(scrollBehavior.state.collapsedFraction)
+                        translationY = titleTravelPx * (1f - travel)
+                        val titleScale = 1f + 0.20f * (1f - travel)
                         scaleX = titleScale
                         scaleY = titleScale
                         transformOrigin = TransformOrigin.Center
@@ -101,12 +101,14 @@ fun ChatCollapsingTranslucentTopBar(
                 overflow = TextOverflow.Ellipsis,
             )
 
-            val modelTranslationY = with(density) { (66.dp * (1f - travel)).toPx() }
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .offset(y = 42.dp)
-                    .graphicsLayer { translationY = modelTranslationY }
+                    .graphicsLayer {
+                        val travel = arborBlurProgress(scrollBehavior.state.collapsedFraction)
+                        translationY = modelTravelPx * (1f - travel)
+                    }
                     .zIndex(3f),
             ) {
                 modelSelector()

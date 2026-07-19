@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.16.20
+
+- Reworked streaming follow, scroll-lock detachment/relock, navigation-state retention, fade-only tool/reasoning motion, Markdown update throttling, and the gradual backdrop blur for smoother chat interaction.
+- Replaced the two-pass Gaussian shader with a real single-pass radial tent blur to retain the frosted appearance at much lower per-frame cost.
+
 ## 0.16.18
 
 - Replaced reverse-layout oldest-message inference with a stable keyed header anchor inside the chat list.

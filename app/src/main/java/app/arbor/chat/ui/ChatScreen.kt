@@ -5,12 +5,8 @@ import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -96,14 +92,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -111,6 +110,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -141,13 +142,19 @@ import app.arbor.chat.sandbox.UbuntuExecutionResult
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import java.io.File
 import java.util.UUID
 
 private val ChatMessageJson = Json { ignoreUnknownKeys = true }
+
+private class MessageGrowthTracker {
+    var nodeId: String? = null
+    var heightPx: Int = 0
+}
+
 internal fun calculateComposerChromeProgress(
     firstVisibleItemIndex: Int,
     firstVisibleItemScrollOffset: Int,
@@ -187,10 +194,19 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val topAppBarState = rememberTopAppBarState()
     val topAppBarScrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
     val latestThresholdPx = with(density) { 48.dp.roundToPx() }
+    val relockThresholdPx = with(density) { 2.dp.roundToPx() }
     val chromeStartPx = with(density) { 56.dp.roundToPx() }
     val chromeEndPx = with(density) { 176.dp.roundToPx() }
-    var followLatest by remember(conversation?.id) { mutableStateOf(true) }
-    var searchFocusHandled by remember(conversation?.id, focusedMessageNodeId) { mutableStateOf(false) }
+    val conversationId = conversation?.id
+    val activeModel = remember(models, conversation?.selectedProviderId, conversation?.selectedModelId) {
+        models.firstOrNull {
+            it.providerId == conversation?.selectedProviderId && it.modelId == conversation?.selectedModelId
+        }
+    }
+    var initializedConversationId by rememberSaveable { mutableStateOf<String?>(null) }
+    var followLatest by rememberSaveable(conversationId) { mutableStateOf(true) }
+    val messageGrowthTracker = remember(conversationId) { MessageGrowthTracker() }
+    var searchFocusHandled by rememberSaveable(conversationId, focusedMessageNodeId) { mutableStateOf(false) }
     val isAtLatest by remember(messageListState, latestThresholdPx) {
         derivedStateOf {
             messageListState.layoutInfo.totalItemsCount == 0 ||
@@ -198,8 +214,8 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     messageListState.firstVisibleItemScrollOffset <= latestThresholdPx)
         }
     }
-    val composerChromeProgress by remember(messageListState, chromeStartPx, chromeEndPx) {
-        derivedStateOf {
+    val composerChromeProgress = remember(messageListState, chromeStartPx, chromeEndPx) {
+        {
             calculateComposerChromeProgress(
                 firstVisibleItemIndex = messageListState.firstVisibleItemIndex,
                 firstVisibleItemScrollOffset = messageListState.firstVisibleItemScrollOffset,
@@ -208,24 +224,36 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             )
         }
     }
-    LaunchedEffect(conversation?.id) {
-        modelMenu = false
-        chatMenu = false
-        followLatest = true
-        messageListState.scrollToItem(0)
-        topAppBarState.contentOffset = 0f
-        topAppBarState.heightOffset = 0f
-
-        // Chat uses the same Material scroll controller as Settings. A loaded
-        // conversation starts compact at the latest message; subsequent title
-        // movement is driven only by nested-scroll distance.
-        val collapsedOffset = snapshotFlow {
-            topAppBarState.heightOffsetLimit to paging.itemCount
-        }.first { (limit, count) -> limit < 0f && count > 0 }.first
-        topAppBarState.heightOffset = collapsedOffset
+    val userScrollConnection = remember(conversationId) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput && available.y != 0f) followLatest = false
+                return Offset.Zero
+            }
+        }
     }
 
-    LaunchedEffect(messageListState, conversation?.id, latestThresholdPx) {
+    LaunchedEffect(conversationId) {
+        modelMenu = false
+        chatMenu = false
+        if (conversationId != null && initializedConversationId != conversationId) {
+            initializedConversationId = conversationId
+            followLatest = true
+            searchFocusHandled = false
+            messageListState.scrollToItem(0)
+            topAppBarState.contentOffset = 0f
+            topAppBarState.heightOffset = 0f
+
+            // A newly selected conversation starts compact. Returning through a
+            // navigation animation does not enter this branch, so saved list and
+            // app-bar offsets are not reset.
+            val collapsedOffset = snapshotFlow { topAppBarState.heightOffsetLimit }
+                .first { it < 0f }
+            topAppBarState.heightOffset = collapsedOffset
+        }
+    }
+
+    LaunchedEffect(messageListState, conversationId, relockThresholdPx) {
         snapshotFlow {
             Triple(
                 messageListState.isScrollInProgress,
@@ -233,49 +261,44 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 messageListState.firstVisibleItemScrollOffset,
             )
         }.collect { (scrolling, index, offset) ->
-            val nearLatest = messageListState.layoutInfo.totalItemsCount == 0 ||
-                (index == 0 && offset <= latestThresholdPx)
-            if (scrolling || nearLatest) followLatest = nearLatest
+            val atExactLatest = messageListState.layoutInfo.totalItemsCount == 0 ||
+                (index == 0 && offset <= relockThresholdPx)
+            when {
+                !scrolling && atExactLatest -> followLatest = true
+                scrolling && !atExactLatest -> followLatest = false
+            }
         }
     }
 
-    LaunchedEffect(conversation?.id, messageListState, paging) {
+    LaunchedEffect(conversationId, messageListState, paging) {
         snapshotFlow {
             paging.itemSnapshotList.items.firstOrNull()?.let { it.nodeId to it.updatedAt }
         }
             .filterNotNull()
-            .conflate()
-            .collect {
-                if (!followLatest || paging.itemCount <= 0 || messageListState.isScrollInProgress) return@collect
+            .collectLatest {
+                if (!followLatest || paging.itemCount <= 0 || messageListState.isScrollInProgress) return@collectLatest
                 val index = messageListState.firstVisibleItemIndex
                 val offset = messageListState.firstVisibleItemScrollOffset
-                when {
-                    index > 0 -> messageListState.animateScrollToItem(0)
-                    offset > 8 -> messageListState.animateScrollBy(
-                        value = -offset.toFloat(),
-                        animationSpec = tween(
-                            durationMillis = (120 + offset / 3).coerceIn(140, 260),
-                            easing = CubicBezierEasing(0.2f, 0f, 0f, 1f),
-                        ),
-                    )
-                }
+                // reverseLayout follows growth at item zero. Correct only a tiny
+                // residual offset; never start an animation for every token.
+                if (index == 0 && offset > relockThresholdPx) messageListState.scrollToItem(0)
             }
     }
 
-    LaunchedEffect(focusedMessageNodeId, paging.itemSnapshotList.items.map { it.nodeId }, searchFocusHandled) {
+    LaunchedEffect(focusedMessageNodeId, conversationId, paging, searchFocusHandled) {
         val target = focusedMessageNodeId ?: return@LaunchedEffect
         if (!searchFocusHandled) {
-            val index = paging.itemSnapshotList.items.indexOfFirst { it.nodeId == target }
-            if (index >= 0) {
-                followLatest = false
-                messageListState.scrollToItem(index)
-                searchFocusHandled = true
-            }
+            val index = snapshotFlow {
+                paging.itemSnapshotList.items.indexOfFirst { it.nodeId == target }
+            }.first { it >= 0 }
+            followLatest = false
+            messageListState.scrollToItem(index)
+            searchFocusHandled = true
         }
     }
 
-    LaunchedEffect(conversation?.id, conversation?.updatedAt) {
-        if (conversation != null) viewModel.markCurrentRead()
+    LaunchedEffect(conversationId, generating) {
+        if (conversationId != null && !generating) viewModel.markCurrentRead()
     }
 
     Scaffold(
@@ -345,9 +368,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             Composer(
                 viewModel = viewModel,
                 provider = allProviders.firstOrNull { it.id == conversation?.selectedProviderId },
-                model = models.firstOrNull {
-                    it.providerId == conversation?.selectedProviderId && it.modelId == conversation?.selectedModelId
-                },
+                model = activeModel,
                 generating = generating,
                 chromeProgress = composerChromeProgress,
                 blurState = blurState,
@@ -365,14 +386,16 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     )
                 }
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .nestedScroll(userScrollConnection),
                     state = messageListState,
                     reverseLayout = true,
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
                         start = 12.dp,
                         end = 12.dp,
-                        top = padding.calculateTopPadding() + 12.dp,
+                        top = padding.calculateTopPadding() + 28.dp,
                         bottom = padding.calculateBottomPadding() + 18.dp,
                     ),
                 ) {
@@ -382,25 +405,56 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         contentType = { index -> paging.peek(index)?.role },
                     ) { index ->
                         paging[index]?.let { message ->
+                            val growthCompensation = if (index == 0) {
+                                Modifier.onSizeChanged { size ->
+                                    if (messageGrowthTracker.nodeId != message.nodeId) {
+                                        messageGrowthTracker.nodeId = message.nodeId
+                                        messageGrowthTracker.heightPx = size.height
+                                    } else {
+                                        val growthPx = size.height - messageGrowthTracker.heightPx
+                                        messageGrowthTracker.heightPx = size.height
+                                        if (
+                                            growthPx > 0 &&
+                                            !followLatest &&
+                                            messageListState.firstVisibleItemIndex == 0
+                                        ) {
+                                            // The active response grows toward the physical top in reverseLayout.
+                                            // Compensate by the same logical amount so released text stays fixed.
+                                            messageListState.requestScrollToItem(
+                                                index = 0,
+                                                scrollOffset = messageListState.firstVisibleItemScrollOffset + growthPx,
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                Modifier
+                            }
                             MessageCard(
                                 message = message,
                                 viewModel = viewModel,
                                 reasoningVisibility = conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
-                                activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
+                                activeModel = activeModel,
+                                modifier = growthCompensation,
                             )
                         }
                     }
                 }
             }
 
-            AnimatedVisibility(
+            ArborFadeVisibility(
                 visible = paging.itemCount > 0 && !isAtLatest,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = padding.calculateBottomPadding() + 16.dp),
             ) {
                 SmallFloatingActionButton(
                     onClick = {
                         followLatest = true
-                        scrollScope.launch { messageListState.animateScrollToItem(0) }
+                        scrollScope.launch {
+                            if (messageListState.firstVisibleItemIndex > 8) {
+                                messageListState.scrollToItem(8)
+                            }
+                            messageListState.animateScrollToItem(0)
+                        }
                     },
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -409,7 +463,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 }
             }
             val interrupted = recoverable.firstOrNull { it.status == MessageStatus.INTERRUPTED || it.status == MessageStatus.ERROR }
-            AnimatedVisibility(interrupted != null, modifier = Modifier.align(Alignment.TopCenter).padding(top = padding.calculateTopPadding() + 12.dp)) {
+            ArborFadeVisibility(interrupted != null, modifier = Modifier.align(Alignment.TopCenter).padding(top = padding.calculateTopPadding() + 12.dp)) {
                 interrupted?.let { message ->
                     Surface(
                         color = MaterialTheme.colorScheme.errorContainer,
@@ -501,6 +555,7 @@ private fun MessageCard(
     viewModel: ChatViewModel,
     reasoningVisibility: ReasoningVisibility,
     activeModel: ModelEntity?,
+    modifier: Modifier = Modifier,
 ) {
     val attachments by viewModel.run { containerAttachments(message.nodeId) }.collectAsStateWithLifecycle(initialValue = emptyList())
     val user = message.role == MessageRole.USER
@@ -525,9 +580,9 @@ private fun MessageCard(
     }
     val displayReasoning = remember(message.reasoning) { ResearchStateProtocol.extract(message.reasoning).cleanedText }
     val displayContent = remember(message.content) { ResearchStateProtocol.extract(message.content).cleanedText }
-    var editing by remember(message.nodeId) { mutableStateOf(false) }
-    var editedText by remember(message.nodeId) { mutableStateOf(message.content) }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (user) Arrangement.End else Arrangement.Start) {
+    var editing by rememberSaveable(message.nodeId) { mutableStateOf(false) }
+    var editedText by rememberSaveable(message.nodeId) { mutableStateOf(message.content) }
+    Row(modifier.fillMaxWidth(), horizontalArrangement = if (user) Arrangement.End else Arrangement.Start) {
         Surface(
             shape = if (user) MaterialTheme.shapes.extraLarge else MaterialTheme.shapes.medium,
             color = if (user) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
@@ -569,10 +624,11 @@ private fun MessageCard(
                     )
                 } else {
                     LegacyWorkingBlock(
-                        displayReasoning,
-                        message.toolTraceJson,
-                        message.status == MessageStatus.STREAMING,
-                        reasoningVisibility,
+                        messageKey = message.nodeId,
+                        text = displayReasoning,
+                        toolTraceJson = message.toolTraceJson,
+                        streaming = message.status == MessageStatus.STREAMING,
+                        visibility = reasoningVisibility,
                     )
                     if (displayContent.isNotBlank()) RichMessage(
                         operationScope = message.nodeId,
@@ -724,9 +780,17 @@ private fun TimelineWorkingBlock(
         ReasoningVisibility.COLLAPSED -> false
     }
     if (events.isEmpty()) return
-    var expanded by remember(events.first().id, visibility, streaming) { mutableStateOf(initiallyExpanded) }
+    val stateKey = events.first().id
+    var expanded by rememberSaveable(stateKey) { mutableStateOf(initiallyExpanded) }
+    var userOverrodeExpansion by rememberSaveable(stateKey) { mutableStateOf(false) }
+    LaunchedEffect(visibility, streaming, stateKey) {
+        if (!userOverrodeExpansion) expanded = initiallyExpanded
+    }
     Surface(
-        onClick = { expanded = !expanded },
+        onClick = {
+            userOverrodeExpansion = true
+            expanded = !expanded
+        },
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = MaterialTheme.shapes.medium,
         modifier = Modifier.fillMaxWidth(),
@@ -742,31 +806,42 @@ private fun TimelineWorkingBlock(
                 )
                 Text(if (expanded) "Collapse" else "Expand", style = MaterialTheme.typography.labelMedium)
             }
-            AnimatedVisibility(expanded) {
+            ArborFadeVisibility(expanded) {
                 Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     events.forEachIndexed { index, event ->
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            val duration = event.finishedAt?.let { (it - event.startedAt).coerceAtLeast(0) }
-                            Text(
-                                buildString {
-                                    append(index + 1).append(". ")
-                                    append(event.label.ifBlank { if (event.kind == "reasoning") "Reasoning" else event.kind.replaceFirstChar(Char::uppercase) })
-                                    if (duration != null) append(" • ").append(duration).append(" ms")
-                                    if (event.status == "error") append(" • error")
-                                },
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (event.status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                            )
-                            if (event.content.isNotBlank()) Text(event.content, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (event.kind in setOf("python", "ubuntu", "search", "fetch")) ToolStepDetails(event.kind, event.input, event.output, event.status, usedSourceUrls, viewModel)
-                            else {
-                                if (event.input.isNotBlank()) AutoLintedCodeText(
-                                    language = event.kind,
-                                    code = event.input,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    softWrap = true,
+                        ArborAppearOnce(stableKey = "timeline-tool:${event.id}") {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                val duration = event.finishedAt?.let { (it - event.startedAt).coerceAtLeast(0) }
+                                Text(
+                                    buildString {
+                                        append(index + 1).append(". ")
+                                        append(event.label.ifBlank { if (event.kind == "reasoning") "Reasoning" else event.kind.replaceFirstChar(Char::uppercase) })
+                                        if (duration != null) append(" • ").append(duration).append(" ms")
+                                        if (event.status == "error") append(" • error")
+                                    },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (event.status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                                 )
-                                if (event.output.isNotBlank()) GenericToolOutputCard(event.output, failed = event.status == "error")
+                                if (event.content.isNotBlank()) StreamingMarkdownText(
+                                    text = event.content,
+                                    streaming = active && index == events.lastIndex,
+                                    stableKey = "timeline-reasoning:${event.id}",
+                                    muted = true,
+                                )
+                                if (event.kind in setOf("python", "ubuntu", "search", "fetch")) ToolStepDetails(event.kind, event.input, event.output, event.status, usedSourceUrls, viewModel)
+                                else {
+                                    ArborFadeVisibility(event.input.isNotBlank()) {
+                                        AutoLintedCodeText(
+                                            language = event.kind,
+                                            code = event.input,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            softWrap = true,
+                                        )
+                                    }
+                                    ArborFadeVisibility(event.output.isNotBlank()) {
+                                        GenericToolOutputCard(event.output, failed = event.status == "error")
+                                    }
+                                }
                             }
                         }
                     }
@@ -778,6 +853,7 @@ private fun TimelineWorkingBlock(
 
 @Composable
 private fun LegacyWorkingBlock(
+    messageKey: String,
     text: String,
     toolTraceJson: String,
     streaming: Boolean,
@@ -793,9 +869,16 @@ private fun LegacyWorkingBlock(
         ReasoningVisibility.COLLAPSED -> false
     }
     if (!hasContent) return
-    var expanded by remember(streaming, visibility) { mutableStateOf(initiallyExpanded) }
+    var expanded by rememberSaveable(messageKey) { mutableStateOf(initiallyExpanded) }
+    var userOverrodeExpansion by rememberSaveable("$messageKey:manual") { mutableStateOf(false) }
+    LaunchedEffect(visibility, streaming, messageKey) {
+        if (!userOverrodeExpansion) expanded = initiallyExpanded
+    }
     Surface(
-        onClick = { expanded = !expanded },
+        onClick = {
+            userOverrodeExpansion = true
+            expanded = !expanded
+        },
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = MaterialTheme.shapes.medium,
         modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
@@ -807,14 +890,25 @@ private fun LegacyWorkingBlock(
                 Text("Working", Modifier.padding(start = 8.dp).weight(1f), fontWeight = FontWeight.Medium)
                 Text(if (expanded) "Collapse" else "Expand", style = MaterialTheme.typography.labelMedium)
             }
-            AnimatedVisibility(expanded) {
+            ArborFadeVisibility(expanded) {
                 Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (text.isNotBlank()) Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (text.isNotBlank()) StreamingMarkdownText(
+                        text = text,
+                        streaming = streaming,
+                        stableKey = "legacy-reasoning:$messageKey",
+                        muted = true,
+                    )
                     traces.forEach { event ->
-                        Column {
-                            Text("${event.label} • ${event.status}", style = MaterialTheme.typography.labelMedium, color = if (event.status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                            if (event.input.isNotBlank()) CodeSourcePanel(if (event.type.contains("python", true)) "python" else if (event.type.contains("ubuntu", true) || event.type.contains("shell", true)) "bash" else "input", event.input.take(4_000))
-                            if (event.output.isNotBlank()) GenericToolOutputCard(event.output.take(12_000), failed = event.status == "error")
+                        ArborAppearOnce(stableKey = "legacy-tool:$messageKey:${event.id}") {
+                            Column {
+                                Text("${event.label} • ${event.status}", style = MaterialTheme.typography.labelMedium, color = if (event.status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                                ArborFadeVisibility(event.input.isNotBlank()) {
+                                    CodeSourcePanel(if (event.type.contains("python", true)) "python" else if (event.type.contains("ubuntu", true) || event.type.contains("shell", true)) "bash" else "input", event.input.take(4_000))
+                                }
+                                ArborFadeVisibility(event.output.isNotBlank()) {
+                                    GenericToolOutputCard(event.output.take(12_000), failed = event.status == "error")
+                                }
+                            }
                         }
                     }
                 }
@@ -830,16 +924,18 @@ private fun ToolStepDetails(kind: String, input: String, output: String, status:
         "search" -> CompactSearchToolCard(input, output, status, usedSourceUrls)
         "fetch" -> CompactFetchToolCard(input, output, status)
         else -> {
-            if (input.isNotBlank()) CodeSourcePanel(
-                language,
-                input,
-                when (kind) {
-                    "python" -> "PYTHON CODE"
-                    "ubuntu" -> "SHELL COMMAND"
-                    else -> "INPUT"
-                },
-            )
-            if (output.isNotBlank()) {
+            ArborFadeVisibility(input.isNotBlank()) {
+                CodeSourcePanel(
+                    language,
+                    input,
+                    when (kind) {
+                        "python" -> "PYTHON CODE"
+                        "ubuntu" -> "SHELL COMMAND"
+                        else -> "INPUT"
+                    },
+                )
+            }
+            ArborFadeVisibility(output.isNotBlank()) {
                 val json = ChatMessageJson
                 when (kind) {
                     "python" -> runCatching { json.decodeFromString<ExecutionResult>(output) }.getOrNull()?.let { PythonExecutionCard(it, "Python tool result") }
@@ -1022,7 +1118,7 @@ private fun Composer(
     provider: ProviderEntity?,
     model: ModelEntity?,
     generating: Boolean,
-    chromeProgress: Float,
+    chromeProgress: () -> Float,
     blurState: ArborBackdropBlurState,
 ) {
     val conversation by viewModel.conversation.collectAsStateWithLifecycle()

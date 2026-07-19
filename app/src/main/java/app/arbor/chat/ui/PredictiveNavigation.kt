@@ -23,6 +23,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.SaveableStateHolder
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
@@ -40,9 +42,9 @@ private val NavigationEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 /**
  * Animated screen host with direct predictive-back progress support.
  *
- * During a system back swipe, the destination is composed below the current page
- * and revealed continuously as the gesture advances. At the activity root no
- * callback is registered, preserving Android/Samsung's system back-to-home preview.
+ * Screen-local saveable state is retained across both ordinary and predictive
+ * transitions, and gesture progress is read in graphicsLayer so the screen
+ * trees are not recomposed for every animation frame.
  */
 @Composable
 internal fun <T : Any> PredictiveNavigationHost(
@@ -56,6 +58,7 @@ internal fun <T : Any> PredictiveNavigationHost(
     content: @Composable (T) -> Unit,
 ) {
     val gestureProgress = remember { Animatable(0f) }
+    val saveableStateHolder = rememberSaveableStateHolder()
     var previewTarget by remember { mutableStateOf<T?>(null) }
     var gestureSource by remember { mutableStateOf<T?>(null) }
     var swipeEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
@@ -79,8 +82,6 @@ internal fun <T : Any> PredictiveNavigationHost(
             gestureProgress.snapTo(1f)
             suppressNextTransition = true
             latestOnBack(destination)
-            // Keep the completed gesture frame on screen until the destination
-            // state has reached this composition, avoiding a one-frame flash.
             withFrameNanos { }
             previewTarget = null
             gestureSource = null
@@ -108,9 +109,10 @@ internal fun <T : Any> PredictiveNavigationHost(
         PredictiveBackPreview(
             source = source,
             destination = destination,
-            progress = gestureProgress.value,
+            progress = { gestureProgress.value },
             swipeEdge = swipeEdge,
             modifier = modifier,
+            saveableStateHolder = saveableStateHolder,
             content = content,
         )
     } else {
@@ -145,7 +147,9 @@ internal fun <T : Any> PredictiveNavigationHost(
             label = label,
         ) { state ->
             Box(Modifier.fillMaxSize().graphicsLayer()) {
-                content(state)
+                saveableStateHolder.SaveableStateProvider(state) {
+                    content(state)
+                }
             }
         }
     }
@@ -155,16 +159,16 @@ internal fun <T : Any> PredictiveNavigationHost(
 private fun <T : Any> PredictiveBackPreview(
     source: T,
     destination: T,
-    progress: Float,
+    progress: () -> Float,
     swipeEdge: Int,
     modifier: Modifier,
+    saveableStateHolder: SaveableStateHolder,
     content: @Composable (T) -> Unit,
 ) {
-    val p = progress.coerceIn(0f, 1f)
     val direction = if (swipeEdge == BackEventCompat.EDGE_RIGHT) -1f else 1f
     val density = LocalDensity.current
     val maxShadowPx = with(density) { 5.dp.toPx() }
-    val corner = 28.dp * p
+    val corner = RoundedCornerShape(28.dp)
 
     BoxWithConstraints(
         modifier = modifier
@@ -178,27 +182,33 @@ private fun <T : Any> PredictiveBackPreview(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer {
+                    val p = progress().coerceIn(0f, 1f)
                     translationX = -direction * widthPx * 0.045f * (1f - p)
                     scaleX = 0.98f + 0.02f * p
                     scaleY = 0.98f + 0.02f * p
                 },
         ) {
-            content(destination)
+            saveableStateHolder.SaveableStateProvider(destination) {
+                content(destination)
+            }
         }
 
         Box(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer {
+                    val p = progress().coerceIn(0f, 1f)
                     translationX = direction * widthPx * 0.30f * p
                     scaleX = 1f - 0.025f * p
                     scaleY = 1f - 0.025f * p
                     shadowElevation = maxShadowPx * p
-                    shape = RoundedCornerShape(corner)
+                    shape = corner
                     clip = p > 0.001f
                 },
         ) {
-            content(source)
+            saveableStateHolder.SaveableStateProvider(source) {
+                content(source)
+            }
         }
     }
 }

@@ -9,11 +9,13 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
-import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
@@ -29,29 +31,37 @@ enum class ArborBlurEdge { TOP, BOTTOM }
 /**
  * Shared configuration for the gradual blur applied to a screen's actual body.
  *
- * Older Arbor builds captured the screen into a GraphicsLayer and replayed
- * cropped copies behind app chrome. Compose renders those layers lazily, so the
- * replay could be blank or one frame stale. This state instead lets the body
- * itself receive an Agora-style two-pass AGSL edge blur.
+ * Scroll progress is retained as a reader instead of copied into Compose state.
+ * The source layer therefore invalidates only its draw/layer phase while
+ * scrolling; it does not rebuild shaders or recompose the whole screen per pixel.
  */
 @Stable
 class ArborBackdropBlurState internal constructor() {
-    internal var topRadiusDp by mutableFloatStateOf(0f)
-    internal var bottomRadiusDp by mutableFloatStateOf(0f)
+    internal var topRadiusScaleDp by mutableFloatStateOf(0f)
+    internal var bottomRadiusScaleDp by mutableFloatStateOf(0f)
     internal var topFadeDp by mutableFloatStateOf(DEFAULT_TOP_FADE_DP)
     internal var bottomFadeDp by mutableFloatStateOf(DEFAULT_BOTTOM_FADE_DP)
+    internal var topProgressReader by mutableStateOf<() -> Float>(ZERO_PROGRESS_READER)
+    internal var bottomProgressReader by mutableStateOf<() -> Float>(ZERO_PROGRESS_READER)
     internal var sourceTopInRootPx by mutableFloatStateOf(0f)
     internal var bottomEdgeInRootPx by mutableFloatStateOf(Float.NaN)
 
-    internal fun update(edge: ArborBlurEdge, radiusDp: Float, fadeDp: Float) {
+    internal fun update(
+        edge: ArborBlurEdge,
+        radiusScaleDp: Float,
+        fadeDp: Float,
+        progressReader: () -> Float,
+    ) {
         when (edge) {
             ArborBlurEdge.TOP -> {
-                topRadiusDp = radiusDp.coerceAtLeast(0f)
+                topRadiusScaleDp = radiusScaleDp.coerceAtLeast(0f)
                 topFadeDp = fadeDp.coerceAtLeast(1f)
+                if (topProgressReader !== progressReader) topProgressReader = progressReader
             }
             ArborBlurEdge.BOTTOM -> {
-                bottomRadiusDp = radiusDp.coerceAtLeast(0f)
+                bottomRadiusScaleDp = radiusScaleDp.coerceAtLeast(0f)
                 bottomFadeDp = fadeDp.coerceAtLeast(1f)
+                if (bottomProgressReader !== progressReader) bottomProgressReader = progressReader
             }
         }
     }
@@ -66,12 +76,20 @@ class ArborBackdropBlurState internal constructor() {
 
     internal fun clear(edge: ArborBlurEdge) {
         when (edge) {
-            ArborBlurEdge.TOP -> topRadiusDp = 0f
+            ArborBlurEdge.TOP -> {
+                topRadiusScaleDp = 0f
+                topProgressReader = ZERO_PROGRESS_READER
+            }
             ArborBlurEdge.BOTTOM -> {
-                bottomRadiusDp = 0f
+                bottomRadiusScaleDp = 0f
+                bottomProgressReader = ZERO_PROGRESS_READER
                 bottomEdgeInRootPx = Float.NaN
             }
         }
+    }
+
+    private companion object {
+        val ZERO_PROGRESS_READER: () -> Float = { 0f }
     }
 }
 
@@ -83,14 +101,13 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return@composed this
 
     val density = LocalDensity.current.density
-    val topRadiusPx = state.topRadiusDp * density
-    val bottomRadiusPx = state.bottomRadiusDp * density
-    if (topRadiusPx < MIN_VISIBLE_RADIUS_PX && bottomRadiusPx < MIN_VISIBLE_RADIUS_PX) {
-        return@composed this
-    }
-
+    val topRadiusScalePx = state.topRadiusScaleDp * density
+    val bottomRadiusScalePx = state.bottomRadiusScaleDp * density
     val topFadePx = state.topFadeDp * density
     val bottomFadePx = state.bottomFadeDp * density
+    val topProgressReader = state.topProgressReader
+    val bottomProgressReader = state.bottomProgressReader
+
     var contentHeightPx by remember { mutableFloatStateOf(0f) }
     val measured = this.onGloballyPositioned { coordinates ->
         contentHeightPx = coordinates.size.height.toFloat().coerceAtLeast(1f)
@@ -104,31 +121,26 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         ?.coerceIn(0f, contentHeightPx)
         ?: contentHeightPx
 
-    val horizontalShader = remember(topRadiusPx, bottomRadiusPx, topFadePx, bottomFadePx, contentHeightPx, bottomEdgePx) {
-        RuntimeShader(EDGE_BLUR_SHADER).apply {
-            setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
-            setFloatUniform("uFade", topFadePx, bottomFadePx)
-            setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
-            setFloatUniform("uBottomEdge", bottomEdgePx)
-            setFloatUniform("uDirection", 1f, 0f)
-        }
-    }
-    val verticalShader = remember(topRadiusPx, bottomRadiusPx, topFadePx, bottomFadePx, contentHeightPx, bottomEdgePx) {
-        RuntimeShader(EDGE_BLUR_SHADER).apply {
-            setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
-            setFloatUniform("uFade", topFadePx, bottomFadePx)
-            setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
-            setFloatUniform("uBottomEdge", bottomEdgePx)
-            setFloatUniform("uDirection", 0f, 1f)
-        }
-    }
-    val composeEffect = remember(horizontalShader, verticalShader) {
-        val horizontal = RenderEffect.createRuntimeShaderEffect(horizontalShader, "content")
-        val vertical = RenderEffect.createRuntimeShaderEffect(verticalShader, "content")
-        RenderEffect.createChainEffect(vertical, horizontal).asComposeRenderEffect()
+    val blurShader = remember { RuntimeShader(EDGE_BLUR_SHADER) }
+    val composeEffect = remember(blurShader) {
+        RenderEffect.createRuntimeShaderEffect(blurShader, "content").asComposeRenderEffect()
     }
 
-    measured.graphicsLayer { renderEffect = composeEffect }
+    measured.graphicsLayer {
+        val topRadiusPx = topRadiusScalePx * arborBlurProgress(topProgressReader())
+        val bottomRadiusPx = bottomRadiusScalePx * arborBlurProgress(bottomProgressReader())
+        if (topRadiusPx < MIN_VISIBLE_RADIUS_PX && bottomRadiusPx < MIN_VISIBLE_RADIUS_PX) {
+            renderEffect = null
+            return@graphicsLayer
+        }
+
+        blurShader.setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
+        blurShader.setFloatUniform("uFade", topFadePx, bottomFadePx)
+        blurShader.setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
+        blurShader.setFloatUniform("uBottomEdge", bottomEdgePx)
+
+        renderEffect = composeEffect
+    }
 }
 
 internal fun arborBlurProgress(progress: Float): Float {
@@ -140,7 +152,7 @@ internal fun arborBlurProgress(progress: Float): Float {
 fun Modifier.arborBackdropBlur(
     state: ArborBackdropBlurState,
     enabled: Boolean,
-    progress: Float,
+    progress: () -> Float,
     strength: Float,
     tint: Color,
     edge: ArborBlurEdge = ArborBlurEdge.TOP,
@@ -148,14 +160,22 @@ fun Modifier.arborBackdropBlur(
     fadeDistance: Dp = if (edge == ArborBlurEdge.TOP) DEFAULT_TOP_FADE_DP.dp else DEFAULT_BOTTOM_FADE_DP.dp,
     overlayDistance: Dp = fadeDistance,
 ): Modifier = composed {
-    val easedProgress = arborBlurProgress(progress)
-    val radiusDp = if (enabled) {
-        maxRadius.value * strength.coerceIn(0f, 1f) * easedProgress
+    val latestProgress by rememberUpdatedState(progress)
+    val stableProgressReader = remember { { latestProgress().coerceIn(0f, 1f) } }
+    val radiusScaleDp = if (enabled) {
+        maxRadius.value * strength.coerceIn(0f, 1f)
     } else {
         0f
     }
 
-    SideEffect { state.update(edge, radiusDp, fadeDistance.value) }
+    SideEffect {
+        state.update(
+            edge = edge,
+            radiusScaleDp = radiusScaleDp,
+            fadeDp = fadeDistance.value,
+            progressReader = stableProgressReader,
+        )
+    }
     DisposableEffect(state, edge) { onDispose { state.clear(edge) } }
 
     val anchored = if (edge == ArborBlurEdge.BOTTOM) {
@@ -168,46 +188,54 @@ fun Modifier.arborBackdropBlur(
 
     val overlayDistancePx = with(LocalDensity.current) { overlayDistance.toPx() }
 
-    anchored.drawWithContent {
-        val overlayProgress = if (enabled) easedProgress else 1f
-        val peak = tint.copy(alpha = tint.alpha * overlayProgress)
-        val middle = tint.copy(alpha = tint.alpha * overlayProgress * 0.58f)
-        val feather = tint.copy(alpha = tint.alpha * overlayProgress * 0.12f)
+    anchored.drawWithCache {
         val extent = overlayDistancePx.coerceIn(1f, size.height.coerceAtLeast(1f))
-        when (edge) {
-            ArborBlurEdge.TOP -> {
-                val brush = Brush.verticalGradient(
-                    colorStops = arrayOf(
-                        0f to peak,
-                        0.30f to middle,
-                        0.62f to feather,
-                        1f to Color.Transparent,
-                    ),
-                    startY = 0f,
-                    endY = extent,
-                )
-                drawRect(brush = brush, size = androidx.compose.ui.geometry.Size(size.width, extent))
-            }
+        val brush = when (edge) {
+            ArborBlurEdge.TOP -> Brush.verticalGradient(
+                colorStops = arrayOf(
+                    0f to tint,
+                    0.30f to tint.copy(alpha = tint.alpha * 0.58f),
+                    0.62f to tint.copy(alpha = tint.alpha * 0.12f),
+                    1f to Color.Transparent,
+                ),
+                startY = 0f,
+                endY = extent,
+            )
             ArborBlurEdge.BOTTOM -> {
                 val startY = (size.height - extent).coerceAtLeast(0f)
-                val brush = Brush.verticalGradient(
+                Brush.verticalGradient(
                     colorStops = arrayOf(
                         0f to Color.Transparent,
-                        0.38f to feather,
-                        0.70f to middle,
-                        1f to peak,
+                        0.38f to tint.copy(alpha = tint.alpha * 0.12f),
+                        0.70f to tint.copy(alpha = tint.alpha * 0.58f),
+                        1f to tint,
                     ),
                     startY = startY,
                     endY = size.height,
                 )
-                drawRect(
-                    brush = brush,
-                    topLeft = androidx.compose.ui.geometry.Offset(0f, startY),
-                    size = androidx.compose.ui.geometry.Size(size.width, extent),
-                )
             }
         }
-        drawContent()
+
+        onDrawWithContent {
+            val overlayProgress = if (enabled) arborBlurProgress(stableProgressReader()) else 1f
+            when (edge) {
+                ArborBlurEdge.TOP -> drawRect(
+                    brush = brush,
+                    alpha = overlayProgress,
+                    size = androidx.compose.ui.geometry.Size(size.width, extent),
+                )
+                ArborBlurEdge.BOTTOM -> {
+                    val startY = (size.height - extent).coerceAtLeast(0f)
+                    drawRect(
+                        brush = brush,
+                        alpha = overlayProgress,
+                        topLeft = androidx.compose.ui.geometry.Offset(0f, startY),
+                        size = androidx.compose.ui.geometry.Size(size.width, extent),
+                    )
+                }
+            }
+            drawContent()
+        }
     }
 }
 
@@ -217,11 +245,11 @@ private const val DEFAULT_TOP_FADE_DP = 64f
 private const val DEFAULT_BOTTOM_FADE_DP = 152f
 
 /**
- * Dense seventeen-tap separable Gaussian kernel.
+ * Single-pass radial tent blur.
  *
- * The old high-radius nine-tap kernel left large gaps between samples, which
- * appeared as a grid on high-density displays. These taps cover the requested
- * radius uniformly and rely on bilinear texture filtering between samples.
+ * This is still a real spatial blur, but it avoids the previous horizontal +
+ * vertical Gaussian chain. Four near-axis and four wider diagonal samples use
+ * bilinear filtering to produce a soft frosted result in nine reads total.
  */
 private val EDGE_BLUR_SHADER = """
     uniform shader content;
@@ -229,7 +257,6 @@ private val EDGE_BLUR_SHADER = """
     uniform float2 uFade;
     uniform float uHeight;
     uniform float uBottomEdge;
-    uniform float2 uDirection;
 
     half4 main(float2 coord) {
         float topMix = saturate(1.0 - coord.y / max(uFade.x, 1.0));
@@ -238,24 +265,19 @@ private val EDGE_BLUR_SHADER = """
         float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
         if (radius < 0.35) return content.eval(coord);
 
-        float2 sampleStep = uDirection * (radius / 8.0);
-        half4 accum = half4(content.eval(coord)) * 0.103152619;
-        accum += half4(content.eval(coord + sampleStep * 1.0)) * 0.099978946;
-        accum += half4(content.eval(coord - sampleStep * 1.0)) * 0.099978946;
-        accum += half4(content.eval(coord + sampleStep * 2.0)) * 0.091031867;
-        accum += half4(content.eval(coord - sampleStep * 2.0)) * 0.091031867;
-        accum += half4(content.eval(coord + sampleStep * 3.0)) * 0.077863682;
-        accum += half4(content.eval(coord - sampleStep * 3.0)) * 0.077863682;
-        accum += half4(content.eval(coord + sampleStep * 4.0)) * 0.062565226;
-        accum += half4(content.eval(coord - sampleStep * 4.0)) * 0.062565226;
-        accum += half4(content.eval(coord + sampleStep * 5.0)) * 0.047226710;
-        accum += half4(content.eval(coord - sampleStep * 5.0)) * 0.047226710;
-        accum += half4(content.eval(coord + sampleStep * 6.0)) * 0.033488752;
-        accum += half4(content.eval(coord - sampleStep * 6.0)) * 0.033488752;
-        accum += half4(content.eval(coord + sampleStep * 7.0)) * 0.022308318;
-        accum += half4(content.eval(coord - sampleStep * 7.0)) * 0.022308318;
-        accum += half4(content.eval(coord + sampleStep * 8.0)) * 0.013960189;
-        accum += half4(content.eval(coord - sampleStep * 8.0)) * 0.013960189;
+        float nearRadius = radius * 0.46;
+        float farRadius = radius * 0.78;
+        float diagonal = farRadius * 0.70710678;
+
+        half4 accum = half4(content.eval(coord)) * 0.16;
+        accum += half4(content.eval(coord + float2( nearRadius, 0.0))) * 0.11;
+        accum += half4(content.eval(coord + float2(-nearRadius, 0.0))) * 0.11;
+        accum += half4(content.eval(coord + float2(0.0,  nearRadius))) * 0.11;
+        accum += half4(content.eval(coord + float2(0.0, -nearRadius))) * 0.11;
+        accum += half4(content.eval(coord + float2( diagonal,  diagonal))) * 0.10;
+        accum += half4(content.eval(coord + float2(-diagonal,  diagonal))) * 0.10;
+        accum += half4(content.eval(coord + float2( diagonal, -diagonal))) * 0.10;
+        accum += half4(content.eval(coord + float2(-diagonal, -diagonal))) * 0.10;
         return accum;
     }
 """.trimIndent()
