@@ -91,7 +91,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -109,7 +108,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.IntOffset
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -147,10 +145,60 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.channels.Channel
+import java.util.concurrent.atomic.AtomicInteger
 import java.io.File
 import java.util.UUID
 
 private val ChatMessageJson = Json { ignoreUnknownKeys = true }
+
+/**
+ * Records the latest message height without writing Compose snapshot state from
+ * a layout callback. [onSizeChanged] runs during measure/layout, so it must only
+ * enqueue work; scrolling from that callback recursively enters measure/layout.
+ */
+private class LatestMessageMeasureTracker {
+    private var nodeId: String? = null
+    private var heightPx: Int = 0
+
+    fun record(newNodeId: String, newHeightPx: Int): Int {
+        if (nodeId != newNodeId) {
+            nodeId = newNodeId
+            heightPx = newHeightPx
+            return 0
+        }
+        val delta = newHeightPx - heightPx
+        heightPx = newHeightPx
+        return delta
+    }
+}
+
+/**
+ * Coalesces height changes until Compose has left the current measure/layout
+ * pass. The queued delta is applied from a frame coroutine, never directly from
+ * [onSizeChanged].
+ */
+private class DeferredScrollCompensation {
+    private val pendingPx = AtomicInteger(0)
+    private val signal = Channel<Unit>(capacity = Channel.CONFLATED)
+
+    fun enqueue(deltaPx: Int) {
+        if (deltaPx == 0) return
+        pendingPx.addAndGet(deltaPx)
+        signal.trySend(Unit)
+    }
+
+    suspend fun awaitSignal() {
+        signal.receive()
+    }
+
+    fun drain(): Int = pendingPx.getAndSet(0)
+
+    fun clear() {
+        pendingPx.set(0)
+        while (signal.tryReceive().isSuccess) Unit
+    }
+}
 internal fun calculateComposerChromeProgress(
     firstVisibleItemIndex: Int,
     firstVisibleItemScrollOffset: Int,
@@ -196,8 +244,8 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val autoScrollMaxVelocityPxPerSecond = with(density) { 1_200.dp.toPx() }
     val autoScrollAccelerationPxPerSecondSquared = with(density) { 3_600.dp.toPx() }
     var followLatest by remember(conversation?.id) { mutableStateOf(true) }
-    var measuredLatestNodeId by remember(conversation?.id) { mutableStateOf<String?>(null) }
-    var measuredLatestHeightPx by remember(conversation?.id) { mutableIntStateOf(0) }
+    val latestMessageMeasureTracker = remember(conversation?.id) { LatestMessageMeasureTracker() }
+    val deferredScrollCompensation = remember(conversation?.id) { DeferredScrollCompensation() }
     var searchFocusHandled by remember(conversation?.id, focusedMessageNodeId) { mutableStateOf(false) }
     val userScrollConnection = remember(conversation?.id) {
         object : NestedScrollConnection {
@@ -232,8 +280,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         modelMenu = false
         chatMenu = false
         followLatest = true
-        measuredLatestNodeId = null
-        measuredLatestHeightPx = 0
+        deferredScrollCompensation.clear()
         messageListState.scrollToItem(0)
         topAppBarState.contentOffset = 0f
         topAppBarState.heightOffset = 0f
@@ -261,6 +308,38 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 // Re-lock only after the gesture/fling has actually settled at
                 // the real bottom, not merely inside the broad FAB threshold.
                 followLatest = true
+            }
+        }
+    }
+
+    LaunchedEffect(conversation?.id, generating, deferredScrollCompensation) {
+        if (!generating) {
+            deferredScrollCompensation.clear()
+            return@LaunchedEffect
+        }
+
+        while (true) {
+            deferredScrollCompensation.awaitSignal()
+
+            // onSizeChanged is invoked from measure/layout. Waiting for the next
+            // frame guarantees dispatchRawDelta cannot recursively enter the same
+            // measure pass ("performMeasureAndLayout called during measure layout").
+            withFrameNanos { }
+
+            if (messageListState.isScrollInProgress) {
+                snapshotFlow { messageListState.isScrollInProgress }.first { scrolling -> !scrolling }
+                withFrameNanos { }
+            }
+
+            val deltaPx = deferredScrollCompensation.drain()
+            if (
+                deltaPx != 0 &&
+                generating &&
+                messageListState.firstVisibleItemIndex == 0
+            ) {
+                // This is outside measure/layout and intentionally bypasses the
+                // scroll mutex, so it cannot cancel the persistent follow loop.
+                messageListState.dispatchRawDelta(deltaPx.toFloat())
             }
         }
     }
@@ -467,30 +546,19 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                 activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
                                 modifier = if (index == 0) {
                                     Modifier.onSizeChanged { size ->
-                                        if (measuredLatestNodeId != message.nodeId) {
-                                            measuredLatestNodeId = message.nodeId
-                                            measuredLatestHeightPx = size.height
-                                        } else {
-                                            val delta = size.height - measuredLatestHeightPx
-                                            measuredLatestHeightPx = size.height
-                                            if (
-                                                delta != 0 &&
-                                                generating &&
-                                                messageListState.firstVisibleItemIndex == 0
-                                            ) {
-                                                // Compensate in the same UI frame as the
-                                                // remeasure. The old implementation first drew
-                                                // the new height, then corrected it with a
-                                                // translation/scroll coroutine, producing the
-                                                // visible up-down flash even while detached.
-                                                //
-                                                // When follow is enabled this creates a real
-                                                // distance for the persistent auto-scroll loop to
-                                                // consume smoothly. When detached it remains at
-                                                // the compensated offset, keeping the viewport
-                                                // stationary as the response grows.
-                                                messageListState.dispatchRawDelta(delta.toFloat())
-                                            }
+                                        val deltaPx = latestMessageMeasureTracker.record(
+                                            newNodeId = message.nodeId,
+                                            newHeightPx = size.height,
+                                        )
+                                        if (
+                                            deltaPx != 0 &&
+                                            generating &&
+                                            messageListState.firstVisibleItemIndex == 0
+                                        ) {
+                                            // Never scroll from a layout callback. Queue the
+                                            // accumulated height delta for the frame coroutine
+                                            // above, after Compose exits measure/layout.
+                                            deferredScrollCompensation.enqueue(deltaPx)
                                         }
                                     }
                                 } else Modifier,
