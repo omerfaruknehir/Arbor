@@ -579,7 +579,11 @@ private fun MessageCard(
         if (freezeLiveUpdates) liveAttachments else null
     }
     val attachments = frozenAttachments ?: liveAttachments
-    val animateStreaming = message.status == MessageStatus.STREAMING && !freezeLiveUpdates
+    // Keep work-state separate from animation/live-update state. Detaching from
+    // auto-follow freezes the rendered message, but must not make its active card
+    // look completed merely because streaming animations are paused.
+    val working = message.status == MessageStatus.STREAMING
+    val animateStreaming = working && !freezeLiveUpdates
     val user = message.role == MessageRole.USER
     val rawTimeline = remember(message.timelineJson) {
         runCatching { ChatMessageJson.decodeFromString<List<MessageTimelineEvent>>(message.timelineJson) }.getOrDefault(emptyList())
@@ -642,19 +646,21 @@ private fun MessageCard(
                 }
                 if (timeline.isNotEmpty()) {
                     OrderedMessageTimeline(
-                        message.nodeId,
-                        timeline,
-                        attachments,
-                        animateStreaming,
-                        reasoningVisibility,
-                        viewModel,
+                        messageKey = message.nodeId,
+                        events = timeline,
+                        attachments = attachments,
+                        working = working,
+                        animateStreaming = animateStreaming,
+                        visibility = reasoningVisibility,
+                        viewModel = viewModel,
                     )
                 } else {
                     LegacyWorkingBlock(
                         messageKey = message.nodeId,
                         text = displayReasoning,
                         toolTraceJson = message.toolTraceJson,
-                        streaming = animateStreaming,
+                        working = working,
+                        animateStreaming = animateStreaming,
                     )
                     if (displayContent.isNotBlank()) RichMessage(
                         operationScope = message.nodeId,
@@ -729,7 +735,8 @@ private fun OrderedMessageTimeline(
     messageKey: String,
     events: List<MessageTimelineEvent>,
     attachments: List<AttachmentEntity>,
-    streaming: Boolean,
+    working: Boolean,
+    animateStreaming: Boolean,
     visibility: ReasoningVisibility,
     viewModel: ChatViewModel,
 ) {
@@ -755,17 +762,19 @@ private fun OrderedMessageTimeline(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         segments.forEachIndexed { index, segment ->
             if (segment.working) {
+                val activeBlock = working && index == segments.lastIndex
                 TimelineWorkingBlock(
-                    segment.events,
-                    streaming,
-                    streaming && index == segments.lastIndex,
-                    visibility,
-                    usedSourceUrls,
-                    viewModel,
+                    stateKey = "$messageKey:${segment.events.first().id}",
+                    events = segment.events,
+                    active = activeBlock,
+                    animateStreaming = animateStreaming && activeBlock,
+                    visibility = visibility,
+                    usedSourceUrls = usedSourceUrls,
+                    viewModel = viewModel,
                 )
             } else {
                 segment.events.forEach { event ->
-                    val activeEvent = streaming && index == segments.lastIndex && event == segment.events.lastOrNull()
+                    val activeEvent = animateStreaming && index == segments.lastIndex && event == segment.events.lastOrNull()
                     StreamingFade(
                         transitionKey = "$messageKey:${event.id}",
                         enabled = activeEvent,
@@ -799,28 +808,28 @@ private fun OrderedMessageTimeline(
 
 @Composable
 private fun TimelineWorkingBlock(
+    stateKey: String,
     events: List<MessageTimelineEvent>,
-    streaming: Boolean,
     active: Boolean,
+    animateStreaming: Boolean,
     @Suppress("UNUSED_PARAMETER") visibility: ReasoningVisibility,
     usedSourceUrls: Set<String>,
     viewModel: ChatViewModel,
 ) {
     if (events.isEmpty()) return
-    val blockId = events.first().id
     // Expansion belongs to this working block, not to chat scroll position or the
     // message-wide streaming flag. A block opens when it becomes the active work,
     // closes once that work finishes, and remains freely user-toggleable between
     // those state transitions.
-    var expanded by rememberSaveable(blockId) { mutableStateOf(active) }
-    var previousActive by rememberSaveable(blockId) { mutableStateOf(active) }
+    var expanded by rememberSaveable("working-expanded-$stateKey") { mutableStateOf(active) }
+    var previousActive by rememberSaveable("working-active-$stateKey") { mutableStateOf(active) }
     LaunchedEffect(active) {
         if (previousActive != active) {
             expanded = active
             previousActive = active
         }
     }
-    StreamingFade(transitionKey = "working:${events.first().id}", enabled = active) {
+    StreamingFade(transitionKey = "working:$stateKey", enabled = animateStreaming) {
         Surface(
             onClick = { expanded = !expanded },
             color = MaterialTheme.colorScheme.surfaceContainer,
@@ -841,7 +850,7 @@ private fun TimelineWorkingBlock(
                 AnimatedVisibility(expanded, enter = streamingFadeIn(), exit = streamingFadeOut()) {
                     Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         events.forEachIndexed { index, event ->
-                            val activeEvent = active && index == events.lastIndex
+                            val activeEvent = animateStreaming && index == events.lastIndex
                             StreamingFade(transitionKey = "working-event:${event.id}", enabled = activeEvent) {
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     val duration = event.finishedAt?.let { (it - event.startedAt).coerceAtLeast(0) }
@@ -895,19 +904,20 @@ private fun LegacyWorkingBlock(
     messageKey: String,
     text: String,
     toolTraceJson: String,
-    streaming: Boolean,
+    working: Boolean,
+    animateStreaming: Boolean,
 ) {
     val traces = remember(toolTraceJson) {
         runCatching { ChatMessageJson.decodeFromString<List<ToolTraceEvent>>(toolTraceJson) }.getOrDefault(emptyList())
     }
     val hasContent = text.isNotBlank() || traces.isNotEmpty()
     if (!hasContent) return
-    var expanded by rememberSaveable("legacy-working-$messageKey") { mutableStateOf(streaming) }
-    var previousActive by rememberSaveable("legacy-working-active-$messageKey") { mutableStateOf(streaming) }
-    LaunchedEffect(streaming) {
-        if (previousActive != streaming) {
-            expanded = streaming
-            previousActive = streaming
+    var expanded by rememberSaveable("legacy-working-$messageKey") { mutableStateOf(working) }
+    var previousActive by rememberSaveable("legacy-working-active-$messageKey") { mutableStateOf(working) }
+    LaunchedEffect(working) {
+        if (previousActive != working) {
+            expanded = working
+            previousActive = working
         }
     }
     Surface(
@@ -918,7 +928,7 @@ private fun LegacyWorkingBlock(
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (streaming) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                if (working) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 else Icon(Icons.Outlined.Psychology, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                 Text("Working", Modifier.padding(start = 8.dp).weight(1f), fontWeight = FontWeight.Medium)
                 Text(if (expanded) "Collapse" else "Expand", style = MaterialTheme.typography.labelMedium)
@@ -927,12 +937,12 @@ private fun LegacyWorkingBlock(
                 Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (text.isNotBlank()) StreamingPlainText(
                         text = text,
-                        streaming = streaming,
+                        streaming = animateStreaming,
                     )
                     traces.forEach { event ->
                         StreamingFade(
                             transitionKey = "legacy-tool:${event.id}",
-                            enabled = streaming && event == traces.lastOrNull(),
+                            enabled = animateStreaming && event == traces.lastOrNull(),
                         ) {
                             Column {
                                 Text("${event.label} • ${event.status}", style = MaterialTheme.typography.labelMedium, color = if (event.status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
