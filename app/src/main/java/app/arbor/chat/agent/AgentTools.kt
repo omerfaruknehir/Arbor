@@ -84,28 +84,11 @@ fun groupOrderedTimeline(events: List<MessageTimelineEvent>): List<TimelineRun> 
     return result
 }
 
-data class ToolDirective(
-    val request: AgentToolRequest,
-    val visibleText: String,
-)
 
 data class AgentToolOutcome(val output: String, val files: List<String> = emptyList())
 
 @Serializable
 private data class SentFileResult(val path: String, val name: String, val sizeBytes: Long, val caption: String)
-
-object AgentToolProtocol {
-    private val json = Json { ignoreUnknownKeys = true }
-    private val fence = Regex("```arbor-tool\\s*\\n([\\s\\S]*?)```\\s*$", RegexOption.IGNORE_CASE)
-
-    fun extract(text: String): ToolDirective? {
-        val match = fence.find(text) ?: return null
-        val visible = text.removeRange(match.range).trim()
-        if (Regex("```arbor-tool", RegexOption.IGNORE_CASE).containsMatchIn(visible)) return null
-        val request = runCatching { json.decodeFromString<AgentToolRequest>(match.groupValues[1].trim()) }.getOrNull() ?: return null
-        return ToolDirective(request, visible)
-    }
-}
 
 class AgentTools(
     private val python: PythonSandbox,

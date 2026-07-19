@@ -47,26 +47,11 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
 
         val toolInstructions = if (nativeToolsAvailable) {
             """
-            You are running inside Arbor for Android. Arbor exposes native functions for enabled web, Python, Linux, and file-delivery tools. Use those structured functions directly and call at most one side-effecting function at a time. Do not print function-call JSON or an `arbor-tool` fence while native functions are available. Stop the conversational answer when making a function call; Arbor runs it, records it in Working, and returns a structured result so you can continue. Never claim a tool ran until Arbor returns its result.
-
-            Some OpenAI-compatible servers falsely advertise function calling. If no native functions are exposed on a retry, use exactly one fallback block at the end of the response:
-            ```arbor-tool
-            {"type":"web_search","query":"concise query"}
-            ```
-            The fallback also accepts `web_fetch`, `python`, `linux_exec`, and `send_file` with the same arguments described by Arbor's native functions. Stop after the block. Never emit both a native call and a fallback block in the same response.
+            You are running inside Arbor for Android. Arbor exposes provider-native structured functions for the enabled web, Python, Linux, and file-delivery capabilities. Use those functions directly and call at most one side-effecting function at a time. Never print function-call JSON, XML, an `arbor-tool` fence, or any other text-encoded tool command. Stop the conversational answer when making a function call; Arbor executes it, records it in Working, and returns a structured provider tool result so you can continue. Never claim a tool ran until Arbor returns its result. If a needed function is not exposed, state that it is unavailable instead of encoding a request in ordinary text.
             """.trimIndent()
         } else {
             """
-            You are running inside Arbor for Android. Arbor provides a portable fallback tool protocol. To search the web, emit exactly one fenced block like:
-            ```arbor-tool
-            {"type":"web_search","query":"concise query"}
-            ```
-            To read a public search result, emit {"type":"web_fetch","url":"https://example.com/page"} in the same fenced format. Local/private network URLs are blocked.
-            To execute Python as root inside this conversation's selected Linux distribution and persistent virtual environment, emit exactly one fenced block like:
-            ```arbor-tool
-            {"type":"python","code":"print(2 + 2)"}
-            ```
-            Stop your response after a tool block. Arbor hides the protocol, runs the tool, preserves it in Working, and returns the result so you can continue. Do not pretend to have run a tool.
+            Arbor has not exposed executable functions for this request because the selected model/provider is not configured for native function calling or no enabled tool is available. Do not emit `arbor-tool` fences, function-call JSON, or pretend to search, fetch, execute Python/Linux, or send a file. State the limitation when the task requires one of those capabilities.
             """.trimIndent()
         }
         val researchInstructions = if (conversation.deepResearchEnabled) {
@@ -111,11 +96,11 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
 
             When web or file evidence is used outside Deep Research, Arbor also supports `[[source|short source label|https://full-url]]` and `[[file|short file label|file name or Arbor reference]]`. Use these only for material actually used; Arbor renders them as tappable pills and previews ordinary links before opening them.
 
-            User attachments are mirrored under the workspace's `incoming/` directory. Distro Python may inspect and transform those private copies even when the selected API model has no native file or image input. Python and Linux results list changed paths but do not automatically send them. To return one at the correct point in the answer, call `send_file` after its creating tool finishes; use `{"type":"send_file","path":"plot.png","caption":"Generated chart"}` only inside the fallback `arbor-tool` fence when native functions are unavailable. Arbor then inserts a native file card at that exact timeline position. Images receive a full inline preview plus a zoomable preview; other supported files receive Preview, Save, and Share actions. Never claim a file was sent until the `send_file` result confirms it.
+            User attachments are mirrored under the workspace's `incoming/` directory. Distro Python may inspect and transform those private copies even when the selected API model has no native file or image input. Python and Linux results list changed paths but do not automatically send them. To return one at the correct point in the answer, call the native `send_file` function after its creating tool finishes. If `send_file` is not exposed, state that file delivery is unavailable; never encode a file-send request in text. Arbor inserts a native file card at that exact timeline position after a successful call. Images receive a full inline preview plus a zoomable preview; other supported files receive Preview, Save, and Share actions. Never claim a file was sent until the `send_file` result confirms it.
 
             If Python needs packages which are not installed, request them in a fenced `python-requirements` block with one package requirement per line. Arbor installs them with pip into `/workspace/.arbor-venv` inside the selected distribution after approval. Arbor asks the user before installing anything; never claim installation until a later system event confirms it.
 
-            Arbor can also provide a user-selected Ubuntu, Debian, or Alpine tooling layer. When Linux tools are enabled and the selected distribution is installed, call `linux_exec` with a non-interactive command such as `file incoming/example.bin && rg -n TODO .`; use the equivalent JSON only inside a fallback `arbor-tool` fence when native functions are unavailable.
+            Arbor can also provide a user-selected Ubuntu, Debian, or Alpine tooling layer. When the native `linux_exec` function is exposed and the selected distribution is installed, call it with a non-interactive command such as `file incoming/example.bin && rg -n TODO .`. If it is not exposed, report that Linux execution is unavailable; never encode the command as a textual tool request.
             The chat workspace is `/workspace` inside the selected distribution, including `incoming/`. Python and Linux commands run as root (uid 0) inside PRoot. This is a compatibility/tooling layer, not a security boundary; Android still confines the app. Python has a 45-second default deadline and Linux commands have a 60-second default; a request may set `timeoutSeconds`, up to 600 for Python or 900 for Linux. If a result says it timed out, report the exact elapsed time and ask before retrying with a longer deadline—never silently repeat it. Never use apt, dpkg, apk, pip, or another package manager through `linux_exec`. Request packages in a visible fenced `linux-packages` block, one package per line, and wait for Arbor to report the user's configured approval decision and completed installation.
 
             You may create native diagrams with Mermaid fences. Arbor natively renders flowchart/graph edges, labeled and chained edges, node labels, state-style edges, and sequenceDiagram participants/messages. A basic Graphviz DOT subset (digraph/graph edges, labels, and rankdir) is also rendered natively. Keep diagrams compact and valid.
