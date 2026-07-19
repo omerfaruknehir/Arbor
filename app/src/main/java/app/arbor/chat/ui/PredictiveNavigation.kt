@@ -23,7 +23,10 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -33,16 +36,19 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 private val NavigationEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
 /**
- * Animated screen host with direct predictive-back progress support.
+ * Screen host which keeps the active screen in the same composition for the whole
+ * predictive-back gesture.
  *
- * During a system back swipe, the destination is composed below the current page
- * and revealed continuously as the gesture advances. At the activity root no
- * callback is registered, preserving Android/Samsung's system back-to-home preview.
+ * Gesture progress is read only by graphics layers, so a back swipe invalidates
+ * render properties instead of recomposing the complete source and destination
+ * screens on every frame. Each destination also owns a saveable state bucket, so
+ * list and scroll positions survive both a cancelled gesture and a committed back.
  */
 @Composable
 internal fun <T : Any> PredictiveNavigationHost(
@@ -57,16 +63,33 @@ internal fun <T : Any> PredictiveNavigationHost(
 ) {
     val gestureProgress = remember { Animatable(0f) }
     var previewTarget by remember { mutableStateOf<T?>(null) }
-    var gestureSource by remember { mutableStateOf<T?>(null) }
+    var displayedState by remember { mutableStateOf(targetState) }
     var swipeEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
-    var suppressNextTransition by remember { mutableStateOf(false) }
+    var suppressTransitionFor by remember { mutableStateOf<T?>(null) }
+
     val latestTargetState by rememberUpdatedState(targetState)
     val latestBackTarget by rememberUpdatedState(backTarget)
     val latestOnBack by rememberUpdatedState(onBack)
+    val latestContent = rememberUpdatedState(content)
+    val stateHolder = rememberSaveableStateHolder()
+
+    val renderState: @Composable (T) -> Unit = { state ->
+        stateHolder.SaveableStateProvider(state) {
+            latestContent.value(state)
+        }
+    }
+
+    // Ordinary navigation still animates. During predictive back, the visible
+    // source remains frozen at displayedState until the gesture either cancels or
+    // commits, so external state changes cannot replace it halfway through a swipe.
+    LaunchedEffect(targetState, previewTarget) {
+        if (previewTarget == null && displayedState != targetState) {
+            displayedState = targetState
+        }
+    }
 
     PredictiveBackHandler(enabled = backEnabled && backTarget != null) { events ->
         val destination = latestBackTarget ?: return@PredictiveBackHandler
-        gestureSource = latestTargetState
         previewTarget = destination
         gestureProgress.snapTo(0f)
 
@@ -77,94 +100,36 @@ internal fun <T : Any> PredictiveNavigationHost(
             }
 
             gestureProgress.snapTo(1f)
-            suppressNextTransition = true
+            suppressTransitionFor = destination
             latestOnBack(destination)
-            // Keep the completed gesture frame on screen until the destination
-            // state has reached this composition, avoiding a one-frame flash.
+
+            // Wait until the application state has actually accepted the back
+            // destination, then replace preview + source in one snapshot. This
+            // avoids the slow post-gesture AnimatedContent pass and any overlap.
+            snapshotFlow { latestTargetState }.first { it == destination }
             withFrameNanos { }
-            previewTarget = null
-            gestureSource = null
+            Snapshot.withMutableSnapshot {
+                displayedState = destination
+                previewTarget = null
+            }
             gestureProgress.snapTo(0f)
+
+            // Keep suppression alive for the first destination composition. The
+            // transition spec has already been selected by the time this clears.
+            withFrameNanos { }
+            suppressTransitionFor = null
         } catch (cancelled: CancellationException) {
             withContext(NonCancellable) {
-                gestureProgress.animateTo(0f, tween(durationMillis = 180, easing = NavigationEasing))
+                gestureProgress.animateTo(0f, tween(durationMillis = 160, easing = NavigationEasing))
                 previewTarget = null
-                gestureSource = null
             }
             throw cancelled
         }
     }
 
-    LaunchedEffect(targetState) {
-        if (suppressNextTransition) {
-            withFrameNanos { }
-            suppressNextTransition = false
-        }
-    }
-
-    val destination = previewTarget
-    val source = gestureSource
-    if (destination != null && source != null) {
-        PredictiveBackPreview(
-            source = source,
-            destination = destination,
-            progress = gestureProgress.value,
-            swipeEdge = swipeEdge,
-            modifier = modifier,
-            content = content,
-        )
-    } else {
-        AnimatedContent(
-            targetState = targetState,
-            modifier = modifier,
-            transitionSpec = {
-                if (suppressNextTransition) {
-                    EnterTransition.None togetherWith ExitTransition.None
-                } else {
-                    val forward = depth(targetState) >= depth(initialState)
-                    if (forward) {
-                        slideInHorizontally(
-                            animationSpec = tween(170, easing = NavigationEasing),
-                            initialOffsetX = { it / 8 },
-                        ) togetherWith slideOutHorizontally(
-                            animationSpec = tween(150, easing = NavigationEasing),
-                            targetOffsetX = { -it / 18 },
-                        )
-                    } else {
-                        slideInHorizontally(
-                            animationSpec = tween(170, easing = NavigationEasing),
-                            initialOffsetX = { -it / 18 },
-                        ) togetherWith slideOutHorizontally(
-                            animationSpec = tween(150, easing = NavigationEasing),
-                            targetOffsetX = { it / 8 },
-                        )
-                    }
-                }
-            },
-            contentKey = { it },
-            label = label,
-        ) { state ->
-            Box(Modifier.fillMaxSize().graphicsLayer()) {
-                content(state)
-            }
-        }
-    }
-}
-
-@Composable
-private fun <T : Any> PredictiveBackPreview(
-    source: T,
-    destination: T,
-    progress: Float,
-    swipeEdge: Int,
-    modifier: Modifier,
-    content: @Composable (T) -> Unit,
-) {
-    val p = progress.coerceIn(0f, 1f)
-    val direction = if (swipeEdge == BackEventCompat.EDGE_RIGHT) -1f else 1f
+    val fixedCornerShape = remember { RoundedCornerShape(28.dp) }
     val density = LocalDensity.current
     val maxShadowPx = with(density) { 5.dp.toPx() }
-    val corner = 28.dp * p
 
     BoxWithConstraints(
         modifier = modifier
@@ -173,32 +138,79 @@ private fun <T : Any> PredictiveBackPreview(
             .background(androidx.compose.material3.MaterialTheme.colorScheme.background),
     ) {
         val widthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+        val destination = previewTarget
+        val direction = if (swipeEdge == BackEventCompat.EDGE_RIGHT) -1f else 1f
 
-        Box(
-            Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    translationX = -direction * widthPx * 0.045f * (1f - p)
-                    scaleX = 0.98f + 0.02f * p
-                    scaleY = 0.98f + 0.02f * p
-                },
-        ) {
-            content(destination)
+        if (destination != null) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val p = gestureProgress.value.coerceIn(0f, 1f)
+                        translationX = -direction * widthPx * 0.045f * (1f - p)
+                        scaleX = 0.98f + 0.02f * p
+                        scaleY = 0.98f + 0.02f * p
+                    },
+            ) {
+                renderState(destination)
+            }
         }
 
         Box(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    translationX = direction * widthPx * 0.30f * p
-                    scaleX = 1f - 0.025f * p
-                    scaleY = 1f - 0.025f * p
-                    shadowElevation = maxShadowPx * p
-                    shape = RoundedCornerShape(corner)
-                    clip = p > 0.001f
+                    if (previewTarget != null) {
+                        val p = gestureProgress.value.coerceIn(0f, 1f)
+                        translationX = direction * widthPx * 0.30f * p
+                        scaleX = 1f - 0.025f * p
+                        scaleY = 1f - 0.025f * p
+                        shadowElevation = maxShadowPx * p
+                        shape = fixedCornerShape
+                        clip = p > 0.001f
+                    } else {
+                        translationX = 0f
+                        scaleX = 1f
+                        scaleY = 1f
+                        shadowElevation = 0f
+                        clip = false
+                    }
                 },
         ) {
-            content(source)
+            AnimatedContent(
+                targetState = displayedState,
+                modifier = Modifier.fillMaxSize(),
+                transitionSpec = {
+                    if (suppressTransitionFor == targetState) {
+                        EnterTransition.None togetherWith ExitTransition.None
+                    } else {
+                        val forward = depth(targetState) >= depth(initialState)
+                        if (forward) {
+                            slideInHorizontally(
+                                animationSpec = tween(170, easing = NavigationEasing),
+                                initialOffsetX = { it / 8 },
+                            ) togetherWith slideOutHorizontally(
+                                animationSpec = tween(150, easing = NavigationEasing),
+                                targetOffsetX = { -it / 18 },
+                            )
+                        } else {
+                            slideInHorizontally(
+                                animationSpec = tween(170, easing = NavigationEasing),
+                                initialOffsetX = { -it / 18 },
+                            ) togetherWith slideOutHorizontally(
+                                animationSpec = tween(150, easing = NavigationEasing),
+                                targetOffsetX = { it / 8 },
+                            )
+                        }
+                    }
+                },
+                contentKey = { it },
+                label = label,
+            ) { state ->
+                Box(Modifier.fillMaxSize()) {
+                    renderState(state)
+                }
+            }
         }
     }
 }
