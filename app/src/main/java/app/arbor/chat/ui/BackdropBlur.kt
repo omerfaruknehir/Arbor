@@ -240,11 +240,14 @@ fun Modifier.arborBackdropBlur(
         }
 
         onDrawWithContent {
+            // This is only a faint readability wash. The previous 0.68..1.0
+            // multiplier effectively painted a surface over everything below the
+            // chrome and hid the content that the blur was meant to reveal.
             val overlayProgress = if (enabled) {
                 MIN_CHROME_TINT_PROGRESS +
-                    (1f - MIN_CHROME_TINT_PROGRESS) * arborBlurProgress(stableProgressReader())
+                    CHROME_TINT_SCROLL_RANGE * arborBlurProgress(stableProgressReader())
             } else {
-                1f
+                0f
             }
             when (edge) {
                 ArborBlurEdge.TOP -> drawRect(
@@ -270,7 +273,8 @@ fun Modifier.arborBackdropBlur(
 private val FULL_PROGRESS_READER: () -> Float = { 1f }
 
 private const val MIN_VISIBLE_RADIUS_PX = 0.35f
-private const val MIN_CHROME_TINT_PROGRESS = 0.68f
+private const val MIN_CHROME_TINT_PROGRESS = 0.10f
+private const val CHROME_TINT_SCROLL_RANGE = 0.20f
 private const val DEFAULT_MAX_RADIUS_DP = 24f
 private const val DEFAULT_TOP_FADE_DP = 64f
 private const val DEFAULT_BOTTOM_FADE_DP = 152f
