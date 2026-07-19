@@ -1,6 +1,5 @@
 package app.arbor.chat.ui
 
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -72,7 +71,6 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -115,7 +113,6 @@ import java.util.UUID
 
 
 private val LocalSettingsScaffoldPadding = compositionLocalOf { PaddingValues() }
-private val LocalSettingsPageScrollState = compositionLocalOf { ScrollState(0) }
 
 private enum class SettingsRoute(val title: String) {
     HOME("Settings"),
@@ -147,18 +144,6 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val configuredProviders = remember(providers, credentialRevision) { viewModel.configuredProviders(providers) }
     var route by rememberSaveable { mutableStateOf(SettingsRoute.HOME) }
 
-    // Keep every settings destination's list and app-bar state alive at the
-    // same composition level. Navigation animations can replace the visible
-    // destination without recreating its scroll position or collapsed title.
-    val routeScrollStates = mutableMapOf<SettingsRoute, ScrollState>()
-    val routeTopAppBarStates = mutableMapOf<SettingsRoute, androidx.compose.material3.TopAppBarState>()
-    SettingsRoute.entries.forEach { settingsRoute ->
-        key("settings-state:${settingsRoute.name}") {
-            routeScrollStates[settingsRoute] = rememberScrollState()
-            routeTopAppBarStates[settingsRoute] = rememberTopAppBarState()
-        }
-    }
-
     PredictiveNavigationHost(
         targetState = route,
         backTarget = SettingsRoute.HOME.takeIf { route != SettingsRoute.HOME },
@@ -167,10 +152,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         modifier = Modifier.fillMaxSize(),
         label = "SettingsPageNavigation",
     ) { currentRoute ->
-        val pageScrollState = routeScrollStates.getValue(currentRoute)
-        val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(
-            routeTopAppBarStates.getValue(currentRoute),
-        )
+        val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
         val blurState = rememberArborBackdropBlurState()
 
         Scaffold(
@@ -199,10 +181,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             },
         ) { padding ->
             Box(Modifier.fillMaxSize().arborBackdropSource(blurState)) {
-                CompositionLocalProvider(
-                    LocalSettingsScaffoldPadding provides padding,
-                    LocalSettingsPageScrollState provides pageScrollState,
-                ) {
+                CompositionLocalProvider(LocalSettingsScaffoldPadding provides padding) {
                     when (currentRoute) {
                         SettingsRoute.HOME -> SettingsHome(
                             providerCount = registeredProviders.size,
@@ -329,7 +308,7 @@ private fun SettingsPage(content: @Composable ColumnScope.() -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
-            .verticalScroll(LocalSettingsPageScrollState.current)
+            .verticalScroll(rememberScrollState())
             .padding(
                 start = 20.dp,
                 end = 20.dp,

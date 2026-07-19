@@ -1,22 +1,12 @@
-# 0.16.22
-
-- Fixed gradual blur architecture and navigation overlap/jank.
-- Added effective 33-tap paired Gaussian blur for high radii.
-
-# 0.16.21
-
-- Restored the 0.16.19 two-pass gradual Gaussian chrome blur.
-- Replaced dual-screen navigation transitions with a single-layer animation to prevent UI-thread stalls.
-- Preserved each Settings page scroll and app-bar state across navigation.
-- Removed `requestScrollToItem` from streaming growth compensation so layout animations no longer reset active scrolling.
-- Standardized generated-widget expansion on the shared fade transition.
-
 # Changelog
 
-## 0.16.20
+## 0.16.26
 
-- Reworked streaming follow, scroll-lock detachment/relock, navigation-state retention, fade-only tool/reasoning motion, Markdown update throttling, and the gradual backdrop blur for smoother chat interaction.
-- Replaced the two-pass Gaussian shader with a real single-pass radial tent blur to retain the frosted appearance at much lower per-frame cost.
+- Restored the 0.16.19 UI and blur baseline.
+- Increased the physical top reserve above chat messages.
+- Replaced token-by-token animated scrolling with an explicit generation follow lock that releases on user scroll and re-engages only at the true bottom.
+- Compensated active-response height changes while detached so streaming text, tools, and reasoning do not move the user's viewport upward.
+- Unified streaming text, tool, reasoning, generated-block, and result appearance around one fade-only timing without animated remeasurement.
 
 ## 0.16.18
 

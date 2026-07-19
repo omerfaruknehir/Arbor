@@ -9,19 +9,15 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
-import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -33,37 +29,29 @@ enum class ArborBlurEdge { TOP, BOTTOM }
 /**
  * Shared configuration for the gradual blur applied to a screen's actual body.
  *
- * Scroll progress is retained as a reader instead of copied into Compose state.
- * The source layer therefore invalidates only its draw/layer phase while
- * scrolling; it does not rebuild shaders or recompose the whole screen per pixel.
+ * Older Arbor builds captured the screen into a GraphicsLayer and replayed
+ * cropped copies behind app chrome. Compose renders those layers lazily, so the
+ * replay could be blank or one frame stale. This state instead lets the body
+ * itself receive an Agora-style two-pass AGSL edge blur.
  */
 @Stable
 class ArborBackdropBlurState internal constructor() {
-    internal var topRadiusScaleDp by mutableFloatStateOf(0f)
-    internal var bottomRadiusScaleDp by mutableFloatStateOf(0f)
+    internal var topRadiusDp by mutableFloatStateOf(0f)
+    internal var bottomRadiusDp by mutableFloatStateOf(0f)
     internal var topFadeDp by mutableFloatStateOf(DEFAULT_TOP_FADE_DP)
     internal var bottomFadeDp by mutableFloatStateOf(DEFAULT_BOTTOM_FADE_DP)
-    internal var topProgressReader by mutableStateOf<() -> Float>(ZERO_PROGRESS_READER)
-    internal var bottomProgressReader by mutableStateOf<() -> Float>(ZERO_PROGRESS_READER)
     internal var sourceTopInRootPx by mutableFloatStateOf(0f)
     internal var bottomEdgeInRootPx by mutableFloatStateOf(Float.NaN)
 
-    internal fun update(
-        edge: ArborBlurEdge,
-        radiusScaleDp: Float,
-        fadeDp: Float,
-        progressReader: () -> Float,
-    ) {
+    internal fun update(edge: ArborBlurEdge, radiusDp: Float, fadeDp: Float) {
         when (edge) {
             ArborBlurEdge.TOP -> {
-                topRadiusScaleDp = radiusScaleDp.coerceAtLeast(0f)
+                topRadiusDp = radiusDp.coerceAtLeast(0f)
                 topFadeDp = fadeDp.coerceAtLeast(1f)
-                if (topProgressReader !== progressReader) topProgressReader = progressReader
             }
             ArborBlurEdge.BOTTOM -> {
-                bottomRadiusScaleDp = radiusScaleDp.coerceAtLeast(0f)
+                bottomRadiusDp = radiusDp.coerceAtLeast(0f)
                 bottomFadeDp = fadeDp.coerceAtLeast(1f)
-                if (bottomProgressReader !== progressReader) bottomProgressReader = progressReader
             }
         }
     }
@@ -78,20 +66,12 @@ class ArborBackdropBlurState internal constructor() {
 
     internal fun clear(edge: ArborBlurEdge) {
         when (edge) {
-            ArborBlurEdge.TOP -> {
-                topRadiusScaleDp = 0f
-                topProgressReader = ZERO_PROGRESS_READER
-            }
+            ArborBlurEdge.TOP -> topRadiusDp = 0f
             ArborBlurEdge.BOTTOM -> {
-                bottomRadiusScaleDp = 0f
-                bottomProgressReader = ZERO_PROGRESS_READER
+                bottomRadiusDp = 0f
                 bottomEdgeInRootPx = Float.NaN
             }
         }
-    }
-
-    private companion object {
-        val ZERO_PROGRESS_READER: () -> Float = { 0f }
     }
 }
 
@@ -103,21 +83,20 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return@composed this
 
     val density = LocalDensity.current.density
-    val topRadiusScalePx = state.topRadiusScaleDp * density
-    val bottomRadiusScalePx = state.bottomRadiusScaleDp * density
+    val topRadiusPx = state.topRadiusDp * density
+    val bottomRadiusPx = state.bottomRadiusDp * density
+    if (topRadiusPx < MIN_VISIBLE_RADIUS_PX && bottomRadiusPx < MIN_VISIBLE_RADIUS_PX) {
+        return@composed this
+    }
+
     val topFadePx = state.topFadeDp * density
     val bottomFadePx = state.bottomFadeDp * density
-    val topProgressReader = state.topProgressReader
-    val bottomProgressReader = state.bottomProgressReader
-
-    var contentWidthPx by remember { mutableFloatStateOf(0f) }
     var contentHeightPx by remember { mutableFloatStateOf(0f) }
     val measured = this.onGloballyPositioned { coordinates ->
-        contentWidthPx = coordinates.size.width.toFloat().coerceAtLeast(1f)
         contentHeightPx = coordinates.size.height.toFloat().coerceAtLeast(1f)
         state.updateSource(coordinates.boundsInRoot().top)
     }
-    if (contentWidthPx <= 0f || contentHeightPx <= 0f) return@composed measured
+    if (contentHeightPx <= 0f) return@composed measured
 
     val bottomEdgePx = state.bottomEdgeInRootPx
         .takeIf { it.isFinite() }
@@ -125,13 +104,21 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         ?.coerceIn(0f, contentHeightPx)
         ?: contentHeightPx
 
-    val horizontalShader = remember {
+    val horizontalShader = remember(topRadiusPx, bottomRadiusPx, topFadePx, bottomFadePx, contentHeightPx, bottomEdgePx) {
         RuntimeShader(EDGE_BLUR_SHADER).apply {
+            setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
+            setFloatUniform("uFade", topFadePx, bottomFadePx)
+            setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
+            setFloatUniform("uBottomEdge", bottomEdgePx)
             setFloatUniform("uDirection", 1f, 0f)
         }
     }
-    val verticalShader = remember {
+    val verticalShader = remember(topRadiusPx, bottomRadiusPx, topFadePx, bottomFadePx, contentHeightPx, bottomEdgePx) {
         RuntimeShader(EDGE_BLUR_SHADER).apply {
+            setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
+            setFloatUniform("uFade", topFadePx, bottomFadePx)
+            setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
+            setFloatUniform("uBottomEdge", bottomEdgePx)
             setFloatUniform("uDirection", 0f, 1f)
         }
     }
@@ -141,41 +128,7 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         RenderEffect.createChainEffect(vertical, horizontal).asComposeRenderEffect()
     }
 
-    val sourceBackground = MaterialTheme.colorScheme.background
-
-    measured
-        .graphicsLayer {
-            val topRadiusPx = topRadiusScalePx * arborBlurProgress(topProgressReader())
-            val bottomRadiusPx = bottomRadiusScalePx * arborBlurProgress(bottomProgressReader())
-            if (topRadiusPx < MIN_VISIBLE_RADIUS_PX && bottomRadiusPx < MIN_VISIBLE_RADIUS_PX) {
-                renderEffect = null
-                return@graphicsLayer
-            }
-
-            horizontalShader.setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
-            horizontalShader.setFloatUniform("uFade", topFadePx, bottomFadePx)
-            horizontalShader.setFloatUniform("uWidth", contentWidthPx.coerceAtLeast(1f))
-            horizontalShader.setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
-            horizontalShader.setFloatUniform("uBottomEdge", bottomEdgePx)
-
-            verticalShader.setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
-            verticalShader.setFloatUniform("uFade", topFadePx, bottomFadePx)
-            verticalShader.setFloatUniform("uWidth", contentWidthPx.coerceAtLeast(1f))
-            verticalShader.setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
-            verticalShader.setFloatUniform("uBottomEdge", bottomEdgePx)
-
-            renderEffect = composeEffect
-        }
-        // The runtime effect must receive an opaque source. Chat/settings bodies
-        // are intentionally transparent so Scaffold can draw the theme behind
-        // them; blurring that transparent layer spreads alpha out of text/cards
-        // and can make the entire body disappear at a large radius. Draw the
-        // same theme background *inside* the effect layer, then draw the actual
-        // body on top. This keeps alpha at 1 without adding a covering overlay.
-        .drawWithContent {
-            drawRect(sourceBackground)
-            drawContent()
-        }
+    measured.graphicsLayer { renderEffect = composeEffect }
 }
 
 internal fun arborBlurProgress(progress: Float): Float {
@@ -187,7 +140,7 @@ internal fun arborBlurProgress(progress: Float): Float {
 fun Modifier.arborBackdropBlur(
     state: ArborBackdropBlurState,
     enabled: Boolean,
-    progress: () -> Float,
+    progress: Float,
     strength: Float,
     tint: Color,
     edge: ArborBlurEdge = ArborBlurEdge.TOP,
@@ -195,26 +148,14 @@ fun Modifier.arborBackdropBlur(
     fadeDistance: Dp = if (edge == ArborBlurEdge.TOP) DEFAULT_TOP_FADE_DP.dp else DEFAULT_BOTTOM_FADE_DP.dp,
     overlayDistance: Dp = fadeDistance,
 ): Modifier = composed {
-    val latestProgress by rememberUpdatedState(progress)
-    val stableProgressReader = remember { { latestProgress().coerceIn(0f, 1f) } }
-    val radiusScaleDp = if (enabled) {
-        maxRadius.value * strength.coerceIn(0f, 1f)
+    val easedProgress = arborBlurProgress(progress)
+    val radiusDp = if (enabled) {
+        maxRadius.value * strength.coerceIn(0f, 1f) * easedProgress
     } else {
         0f
     }
 
-    SideEffect {
-        state.update(
-            edge = edge,
-            radiusScaleDp = radiusScaleDp,
-            fadeDp = fadeDistance.value,
-            // A high-radius effect must not be active over an expanded large
-            // header. Drive it directly from Material's scroll amount at the
-            // render layer: no recomposition, no timer, and no always-on body
-            // effect which can blank transparent content on some GPUs.
-            progressReader = stableProgressReader,
-        )
-    }
+    SideEffect { state.update(edge, radiusDp, fadeDistance.value) }
     DisposableEffect(state, edge) { onDispose { state.clear(edge) } }
 
     val anchored = if (edge == ArborBlurEdge.BOTTOM) {
@@ -227,117 +168,94 @@ fun Modifier.arborBackdropBlur(
 
     val overlayDistancePx = with(LocalDensity.current) { overlayDistance.toPx() }
 
-    anchored.drawWithCache {
+    anchored.drawWithContent {
+        val overlayProgress = if (enabled) easedProgress else 1f
+        val peak = tint.copy(alpha = tint.alpha * overlayProgress)
+        val middle = tint.copy(alpha = tint.alpha * overlayProgress * 0.58f)
+        val feather = tint.copy(alpha = tint.alpha * overlayProgress * 0.12f)
         val extent = overlayDistancePx.coerceIn(1f, size.height.coerceAtLeast(1f))
-        val brush = when (edge) {
-            ArborBlurEdge.TOP -> Brush.verticalGradient(
-                colorStops = arrayOf(
-                    0f to tint,
-                    0.30f to tint.copy(alpha = tint.alpha * 0.58f),
-                    0.62f to tint.copy(alpha = tint.alpha * 0.12f),
-                    1f to Color.Transparent,
-                ),
-                startY = 0f,
-                endY = extent,
-            )
+        when (edge) {
+            ArborBlurEdge.TOP -> {
+                val brush = Brush.verticalGradient(
+                    colorStops = arrayOf(
+                        0f to peak,
+                        0.30f to middle,
+                        0.62f to feather,
+                        1f to Color.Transparent,
+                    ),
+                    startY = 0f,
+                    endY = extent,
+                )
+                drawRect(brush = brush, size = androidx.compose.ui.geometry.Size(size.width, extent))
+            }
             ArborBlurEdge.BOTTOM -> {
                 val startY = (size.height - extent).coerceAtLeast(0f)
-                Brush.verticalGradient(
+                val brush = Brush.verticalGradient(
                     colorStops = arrayOf(
                         0f to Color.Transparent,
-                        0.38f to tint.copy(alpha = tint.alpha * 0.12f),
-                        0.70f to tint.copy(alpha = tint.alpha * 0.58f),
-                        1f to tint,
+                        0.38f to feather,
+                        0.70f to middle,
+                        1f to peak,
                     ),
                     startY = startY,
                     endY = size.height,
                 )
-            }
-        }
-
-        onDrawWithContent {
-            // This is only a faint readability wash. The previous 0.68..1.0
-            // multiplier effectively painted a surface over everything below the
-            // chrome and hid the content that the blur was meant to reveal.
-            val overlayProgress = if (enabled) {
-                MIN_CHROME_TINT_PROGRESS +
-                    CHROME_TINT_SCROLL_RANGE * arborBlurProgress(stableProgressReader())
-            } else {
-                0f
-            }
-            when (edge) {
-                ArborBlurEdge.TOP -> drawRect(
+                drawRect(
                     brush = brush,
-                    alpha = overlayProgress,
+                    topLeft = androidx.compose.ui.geometry.Offset(0f, startY),
                     size = androidx.compose.ui.geometry.Size(size.width, extent),
                 )
-                ArborBlurEdge.BOTTOM -> {
-                    val startY = (size.height - extent).coerceAtLeast(0f)
-                    drawRect(
-                        brush = brush,
-                        alpha = overlayProgress,
-                        topLeft = androidx.compose.ui.geometry.Offset(0f, startY),
-                        size = androidx.compose.ui.geometry.Size(size.width, extent),
-                    )
-                }
             }
-            drawContent()
         }
+        drawContent()
     }
 }
 
-
 private const val MIN_VISIBLE_RADIUS_PX = 0.35f
-private const val MIN_CHROME_TINT_PROGRESS = 0.10f
-private const val CHROME_TINT_SCROLL_RANGE = 0.20f
 private const val DEFAULT_MAX_RADIUS_DP = 24f
 private const val DEFAULT_TOP_FADE_DP = 64f
 private const val DEFAULT_BOTTOM_FADE_DP = 152f
 
 /**
- * Stable two-pass 17-tap Gaussian kernel.
+ * Dense seventeen-tap separable Gaussian kernel.
  *
- * Every sample is clamped to the source bounds. Android's runtime-shader child
- * otherwise returns transparent black outside the layer, which destroyed alpha
- * near the chrome edges at Arbor's larger radius.
+ * The old high-radius nine-tap kernel left large gaps between samples, which
+ * appeared as a grid on high-density displays. These taps cover the requested
+ * radius uniformly and rely on bilinear texture filtering between samples.
  */
 private val EDGE_BLUR_SHADER = """
     uniform shader content;
     uniform float2 uBlur;
     uniform float2 uFade;
-    uniform float uWidth;
     uniform float uHeight;
     uniform float uBottomEdge;
     uniform float2 uDirection;
 
     half4 main(float2 coord) {
-        float2 lower = float2(0.0, 0.0);
-        float2 upper = float2(max(uWidth - 1.0, 0.0), max(uHeight - 1.0, 0.0));
-        float2 safeCoord = clamp(coord, lower, upper);
-        float topMix = saturate(1.0 - safeCoord.y / max(uFade.x, 1.0));
+        float topMix = saturate(1.0 - coord.y / max(uFade.x, 1.0));
         float bottomEdge = clamp(uBottomEdge, 0.0, uHeight);
-        float bottomMix = saturate(1.0 - (bottomEdge - safeCoord.y) / max(uFade.y, 1.0));
+        float bottomMix = saturate(1.0 - (bottomEdge - coord.y) / max(uFade.y, 1.0));
         float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
-        if (radius < 0.35) return content.eval(safeCoord);
+        if (radius < 0.35) return content.eval(coord);
 
         float2 sampleStep = uDirection * (radius / 8.0);
-        half4 accum = half4(content.eval(safeCoord)) * 0.103152619;
-        accum += half4(content.eval(clamp(safeCoord + sampleStep * 1.0, lower, upper))) * 0.099978946;
-        accum += half4(content.eval(clamp(safeCoord - sampleStep * 1.0, lower, upper))) * 0.099978946;
-        accum += half4(content.eval(clamp(safeCoord + sampleStep * 2.0, lower, upper))) * 0.091031867;
-        accum += half4(content.eval(clamp(safeCoord - sampleStep * 2.0, lower, upper))) * 0.091031867;
-        accum += half4(content.eval(clamp(safeCoord + sampleStep * 3.0, lower, upper))) * 0.077863682;
-        accum += half4(content.eval(clamp(safeCoord - sampleStep * 3.0, lower, upper))) * 0.077863682;
-        accum += half4(content.eval(clamp(safeCoord + sampleStep * 4.0, lower, upper))) * 0.062565226;
-        accum += half4(content.eval(clamp(safeCoord - sampleStep * 4.0, lower, upper))) * 0.062565226;
-        accum += half4(content.eval(clamp(safeCoord + sampleStep * 5.0, lower, upper))) * 0.047226710;
-        accum += half4(content.eval(clamp(safeCoord - sampleStep * 5.0, lower, upper))) * 0.047226710;
-        accum += half4(content.eval(clamp(safeCoord + sampleStep * 6.0, lower, upper))) * 0.033488752;
-        accum += half4(content.eval(clamp(safeCoord - sampleStep * 6.0, lower, upper))) * 0.033488752;
-        accum += half4(content.eval(clamp(safeCoord + sampleStep * 7.0, lower, upper))) * 0.022308318;
-        accum += half4(content.eval(clamp(safeCoord - sampleStep * 7.0, lower, upper))) * 0.022308318;
-        accum += half4(content.eval(clamp(safeCoord + sampleStep * 8.0, lower, upper))) * 0.013960189;
-        accum += half4(content.eval(clamp(safeCoord - sampleStep * 8.0, lower, upper))) * 0.013960189;
+        half4 accum = half4(content.eval(coord)) * 0.103152619;
+        accum += half4(content.eval(coord + sampleStep * 1.0)) * 0.099978946;
+        accum += half4(content.eval(coord - sampleStep * 1.0)) * 0.099978946;
+        accum += half4(content.eval(coord + sampleStep * 2.0)) * 0.091031867;
+        accum += half4(content.eval(coord - sampleStep * 2.0)) * 0.091031867;
+        accum += half4(content.eval(coord + sampleStep * 3.0)) * 0.077863682;
+        accum += half4(content.eval(coord - sampleStep * 3.0)) * 0.077863682;
+        accum += half4(content.eval(coord + sampleStep * 4.0)) * 0.062565226;
+        accum += half4(content.eval(coord - sampleStep * 4.0)) * 0.062565226;
+        accum += half4(content.eval(coord + sampleStep * 5.0)) * 0.047226710;
+        accum += half4(content.eval(coord - sampleStep * 5.0)) * 0.047226710;
+        accum += half4(content.eval(coord + sampleStep * 6.0)) * 0.033488752;
+        accum += half4(content.eval(coord - sampleStep * 6.0)) * 0.033488752;
+        accum += half4(content.eval(coord + sampleStep * 7.0)) * 0.022308318;
+        accum += half4(content.eval(coord - sampleStep * 7.0)) * 0.022308318;
+        accum += half4(content.eval(coord + sampleStep * 8.0)) * 0.013960189;
+        accum += half4(content.eval(coord - sampleStep * 8.0)) * 0.013960189;
         return accum;
     }
 """.trimIndent()

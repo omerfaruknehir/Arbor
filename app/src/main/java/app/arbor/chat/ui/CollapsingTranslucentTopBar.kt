@@ -42,6 +42,8 @@ fun CollapsingTranslucentTopBar(
     blurStrength: Float = 0.7f,
     blurArea: Dp = 88.dp,
 ) {
+    val collapse = scrollBehavior.state.collapsedFraction.coerceIn(0f, 1f)
+    val travel = arborBlurProgress(collapse)
     val density = LocalDensity.current
 
     Box(
@@ -50,7 +52,7 @@ fun CollapsingTranslucentTopBar(
             .arborBackdropBlur(
                 state = blurState,
                 enabled = blurEnabled,
-                progress = { scrollBehavior.state.collapsedFraction },
+                progress = collapse,
                 strength = blurStrength,
                 tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
                 fadeDistance = blurArea,
@@ -70,11 +72,12 @@ fun CollapsingTranslucentTopBar(
 
         val expandedX = 16.dp
         val collapsedX = 56.dp
-        val titleTravelXPx = with(density) { (expandedX - collapsedX).toPx() }
+        val titleTranslationX = with(density) { ((expandedX - collapsedX) * (1f - travel)).toPx() }
         // The compact title is centered in the same 64 dp row as the
         // navigation icon. Translation starts from that exact baseline, so the
         // fully collapsed state cannot drift upward with font metrics.
-        val titleTravelYPx = with(density) { 58.dp.toPx() }
+        val titleTranslationY = with(density) { (58.dp * (1f - travel)).toPx() }
+        val titleScale = 1f + 0.18f * (1f - travel)
 
         Box(
             modifier = Modifier
@@ -83,10 +86,8 @@ fun CollapsingTranslucentTopBar(
                 .statusBarsPadding()
                 .height(64.dp)
                 .graphicsLayer {
-                    val travel = arborBlurProgress(scrollBehavior.state.collapsedFraction)
-                    translationX = titleTravelXPx * (1f - travel)
-                    translationY = titleTravelYPx * (1f - travel)
-                    val titleScale = 1f + 0.18f * (1f - travel)
+                    translationX = titleTranslationX
+                    translationY = titleTranslationY
                     scaleX = titleScale
                     scaleY = titleScale
                     transformOrigin = TransformOrigin(0f, 0.5f)
