@@ -7,9 +7,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -91,24 +89,24 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import kotlin.math.abs
+import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.geometry.Offset
@@ -143,33 +141,11 @@ import coil.compose.AsyncImage
 import app.arbor.chat.sandbox.UbuntuExecutionResult
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import java.io.File
 import java.util.UUID
 
 private val ChatMessageJson = Json { ignoreUnknownKeys = true }
-
-
-internal fun isTimelineWorkingActive(
-    events: List<MessageTimelineEvent>,
-    isLastSegment: Boolean,
-    messageStreaming: Boolean,
-): Boolean {
-    val hasRunningTool = events.any { it.status == "running" }
-    val reasoningStillActive = messageStreaming && isLastSegment &&
-        events.lastOrNull()?.kind == "reasoning"
-    return hasRunningTool || reasoningStillActive
-}
-
-internal fun isLegacyWorkingActive(
-    traces: List<ToolTraceEvent>,
-    reasoningText: String,
-    responseTextStarted: Boolean,
-    messageStreaming: Boolean,
-): Boolean = traces.any { it.status == "running" } ||
-    (messageStreaming && reasoningText.isNotBlank() && !responseTextStarted && traces.isEmpty())
-
 internal fun calculateComposerChromeProgress(
     firstVisibleItemIndex: Int,
     firstVisibleItemScrollOffset: Int,
@@ -211,17 +187,16 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val chromeStartPx = with(density) { 56.dp.roundToPx() }
     val chromeEndPx = with(density) { 176.dp.roundToPx() }
     val relockThresholdPx = with(density) { 2.dp.roundToPx() }
-    val autoScrollMinVelocityPxPerSecond = with(density) { 90.dp.toPx() }
-    val autoScrollMaxVelocityPxPerSecond = with(density) { 1_200.dp.toPx() }
-    val autoScrollAccelerationPxPerSecondSquared = with(density) { 3_600.dp.toPx() }
     var followLatest by remember(conversation?.id) { mutableStateOf(true) }
+    var measuredLatestNodeId by remember(conversation?.id) { mutableStateOf<String?>(null) }
+    var measuredLatestHeightPx by remember(conversation?.id) { mutableIntStateOf(0) }
     var searchFocusHandled by remember(conversation?.id, focusedMessageNodeId) { mutableStateOf(false) }
     val userScrollConnection = remember(conversation?.id) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (source == NestedScrollSource.UserInput && available.y != 0f) {
-                    // Detach on the first real drag delta. Programmatic follow
-                    // scrolling uses the list scroll API and cannot release it.
+                    // Detach on the first real drag delta. Programmatic follow and
+                    // viewport compensation use SideEffect, so they cannot release it.
                     followLatest = false
                 }
                 return Offset.Zero
@@ -249,6 +224,8 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         modelMenu = false
         chatMenu = false
         followLatest = true
+        measuredLatestNodeId = null
+        measuredLatestHeightPx = 0
         messageListState.scrollToItem(0)
         topAppBarState.contentOffset = 0f
         topAppBarState.heightOffset = 0f
@@ -280,20 +257,13 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         }
     }
 
-    LaunchedEffect(
-        conversation?.id,
-        generating,
-        followLatest,
-        autoScrollMinVelocityPxPerSecond,
-        autoScrollMaxVelocityPxPerSecond,
-        autoScrollAccelerationPxPerSecondSquared,
-    ) {
-        if (!generating || !followLatest) return@LaunchedEffect
+    LaunchedEffect(followLatest, generating, conversation?.id, messageListState) {
+        if (!followLatest) return@LaunchedEffect
 
-        var velocityPxPerSecond = 0f
-        while (true) {
-            // Sleep while the list is already pinned. A streaming layout update
-            // wakes this flow only when it produces a real distance from item 0.
+        // One long-lived follower owns programmatic scrolling. Streaming updates
+        // only change layout; they never cancel and restart a fresh animation for
+        // every token, thinking update, or tool event.
+        while (followLatest) {
             snapshotFlow {
                 Triple(
                     messageListState.isScrollInProgress,
@@ -301,57 +271,16 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     messageListState.firstVisibleItemScrollOffset,
                 )
             }.first { (scrolling, index, offset) ->
-                !scrolling && (index > 0 || offset > 0)
+                !scrolling && (index > 0 || offset > relockThresholdPx)
             }
 
-            if (messageListState.firstVisibleItemIndex > 0) {
-                // This is only expected after an explicit re-lock or restoration;
-                // do one ordinary list animation, never one animation per token.
-                messageListState.animateScrollToItem(0)
-                velocityPxPerSecond = 0f
-                continue
-            }
+            if (!followLatest) break
+            messageListState.animateScrollToItem(0)
 
-            // Hold one scroll mutation for the whole catch-up. This avoids
-            // acquiring the LazyList scroll mutex and toggling scroll state on
-            // every token/frame, which was visible as micro-stutter.
-            messageListState.scroll(MutatePriority.Default) {
-                var previousFrameNanos = withFrameNanos { it }
-                while (
-                    followLatest &&
-                    generating &&
-                    messageListState.firstVisibleItemIndex == 0 &&
-                    messageListState.firstVisibleItemScrollOffset > 0
-                ) {
-                    val frameNanos = withFrameNanos { it }
-                    val deltaSeconds = ((frameNanos - previousFrameNanos) / 1_000_000_000f)
-                        .coerceIn(0.001f, 0.05f)
-                    previousFrameNanos = frameNanos
-
-                    val distancePx = messageListState.firstVisibleItemScrollOffset.toFloat()
-                    val targetVelocity = (autoScrollMinVelocityPxPerSecond + distancePx * 10f)
-                        .coerceAtMost(autoScrollMaxVelocityPxPerSecond)
-                    val velocityDelta = autoScrollAccelerationPxPerSecondSquared * deltaSeconds
-                    velocityPxPerSecond = when {
-                        velocityPxPerSecond < targetVelocity ->
-                            (velocityPxPerSecond + velocityDelta).coerceAtMost(targetVelocity)
-                        velocityPxPerSecond > targetVelocity ->
-                            (velocityPxPerSecond - velocityDelta).coerceAtLeast(targetVelocity)
-                        else -> targetVelocity
-                    }
-
-                    val stepPx = (velocityPxPerSecond * deltaSeconds)
-                        .coerceAtLeast(0.75f)
-                        .coerceAtMost(distancePx)
-                    val consumed = scrollBy(-stepPx)
-                    if (distancePx <= relockThresholdPx * 2f || abs(consumed) < 0.05f) {
-                        val remainder = messageListState.firstVisibleItemScrollOffset.toFloat()
-                        if (remainder > 0f) scrollBy(-remainder)
-                        break
-                    }
-                }
-            }
-            velocityPxPerSecond = 0f
+            if (!generating &&
+                messageListState.firstVisibleItemIndex == 0 &&
+                messageListState.firstVisibleItemScrollOffset <= relockThresholdPx
+            ) break
         }
     }
 
@@ -480,7 +409,29 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                 viewModel = viewModel,
                                 reasoningVisibility = conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
                                 activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
-                                modifier = Modifier,
+                                modifier = if (index == 0) {
+                                    Modifier.onSizeChanged { size ->
+                                        if (measuredLatestNodeId != message.nodeId) {
+                                            measuredLatestNodeId = message.nodeId
+                                            measuredLatestHeightPx = size.height
+                                        } else {
+                                            val delta = size.height - measuredLatestHeightPx
+                                            measuredLatestHeightPx = size.height
+                                            if (
+                                                delta != 0 &&
+                                                generating &&
+                                                !followLatest &&
+                                                messageListState.firstVisibleItemIndex == 0
+                                            ) {
+                                                // Reverse layout otherwise anchors the growing
+                                                // newest item and visibly nudges detached readers.
+                                                // Apply the exact counter-delta synchronously in
+                                                // this layout frame, before it can be displayed.
+                                                messageListState.dispatchRawDelta(delta.toFloat())
+                                            }
+                                        }
+                                    }
+                                } else Modifier,
                             )
                         }
                     }
@@ -493,8 +444,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             ) {
                 SmallFloatingActionButton(
                     onClick = {
-                        // Wake the single persistent follow controller. Starting a
-                        // second animation here used to race it and create a hitch.
+                        // Enabling the lock starts the single smooth follower.
                         followLatest = true
                     },
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -670,11 +620,10 @@ private fun MessageCard(
                     )
                 } else {
                     LegacyWorkingBlock(
-                        text = displayReasoning,
-                        toolTraceJson = message.toolTraceJson,
-                        streaming = message.status == MessageStatus.STREAMING,
-                        responseTextStarted = displayContent.isNotBlank(),
-                        visibility = reasoningVisibility,
+                        displayReasoning,
+                        message.toolTraceJson,
+                        message.status == MessageStatus.STREAMING,
+                        reasoningVisibility,
                     )
                     if (displayContent.isNotBlank()) RichMessage(
                         operationScope = message.nodeId,
@@ -775,17 +724,13 @@ private fun OrderedMessageTimeline(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         segments.forEachIndexed { index, segment ->
             if (segment.working) {
-                val segmentActive = isTimelineWorkingActive(
-                    events = segment.events,
-                    isLastSegment = index == segments.lastIndex,
-                    messageStreaming = streaming,
-                )
                 TimelineWorkingBlock(
-                    events = segment.events,
-                    active = segmentActive,
-                    visibility = visibility,
-                    usedSourceUrls = usedSourceUrls,
-                    viewModel = viewModel,
+                    segment.events,
+                    streaming,
+                    streaming && index == segments.lastIndex,
+                    visibility,
+                    usedSourceUrls,
+                    viewModel,
                 )
             } else {
                 segment.events.forEach { event ->
@@ -824,28 +769,19 @@ private fun OrderedMessageTimeline(
 @Composable
 private fun TimelineWorkingBlock(
     events: List<MessageTimelineEvent>,
+    streaming: Boolean,
     active: Boolean,
     visibility: ReasoningVisibility,
     usedSourceUrls: Set<String>,
     viewModel: ChatViewModel,
 ) {
+    val initiallyExpanded = when (visibility) {
+        ReasoningVisibility.ALWAYS -> true
+        ReasoningVisibility.SHOW_WHILE_WORKING -> streaming
+        ReasoningVisibility.COLLAPSED -> false
+    }
     if (events.isEmpty()) return
-    var expanded by rememberSaveable(events.first().id, visibility) {
-        mutableStateOf(
-            when (visibility) {
-                ReasoningVisibility.ALWAYS -> true
-                ReasoningVisibility.SHOW_WHILE_WORKING -> active
-                ReasoningVisibility.COLLAPSED -> false
-            },
-        )
-    }
-    LaunchedEffect(active, visibility) {
-        when (visibility) {
-            ReasoningVisibility.ALWAYS -> expanded = true
-            ReasoningVisibility.COLLAPSED -> expanded = false
-            ReasoningVisibility.SHOW_WHILE_WORKING -> expanded = active
-        }
-    }
+    var expanded by remember(events.first().id, visibility, streaming) { mutableStateOf(initiallyExpanded) }
     StreamingFade(transitionKey = "working:${events.first().id}", enabled = active) {
         Surface(
             onClick = { expanded = !expanded },
@@ -921,37 +857,19 @@ private fun LegacyWorkingBlock(
     text: String,
     toolTraceJson: String,
     streaming: Boolean,
-    responseTextStarted: Boolean,
     visibility: ReasoningVisibility,
 ) {
     val traces = remember(toolTraceJson) {
         runCatching { ChatMessageJson.decodeFromString<List<ToolTraceEvent>>(toolTraceJson) }.getOrDefault(emptyList())
     }
     val hasContent = text.isNotBlank() || traces.isNotEmpty()
+    val initiallyExpanded = when (visibility) {
+        ReasoningVisibility.ALWAYS -> true
+        ReasoningVisibility.SHOW_WHILE_WORKING -> streaming
+        ReasoningVisibility.COLLAPSED -> false
+    }
     if (!hasContent) return
-    val active = isLegacyWorkingActive(
-        traces = traces,
-        reasoningText = text,
-        responseTextStarted = responseTextStarted,
-        messageStreaming = streaming,
-    )
-    val legacyStateKey = traces.firstOrNull()?.id ?: "legacy-reasoning"
-    var expanded by rememberSaveable(legacyStateKey, visibility) {
-        mutableStateOf(
-            when (visibility) {
-                ReasoningVisibility.ALWAYS -> true
-                ReasoningVisibility.SHOW_WHILE_WORKING -> active
-                ReasoningVisibility.COLLAPSED -> false
-            },
-        )
-    }
-    LaunchedEffect(active, visibility) {
-        when (visibility) {
-            ReasoningVisibility.ALWAYS -> expanded = true
-            ReasoningVisibility.COLLAPSED -> expanded = false
-            ReasoningVisibility.SHOW_WHILE_WORKING -> expanded = active
-        }
-    }
+    var expanded by remember(streaming, visibility) { mutableStateOf(initiallyExpanded) }
     Surface(
         onClick = { expanded = !expanded },
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -960,7 +878,7 @@ private fun LegacyWorkingBlock(
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (active) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                if (streaming) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 else Icon(Icons.Outlined.Psychology, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                 Text("Working", Modifier.padding(start = 8.dp).weight(1f), fontWeight = FontWeight.Medium)
                 Text(if (expanded) "Collapse" else "Expand", style = MaterialTheme.typography.labelMedium)
@@ -969,12 +887,12 @@ private fun LegacyWorkingBlock(
                 Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (text.isNotBlank()) StreamingPlainText(
                         text = text,
-                        streaming = active && traces.isEmpty(),
+                        streaming = streaming,
                     )
                     traces.forEach { event ->
                         StreamingFade(
                             transitionKey = "legacy-tool:${event.id}",
-                            enabled = event.status == "running",
+                            enabled = streaming && event == traces.lastOrNull(),
                         ) {
                             Column {
                                 Text("${event.label} • ${event.status}", style = MaterialTheme.typography.labelMedium, color = if (event.status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
