@@ -10,15 +10,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 
 internal const val StreamingFadeDurationMillis = 180
@@ -60,39 +53,7 @@ internal fun StreamingFade(
             alpha.snapTo(1f)
         }
     }
-    Box(
-        modifier.graphicsLayer {
-            this.alpha = alpha.value
-            compositingStrategy = CompositingStrategy.ModulateAlpha
-        },
-    ) {
+    Box(modifier.graphicsLayer { this.alpha = alpha.value }) {
         content()
     }
-}
-
-/**
- * Coalesces fast token/database updates before expensive Markdown parsing.
- * The text itself updates at 20 Hz while scrolling and layer animations remain
- * frame-paced by the renderer. Final content is exposed immediately.
- */
-@Composable
-internal fun rememberBatchedStreamingText(
-    text: String,
-    streaming: Boolean,
-    intervalMillis: Long = 50L,
-): String {
-    val latestText by rememberUpdatedState(text)
-    var renderedText by remember { mutableStateOf(text) }
-    LaunchedEffect(streaming, intervalMillis) {
-        if (!streaming) {
-            renderedText = latestText
-            return@LaunchedEffect
-        }
-        while (isActive) {
-            val next = latestText
-            if (next != renderedText) renderedText = next
-            delay(intervalMillis)
-        }
-    }
-    return if (streaming) renderedText else text
 }
