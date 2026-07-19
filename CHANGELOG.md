@@ -1,3 +1,9 @@
+## 0.16.31
+
+- Smooth frame-paced chat auto-follow without per-token scroll jobs.
+- Exact detached viewport freeze during generation; reaching the true bottom re-enables follow.
+- Batched streaming Markdown updates and GPU-cheap consistent block fades.
+
 # Changelog
 
 ## 0.16.29

@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.animation.ValueAnimator
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
@@ -15,9 +14,7 @@ import android.text.SpannableString
 import android.text.Spanned
 import android.text.TextPaint
 import android.text.method.ArrowKeyMovementMethod
-import android.text.style.CharacterStyle
 import android.text.style.ClickableSpan
-import android.text.style.UpdateAppearance
 import android.text.style.ReplacementSpan
 import android.text.style.URLSpan
 import android.view.MotionEvent
@@ -121,21 +118,30 @@ fun RichMessage(
     val context = LocalContext.current
     val crashReporter = (context.applicationContext as? ArborApplication)?.container?.crashReporter
     val safeRendering by crashReporter?.renderSafeMode?.collectAsState() ?: remember { mutableStateOf(false) }
-    val blocks = remember(text) { parseBlocks(text) }
+    val renderedText = rememberBatchedStreamingText(text, streaming)
+    val blocks = remember(renderedText) { parseBlocks(renderedText) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         blocks.forEachIndexed { index, block ->
             when (block) {
-                is RichBlock.Markdown -> MarkdownBlock(
-                    markdown = block.text,
-                    key = "$index:${block.text.hashCode()}",
-                    streaming = streaming && index == blocks.lastIndex,
-                )
-                is RichBlock.Table -> MarkdownBlock(
-                    markdown = block.text,
-                    key = "table:$index:${block.text.hashCode()}",
-                    streaming = streaming && index == blocks.lastIndex,
-                    horizontallyScrollable = true,
-                )
+                is RichBlock.Markdown -> StreamingFade(
+                    transitionKey = "$operationScope:markdown:$index",
+                    enabled = streaming && index == blocks.lastIndex,
+                ) {
+                    MarkdownBlock(
+                        markdown = block.text,
+                        key = "$operationScope:markdown:$index",
+                    )
+                }
+                is RichBlock.Table -> StreamingFade(
+                    transitionKey = "$operationScope:table:$index",
+                    enabled = streaming && index == blocks.lastIndex,
+                ) {
+                    MarkdownBlock(
+                        markdown = block.text,
+                        key = "$operationScope:table:$index",
+                        horizontallyScrollable = true,
+                    )
+                }
                 is RichBlock.Code -> StreamingFade(
                     transitionKey = "$operationScope:code:$index:${block.language.lowercase()}",
                     enabled = streaming && index == blocks.lastIndex,
@@ -352,7 +358,6 @@ internal fun prepareReferenceMarkdown(markdown: String): String = ArborReference
 internal fun MarkdownBlock(
     markdown: String,
     key: String,
-    streaming: Boolean = false,
     horizontallyScrollable: Boolean = false,
 ) {
     val context = LocalContext.current
@@ -380,7 +385,6 @@ internal fun MarkdownBlock(
             MarkdownAndroidView(
                 markwon = markwon,
                 markdown = renderedMarkdown,
-                streaming = streaming,
                 textColor = color,
                 linkColor = linkColor,
                 pillBackground = pillBackground,
@@ -393,7 +397,6 @@ internal fun MarkdownBlock(
         MarkdownAndroidView(
             markwon = markwon,
             markdown = renderedMarkdown,
-            streaming = streaming,
             textColor = color,
             linkColor = linkColor,
             pillBackground = pillBackground,
@@ -414,6 +417,7 @@ internal fun StreamingPlainText(
     streaming: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val renderedText = rememberBatchedStreamingText(text, streaming)
     val color = MaterialTheme.colorScheme.onSurfaceVariant.toArgbCompat()
     val textSizeSp = MaterialTheme.typography.bodySmall.fontSize.value
     AndroidView(
@@ -431,11 +435,9 @@ internal fun StreamingPlainText(
         update = { view ->
             view.setTextColor(color)
             view.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
-            if (view.text.toString() != text) {
-                val previousLength = view.previousRenderedLength
-                view.setText(text, TextView.BufferType.SPANNABLE)
-                animateAppendedMarkdown(view, previousLength, streaming)
-                view.previousRenderedLength = view.text.length
+            if (view.renderedSource != renderedText) {
+                view.setText(renderedText, TextView.BufferType.SPANNABLE)
+                view.renderedSource = renderedText
             }
         },
         modifier = modifier.fillMaxWidth(),
@@ -446,7 +448,6 @@ internal fun StreamingPlainText(
 private fun MarkdownAndroidView(
     markwon: Markwon,
     markdown: String,
-    streaming: Boolean,
     textColor: Int,
     linkColor: Int,
     pillBackground: Int,
@@ -469,20 +470,22 @@ private fun MarkdownAndroidView(
             }
         },
         update = { view ->
-            val previousLength = view.previousRenderedLength
             view.setTextColor(textColor)
             view.setLinkTextColor(linkColor)
             view.setHorizontallyScrolling(false)
-            markwon.setMarkdown(view, markdown)
-            installReferenceSpans(
-                view = view,
-                linkColor = linkColor,
-                pillBackground = pillBackground,
-                pillForeground = pillForeground,
-                onClick = onReference,
-            )
-            animateAppendedMarkdown(view, previousLength, streaming)
-            view.previousRenderedLength = view.text.length
+            val styleKey = (((textColor * 31) + linkColor) * 31 + pillBackground) * 31 + pillForeground
+            if (view.renderedSource != markdown || view.renderedStyleKey != styleKey) {
+                markwon.setMarkdown(view, markdown)
+                installReferenceSpans(
+                    view = view,
+                    linkColor = linkColor,
+                    pillBackground = pillBackground,
+                    pillForeground = pillForeground,
+                    onClick = onReference,
+                )
+                view.renderedSource = markdown
+                view.renderedStyleKey = styleKey
+            }
         },
         modifier = modifier,
     )
@@ -490,53 +493,9 @@ private fun MarkdownAndroidView(
 
 @SuppressLint("AppCompatCustomView")
 private class ArborMarkdownTextView(context: Context) : TextView(context) {
-    var previousRenderedLength: Int = 0
-    var tokenAnimator: ValueAnimator? = null
+    var renderedSource: String = ""
+    var renderedStyleKey: Int = 0
     val selectableLinkMovementMethod = SelectableLinkMovementMethod()
-
-    override fun onDetachedFromWindow() {
-        tokenAnimator?.cancel()
-        tokenAnimator = null
-        super.onDetachedFromWindow()
-    }
-}
-
-private class StreamingAlphaSpan : CharacterStyle(), UpdateAppearance {
-    var progress: Float = 0f
-
-    override fun updateDrawState(textPaint: TextPaint) {
-        val alphaScale = StreamingFadeStartAlpha + (1f - StreamingFadeStartAlpha) * progress.coerceIn(0f, 1f)
-        textPaint.alpha = (textPaint.alpha * alphaScale).roundToInt().coerceIn(0, 255)
-    }
-}
-
-private fun animateAppendedMarkdown(view: ArborMarkdownTextView, previousLength: Int, streaming: Boolean) {
-    view.tokenAnimator?.cancel()
-    view.tokenAnimator = null
-    val currentLength = view.text.length
-    if (!streaming || currentLength <= 0 || currentLength <= previousLength) return
-
-    val start = if (previousLength in 1 until currentLength) {
-        previousLength
-    } else {
-        (currentLength - 56).coerceAtLeast(0)
-    }
-    if (start >= currentLength) return
-
-    val text = SpannableString(view.text)
-    val fadeSpan = StreamingAlphaSpan()
-    text.setSpan(fadeSpan, start, currentLength, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-    view.setText(text, TextView.BufferType.SPANNABLE)
-    view.movementMethod = view.selectableLinkMovementMethod
-
-    view.tokenAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = StreamingFadeDurationMillis.toLong()
-        addUpdateListener { animator ->
-            fadeSpan.progress = animator.animatedValue as Float
-            view.invalidate()
-        }
-        start()
-    }
 }
 
 private class SelectableLinkMovementMethod : ArrowKeyMovementMethod() {
