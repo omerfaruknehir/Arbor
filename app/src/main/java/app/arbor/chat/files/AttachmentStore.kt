@@ -22,6 +22,7 @@ class AttachmentStore(
         const val MAX_STAGED_ATTACHMENTS = 12
         const val MAX_APP_ATTACHMENT_BYTES = 2L * 1024 * 1024 * 1024
         private const val MIN_FREE_BYTES = 64L * 1024 * 1024
+        private const val MAX_EXTRACTED_TEXT_CHARS = 64_000
     }
 
     suspend fun deleteConversationFiles(conversationId: String) = withContext(Dispatchers.IO) {
@@ -71,8 +72,8 @@ class AttachmentStore(
         }
         val mime = resolver.getType(uri) ?: guessMime(safeName)
         val extractedText = when {
-            isText(mime, safeName) && file.length() <= 4L * 1024 * 1024 -> runCatching { file.readText().take(1_000_000) }.getOrNull()
-            OfficeDocumentExtractor.supports(mime, safeName) -> OfficeDocumentExtractor.extract(file, mime)
+            isText(mime, safeName) -> runCatching { readTextPrefix(file, MAX_EXTRACTED_TEXT_CHARS) }.getOrNull()
+            OfficeDocumentExtractor.supports(mime, safeName) -> OfficeDocumentExtractor.extract(file, mime, MAX_EXTRACTED_TEXT_CHARS)
             else -> null
         }
         AttachmentEntity(
@@ -110,9 +111,8 @@ class AttachmentStore(
         source.copyTo(destination, overwrite = true)
         val mime = guessMime(safeName)
         val extractedText = when {
-            isText(mime, safeName) && destination.length() <= 4L * 1024 * 1024 ->
-                runCatching { destination.readText().take(1_000_000) }.getOrNull()
-            OfficeDocumentExtractor.supports(mime, safeName) -> OfficeDocumentExtractor.extract(destination, mime)
+            isText(mime, safeName) -> runCatching { readTextPrefix(destination, MAX_EXTRACTED_TEXT_CHARS) }.getOrNull()
+            OfficeDocumentExtractor.supports(mime, safeName) -> OfficeDocumentExtractor.extract(destination, mime, MAX_EXTRACTED_TEXT_CHARS)
             else -> null
         }
         AttachmentEntity(
@@ -126,6 +126,21 @@ class AttachmentStore(
             extractedText = extractedText,
             createdAt = System.currentTimeMillis(),
         ).also { attachmentDao.upsert(it) }
+    }
+
+
+    private fun readTextPrefix(file: File, maxChars: Int): String {
+        if (!file.isFile || maxChars <= 0) return ""
+        return file.bufferedReader().use { reader ->
+            val output = StringBuilder(minOf(maxChars, 16 * 1024))
+            val buffer = CharArray(8 * 1024)
+            while (output.length < maxChars) {
+                val count = reader.read(buffer, 0, minOf(buffer.size, maxChars - output.length))
+                if (count < 0) break
+                output.append(buffer, 0, count)
+            }
+            output.toString()
+        }
     }
 
     private fun isText(mime: String, name: String): Boolean = mime.startsWith("text/") ||

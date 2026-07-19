@@ -162,7 +162,11 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
                     content = message.content + workingAppendix,
                     reasoning = if (resumable) working.reasoning else "",
                     toolTraceJson = "[]",
-                    attachments = attachmentsByMessage[message.nodeId].orEmpty(),
+                    // Only user-supplied attachments are provider inputs. Files created
+                    // and sent by the assistant remain disk-backed chat artifacts and are
+                    // represented by their tool/timeline metadata; feeding them back as
+                    // inline base64 would duplicate large generated files in memory.
+                    attachments = if (message.role == MessageRole.USER) attachmentsByMessage[message.nodeId].orEmpty() else emptyList(),
                 )
             }
         }

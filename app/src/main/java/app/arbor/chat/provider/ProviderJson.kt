@@ -1,6 +1,7 @@
 package app.arbor.chat.provider
 
 import android.util.Base64
+import android.util.Base64OutputStream
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import app.arbor.chat.data.AttachmentEntity
@@ -71,8 +72,18 @@ internal fun imageDataUrl(attachment: AttachmentEntity): String? {
 
 internal fun fileDataUrl(attachment: AttachmentEntity): String? {
     val file = File(attachment.localPath)
-    if (!file.isFile || file.length() > MAX_NATIVE_BYTES) return null
-    return runCatching { "data:${attachment.mimeType};base64," + Base64.encodeToString(file.readBytes(), Base64.NO_WRAP) }.getOrNull()
+    // JSON-based provider APIs require the base64 text to exist in memory at request
+    // assembly time. Keep that path deliberately small and stream the source into the
+    // encoder so a generated multi-megabyte text file can never allocate both the raw
+    // byte array and its larger base64 copy at once.
+    if (!file.isFile || file.length() > MAX_NATIVE_FILE_BYTES) return null
+    return runCatching {
+        val encoded = ByteArrayOutputStream(((file.length() + 2L) / 3L * 4L).toInt())
+        Base64OutputStream(encoded, Base64.NO_WRAP).use { base64 ->
+            file.inputStream().buffered(64 * 1024).use { input -> input.copyTo(base64, 64 * 1024) }
+        }
+        "data:${attachment.mimeType};base64," + encoded.toString(Charsets.US_ASCII.name())
+    }.getOrNull()
 }
 
 internal fun dataUrlMime(value: String, fallback: String): String =
@@ -89,6 +100,7 @@ internal fun parseHeaders(raw: String): Map<String, String> = try {
 
 private const val MAX_IMAGE_EDGE = 2_048
 private const val MAX_NATIVE_BYTES = 10 * 1024 * 1024
+private const val MAX_NATIVE_FILE_BYTES = 4 * 1024 * 1024
 private const val MAX_TEXT_CONTEXT = 24_000
 private const val MAX_OCR_CONTEXT = 32_000
 private const val MAX_DESCRIPTION_CONTEXT = 4_000

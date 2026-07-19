@@ -94,6 +94,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -650,10 +651,10 @@ private fun MessageCard(
                     )
                 } else {
                     LegacyWorkingBlock(
-                        displayReasoning,
-                        message.toolTraceJson,
-                        animateStreaming,
-                        reasoningVisibility,
+                        messageKey = message.nodeId,
+                        text = displayReasoning,
+                        toolTraceJson = message.toolTraceJson,
+                        streaming = animateStreaming,
                     )
                     if (displayContent.isNotBlank()) RichMessage(
                         operationScope = message.nodeId,
@@ -801,17 +802,24 @@ private fun TimelineWorkingBlock(
     events: List<MessageTimelineEvent>,
     streaming: Boolean,
     active: Boolean,
-    visibility: ReasoningVisibility,
+    @Suppress("UNUSED_PARAMETER") visibility: ReasoningVisibility,
     usedSourceUrls: Set<String>,
     viewModel: ChatViewModel,
 ) {
-    val initiallyExpanded = when (visibility) {
-        ReasoningVisibility.ALWAYS -> true
-        ReasoningVisibility.SHOW_WHILE_WORKING -> streaming
-        ReasoningVisibility.COLLAPSED -> false
-    }
     if (events.isEmpty()) return
-    var expanded by remember(events.first().id, visibility, streaming) { mutableStateOf(initiallyExpanded) }
+    val blockId = events.first().id
+    // Expansion belongs to this working block, not to chat scroll position or the
+    // message-wide streaming flag. A block opens when it becomes the active work,
+    // closes once that work finishes, and remains freely user-toggleable between
+    // those state transitions.
+    var expanded by rememberSaveable(blockId) { mutableStateOf(active) }
+    var previousActive by rememberSaveable(blockId) { mutableStateOf(active) }
+    LaunchedEffect(active) {
+        if (previousActive != active) {
+            expanded = active
+            previousActive = active
+        }
+    }
     StreamingFade(transitionKey = "working:${events.first().id}", enabled = active) {
         Surface(
             onClick = { expanded = !expanded },
@@ -884,22 +892,24 @@ private fun TimelineWorkingBlock(
 
 @Composable
 private fun LegacyWorkingBlock(
+    messageKey: String,
     text: String,
     toolTraceJson: String,
     streaming: Boolean,
-    visibility: ReasoningVisibility,
 ) {
     val traces = remember(toolTraceJson) {
         runCatching { ChatMessageJson.decodeFromString<List<ToolTraceEvent>>(toolTraceJson) }.getOrDefault(emptyList())
     }
     val hasContent = text.isNotBlank() || traces.isNotEmpty()
-    val initiallyExpanded = when (visibility) {
-        ReasoningVisibility.ALWAYS -> true
-        ReasoningVisibility.SHOW_WHILE_WORKING -> streaming
-        ReasoningVisibility.COLLAPSED -> false
-    }
     if (!hasContent) return
-    var expanded by remember(streaming, visibility) { mutableStateOf(initiallyExpanded) }
+    var expanded by rememberSaveable("legacy-working-$messageKey") { mutableStateOf(streaming) }
+    var previousActive by rememberSaveable("legacy-working-active-$messageKey") { mutableStateOf(streaming) }
+    LaunchedEffect(streaming) {
+        if (previousActive != streaming) {
+            expanded = streaming
+            previousActive = streaming
+        }
+    }
     Surface(
         onClick = { expanded = !expanded },
         color = MaterialTheme.colorScheme.surfaceContainer,
