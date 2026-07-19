@@ -21,4 +21,20 @@ class PredictiveNavigationMathTest {
         val values = (0..20).map { predictiveBackOutgoingAlpha(it / 20f) }
         values.zipWithNext().forEach { (a, b) -> assertTrue(b <= a) }
     }
+
+    @Test
+    fun cancellationBeforeFlowCompletionRollsBack() {
+        assertEquals(
+            PredictiveCancellationResolution.ROLLBACK,
+            predictiveCancellationResolution(commitStarted = false),
+        )
+    }
+
+    @Test
+    fun cancellationAfterFlowCompletionFinishesCommit() {
+        assertEquals(
+            PredictiveCancellationResolution.FINISH_COMMIT,
+            predictiveCancellationResolution(commitStarted = true),
+        )
+    }
 }
