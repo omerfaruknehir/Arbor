@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.16.31
+
+- Added a persistent velocity-limited auto-scroll controller which holds one LazyList scroll mutation during streaming catch-up.
+- Replaced full-message-per-token Markdown rendering with an append-only parser: completed prefixes are committed once and only the active tail is reparsed off the UI thread.
+- Appended Markdown, tool, and thinking text directly into retained editable buffers instead of replacing whole TextViews.
+- Replaced per-token fade animators with one frame-driven alpha span, preventing parser/layout work from starving the fade.
+- Added incremental fenced-block scanning and streaming parser regression tests.
+
 ## 0.16.29
 
 - Replaced the predictive-back commit snap with a short render-layer completion phase.

@@ -1,17 +1,21 @@
 package app.arbor.chat.ui
 
 import android.annotation.SuppressLint
+import android.animation.ValueAnimator
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.animation.ValueAnimator
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Color as AndroidColor
+import android.os.Build
+import android.os.SystemClock
 import android.net.Uri
+import android.text.Editable
 import android.text.Spannable
 import android.text.SpannableString
+import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextPaint
 import android.text.method.ArrowKeyMovementMethod
@@ -62,6 +66,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -89,7 +95,13 @@ import io.noties.markwon.ext.latex.JLatexMathPlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.tasklist.TaskListPlugin
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.jsonArray
@@ -97,8 +109,9 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.net.URLEncoder
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
-private sealed interface RichBlock {
+internal sealed interface RichBlock {
     data class Markdown(val text: String) : RichBlock
     data class Table(val text: String) : RichBlock
     data class Code(val language: String, val code: String) : RichBlock
@@ -121,18 +134,19 @@ fun RichMessage(
     val context = LocalContext.current
     val crashReporter = (context.applicationContext as? ArborApplication)?.container?.crashReporter
     val safeRendering by crashReporter?.renderSafeMode?.collectAsState() ?: remember { mutableStateOf(false) }
-    val blocks = remember(text) { parseBlocks(text) }
+    val blockParser = remember(operationScope) { StreamingRichBlockParser() }
+    val blocks = remember(blockParser, text, streaming) { blockParser.update(text, streaming) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         blocks.forEachIndexed { index, block ->
             when (block) {
                 is RichBlock.Markdown -> MarkdownBlock(
                     markdown = block.text,
-                    key = "$index:${block.text.hashCode()}",
+                    key = "$operationScope:markdown:$index",
                     streaming = streaming && index == blocks.lastIndex,
                 )
                 is RichBlock.Table -> MarkdownBlock(
                     markdown = block.text,
-                    key = "table:$index:${block.text.hashCode()}",
+                    key = "$operationScope:table:$index",
                     streaming = streaming && index == blocks.lastIndex,
                     horizontallyScrollable = true,
                 )
@@ -365,9 +379,10 @@ internal fun MarkdownBlock(
         estimateMarkdownTableWidthDp(markdown, tableViewportDp).dp
     }
     var pendingReference by remember(key) { mutableStateOf<LinkReferencePreview?>(null) }
-    val renderedMarkdown = remember(markdown) { prepareReferenceMarkdown(markdown) }
     val markwon = remember(context) {
         Markwon.builder(context)
+            .bufferType(TextView.BufferType.EDITABLE)
+            .textSetter(IncrementalMarkwonTextSetter)
             .usePlugin(StrikethroughPlugin.create())
             .usePlugin(TablePlugin.create(context))
             .usePlugin(TaskListPlugin.create(context))
@@ -379,7 +394,7 @@ internal fun MarkdownBlock(
         Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
             MarkdownAndroidView(
                 markwon = markwon,
-                markdown = renderedMarkdown,
+                markdown = markdown,
                 streaming = streaming,
                 textColor = color,
                 linkColor = linkColor,
@@ -392,7 +407,7 @@ internal fun MarkdownBlock(
     } else {
         MarkdownAndroidView(
             markwon = markwon,
-            markdown = renderedMarkdown,
+            markdown = markdown,
             streaming = streaming,
             textColor = color,
             linkColor = linkColor,
@@ -426,17 +441,25 @@ internal fun StreamingPlainText(
                 movementMethod = selectableLinkMovementMethod
                 highlightColor = AndroidColor.TRANSPARENT
                 setLineSpacing(0f, 1.08f)
+                setText("", TextView.BufferType.EDITABLE)
             }
         },
         update = { view ->
             view.setTextColor(color)
             view.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
-            if (view.text.toString() != text) {
-                val previousLength = view.previousRenderedLength
-                view.setText(text, TextView.BufferType.SPANNABLE)
+            if (view.lastSourceText != text) {
+                val previousLength = view.text.length
+                val editable = view.editableBuffer()
+                if (text.startsWith(view.lastSourceText)) {
+                    editable.append(text, view.lastSourceText.length, text.length)
+                } else {
+                    editable.replace(0, editable.length, text)
+                }
+                view.lastSourceText = text
                 animateAppendedMarkdown(view, previousLength, streaming)
                 view.previousRenderedLength = view.text.length
             }
+            if (!streaming) view.finishStreamingFade()
         },
         modifier = modifier.fillMaxWidth(),
     )
@@ -454,6 +477,14 @@ private fun MarkdownAndroidView(
     onReference: (LinkReferencePreview) -> Unit,
     modifier: Modifier,
 ) {
+    val latestRequest by rememberUpdatedState(MarkdownRenderRequest(markdown, streaming))
+    val latestOnReference by rememberUpdatedState(onReference)
+    val latestLinkColor by rememberUpdatedState(linkColor)
+    val latestPillBackground by rememberUpdatedState(pillBackground)
+    val latestPillForeground by rememberUpdatedState(pillForeground)
+    val renderer = remember(markwon) { IncrementalMarkdownRenderer(markwon) }
+    val viewReady = remember(markwon) { CompletableDeferred<ArborMarkdownTextView>() }
+
     AndroidView(
         factory = { context ->
             ArborMarkdownTextView(context).apply {
@@ -466,77 +497,386 @@ private fun MarkdownAndroidView(
                 movementMethod = selectableLinkMovementMethod
                 highlightColor = AndroidColor.TRANSPARENT
                 setLineSpacing(0f, 1.08f)
+                setText("", TextView.BufferType.EDITABLE)
+
+                // The first visible render stays synchronous to avoid a blank
+                // flash when a recycled LazyColumn item enters the viewport.
+                renderer.render(markdown, streaming)?.let { delta ->
+                    applyMarkdownDelta(
+                        markwon = markwon,
+                        delta = delta,
+                        streaming = streaming,
+                        linkColor = linkColor,
+                        pillBackground = pillBackground,
+                        pillForeground = pillForeground,
+                        onReference = { latestOnReference(it) },
+                        animateAppend = false,
+                    )
+                }
+                if (!viewReady.isCompleted) viewReady.complete(this)
             }
         },
         update = { view ->
-            val previousLength = view.previousRenderedLength
             view.setTextColor(textColor)
             view.setLinkTextColor(linkColor)
             view.setHorizontallyScrolling(false)
-            markwon.setMarkdown(view, markdown)
-            installReferenceSpans(
-                view = view,
-                linkColor = linkColor,
-                pillBackground = pillBackground,
-                pillForeground = pillForeground,
-                onClick = onReference,
-            )
-            animateAppendedMarkdown(view, previousLength, streaming)
-            view.previousRenderedLength = view.text.length
+            view.updateReferenceColors(linkColor, pillBackground, pillForeground)
+            if (!streaming) view.finishStreamingFade()
         },
         modifier = modifier,
     )
+
+    LaunchedEffect(markwon, renderer, viewReady) {
+        val view = viewReady.await()
+        snapshotFlow { latestRequest }
+            .distinctUntilChanged()
+            .conflate()
+            .collect { request ->
+                val delta = withContext(MarkdownRenderDispatcher) {
+                    renderer.render(request.source, request.streaming)
+                } ?: return@collect
+
+                view.applyMarkdownDelta(
+                    markwon = markwon,
+                    delta = delta,
+                    streaming = request.streaming,
+                    linkColor = latestLinkColor,
+                    pillBackground = latestPillBackground,
+                    pillForeground = latestPillForeground,
+                    onReference = { latestOnReference(it) },
+                    animateAppend = delta.appended,
+                )
+            }
+    }
+}
+
+private data class MarkdownRenderRequest(
+    val source: String,
+    val streaming: Boolean,
+)
+
+private data class MarkdownRenderDelta(
+    val source: String,
+    val replaceFrom: Int,
+    val replacement: Spanned,
+    val appended: Boolean,
+    val revision: Long,
+)
+
+@OptIn(ExperimentalCoroutinesApi::class)
+private val MarkdownRenderDispatcher = Dispatchers.Default.limitedParallelism(2)
+
+/**
+ * Stateful append-only Markdown renderer.
+ *
+ * Closed block prefixes are rendered exactly once. During generation only the
+ * unfinished tail (normally the current one or two paragraphs) is reparsed.
+ * When streaming ends, one complete render reconciles cross-block CommonMark
+ * constructs such as reference definitions.
+ */
+private class IncrementalMarkdownRenderer(
+    private val markwon: Markwon,
+) {
+    private var previousSource = ""
+    private var previousStreaming = false
+    private var committedSourceEnd = 0
+    private var committedRenderedLength = 0
+    private var revision = 0L
+
+    fun render(source: String, streaming: Boolean): MarkdownRenderDelta? {
+        if (source == previousSource && streaming == previousStreaming) return null
+
+        if (!streaming) {
+            val rendered = renderFragment(source)
+            revision += 1
+            val delta = MarkdownRenderDelta(
+                source = source,
+                replaceFrom = 0,
+                replacement = rendered,
+                appended = source.startsWith(previousSource) && source.length > previousSource.length,
+                revision = revision,
+            )
+            previousSource = source
+            previousStreaming = false
+            committedSourceEnd = source.length
+            committedRenderedLength = rendered.length
+            return delta
+        }
+
+        val appendOnly = source.startsWith(previousSource)
+        if (!appendOnly || !previousStreaming) {
+            committedSourceEnd = 0
+            committedRenderedLength = 0
+        }
+
+        val replaceFrom = committedRenderedLength
+        val boundary = stableMarkdownCommitBoundary(source, committedSourceEnd)
+        val newlyStableSource = source.substring(committedSourceEnd, boundary)
+        val volatileTailSource = source.substring(boundary)
+        val newlyStable = renderFragment(newlyStableSource)
+        val volatileTail = renderFragment(volatileTailSource)
+        val replacement = SpannableStringBuilder(newlyStable).append(volatileTail)
+
+        committedSourceEnd = boundary
+        committedRenderedLength += newlyStable.length
+        revision += 1
+        val delta = MarkdownRenderDelta(
+            source = source,
+            replaceFrom = replaceFrom,
+            replacement = replacement,
+            appended = appendOnly && source.length > previousSource.length,
+            revision = revision,
+        )
+        previousSource = source
+        previousStreaming = true
+        return delta
+    }
+
+    private fun renderFragment(source: String): Spanned {
+        if (source.isEmpty()) return SpannableString("")
+        return markwon.toMarkdown(prepareReferenceMarkdown(source))
+    }
+}
+
+private const val MarkdownRetainedBlockBreaks = 2
+private const val MarkdownMaximumVolatileTailChars = 12_000
+
+/**
+ * Returns a block boundary that can be committed without reparsing the whole
+ * message on the next token. Two recent block breaks are retained so list and
+ * quote continuation remains live. A very long plain-text paragraph can also
+ * be cut at whitespace, but only when it contains no inline Markdown opener.
+ */
+internal fun stableMarkdownCommitBoundary(source: String, committedEnd: Int): Int {
+    val start = committedEnd.coerceIn(0, source.length)
+    if (start == source.length) return start
+
+    val boundaries = ArrayList<Int>()
+    var index = start
+    while (index < source.length) {
+        if (source[index] == '\n') {
+            var next = index + 1
+            while (next < source.length && (source[next] == ' ' || source[next] == '\t' || source[next] == '\r')) next++
+            if (next < source.length && source[next] == '\n') {
+                boundaries += next + 1
+                index = next + 1
+                continue
+            }
+        }
+        index++
+    }
+
+    var boundary = if (boundaries.size >= MarkdownRetainedBlockBreaks) {
+        boundaries[boundaries.size - MarkdownRetainedBlockBreaks]
+    } else {
+        start
+    }
+
+    if (source.length - boundary > MarkdownMaximumVolatileTailChars && boundaries.isNotEmpty()) {
+        boundary = boundaries.last()
+    }
+
+    if (source.length - boundary > MarkdownMaximumVolatileTailChars) {
+        val target = (source.length - MarkdownMaximumVolatileTailChars).coerceAtLeast(start)
+        var soft = source.indexOf('\n', target)
+        if (soft < 0) soft = source.indexOf(' ', target)
+        if (soft in (start + 256) until source.length) {
+            val candidate = source.substring(start, soft + 1)
+            // Do not split a paragraph that might still carry inline syntax.
+            if (candidate.none { it == '`' || it == '*' || it == '_' || it == '~' || it == '[' || it == '$' }) {
+                boundary = soft + 1
+            }
+        }
+    }
+    return boundary.coerceIn(start, source.length)
+}
+
+private val IncrementalMarkwonTextSetter = Markwon.TextSetter { textView, parsed, _, onComplete ->
+    if (textView is ArborMarkdownTextView) {
+        textView.applyPendingParsedMarkdown(parsed)
+    } else {
+        textView.setText(parsed, TextView.BufferType.EDITABLE)
+    }
+    onComplete.run()
 }
 
 @SuppressLint("AppCompatCustomView")
 private class ArborMarkdownTextView(context: Context) : TextView(context) {
     var previousRenderedLength: Int = 0
-    var tokenAnimator: ValueAnimator? = null
+    var lastSourceText: String = ""
     val selectableLinkMovementMethod = SelectableLinkMovementMethod()
+    var pendingMarkdownDelta: MarkdownRenderDelta? = null
+    var lastAppliedRevision: Long = -1L
+    var lastDeltaOldLength: Int = 0
+    var lastDeltaReplaceFrom: Int = 0
+
+    private var fadeFrameScheduled = false
+    private var fadeDeadlineUptimeMillis = 0L
+    private val fadeFrame = object : Runnable {
+        override fun run() {
+            fadeFrameScheduled = false
+            val now = SystemClock.uptimeMillis()
+            invalidate()
+            if (isAttachedToWindow && now < fadeDeadlineUptimeMillis) {
+                fadeFrameScheduled = true
+                postOnAnimation(this)
+            } else {
+                clearStreamingAlphaSpans()
+            }
+        }
+    }
+
+    fun editableBuffer(): Editable {
+        val existing = text
+        if (existing is Editable) return existing
+        setText(existing, BufferType.EDITABLE)
+        return editableText
+    }
+
+    fun applyPendingParsedMarkdown(parsed: Spanned) {
+        val delta = pendingMarkdownDelta
+        val editable = editableBuffer()
+        lastDeltaOldLength = editable.length
+        val from = (delta?.replaceFrom ?: 0).coerceIn(0, editable.length)
+        lastDeltaReplaceFrom = from
+        editable.replace(from, editable.length, parsed)
+        delta?.let {
+            lastAppliedRevision = it.revision
+            lastSourceText = it.source
+        }
+        pendingMarkdownDelta = null
+    }
+
+    fun scheduleStreamingFade(deadlineUptimeMillis: Long) {
+        fadeDeadlineUptimeMillis = maxOf(fadeDeadlineUptimeMillis, deadlineUptimeMillis)
+        if (!fadeFrameScheduled && isAttachedToWindow) {
+            fadeFrameScheduled = true
+            postOnAnimation(fadeFrame)
+        }
+    }
+
+    fun finishStreamingFade() {
+        fadeDeadlineUptimeMillis = 0L
+        if (fadeFrameScheduled) {
+            removeCallbacks(fadeFrame)
+            fadeFrameScheduled = false
+        }
+        clearStreamingAlphaSpans()
+    }
+
+    fun updateReferenceColors(linkColor: Int, pillBackground: Int, pillForeground: Int) {
+        val spannable = text as? Spannable ?: return
+        spannable.getSpans(0, spannable.length, PreviewClickableSpan::class.java)
+            .forEach { it.color = linkColor }
+        spannable.getSpans(0, spannable.length, LinkPillSpan::class.java)
+            .forEach {
+                it.backgroundColor = pillBackground
+                it.foregroundColor = pillForeground
+            }
+        invalidate()
+    }
+
+    private fun clearStreamingAlphaSpans() {
+        val spannable = text as? Spannable ?: return
+        val spans = spannable.getSpans(0, spannable.length, StreamingAlphaSpan::class.java)
+        if (spans.isEmpty()) return
+        spans.forEach(spannable::removeSpan)
+        invalidate()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (SystemClock.uptimeMillis() < fadeDeadlineUptimeMillis && !fadeFrameScheduled) {
+            fadeFrameScheduled = true
+            postOnAnimation(fadeFrame)
+        }
+    }
 
     override fun onDetachedFromWindow() {
-        tokenAnimator?.cancel()
-        tokenAnimator = null
+        if (fadeFrameScheduled) removeCallbacks(fadeFrame)
+        fadeFrameScheduled = false
         super.onDetachedFromWindow()
     }
 }
 
-private class StreamingAlphaSpan : CharacterStyle(), UpdateAppearance {
-    var progress: Float = 0f
+private fun ArborMarkdownTextView.applyMarkdownDelta(
+    markwon: Markwon,
+    delta: MarkdownRenderDelta,
+    streaming: Boolean,
+    linkColor: Int,
+    pillBackground: Int,
+    pillForeground: Int,
+    onReference: (LinkReferencePreview) -> Unit,
+    animateAppend: Boolean,
+) {
+    if (delta.revision <= lastAppliedRevision) return
+    pendingMarkdownDelta = delta
+    markwon.setParsedMarkdown(this, delta.replacement)
+    installReferenceSpans(
+        view = this,
+        start = lastDeltaReplaceFrom,
+        end = text.length,
+        linkColor = linkColor,
+        pillBackground = pillBackground,
+        pillForeground = pillForeground,
+        onClick = onReference,
+    )
+    if (animateAppend) animateAppendedMarkdown(this, lastDeltaOldLength, streaming)
+    previousRenderedLength = text.length
+    if (!streaming) finishStreamingFade()
+}
 
+private class StreamingAlphaSpan(
+    private val startedAtUptimeMillis: Long,
+    private val durationMillis: Long,
+) : CharacterStyle(), UpdateAppearance {
     override fun updateDrawState(textPaint: TextPaint) {
-        val alphaScale = StreamingFadeStartAlpha + (1f - StreamingFadeStartAlpha) * progress.coerceIn(0f, 1f)
+        val elapsed = SystemClock.uptimeMillis() - startedAtUptimeMillis
+        val progress = (elapsed.toFloat() / durationMillis.coerceAtLeast(1L)).coerceIn(0f, 1f)
+        val alphaScale = StreamingFadeStartAlpha + (1f - StreamingFadeStartAlpha) * progress
         textPaint.alpha = (textPaint.alpha * alphaScale).roundToInt().coerceIn(0, 255)
     }
 }
 
 private fun animateAppendedMarkdown(view: ArborMarkdownTextView, previousLength: Int, streaming: Boolean) {
-    view.tokenAnimator?.cancel()
-    view.tokenAnimator = null
-    val currentLength = view.text.length
-    if (!streaming || currentLength <= 0 || currentLength <= previousLength) return
+    if (!streaming) {
+        view.finishStreamingFade()
+        return
+    }
+    val spannable = view.text as? Spannable ?: return
+    val currentLength = spannable.length
+    if (currentLength <= 0 || currentLength <= previousLength) return
 
     val start = if (previousLength in 1 until currentLength) {
-        previousLength
+        (previousLength - 12).coerceAtLeast(0)
     } else {
         (currentLength - 56).coerceAtLeast(0)
     }
     if (start >= currentLength) return
 
-    val text = SpannableString(view.text)
-    val fadeSpan = StreamingAlphaSpan()
-    text.setSpan(fadeSpan, start, currentLength, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-    view.setText(text, TextView.BufferType.SPANNABLE)
-    view.movementMethod = view.selectableLinkMovementMethod
-
-    view.tokenAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = StreamingFadeDurationMillis.toLong()
-        addUpdateListener { animator ->
-            fadeSpan.progress = animator.animatedValue as Float
-            view.invalidate()
-        }
-        start()
+    val durationScale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        ValueAnimator.getDurationScale()
+    } else {
+        1f
     }
+    val durationMillis = (StreamingFadeDurationMillis * durationScale).roundToLong()
+    if (durationMillis <= 0L) {
+        view.finishStreamingFade()
+        return
+    }
+
+    // Replace overlapping tail fades instead of stacking alpha multipliers.
+    spannable.getSpans(start, currentLength, StreamingAlphaSpan::class.java)
+        .forEach(spannable::removeSpan)
+    val startedAt = SystemClock.uptimeMillis()
+    spannable.setSpan(
+        StreamingAlphaSpan(startedAt, durationMillis),
+        start,
+        currentLength,
+        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+    )
+    view.scheduleStreamingFade(startedAt + durationMillis)
+    view.invalidate()
 }
 
 private class SelectableLinkMovementMethod : ArrowKeyMovementMethod() {
@@ -600,17 +940,20 @@ private class SelectableLinkMovementMethod : ArrowKeyMovementMethod() {
 
 private fun installReferenceSpans(
     view: TextView,
+    start: Int,
+    end: Int,
     linkColor: Int,
     pillBackground: Int,
     pillForeground: Int,
     onClick: (LinkReferencePreview) -> Unit,
 ) {
-    val source = view.text as? Spanned ?: return
-    val text = SpannableString(source)
-    text.getSpans(0, text.length, URLSpan::class.java).forEach { span ->
-        val start = text.getSpanStart(span)
-        val end = text.getSpanEnd(span)
-        if (start < 0 || end <= start) return@forEach
+    val text = view.text as? Spannable ?: return
+    val safeStart = start.coerceIn(0, text.length)
+    val safeEnd = end.coerceIn(safeStart, text.length)
+    text.getSpans(safeStart, safeEnd, URLSpan::class.java).forEach { span ->
+        val spanStart = text.getSpanStart(span)
+        val spanEnd = text.getSpanEnd(span)
+        if (spanStart < 0 || spanEnd <= spanStart) return@forEach
         val raw = span.url.orEmpty()
         val parsed = Uri.parse(raw)
         val kind = when (parsed.scheme?.lowercase()) {
@@ -619,21 +962,18 @@ private fun installReferenceSpans(
             else -> LinkReferenceKind.LINK
         }
         val target = if (kind == LinkReferenceKind.LINK) raw else parsed.getQueryParameter("target").orEmpty()
-        val label = text.subSequence(start, end).toString()
+        val label = text.subSequence(spanStart, spanEnd).toString()
         text.removeSpan(span)
         text.setSpan(
-            PreviewClickableSpan(linkColor) { widget ->
-                onClick(
-                    LinkReferencePreview(
-                        kind = kind,
-                        label = label,
-                        target = target,
-                        anchorBoundsInWindow = spanBoundsInWindow(widget as? TextView, start, end),
-                    ),
-                )
-            },
-            start,
-            end,
+            PreviewClickableSpan(
+                color = linkColor,
+                kind = kind,
+                label = label,
+                target = target,
+                onClick = onClick,
+            ),
+            spanStart,
+            spanEnd,
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
         )
         if (kind != LinkReferenceKind.LINK) {
@@ -643,22 +983,38 @@ private fun installReferenceSpans(
                     backgroundColor = pillBackground,
                     foregroundColor = pillForeground,
                 ),
-                start,
-                end,
+                spanStart,
+                spanEnd,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
             )
         }
     }
-    view.text = text
     view.movementMethod = (view as? ArborMarkdownTextView)?.selectableLinkMovementMethod
         ?: ArrowKeyMovementMethod.getInstance()
 }
 
 private class PreviewClickableSpan(
-    private val color: Int,
-    private val click: (View) -> Unit,
+    var color: Int,
+    private val kind: LinkReferenceKind,
+    private val label: String,
+    private val target: String,
+    private val onClick: (LinkReferencePreview) -> Unit,
 ) : ClickableSpan() {
-    override fun onClick(widget: View) = click(widget)
+    override fun onClick(widget: View) {
+        val textView = widget as? TextView
+        val spanned = textView?.text as? Spanned
+        val start = spanned?.getSpanStart(this)?.coerceAtLeast(0) ?: 0
+        val end = spanned?.getSpanEnd(this)?.coerceAtLeast(start + 1) ?: (start + 1)
+        onClick(
+            LinkReferencePreview(
+                kind = kind,
+                label = label,
+                target = target,
+                anchorBoundsInWindow = spanBoundsInWindow(textView, start, end),
+            ),
+        )
+    }
+
     override fun updateDrawState(ds: TextPaint) {
         ds.color = color
         ds.isUnderlineText = false
@@ -696,8 +1052,8 @@ private fun spanBoundsInWindow(view: TextView?, start: Int, end: Int): IntRect {
 
 private class LinkPillSpan(
     private val icon: String,
-    private val backgroundColor: Int,
-    private val foregroundColor: Int,
+    var backgroundColor: Int,
+    var foregroundColor: Int,
 ) : ReplacementSpan() {
     private val horizontalPadding = 5f
     private val verticalPadding = 1f
@@ -818,6 +1174,125 @@ private fun CodeBlock(
             }
         }
     }
+}
+
+/**
+ * Incremental top-level block scanner. It only examines bytes appended since
+ * the previous update, promotes completed fenced blocks once, and keeps just
+ * the active Markdown/code tail mutable. This prevents the old full-message
+ * fence regex and table splitter from running for every token.
+ */
+internal class StreamingRichBlockParser {
+    private val completed = mutableListOf<RichBlock>()
+    private var previousText = ""
+    private var scanOffset = 0
+    private var segmentStart = 0
+    private var inFence = false
+    private var fenceCharacter = '`'
+    private var fenceLength = 3
+    private var fenceLanguage = ""
+    private var codeContentStart = 0
+    private var currentMarkdownHasPipe = false
+
+    fun update(text: String, streaming: Boolean): List<RichBlock> {
+        if (!text.startsWith(previousText)) reset()
+        scan(text, includePartialLastLine = !streaming)
+        previousText = text
+
+        val result = ArrayList<RichBlock>(completed.size + 2)
+        result += completed
+        if (inFence) {
+            val code = text.substring(codeContentStart.coerceAtMost(text.length)).trimEnd('\r', '\n')
+            result += RichBlock.Code(fenceLanguage, code)
+        } else {
+            appendCurrentMarkdown(result, text.substring(segmentStart.coerceAtMost(text.length)))
+        }
+        return result.filterNot {
+            (it is RichBlock.Markdown && it.text.isBlank()) ||
+                (it is RichBlock.Table && it.text.isBlank())
+        }
+    }
+
+    private fun reset() {
+        completed.clear()
+        previousText = ""
+        scanOffset = 0
+        segmentStart = 0
+        inFence = false
+        fenceCharacter = '`'
+        fenceLength = 3
+        fenceLanguage = ""
+        codeContentStart = 0
+        currentMarkdownHasPipe = false
+    }
+
+    private fun scan(text: String, includePartialLastLine: Boolean) {
+        while (scanOffset < text.length) {
+            val newline = text.indexOf('\n', scanOffset)
+            if (newline < 0 && !includePartialLastLine) break
+            val lineEnd = if (newline >= 0) newline + 1 else text.length
+            val contentEnd = if (newline >= 0) newline else text.length
+            val lineStart = scanOffset
+            val line = text.substring(lineStart, contentEnd).trimEnd('\r')
+
+            if (inFence) {
+                if (isClosingFence(line, fenceCharacter, fenceLength)) {
+                    val code = text.substring(codeContentStart, lineStart).trimEnd('\r', '\n')
+                    completed += RichBlock.Code(fenceLanguage, code)
+                    inFence = false
+                    segmentStart = lineEnd
+                    currentMarkdownHasPipe = false
+                }
+            } else {
+                val opening = openingFence(line)
+                if (opening != null) {
+                    appendCurrentMarkdown(completed, text.substring(segmentStart, lineStart))
+                    inFence = true
+                    fenceCharacter = opening.character
+                    fenceLength = opening.length
+                    fenceLanguage = opening.info
+                    codeContentStart = lineEnd
+                    currentMarkdownHasPipe = false
+                } else if ('|' in line) {
+                    currentMarkdownHasPipe = true
+                }
+            }
+            scanOffset = lineEnd
+        }
+
+        if (!inFence && scanOffset < text.length && text.indexOf('|', scanOffset) >= 0) {
+            currentMarkdownHasPipe = true
+        }
+    }
+
+    private fun appendCurrentMarkdown(destination: MutableList<RichBlock>, markdown: String) {
+        if (markdown.isBlank()) return
+        if (currentMarkdownHasPipe) appendMarkdownBlocks(destination, markdown)
+        else destination += RichBlock.Markdown(markdown)
+    }
+}
+
+private data class FenceOpening(val character: Char, val length: Int, val info: String)
+
+private fun openingFence(line: String): FenceOpening? {
+    var index = 0
+    while (index < line.length && index < 3 && line[index] == ' ') index++
+    if (index >= line.length) return null
+    val character = line[index]
+    if (character != '`' && character != '~') return null
+    var end = index
+    while (end < line.length && line[end] == character) end++
+    val length = end - index
+    if (length < 3) return null
+    return FenceOpening(character, length, line.substring(end).trim())
+}
+
+private fun isClosingFence(line: String, character: Char, minimumLength: Int): Boolean {
+    var index = 0
+    while (index < line.length && index < 3 && line[index] == ' ') index++
+    var end = index
+    while (end < line.length && line[end] == character) end++
+    return end - index >= minimumLength && line.substring(end).all { it == ' ' || it == '\t' }
 }
 
 private fun parseBlocks(text: String): List<RichBlock> {

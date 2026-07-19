@@ -7,6 +7,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.combinedClickable
@@ -97,6 +98,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -109,6 +111,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.geometry.Offset
@@ -144,8 +147,6 @@ import app.arbor.chat.sandbox.UbuntuExecutionResult
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import java.io.File
 import java.util.UUID
@@ -193,6 +194,9 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val chromeStartPx = with(density) { 56.dp.roundToPx() }
     val chromeEndPx = with(density) { 176.dp.roundToPx() }
     val relockThresholdPx = with(density) { 2.dp.roundToPx() }
+    val autoScrollMinVelocityPxPerSecond = with(density) { 90.dp.toPx() }
+    val autoScrollMaxVelocityPxPerSecond = with(density) { 1_200.dp.toPx() }
+    val autoScrollAccelerationPxPerSecondSquared = with(density) { 3_600.dp.toPx() }
     var followLatest by remember(conversation?.id) { mutableStateOf(true) }
     var measuredLatestNodeId by remember(conversation?.id) { mutableStateOf<String?>(null) }
     var measuredLatestHeightPx by remember(conversation?.id) { mutableIntStateOf(0) }
@@ -289,23 +293,79 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         }
     }
 
-    LaunchedEffect(conversation?.id, messageListState, paging) {
-        snapshotFlow {
-            paging.itemSnapshotList.items.firstOrNull()?.let { it.nodeId to it.updatedAt }
-        }
-            .filterNotNull()
-            .conflate()
-            .collect {
-                if (!followLatest || paging.itemCount <= 0 || messageListState.isScrollInProgress) return@collect
-                val index = messageListState.firstVisibleItemIndex
-                val offset = messageListState.firstVisibleItemScrollOffset
-                if (index > 0 || offset > relockThresholdPx) {
-                    // Streaming updates must not launch a new scroll animation for
-                    // every token/tool event. A direct correction is cheaper and
-                    // cannot cancel an in-flight user gesture because of the guard.
-                    messageListState.scrollToItem(0)
+    LaunchedEffect(
+        conversation?.id,
+        generating,
+        followLatest,
+        autoScrollMinVelocityPxPerSecond,
+        autoScrollMaxVelocityPxPerSecond,
+        autoScrollAccelerationPxPerSecondSquared,
+    ) {
+        if (!generating || !followLatest) return@LaunchedEffect
+
+        var velocityPxPerSecond = 0f
+        while (true) {
+            // Sleep while the list is already pinned. A streaming layout update
+            // wakes this flow only when it produces a real distance from item 0.
+            snapshotFlow {
+                Triple(
+                    messageListState.isScrollInProgress,
+                    messageListState.firstVisibleItemIndex,
+                    messageListState.firstVisibleItemScrollOffset,
+                )
+            }.first { (scrolling, index, offset) ->
+                !scrolling && (index > 0 || offset > 0)
+            }
+
+            if (messageListState.firstVisibleItemIndex > 0) {
+                // This is only expected after an explicit re-lock or restoration;
+                // do one ordinary list animation, never one animation per token.
+                messageListState.animateScrollToItem(0)
+                velocityPxPerSecond = 0f
+                continue
+            }
+
+            // Hold one scroll mutation for the whole catch-up. This avoids
+            // acquiring the LazyList scroll mutex and toggling scroll state on
+            // every token/frame, which was visible as micro-stutter.
+            messageListState.scroll(MutatePriority.Default) {
+                var previousFrameNanos = withFrameNanos { it }
+                while (
+                    followLatest &&
+                    generating &&
+                    messageListState.firstVisibleItemIndex == 0 &&
+                    messageListState.firstVisibleItemScrollOffset > 0
+                ) {
+                    val frameNanos = withFrameNanos { it }
+                    val deltaSeconds = ((frameNanos - previousFrameNanos) / 1_000_000_000f)
+                        .coerceIn(0.001f, 0.05f)
+                    previousFrameNanos = frameNanos
+
+                    val distancePx = messageListState.firstVisibleItemScrollOffset.toFloat()
+                    val targetVelocity = (autoScrollMinVelocityPxPerSecond + distancePx * 10f)
+                        .coerceAtMost(autoScrollMaxVelocityPxPerSecond)
+                    val velocityDelta = autoScrollAccelerationPxPerSecondSquared * deltaSeconds
+                    velocityPxPerSecond = when {
+                        velocityPxPerSecond < targetVelocity ->
+                            (velocityPxPerSecond + velocityDelta).coerceAtMost(targetVelocity)
+                        velocityPxPerSecond > targetVelocity ->
+                            (velocityPxPerSecond - velocityDelta).coerceAtLeast(targetVelocity)
+                        else -> targetVelocity
+                    }
+
+                    val stepPx = (velocityPxPerSecond * deltaSeconds)
+                        .coerceAtLeast(0.75f)
+                        .coerceAtMost(distancePx)
+                    val consumed = scrollBy(-stepPx)
+                    if (distancePx <= relockThresholdPx * 2f || abs(consumed) < 0.05f) {
+                        val remainder = messageListState.firstVisibleItemScrollOffset.toFloat()
+                        if (remainder > 0f) scrollBy(-remainder)
+                        break
+                    }
                 }
             }
+            velocityPxPerSecond = 0f
+        }
     }
 
     LaunchedEffect(focusedMessageNodeId, paging.itemSnapshotList.items.map { it.nodeId }, searchFocusHandled) {
