@@ -16,10 +16,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -139,28 +141,41 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         RenderEffect.createChainEffect(vertical, horizontal).asComposeRenderEffect()
     }
 
-    measured.graphicsLayer {
-        val topRadiusPx = topRadiusScalePx * arborBlurProgress(topProgressReader())
-        val bottomRadiusPx = bottomRadiusScalePx * arborBlurProgress(bottomProgressReader())
-        if (topRadiusPx < MIN_VISIBLE_RADIUS_PX && bottomRadiusPx < MIN_VISIBLE_RADIUS_PX) {
-            renderEffect = null
-            return@graphicsLayer
+    val sourceBackground = MaterialTheme.colorScheme.background
+
+    measured
+        .graphicsLayer {
+            val topRadiusPx = topRadiusScalePx * arborBlurProgress(topProgressReader())
+            val bottomRadiusPx = bottomRadiusScalePx * arborBlurProgress(bottomProgressReader())
+            if (topRadiusPx < MIN_VISIBLE_RADIUS_PX && bottomRadiusPx < MIN_VISIBLE_RADIUS_PX) {
+                renderEffect = null
+                return@graphicsLayer
+            }
+
+            horizontalShader.setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
+            horizontalShader.setFloatUniform("uFade", topFadePx, bottomFadePx)
+            horizontalShader.setFloatUniform("uWidth", contentWidthPx.coerceAtLeast(1f))
+            horizontalShader.setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
+            horizontalShader.setFloatUniform("uBottomEdge", bottomEdgePx)
+
+            verticalShader.setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
+            verticalShader.setFloatUniform("uFade", topFadePx, bottomFadePx)
+            verticalShader.setFloatUniform("uWidth", contentWidthPx.coerceAtLeast(1f))
+            verticalShader.setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
+            verticalShader.setFloatUniform("uBottomEdge", bottomEdgePx)
+
+            renderEffect = composeEffect
         }
-
-        horizontalShader.setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
-        horizontalShader.setFloatUniform("uFade", topFadePx, bottomFadePx)
-        horizontalShader.setFloatUniform("uWidth", contentWidthPx.coerceAtLeast(1f))
-        horizontalShader.setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
-        horizontalShader.setFloatUniform("uBottomEdge", bottomEdgePx)
-
-        verticalShader.setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
-        verticalShader.setFloatUniform("uFade", topFadePx, bottomFadePx)
-        verticalShader.setFloatUniform("uWidth", contentWidthPx.coerceAtLeast(1f))
-        verticalShader.setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
-        verticalShader.setFloatUniform("uBottomEdge", bottomEdgePx)
-
-        renderEffect = composeEffect
-    }
+        // The runtime effect must receive an opaque source. Chat/settings bodies
+        // are intentionally transparent so Scaffold can draw the theme behind
+        // them; blurring that transparent layer spreads alpha out of text/cards
+        // and can make the entire body disappear at a large radius. Draw the
+        // same theme background *inside* the effect layer, then draw the actual
+        // body on top. This keeps alpha at 1 without adding a covering overlay.
+        .drawWithContent {
+            drawRect(sourceBackground)
+            drawContent()
+        }
 }
 
 internal fun arborBlurProgress(progress: Float): Float {
@@ -193,10 +208,11 @@ fun Modifier.arborBackdropBlur(
             edge = edge,
             radiusScaleDp = radiusScaleDp,
             fadeDp = fadeDistance.value,
-            // Agora keeps the optical blur fixed and lets scrolling move
-            // content through the blurred edge. Tying radius to app-bar
-            // collapse made Arbor's blur disappear, pulse, and look broken.
-            progressReader = FULL_PROGRESS_READER,
+            // A high-radius effect must not be active over an expanded large
+            // header. Drive it directly from Material's scroll amount at the
+            // render layer: no recomposition, no timer, and no always-on body
+            // effect which can blank transparent content on some GPUs.
+            progressReader = stableProgressReader,
         )
     }
     DisposableEffect(state, edge) { onDispose { state.clear(edge) } }
@@ -270,7 +286,6 @@ fun Modifier.arborBackdropBlur(
     }
 }
 
-private val FULL_PROGRESS_READER: () -> Float = { 1f }
 
 private const val MIN_VISIBLE_RADIUS_PX = 0.35f
 private const val MIN_CHROME_TINT_PROGRESS = 0.10f
