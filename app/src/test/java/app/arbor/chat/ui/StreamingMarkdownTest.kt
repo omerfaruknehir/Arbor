@@ -22,6 +22,13 @@ class StreamingMarkdownTest {
     }
 
     @Test
+    fun renderedPrefixTracksOnlyChangedSuffix() {
+        assertEquals(6, commonRenderedPrefixLength("hello world", "hello there"))
+        assertEquals(3, commonRenderedPrefixLength("abc", "abcdef"))
+        assertEquals(0, commonRenderedPrefixLength("old", "new"))
+    }
+
+    @Test
     fun streamingBlockParserPromotesAFencedBlockOnce() {
         val parser = StreamingRichBlockParser()
 

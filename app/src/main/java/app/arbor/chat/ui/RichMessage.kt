@@ -498,24 +498,11 @@ private fun MarkdownAndroidView(
                 setLineSpacing(0f, 1.08f)
                 setText("", TextView.BufferType.EDITABLE)
 
-                // Streaming content is displayed immediately as an append-only
-                // editable tail. Closed Markdown blocks are promoted to styled
-                // spans asynchronously; the active block is never reparsed for
-                // every token.
+                // Source characters are appended synchronously. The renderer
+                // styles only the mutable Markdown block and commits completed
+                // blocks once, so streaming and final output share the same
+                // Markwon path without reparsing the whole message.
                 syncSourceText(markdown, streaming, animateAppend = false)
-                if (!streaming) {
-                    renderer.render(markdown, streaming)?.let { delta ->
-                        applyMarkdownDelta(
-                            markwon = markwon,
-                            delta = delta,
-                            streaming = false,
-                            linkColor = linkColor,
-                            pillBackground = pillBackground,
-                            pillForeground = pillForeground,
-                            onReference = { latestOnReference(it) },
-                        )
-                    }
-                }
                 if (!viewReady.isCompleted) viewReady.complete(this)
             }
         },
@@ -539,7 +526,7 @@ private fun MarkdownAndroidView(
                     renderer.render(request.source, request.streaming)
                 } ?: return@collect
 
-                view.applyMarkdownDelta(
+                val applied = view.applyMarkdownDelta(
                     markwon = markwon,
                     delta = delta,
                     streaming = request.streaming,
@@ -548,6 +535,7 @@ private fun MarkdownAndroidView(
                     pillForeground = latestPillForeground,
                     onReference = { latestOnReference(it) },
                 )
+                if (applied) renderer.commit(delta)
             }
     }
 }
@@ -560,87 +548,109 @@ private data class MarkdownRenderRequest(
 private data class MarkdownRenderDelta(
     val source: String,
     val replaceFrom: Int,
-    val sourceCharsToReplace: Int,
     val replacement: Spanned,
-    val replaceAll: Boolean,
-    val validatedSourcePrefixEnd: Int,
+    val fadeFrom: Int?,
     val revision: Long,
+    val baseAppliedRevision: Long,
+    val nextCommittedSourceEnd: Int,
+    val nextCommittedRenderedLength: Int,
+    val nextMutableRenderedText: String,
+    val nextStreaming: Boolean,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
 private val MarkdownRenderDispatcher = Dispatchers.Default.limitedParallelism(2)
 
 /**
- * Incremental Markdown promotion planner.
+ * Incremental Markdown renderer.
  *
- * The visible active tail remains ordinary editable text and receives token
- * appends synchronously. This renderer runs only when a complete block becomes
- * stable, replacing that raw source slice with its styled Markwon span. The
- * whole message is parsed exactly once when streaming ends.
+ * Completed blocks become an immutable rendered prefix. Only the current
+ * mutable block is rendered again as text arrives. Finishing a response renders
+ * that same mutable block one last time and commits it; there is no whole-message
+ * replacement, so the streaming and final layouts stay visually identical.
  */
 private class IncrementalMarkdownRenderer(
     private val markwon: Markwon,
 ) {
-    private var previousSource = ""
-    private var previousStreaming = false
+    private var appliedSource = ""
+    private var appliedStreaming = false
     private var committedSourceEnd = 0
     private var committedRenderedLength = 0
-    private var revision = 0L
+    private var mutableRenderedText = ""
+    private var appliedRevision = -1L
+    private var nextRevision = 0L
 
+    @Synchronized
     fun render(source: String, streaming: Boolean): MarkdownRenderDelta? {
-        if (source == previousSource && streaming == previousStreaming) return null
+        if (source == appliedSource && streaming == appliedStreaming) return null
 
-        if (!streaming) {
-            val rendered = renderFragment(source)
-            revision += 1
-            val delta = MarkdownRenderDelta(
-                source = source,
-                replaceFrom = 0,
-                sourceCharsToReplace = Int.MAX_VALUE,
-                replacement = rendered,
-                replaceAll = true,
-                validatedSourcePrefixEnd = source.length,
-                revision = revision,
-            )
-            previousSource = source
-            previousStreaming = false
-            committedSourceEnd = source.length
-            committedRenderedLength = rendered.length
-            return delta
+        val appendOnly = source.startsWith(appliedSource)
+        val continuingStream = appendOnly && appliedStreaming
+        val baseCommittedSourceEnd = if (!continuingStream && source != appliedSource) 0 else committedSourceEnd
+        val baseCommittedRenderedLength = if (!continuingStream && source != appliedSource) 0 else committedRenderedLength
+        val oldMutableRenderedText = if (!continuingStream && source != appliedSource) "" else mutableRenderedText
+
+        val boundary = if (streaming) {
+            stableMarkdownCommitBoundary(source, baseCommittedSourceEnd)
+        } else {
+            source.length
+        }.coerceIn(baseCommittedSourceEnd, source.length)
+
+        val stableSource = source.substring(baseCommittedSourceEnd, boundary)
+        val mutableSource = source.substring(boundary)
+        val stableRendered = renderFragment(stableSource)
+        val mutableRendered = renderFragment(mutableSource)
+        val replacement = SpannableStringBuilder(stableRendered).append(mutableRendered)
+
+        val appended = appendOnly && source.length > appliedSource.length
+        val commonPrefix = if (appended && streaming) {
+            commonRenderedPrefixLength(oldMutableRenderedText, replacement.toString())
+        } else {
+            replacement.length
+        }
+        val fadeFrom = if (commonPrefix < replacement.length) {
+            baseCommittedRenderedLength + commonPrefix
+        } else {
+            null
         }
 
-        val appendOnly = source.startsWith(previousSource)
-        if (!appendOnly || !previousStreaming) {
-            committedSourceEnd = 0
-            committedRenderedLength = 0
-        }
-
-        val boundary = stableMarkdownCommitBoundary(source, committedSourceEnd)
-        previousSource = source
-        previousStreaming = true
-        if (boundary <= committedSourceEnd) return null
-
-        val stableSource = source.substring(committedSourceEnd, boundary)
-        val rendered = renderFragment(stableSource)
-        revision += 1
-        val delta = MarkdownRenderDelta(
+        val revision = nextRevision++
+        return MarkdownRenderDelta(
             source = source,
-            replaceFrom = committedRenderedLength,
-            sourceCharsToReplace = stableSource.length,
-            replacement = rendered,
-            replaceAll = false,
-            validatedSourcePrefixEnd = boundary,
+            replaceFrom = baseCommittedRenderedLength,
+            replacement = replacement,
+            fadeFrom = fadeFrom,
             revision = revision,
+            baseAppliedRevision = appliedRevision,
+            nextCommittedSourceEnd = boundary,
+            nextCommittedRenderedLength = baseCommittedRenderedLength + stableRendered.length,
+            nextMutableRenderedText = mutableRendered.toString(),
+            nextStreaming = streaming,
         )
-        committedSourceEnd = boundary
-        committedRenderedLength += rendered.length
-        return delta
+    }
+
+    @Synchronized
+    fun commit(delta: MarkdownRenderDelta) {
+        if (delta.baseAppliedRevision != appliedRevision) return
+        appliedSource = delta.source
+        appliedStreaming = delta.nextStreaming
+        committedSourceEnd = delta.nextCommittedSourceEnd
+        committedRenderedLength = delta.nextCommittedRenderedLength
+        mutableRenderedText = delta.nextMutableRenderedText
+        appliedRevision = delta.revision
     }
 
     private fun renderFragment(source: String): Spanned {
         if (source.isEmpty()) return SpannableString("")
         return markwon.toMarkdown(prepareReferenceMarkdown(source))
     }
+}
+
+internal fun commonRenderedPrefixLength(previous: String, current: String): Int {
+    val limit = minOf(previous.length, current.length)
+    var index = 0
+    while (index < limit && previous[index] == current[index]) index++
+    return index
 }
 
 private const val MarkdownRetainedBlockBreaks = 1
@@ -713,14 +723,20 @@ private class ArborMarkdownTextView(context: Context) : TextView(context) {
     var lastDeltaReplaceFrom: Int = 0
 
     private var fadeFrameScheduled = false
-    private var fadeDeadlineUptimeMillis = 0L
+    private var activeFadeSpan: StreamingAlphaSpan? = null
+    private var activeFadeStart = 0
     private val fadeFrame = object : Runnable {
         override fun run() {
             fadeFrameScheduled = false
+            val span = activeFadeSpan
+            if (span == null) return
             val now = SystemClock.uptimeMillis()
-            removeExpiredStreamingAlphaSpans(now)
-            invalidate()
-            if (isAttachedToWindow && now < fadeDeadlineUptimeMillis) {
+            if (span.isFinished(now)) {
+                clearStreamingAlphaSpan()
+                return
+            }
+            postInvalidateOnAnimation()
+            if (isAttachedToWindow) {
                 fadeFrameScheduled = true
                 postOnAnimation(this)
             }
@@ -755,32 +771,52 @@ private class ArborMarkdownTextView(context: Context) : TextView(context) {
         val delta = pendingMarkdownDelta ?: return
         val editable = editableBuffer()
         val from = delta.replaceFrom.coerceIn(0, editable.length)
-        val to = if (delta.replaceAll) {
-            editable.length
-        } else {
-            (from + delta.sourceCharsToReplace).coerceIn(from, editable.length)
-        }
+        val preservedFade = activeFadeSpan?.takeUnless { it.isFinished(SystemClock.uptimeMillis()) }
+        if (preservedFade != null) removeActiveFadeSpanFromText()
+
         lastDeltaReplaceFrom = from
-        editable.replace(from, to, parsed)
+        editable.replace(from, editable.length, parsed)
         lastAppliedRevision = delta.revision
         pendingMarkdownDelta = null
+
+        val fadeFrom = delta.fadeFrom
+        if (preservedFade != null && fadeFrom != null && fadeFrom < editable.length) {
+            setActiveFadeSpan(
+                span = preservedFade,
+                start = fadeFrom.coerceIn(0, editable.length),
+                end = editable.length,
+            )
+        } else if (preservedFade != null) {
+            activeFadeSpan = null
+            activeFadeStart = 0
+        }
     }
 
-    fun scheduleStreamingFade(deadlineUptimeMillis: Long) {
-        fadeDeadlineUptimeMillis = maxOf(fadeDeadlineUptimeMillis, deadlineUptimeMillis)
-        if (!fadeFrameScheduled && isAttachedToWindow) {
-            fadeFrameScheduled = true
-            postOnAnimation(fadeFrame)
+    fun startOrExtendStreamingFade(start: Int, end: Int, durationMillis: Long) {
+        if (end <= start || durationMillis <= 0L) return
+        val now = SystemClock.uptimeMillis()
+        val existing = activeFadeSpan?.takeUnless { it.isFinished(now) }
+        if (existing == null) {
+            clearStreamingAlphaSpan()
+            setActiveFadeSpan(
+                span = StreamingAlphaSpan(now, durationMillis),
+                start = start,
+                end = end,
+            )
+        } else {
+            removeActiveFadeSpanFromText()
+            setActiveFadeSpan(
+                span = existing,
+                start = minOf(activeFadeStart, start),
+                end = end,
+            )
         }
+        scheduleStreamingFadeFrame()
+        postInvalidateOnAnimation()
     }
 
     fun finishStreamingFade() {
-        fadeDeadlineUptimeMillis = 0L
-        if (fadeFrameScheduled) {
-            removeCallbacks(fadeFrame)
-            fadeFrameScheduled = false
-        }
-        clearStreamingAlphaSpans()
+        clearStreamingAlphaSpan()
     }
 
     fun updateReferenceColors(linkColor: Int, pillBackground: Int, pillForeground: Int) {
@@ -795,26 +831,37 @@ private class ArborMarkdownTextView(context: Context) : TextView(context) {
         invalidate()
     }
 
-    private fun removeExpiredStreamingAlphaSpans(nowUptimeMillis: Long) {
+    private fun setActiveFadeSpan(span: StreamingAlphaSpan, start: Int, end: Int) {
         val spannable = text as? Spannable ?: return
-        spannable.getSpans(0, spannable.length, StreamingAlphaSpan::class.java)
-            .filter { it.isFinished(nowUptimeMillis) }
-            .forEach(spannable::removeSpan)
+        activeFadeSpan = span
+        activeFadeStart = start
+        spannable.setSpan(span, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
 
-    private fun clearStreamingAlphaSpans() {
-        val spannable = text as? Spannable ?: return
-        spannable.getSpans(0, spannable.length, StreamingAlphaSpan::class.java)
-            .forEach(spannable::removeSpan)
+    private fun removeActiveFadeSpanFromText() {
+        val span = activeFadeSpan ?: return
+        (text as? Spannable)?.removeSpan(span)
+    }
+
+    private fun clearStreamingAlphaSpan() {
+        if (fadeFrameScheduled) removeCallbacks(fadeFrame)
+        fadeFrameScheduled = false
+        removeActiveFadeSpanFromText()
+        activeFadeSpan = null
+        activeFadeStart = 0
         invalidate()
+    }
+
+    private fun scheduleStreamingFadeFrame() {
+        if (!fadeFrameScheduled && isAttachedToWindow) {
+            fadeFrameScheduled = true
+            postOnAnimation(fadeFrame)
+        }
     }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        if (SystemClock.uptimeMillis() < fadeDeadlineUptimeMillis && !fadeFrameScheduled) {
-            fadeFrameScheduled = true
-            postOnAnimation(fadeFrame)
-        }
+        if (activeFadeSpan != null) scheduleStreamingFadeFrame()
     }
 
     override fun onDetachedFromWindow() {
@@ -832,21 +879,12 @@ private fun ArborMarkdownTextView.applyMarkdownDelta(
     pillBackground: Int,
     pillForeground: Int,
     onReference: (LinkReferencePreview) -> Unit,
-) {
-    if (delta.revision <= lastAppliedRevision) return
-    val sourceStillMatches = if (delta.replaceAll) {
-        lastSourceText == delta.source
-    } else {
-        lastSourceText.length >= delta.validatedSourcePrefixEnd &&
-            delta.source.length >= delta.validatedSourcePrefixEnd &&
-            lastSourceText.regionMatches(
-                thisOffset = 0,
-                other = delta.source,
-                otherOffset = 0,
-                length = delta.validatedSourcePrefixEnd,
-            )
-    }
-    if (!sourceStillMatches) return
+): Boolean {
+    if (delta.revision <= lastAppliedRevision) return false
+    // Replacing the mutable tail from an older parse would discard characters
+    // appended since that parse started. Skip stale results; the next request
+    // styles the current tail.
+    if (lastSourceText != delta.source) return false
 
     pendingMarkdownDelta = delta
     markwon.setParsedMarkdown(this, delta.replacement)
@@ -861,6 +899,7 @@ private fun ArborMarkdownTextView.applyMarkdownDelta(
     )
     previousRenderedLength = text.length
     if (!streaming) finishStreamingFade()
+    return lastAppliedRevision == delta.revision
 }
 
 private class StreamingAlphaSpan(
@@ -884,8 +923,7 @@ private fun animateAppendedMarkdown(view: ArborMarkdownTextView, previousLength:
         view.finishStreamingFade()
         return
     }
-    val spannable = view.text as? Spannable ?: return
-    val currentLength = spannable.length
+    val currentLength = view.text.length
     val start = previousLength.coerceIn(0, currentLength)
     if (currentLength <= start) return
 
@@ -895,19 +933,7 @@ private fun animateAppendedMarkdown(view: ArborMarkdownTextView, previousLength:
         1f
     }
     val durationMillis = (StreamingFadeDurationMillis * durationScale).roundToLong()
-    if (durationMillis <= 0L) return
-
-    // Each append batch keeps its own start time. New tokens never restart the
-    // fade of already-visible text, so the animation continues at display FPS.
-    val startedAt = SystemClock.uptimeMillis()
-    spannable.setSpan(
-        StreamingAlphaSpan(startedAt, durationMillis),
-        start,
-        currentLength,
-        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-    )
-    view.scheduleStreamingFade(startedAt + durationMillis)
-    view.invalidate()
+    view.startOrExtendStreamingFade(start, currentLength, durationMillis)
 }
 
 private class SelectableLinkMovementMethod : ArrowKeyMovementMethod() {

@@ -6,9 +6,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.background
@@ -98,7 +95,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -107,7 +103,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -190,7 +185,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     var showChatConfiguration by remember { mutableStateOf(false) }
     val messageListState = rememberLazyListState()
     val blurState = rememberArborBackdropBlurState()
-    val scrollScope = rememberCoroutineScope()
     val density = LocalDensity.current
     val topAppBarState = rememberTopAppBarState()
     val topAppBarScrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
@@ -204,8 +198,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     var followLatest by remember(conversation?.id) { mutableStateOf(true) }
     var measuredLatestNodeId by remember(conversation?.id) { mutableStateOf<String?>(null) }
     var measuredLatestHeightPx by remember(conversation?.id) { mutableIntStateOf(0) }
-    var pendingViewportCompensationPx by remember(conversation?.id) { mutableIntStateOf(0) }
-    val latestMessageGrowthOffset = remember(conversation?.id) { Animatable(0f) }
     var searchFocusHandled by remember(conversation?.id, focusedMessageNodeId) { mutableStateOf(false) }
     val userScrollConnection = remember(conversation?.id) {
         object : NestedScrollConnection {
@@ -242,7 +234,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         followLatest = true
         measuredLatestNodeId = null
         measuredLatestHeightPx = 0
-        pendingViewportCompensationPx = 0
         messageListState.scrollToItem(0)
         topAppBarState.contentOffset = 0f
         topAppBarState.heightOffset = 0f
@@ -270,34 +261,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 // Re-lock only after the gesture/fling has actually settled at
                 // the real bottom, not merely inside the broad FAB threshold.
                 followLatest = true
-            }
-        }
-    }
-
-    LaunchedEffect(followLatest, generating, conversation?.id) {
-        if (!followLatest || !generating) latestMessageGrowthOffset.snapTo(0f)
-    }
-
-    LaunchedEffect(
-        pendingViewportCompensationPx,
-        followLatest,
-        generating,
-        messageListState.isScrollInProgress,
-        conversation?.id,
-    ) {
-        val delta = pendingViewportCompensationPx
-        when {
-            delta == 0 -> Unit
-            !generating || followLatest || messageListState.firstVisibleItemIndex != 0 -> {
-                pendingViewportCompensationPx = 0
-            }
-            messageListState.isScrollInProgress -> Unit
-            else -> {
-                // In reverseLayout the newest item grows upward. Moving by the
-                // same delta keeps the text currently under the user's finger or
-                // eyes at the same viewport coordinate while generation continues.
-                pendingViewportCompensationPx = 0
-                messageListState.scrollBy(delta.toFloat())
             }
         }
     }
@@ -503,48 +466,33 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                 reasoningVisibility = conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
                                 activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
                                 modifier = if (index == 0) {
-                                    Modifier
-                                        .graphicsLayer {
-                                            // A newly wrapped streaming line changes the
-                                            // measured card height in one layout frame. Keep
-                                            // the old pixels stationary, then release that
-                                            // delta on the render layer instead of jumping.
-                                            translationY = latestMessageGrowthOffset.value
-                                        }
-                                        .onSizeChanged { size ->
-                                            if (measuredLatestNodeId != message.nodeId) {
-                                                measuredLatestNodeId = message.nodeId
-                                                measuredLatestHeightPx = size.height
-                                                pendingViewportCompensationPx = 0
-                                                scrollScope.launch { latestMessageGrowthOffset.snapTo(0f) }
-                                            } else {
-                                                val delta = size.height - measuredLatestHeightPx
-                                                measuredLatestHeightPx = size.height
-                                                when {
-                                                    delta > 0 && generating && followLatest -> {
-                                                        scrollScope.launch {
-                                                            latestMessageGrowthOffset.snapTo(
-                                                                (latestMessageGrowthOffset.value + delta)
-                                                                    .coerceAtMost(size.height.toFloat()),
-                                                            )
-                                                            latestMessageGrowthOffset.animateTo(
-                                                                targetValue = 0f,
-                                                                animationSpec = tween(
-                                                                    durationMillis = 120,
-                                                                    easing = LinearOutSlowInEasing,
-                                                                ),
-                                                            )
-                                                        }
-                                                    }
-                                                    delta != 0 &&
-                                                        generating &&
-                                                        !followLatest &&
-                                                        messageListState.firstVisibleItemIndex == 0 -> {
-                                                        pendingViewportCompensationPx += delta
-                                                    }
-                                                }
+                                    Modifier.onSizeChanged { size ->
+                                        if (measuredLatestNodeId != message.nodeId) {
+                                            measuredLatestNodeId = message.nodeId
+                                            measuredLatestHeightPx = size.height
+                                        } else {
+                                            val delta = size.height - measuredLatestHeightPx
+                                            measuredLatestHeightPx = size.height
+                                            if (
+                                                delta != 0 &&
+                                                generating &&
+                                                messageListState.firstVisibleItemIndex == 0
+                                            ) {
+                                                // Compensate in the same UI frame as the
+                                                // remeasure. The old implementation first drew
+                                                // the new height, then corrected it with a
+                                                // translation/scroll coroutine, producing the
+                                                // visible up-down flash even while detached.
+                                                //
+                                                // When follow is enabled this creates a real
+                                                // distance for the persistent auto-scroll loop to
+                                                // consume smoothly. When detached it remains at
+                                                // the compensated offset, keeping the viewport
+                                                // stationary as the response grows.
+                                                messageListState.dispatchRawDelta(delta.toFloat())
                                             }
                                         }
+                                    }
                                 } else Modifier,
                             )
                         }
