@@ -1,19 +1,10 @@
+## 0.16.41
+
+- Smooth frame-paced chat auto-follow without per-token scroll jobs.
+- Exact detached viewport freeze during generation; reaching the true bottom re-enables follow.
+- Batched streaming Markdown updates and GPU-cheap consistent block fades.
+
 # Changelog
-
-## 0.16.32
-
-- Replaced volatile-tail-per-token Markdown rendering with immediate raw appends and one-time promotion of completed blocks.
-- Removed streaming update conflation so visible text no longer arrives in large batches.
-- Made appended text fades independent and frame-driven instead of restarting overlapping tail fades on every token.
-- Added render-layer smoothing for response height growth and removed the competing Go-to-latest scroll animation.
-
-## 0.16.31
-
-- Added a persistent velocity-limited auto-scroll controller which holds one LazyList scroll mutation during streaming catch-up.
-- Replaced full-message-per-token Markdown rendering with an append-only parser: completed prefixes are committed once and only the active tail is reparsed off the UI thread.
-- Appended Markdown, tool, and thinking text directly into retained editable buffers instead of replacing whole TextViews.
-- Replaced per-token fade animators with one frame-driven alpha span, preventing parser/layout work from starving the fade.
-- Added incremental fenced-block scanning and streaming parser regression tests.
 
 ## 0.16.29
 

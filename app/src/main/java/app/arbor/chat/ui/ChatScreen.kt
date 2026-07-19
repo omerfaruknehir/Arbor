@@ -7,7 +7,6 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.combinedClickable
@@ -94,10 +93,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -108,7 +106,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import kotlin.math.abs
+import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.geometry.Offset
@@ -123,6 +121,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
 import app.arbor.chat.R
+import app.arbor.chat.data.MessageEntity
 import app.arbor.chat.data.MessageRole
 import app.arbor.chat.data.MessageStatus
 import app.arbor.chat.data.AttachmentEntity
@@ -143,33 +142,18 @@ import coil.compose.AsyncImage
 import app.arbor.chat.sandbox.UbuntuExecutionResult
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlin.math.abs
+import kotlin.math.exp
+import kotlin.math.min
 import java.io.File
 import java.util.UUID
 
 private val ChatMessageJson = Json { ignoreUnknownKeys = true }
-
-
-internal fun isTimelineWorkingActive(
-    events: List<MessageTimelineEvent>,
-    isLastSegment: Boolean,
-    messageStreaming: Boolean,
-): Boolean {
-    val hasRunningTool = events.any { it.status == "running" }
-    val reasoningStillActive = messageStreaming && isLastSegment &&
-        events.lastOrNull()?.kind == "reasoning"
-    return hasRunningTool || reasoningStillActive
-}
-
-internal fun isLegacyWorkingActive(
-    traces: List<ToolTraceEvent>,
-    reasoningText: String,
-    responseTextStarted: Boolean,
-    messageStreaming: Boolean,
-): Boolean = traces.any { it.status == "running" } ||
-    (messageStreaming && reasoningText.isNotBlank() && !responseTextStarted && traces.isEmpty())
-
 internal fun calculateComposerChromeProgress(
     firstVisibleItemIndex: Int,
     firstVisibleItemScrollOffset: Int,
@@ -179,6 +163,17 @@ internal fun calculateComposerChromeProgress(
     if (firstVisibleItemIndex > 0) return 1f
     if (endPx <= startPx) return if (firstVisibleItemScrollOffset > startPx) 1f else 0f
     return ((firstVisibleItemScrollOffset - startPx).toFloat() / (endPx - startPx).toFloat()).coerceIn(0f, 1f)
+}
+
+internal fun calculateAutoFollowStepPx(
+    distancePx: Float,
+    frameSeconds: Float,
+    maxSpeedPxPerSecond: Float,
+): Float {
+    if (distancePx <= 0f || frameSeconds <= 0f || maxSpeedPxPerSecond <= 0f) return 0f
+    val response = 1f - exp(-18f * frameSeconds)
+    val easedStep = (distancePx * response).coerceAtLeast(min(0.75f, distancePx))
+    return min(distancePx, min(easedStep, maxSpeedPxPerSecond * frameSeconds))
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -211,17 +206,19 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val chromeStartPx = with(density) { 56.dp.roundToPx() }
     val chromeEndPx = with(density) { 176.dp.roundToPx() }
     val relockThresholdPx = with(density) { 2.dp.roundToPx() }
-    val autoScrollMinVelocityPxPerSecond = with(density) { 90.dp.toPx() }
-    val autoScrollMaxVelocityPxPerSecond = with(density) { 1_200.dp.toPx() }
-    val autoScrollAccelerationPxPerSecondSquared = with(density) { 3_600.dp.toPx() }
+    val autoFollowMaxSpeedPxPerSecond = with(density) { 4_800.dp.toPx() }
     var followLatest by remember(conversation?.id) { mutableStateOf(true) }
+    var frozenLatestMessage by remember(conversation?.id) { mutableStateOf<MessageEntity?>(null) }
     var searchFocusHandled by remember(conversation?.id, focusedMessageNodeId) { mutableStateOf(false) }
+    val latestMessageState = rememberUpdatedState(paging.itemSnapshotList.items.firstOrNull())
     val userScrollConnection = remember(conversation?.id) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (source == NestedScrollSource.UserInput && available.y != 0f) {
-                    // Detach on the first real drag delta. Programmatic follow
-                    // scrolling uses the list scroll API and cannot release it.
+                    // Freeze the actively growing message at the first user drag.
+                    // While detached, the rendered list is immutable, so generation
+                    // cannot shift the viewport by even one pixel.
+                    if (followLatest) frozenLatestMessage = latestMessageState.value
                     followLatest = false
                 }
                 return Offset.Zero
@@ -249,6 +246,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         modelMenu = false
         chatMenu = false
         followLatest = true
+        frozenLatestMessage = null
         messageListState.scrollToItem(0)
         topAppBarState.contentOffset = 0f
         topAppBarState.heightOffset = 0f
@@ -276,83 +274,50 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 // Re-lock only after the gesture/fling has actually settled at
                 // the real bottom, not merely inside the broad FAB threshold.
                 followLatest = true
+                frozenLatestMessage = null
             }
         }
     }
 
-    LaunchedEffect(
-        conversation?.id,
-        generating,
-        followLatest,
-        autoScrollMinVelocityPxPerSecond,
-        autoScrollMaxVelocityPxPerSecond,
-        autoScrollAccelerationPxPerSecondSquared,
-    ) {
-        if (!generating || !followLatest) return@LaunchedEffect
-
-        var velocityPxPerSecond = 0f
-        while (true) {
-            // Sleep while the list is already pinned. A streaming layout update
-            // wakes this flow only when it produces a real distance from item 0.
-            snapshotFlow {
-                Triple(
-                    messageListState.isScrollInProgress,
-                    messageListState.firstVisibleItemIndex,
-                    messageListState.firstVisibleItemScrollOffset,
-                )
-            }.first { (scrolling, index, offset) ->
-                !scrolling && (index > 0 || offset > 0)
-            }
-
-            if (messageListState.firstVisibleItemIndex > 0) {
-                // This is only expected after an explicit re-lock or restoration;
-                // do one ordinary list animation, never one animation per token.
-                messageListState.animateScrollToItem(0)
-                velocityPxPerSecond = 0f
-                continue
-            }
-
-            // Hold one scroll mutation for the whole catch-up. This avoids
-            // acquiring the LazyList scroll mutex and toggling scroll state on
-            // every token/frame, which was visible as micro-stutter.
-            messageListState.scroll(MutatePriority.Default) {
-                var previousFrameNanos = withFrameNanos { it }
-                while (
-                    followLatest &&
-                    generating &&
-                    messageListState.firstVisibleItemIndex == 0 &&
-                    messageListState.firstVisibleItemScrollOffset > 0
-                ) {
-                    val frameNanos = withFrameNanos { it }
-                    val deltaSeconds = ((frameNanos - previousFrameNanos) / 1_000_000_000f)
-                        .coerceIn(0.001f, 0.05f)
-                    previousFrameNanos = frameNanos
-
-                    val distancePx = messageListState.firstVisibleItemScrollOffset.toFloat()
-                    val targetVelocity = (autoScrollMinVelocityPxPerSecond + distancePx * 10f)
-                        .coerceAtMost(autoScrollMaxVelocityPxPerSecond)
-                    val velocityDelta = autoScrollAccelerationPxPerSecondSquared * deltaSeconds
-                    velocityPxPerSecond = when {
-                        velocityPxPerSecond < targetVelocity ->
-                            (velocityPxPerSecond + velocityDelta).coerceAtMost(targetVelocity)
-                        velocityPxPerSecond > targetVelocity ->
-                            (velocityPxPerSecond - velocityDelta).coerceAtLeast(targetVelocity)
-                        else -> targetVelocity
+    LaunchedEffect(conversation?.id, messageListState, relockThresholdPx) {
+        snapshotFlow {
+            if (!followLatest || messageListState.isScrollInProgress) null
+            else messageListState.firstVisibleItemIndex to messageListState.firstVisibleItemScrollOffset
+        }
+            .filterNotNull()
+            .collect { (index, initialOffset) ->
+                try {
+                    if (index > 0) {
+                        messageListState.animateScrollToItem(0)
+                        return@collect
                     }
+                    if (initialOffset <= relockThresholdPx) return@collect
 
-                    val stepPx = (velocityPxPerSecond * deltaSeconds)
-                        .coerceAtLeast(0.75f)
-                        .coerceAtMost(distancePx)
-                    val consumed = scrollBy(-stepPx)
-                    if (distancePx <= relockThresholdPx * 2f || abs(consumed) < 0.05f) {
-                        val remainder = messageListState.firstVisibleItemScrollOffset.toFloat()
-                        if (remainder > 0f) scrollBy(-remainder)
-                        break
+                    var previousFrameNanos = 0L
+                    while (followLatest && messageListState.firstVisibleItemIndex == 0) {
+                        val distance = messageListState.firstVisibleItemScrollOffset.toFloat()
+                        if (distance <= relockThresholdPx) break
+                        val frameNanos = androidx.compose.runtime.withFrameNanos { it }
+                        val frameSeconds = if (previousFrameNanos == 0L) {
+                            1f / 60f
+                        } else {
+                            ((frameNanos - previousFrameNanos) / 1_000_000_000f).coerceIn(1f / 240f, 1f / 20f)
+                        }
+                        previousFrameNanos = frameNanos
+                        val step = calculateAutoFollowStepPx(
+                            distancePx = distance,
+                            frameSeconds = frameSeconds,
+                            maxSpeedPxPerSecond = autoFollowMaxSpeedPxPerSecond,
+                        )
+                        val consumed = messageListState.scrollBy(-step)
+                        if (abs(consumed) < 0.05f) break
                     }
+                } catch (_: CancellationException) {
+                    // A real user drag has higher scroll priority and is allowed to
+                    // cancel the follower without killing this long-lived collector.
+                    currentCoroutineContext().ensureActive()
                 }
             }
-            velocityPxPerSecond = 0f
-        }
     }
 
     LaunchedEffect(focusedMessageNodeId, paging.itemSnapshotList.items.map { it.nodeId }, searchFocusHandled) {
@@ -360,6 +325,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         if (!searchFocusHandled) {
             val index = paging.itemSnapshotList.items.indexOfFirst { it.nodeId == target }
             if (index >= 0) {
+                if (followLatest) frozenLatestMessage = latestMessageState.value
                 followLatest = false
                 messageListState.scrollToItem(index)
                 searchFocusHandled = true
@@ -475,12 +441,21 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         contentType = { index -> paging.peek(index)?.role },
                     ) { index ->
                         paging[index]?.let { message ->
+                            val renderedMessage = if (
+                                index == 0 &&
+                                !followLatest &&
+                                frozenLatestMessage?.nodeId == message.nodeId
+                            ) {
+                                frozenLatestMessage ?: message
+                            } else {
+                                message
+                            }
                             MessageCard(
-                                message = message,
+                                message = renderedMessage,
                                 viewModel = viewModel,
                                 reasoningVisibility = conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
                                 activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
-                                modifier = Modifier,
+                                freezeLiveUpdates = index == 0 && !followLatest && frozenLatestMessage?.nodeId == message.nodeId,
                             )
                         }
                     }
@@ -493,9 +468,8 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             ) {
                 SmallFloatingActionButton(
                     onClick = {
-                        // Wake the single persistent follow controller. Starting a
-                        // second animation here used to race it and create a hitch.
                         followLatest = true
+                        frozenLatestMessage = null
                     },
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -597,8 +571,14 @@ private fun MessageCard(
     reasoningVisibility: ReasoningVisibility,
     activeModel: ModelEntity?,
     modifier: Modifier = Modifier,
+    freezeLiveUpdates: Boolean = false,
 ) {
-    val attachments by viewModel.run { containerAttachments(message.nodeId) }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val liveAttachments by viewModel.run { containerAttachments(message.nodeId) }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val frozenAttachments = remember(message.nodeId, freezeLiveUpdates) {
+        if (freezeLiveUpdates) liveAttachments else null
+    }
+    val attachments = frozenAttachments ?: liveAttachments
+    val animateStreaming = message.status == MessageStatus.STREAMING && !freezeLiveUpdates
     val user = message.role == MessageRole.USER
     val rawTimeline = remember(message.timelineJson) {
         runCatching { ChatMessageJson.decodeFromString<List<MessageTimelineEvent>>(message.timelineJson) }.getOrDefault(emptyList())
@@ -650,12 +630,12 @@ private fun MessageCard(
                 if (deepResearchResponse && researchState != null) {
                     StreamingFade(
                         transitionKey = "${message.nodeId}:research-roadmap",
-                        enabled = message.status == MessageStatus.STREAMING,
+                        enabled = animateStreaming,
                         modifier = Modifier.padding(bottom = 8.dp),
                     ) {
                         ReportedResearchRoadmap(
                             state = researchState,
-                            streaming = message.status == MessageStatus.STREAMING,
+                            streaming = animateStreaming,
                         )
                     }
                 }
@@ -664,22 +644,21 @@ private fun MessageCard(
                         message.nodeId,
                         timeline,
                         attachments,
-                        message.status == MessageStatus.STREAMING,
+                        animateStreaming,
                         reasoningVisibility,
                         viewModel,
                     )
                 } else {
                     LegacyWorkingBlock(
-                        text = displayReasoning,
-                        toolTraceJson = message.toolTraceJson,
-                        streaming = message.status == MessageStatus.STREAMING,
-                        responseTextStarted = displayContent.isNotBlank(),
-                        visibility = reasoningVisibility,
+                        displayReasoning,
+                        message.toolTraceJson,
+                        animateStreaming,
+                        reasoningVisibility,
                     )
                     if (displayContent.isNotBlank()) RichMessage(
                         operationScope = message.nodeId,
                         text = displayContent,
-                        streaming = message.status == MessageStatus.STREAMING,
+                        streaming = animateStreaming,
                         onRunPython = viewModel::executePython,
                         onRunUbuntu = viewModel::executeUbuntu,
                         onReviewPythonPackages = viewModel::reviewPythonPackages,
@@ -690,7 +669,7 @@ private fun MessageCard(
                         onReviewWidgetSecurity = viewModel::reviewWidgetSecurity,
                     )
                 }
-                if (message.status == MessageStatus.STREAMING && message.content.isBlank()) {
+                if (animateStreaming && message.content.isBlank()) {
                     StreamingTokenPulse(visible = true, label = "Working")
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
@@ -775,17 +754,13 @@ private fun OrderedMessageTimeline(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         segments.forEachIndexed { index, segment ->
             if (segment.working) {
-                val segmentActive = isTimelineWorkingActive(
-                    events = segment.events,
-                    isLastSegment = index == segments.lastIndex,
-                    messageStreaming = streaming,
-                )
                 TimelineWorkingBlock(
-                    events = segment.events,
-                    active = segmentActive,
-                    visibility = visibility,
-                    usedSourceUrls = usedSourceUrls,
-                    viewModel = viewModel,
+                    segment.events,
+                    streaming,
+                    streaming && index == segments.lastIndex,
+                    visibility,
+                    usedSourceUrls,
+                    viewModel,
                 )
             } else {
                 segment.events.forEach { event ->
@@ -824,28 +799,19 @@ private fun OrderedMessageTimeline(
 @Composable
 private fun TimelineWorkingBlock(
     events: List<MessageTimelineEvent>,
+    streaming: Boolean,
     active: Boolean,
     visibility: ReasoningVisibility,
     usedSourceUrls: Set<String>,
     viewModel: ChatViewModel,
 ) {
+    val initiallyExpanded = when (visibility) {
+        ReasoningVisibility.ALWAYS -> true
+        ReasoningVisibility.SHOW_WHILE_WORKING -> streaming
+        ReasoningVisibility.COLLAPSED -> false
+    }
     if (events.isEmpty()) return
-    var expanded by rememberSaveable(events.first().id, visibility) {
-        mutableStateOf(
-            when (visibility) {
-                ReasoningVisibility.ALWAYS -> true
-                ReasoningVisibility.SHOW_WHILE_WORKING -> active
-                ReasoningVisibility.COLLAPSED -> false
-            },
-        )
-    }
-    LaunchedEffect(active, visibility) {
-        when (visibility) {
-            ReasoningVisibility.ALWAYS -> expanded = true
-            ReasoningVisibility.COLLAPSED -> expanded = false
-            ReasoningVisibility.SHOW_WHILE_WORKING -> expanded = active
-        }
-    }
+    var expanded by remember(events.first().id, visibility, streaming) { mutableStateOf(initiallyExpanded) }
     StreamingFade(transitionKey = "working:${events.first().id}", enabled = active) {
         Surface(
             onClick = { expanded = !expanded },
@@ -921,37 +887,19 @@ private fun LegacyWorkingBlock(
     text: String,
     toolTraceJson: String,
     streaming: Boolean,
-    responseTextStarted: Boolean,
     visibility: ReasoningVisibility,
 ) {
     val traces = remember(toolTraceJson) {
         runCatching { ChatMessageJson.decodeFromString<List<ToolTraceEvent>>(toolTraceJson) }.getOrDefault(emptyList())
     }
     val hasContent = text.isNotBlank() || traces.isNotEmpty()
+    val initiallyExpanded = when (visibility) {
+        ReasoningVisibility.ALWAYS -> true
+        ReasoningVisibility.SHOW_WHILE_WORKING -> streaming
+        ReasoningVisibility.COLLAPSED -> false
+    }
     if (!hasContent) return
-    val active = isLegacyWorkingActive(
-        traces = traces,
-        reasoningText = text,
-        responseTextStarted = responseTextStarted,
-        messageStreaming = streaming,
-    )
-    val legacyStateKey = traces.firstOrNull()?.id ?: "legacy-reasoning"
-    var expanded by rememberSaveable(legacyStateKey, visibility) {
-        mutableStateOf(
-            when (visibility) {
-                ReasoningVisibility.ALWAYS -> true
-                ReasoningVisibility.SHOW_WHILE_WORKING -> active
-                ReasoningVisibility.COLLAPSED -> false
-            },
-        )
-    }
-    LaunchedEffect(active, visibility) {
-        when (visibility) {
-            ReasoningVisibility.ALWAYS -> expanded = true
-            ReasoningVisibility.COLLAPSED -> expanded = false
-            ReasoningVisibility.SHOW_WHILE_WORKING -> expanded = active
-        }
-    }
+    var expanded by remember(streaming, visibility) { mutableStateOf(initiallyExpanded) }
     Surface(
         onClick = { expanded = !expanded },
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -960,7 +908,7 @@ private fun LegacyWorkingBlock(
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (active) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                if (streaming) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 else Icon(Icons.Outlined.Psychology, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                 Text("Working", Modifier.padding(start = 8.dp).weight(1f), fontWeight = FontWeight.Medium)
                 Text(if (expanded) "Collapse" else "Expand", style = MaterialTheme.typography.labelMedium)
@@ -969,12 +917,12 @@ private fun LegacyWorkingBlock(
                 Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (text.isNotBlank()) StreamingPlainText(
                         text = text,
-                        streaming = active && traces.isEmpty(),
+                        streaming = streaming,
                     )
                     traces.forEach { event ->
                         StreamingFade(
                             transitionKey = "legacy-tool:${event.id}",
-                            enabled = event.status == "running",
+                            enabled = streaming && event == traces.lastOrNull(),
                         ) {
                             Column {
                                 Text("${event.label} • ${event.status}", style = MaterialTheme.typography.labelMedium, color = if (event.status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
