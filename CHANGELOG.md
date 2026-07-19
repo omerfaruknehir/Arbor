@@ -1,3 +1,8 @@
+# 0.16.22
+
+- Fixed gradual blur architecture and navigation overlap/jank.
+- Added effective 33-tap paired Gaussian blur for high radii.
+
 # 0.16.21
 
 - Restored the 0.16.19 two-pass gradual Gaussian chrome blur.

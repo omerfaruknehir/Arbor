@@ -189,7 +189,10 @@ fun Modifier.arborBackdropBlur(
             edge = edge,
             radiusScaleDp = radiusScaleDp,
             fadeDp = fadeDistance.value,
-            progressReader = stableProgressReader,
+            // Agora keeps the optical blur fixed and lets scrolling move
+            // content through the blurred edge. Tying radius to app-bar
+            // collapse made Arbor's blur disappear, pulse, and look broken.
+            progressReader = FULL_PROGRESS_READER,
         )
     }
     DisposableEffect(state, edge) { onDispose { state.clear(edge) } }
@@ -255,17 +258,20 @@ fun Modifier.arborBackdropBlur(
     }
 }
 
+private val FULL_PROGRESS_READER: () -> Float = { 1f }
+
 private const val MIN_VISIBLE_RADIUS_PX = 0.35f
 private const val DEFAULT_MAX_RADIUS_DP = 24f
 private const val DEFAULT_TOP_FADE_DP = 64f
 private const val DEFAULT_BOTTOM_FADE_DP = 152f
 
 /**
- * Restored 0.16.19 two-pass seventeen-tap Gaussian kernel.
+ * Two-pass Gaussian blur with an effective 33-tap kernel per pass.
  *
- * The uniforms are updated from the graphics layer rather than Compose state,
- * so the previous blur appearance is retained without recomposing the screen
- * for each pixel of app-bar movement.
+ * Adjacent Gaussian taps are combined into one fractional sample. Hardware
+ * bilinear filtering reconstructs each pair, so this covers 33 taps using 17
+ * texture reads per direction: the same read count as the old 17-tap kernel,
+ * but enough spatial density for Arbor's much larger blur radius.
  */
 private val EDGE_BLUR_SHADER = """
     uniform shader content;
@@ -282,24 +288,24 @@ private val EDGE_BLUR_SHADER = """
         float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
         if (radius < 0.35) return content.eval(coord);
 
-        float2 sampleStep = uDirection * (radius / 8.0);
-        half4 accum = half4(content.eval(coord)) * 0.103152619;
-        accum += half4(content.eval(coord + sampleStep * 1.0)) * 0.099978946;
-        accum += half4(content.eval(coord - sampleStep * 1.0)) * 0.099978946;
-        accum += half4(content.eval(coord + sampleStep * 2.0)) * 0.091031867;
-        accum += half4(content.eval(coord - sampleStep * 2.0)) * 0.091031867;
-        accum += half4(content.eval(coord + sampleStep * 3.0)) * 0.077863682;
-        accum += half4(content.eval(coord - sampleStep * 3.0)) * 0.077863682;
-        accum += half4(content.eval(coord + sampleStep * 4.0)) * 0.062565226;
-        accum += half4(content.eval(coord - sampleStep * 4.0)) * 0.062565226;
-        accum += half4(content.eval(coord + sampleStep * 5.0)) * 0.047226710;
-        accum += half4(content.eval(coord - sampleStep * 5.0)) * 0.047226710;
-        accum += half4(content.eval(coord + sampleStep * 6.0)) * 0.033488752;
-        accum += half4(content.eval(coord - sampleStep * 6.0)) * 0.033488752;
-        accum += half4(content.eval(coord + sampleStep * 7.0)) * 0.022308318;
-        accum += half4(content.eval(coord - sampleStep * 7.0)) * 0.022308318;
-        accum += half4(content.eval(coord + sampleStep * 8.0)) * 0.013960189;
-        accum += half4(content.eval(coord - sampleStep * 8.0)) * 0.013960189;
+        float2 step = uDirection * (radius / 16.0);
+        half4 accum = half4(content.eval(coord)) * 0.051893312;
+        accum += half4(content.eval(coord + step * 1.494140893)) * 0.101786198;
+        accum += half4(content.eval(coord - step * 1.494140893)) * 0.101786198;
+        accum += half4(content.eval(coord + step * 3.486331531)) * 0.094165572;
+        accum += half4(content.eval(coord - step * 3.486331531)) * 0.094165572;
+        accum += half4(content.eval(coord + step * 5.478528838)) * 0.081857401;
+        accum += half4(content.eval(coord - step * 5.478528838)) * 0.081857401;
+        accum += half4(content.eval(coord + step * 7.470736607)) * 0.066863049;
+        accum += half4(content.eval(coord - step * 7.470736607)) * 0.066863049;
+        accum += half4(content.eval(coord + step * 9.462958613)) * 0.051318819;
+        accum += half4(content.eval(coord - step * 9.462958613)) * 0.051318819;
+        accum += half4(content.eval(coord + step * 11.455198604)) * 0.037010860;
+        accum += half4(content.eval(coord - step * 11.455198604)) * 0.037010860;
+        accum += half4(content.eval(coord + step * 13.447460292)) * 0.025080920;
+        accum += half4(content.eval(coord - step * 13.447460292)) * 0.025080920;
+        accum += half4(content.eval(coord + step * 15.439747346)) * 0.015970525;
+        accum += half4(content.eval(coord - step * 15.439747346)) * 0.015970525;
         return accum;
     }
 """.trimIndent()
