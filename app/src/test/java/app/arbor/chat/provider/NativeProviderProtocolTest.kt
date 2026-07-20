@@ -30,14 +30,18 @@ class NativeProviderProtocolTest {
         assertFalse(body["parallel_tool_calls"]!!.jsonPrimitive.content.toBoolean())
 
         val calls = linkedMapOf<Int, OpenAiCompatibleProvider.ToolCallAccumulator>()
-        provider.parseChunk(
+        val firstProgress = provider.parseChunk(
             """{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"web_","arguments":"{\"query\":\"And"}}]}}]}""",
             calls,
         )
-        provider.parseChunk(
+        assertEquals("web_", firstProgress!!.toolCallProgress.single().name)
+        assertFalse(firstProgress.toolCallProgress.single().complete)
+        val secondProgress = provider.parseChunk(
             """{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"search","arguments":"roid\"}"}}]},"finish_reason":"tool_calls"}]}""",
             calls,
         )
+        assertEquals("web_search", secondProgress!!.toolCallProgress.single().name)
+        assertEquals("{\"query\":\"Android\"}", secondProgress.toolCallProgress.single().argumentsJson)
         val call = calls.getValue(0).complete()
         assertEquals("call_1", call.id)
         assertEquals("web_search", call.name)
@@ -55,9 +59,12 @@ class NativeProviderProtocolTest {
         provider.parseChunk("""{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Need search"}}""", state)
         provider.parseChunk("""{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"signed"}}""", state)
         provider.parseChunk("""{"type":"content_block_stop","index":0}""", state)
-        provider.parseChunk("""{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"web_search","input":{}}}""", state)
-        provider.parseChunk("""{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"query\":\"Android\"}"}}""", state)
-        provider.parseChunk("""{"type":"content_block_stop","index":1}""", state)
+        val started = provider.parseChunk("""{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"web_search","input":{}}}""", state)
+        assertEquals("web_search", started!!.toolCallProgress.single().name)
+        val streamed = provider.parseChunk("""{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"query\":\"Android\"}"}}""", state)
+        assertEquals("{\"query\":\"Android\"}", streamed!!.toolCallProgress.single().argumentsJson)
+        val stopped = provider.parseChunk("""{"type":"content_block_stop","index":1}""", state)
+        assertTrue(stopped!!.toolCallProgress.single().complete)
 
         val final = state.finalChunk()
         assertNotNull(final)
@@ -79,6 +86,8 @@ class NativeProviderProtocolTest {
             state,
         )
         assertEquals("Need search", chunks.first().reasoning)
+        assertEquals("web_search", chunks.single { it.toolCallProgress.isNotEmpty() }.toolCallProgress.single().name)
+        assertTrue(chunks.single { it.toolCallProgress.isNotEmpty() }.toolCallProgress.single().complete)
         val final = state.finalChunk()
         assertEquals("call_1", final!!.toolCalls.single().id)
         assertEquals("web_search", final.toolCalls.single().name)

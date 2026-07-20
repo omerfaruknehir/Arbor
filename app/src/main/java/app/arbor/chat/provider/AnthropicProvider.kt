@@ -172,7 +172,7 @@ class AnthropicProvider(
             "content_block_start" -> {
                 val index = root.long("index")?.toInt() ?: state.nextIndex()
                 root.obj("content_block")?.let { state.start(index, it) }
-                null
+                    ?.let { StreamChunk(toolCallProgress = listOf(it)) }
             }
             "content_block_delta" -> {
                 val index = root.long("index")?.toInt() ?: return null
@@ -184,18 +184,14 @@ class AnthropicProvider(
                         state.appendSignature(index, delta.string("signature").orEmpty())
                         null
                     }
-                    "input_json_delta" -> {
-                        state.appendInput(index, delta.string("partial_json").orEmpty())
-                        null
-                    }
+                    "input_json_delta" -> state.appendInput(index, delta.string("partial_json").orEmpty())
+                        ?.let { StreamChunk(toolCallProgress = listOf(it)) }
                     else -> delta.string("text").orEmpty().also { state.appendText(index, it) }
                         .takeIf(String::isNotEmpty)?.let { StreamChunk(text = it) }
                 }
             }
-            "content_block_stop" -> {
-                root.long("index")?.toInt()?.let(state::stop)
-                null
-            }
+            "content_block_stop" -> root.long("index")?.toInt()?.let(state::stop)
+                ?.let { StreamChunk(toolCallProgress = listOf(it)) }
             "message_start", "message_delta" -> StreamChunk(
                 inputTokens = usage?.long("input_tokens"),
                 outputTokens = usage?.long("output_tokens"),
@@ -242,14 +238,22 @@ class AnthropicProvider(
         private var emitted = false
 
         fun nextIndex(): Int = ((active.keys + completed.keys).maxOrNull() ?: -1) + 1
-        fun start(index: Int, block: JsonObject) { active[index] = BlockAccumulator(block) }
+        fun start(index: Int, block: JsonObject): NativeToolCallProgress? {
+            val accumulator = BlockAccumulator(block)
+            active[index] = accumulator
+            return accumulator.progress(index)
+        }
         fun appendText(index: Int, value: String) { active[index]?.text?.append(value) }
         fun appendThinking(index: Int, value: String) { active[index]?.thinking?.append(value) }
         fun appendSignature(index: Int, value: String) { active[index]?.signature?.append(value) }
-        fun appendInput(index: Int, value: String) { active[index]?.input?.append(value) }
+        fun appendInput(index: Int, value: String): NativeToolCallProgress? {
+            val block = active[index] ?: return null
+            block.input.append(value)
+            return block.progress(index)
+        }
 
-        fun stop(index: Int) {
-            val block = active.remove(index) ?: return
+        fun stop(index: Int): NativeToolCallProgress? {
+            val block = active.remove(index) ?: return null
             val final = block.complete()
             completed[index] = final
             if (final.string("type") == "tool_use") {
@@ -258,7 +262,9 @@ class AnthropicProvider(
                     name = final.string("name").orEmpty(),
                     argumentsJson = final["input"]?.toString() ?: "{}",
                 )
+                return block.progress(index, complete = true)
             }
+            return null
         }
 
         fun finalChunk(): StreamChunk? {
@@ -278,6 +284,17 @@ class AnthropicProvider(
         val thinking = StringBuilder(base.string("thinking").orEmpty())
         val signature = StringBuilder(base.string("signature").orEmpty())
         val input = StringBuilder()
+
+        fun progress(index: Int, complete: Boolean = false): NativeToolCallProgress? {
+            if (base.string("type") != "tool_use") return null
+            return NativeToolCallProgress(
+                index = index,
+                id = base.string("id").orEmpty(),
+                name = base.string("name").orEmpty(),
+                argumentsJson = input.toString().ifBlank { base["input"]?.toString().orEmpty() },
+                complete = complete,
+            )
+        }
 
         fun complete(): JsonObject = when (base.string("type")) {
             "text" -> JsonObject(base + ("text" to JsonPrimitive(text.toString())))

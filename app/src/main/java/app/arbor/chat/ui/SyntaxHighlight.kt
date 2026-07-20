@@ -333,11 +333,14 @@ internal fun AutoLintedCodeText(
     code: String,
     modifier: Modifier = Modifier,
     lintResult: CodeLintResult? = null,
+    lintEnabled: Boolean = true,
     style: TextStyle = MaterialTheme.typography.bodySmall,
     softWrap: Boolean = false,
 ) {
-    val automatic = remember(language, code) { StaticCodeLinter.lint(language, code) }
-    val diagnostics = lintResult?.diagnostics ?: automatic.diagnostics
+    val automatic = if (lintEnabled && lintResult == null) {
+        remember(language, code) { StaticCodeLinter.lint(language, code) }
+    } else null
+    val diagnostics = lintResult?.diagnostics ?: automatic?.diagnostics.orEmpty()
     SelectionContainer(modifier = modifier) {
         Text(
             highlightedCode(language, code, diagnostics),

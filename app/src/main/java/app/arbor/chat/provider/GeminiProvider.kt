@@ -156,8 +156,7 @@ class GeminiProvider(
             state.addPart(part)
             val functionCall = part.obj("functionCall")
             if (functionCall != null) {
-                state.addCall(part, functionCall)
-                null
+                StreamChunk(toolCallProgress = listOf(state.addCall(part, functionCall)))
             } else {
                 val text = part.string("text").orEmpty()
                 if (text.isEmpty()) null
@@ -208,13 +207,20 @@ class GeminiProvider(
 
         fun addPart(part: JsonObject) { parts += part }
 
-        fun addCall(part: JsonObject, functionCall: JsonObject) {
+        fun addCall(part: JsonObject, functionCall: JsonObject): NativeToolCallProgress {
             val name = functionCall.string("name").orEmpty()
             val arguments = functionCall["args"]?.toString() ?: "{}"
             val id = functionCall.string("id").orEmpty().ifBlank {
                 "call_${(name + arguments + part["thoughtSignature"].toString()).hashCode().toUInt().toString(16)}"
             }
             calls.putIfAbsent(id, NativeToolCall(id, name, arguments))
+            return NativeToolCallProgress(
+                index = calls.keys.indexOf(id),
+                id = id,
+                name = name,
+                argumentsJson = arguments,
+                complete = true,
+            )
         }
 
         fun finalChunk(): StreamChunk? {

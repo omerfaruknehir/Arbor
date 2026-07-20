@@ -802,9 +802,70 @@ private fun parseBlocks(text: String): List<RichBlock> {
 
 internal data class MarkdownSegment(val table: Boolean, val text: String)
 
-private val MarkdownTableSeparator = Regex(
-    """^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$""",
-)
+private val MarkdownTableSeparatorCell = Regex("""^\s*:?-{3,}:?\s*$""")
+private val MarkdownTableFormatting = Regex("""[`*_~]""")
+
+/**
+ * Splits a Markdown row on structural pipes only. Escaped pipes and pipes inside
+ * inline-code spans belong to the cell and must not create phantom columns.
+ */
+internal fun splitMarkdownTableCells(line: String): List<String>? {
+    val cells = mutableListOf<String>()
+    val current = StringBuilder()
+    var delimiterCount = 0
+    var backslashRun = 0
+    var codeFenceLength = 0
+    var index = 0
+
+    while (index < line.length) {
+        val char = line[index]
+        if (char == '`' && backslashRun % 2 == 0) {
+            var run = 1
+            while (index + run < line.length && line[index + run] == '`') run++
+            codeFenceLength = when {
+                codeFenceLength == 0 -> run
+                codeFenceLength == run -> 0
+                else -> codeFenceLength
+            }
+            repeat(run) { current.append('`') }
+            index += run
+            backslashRun = 0
+            continue
+        }
+        if (char == '|' && backslashRun % 2 == 0 && codeFenceLength == 0) {
+            cells += current.toString()
+            current.clear()
+            delimiterCount++
+        } else {
+            current.append(char)
+        }
+        backslashRun = if (char == '\\') backslashRun + 1 else 0
+        index++
+    }
+    if (delimiterCount == 0) return null
+    cells += current.toString()
+
+    val startsWithPipe = line.trimStart().startsWith('|')
+    val endsWithPipe = line.trimEnd().endsWith('|')
+    if (startsWithPipe && cells.firstOrNull()?.isBlank() == true) cells.removeAt(0)
+    if (endsWithPipe && cells.lastOrNull()?.isBlank() == true) cells.removeAt(cells.lastIndex)
+    return cells.takeIf { it.size >= 2 }
+}
+
+private fun markdownTableSeparatorColumns(line: String): Int? = splitMarkdownTableCells(line)
+    ?.takeIf { cells -> cells.all { MarkdownTableSeparatorCell.matches(it) } }
+    ?.size
+
+private fun addMarkdownSegment(
+    destination: MutableList<MarkdownSegment>,
+    table: Boolean,
+    lines: List<String>,
+) {
+    val first = lines.indexOfFirst(String::isNotBlank)
+    if (first < 0) return
+    val last = lines.indexOfLast(String::isNotBlank)
+    destination += MarkdownSegment(table, lines.subList(first, last + 1).joinToString("\n"))
+}
 
 /** Splits complete Markdown tables so only the table receives horizontal scrolling. */
 internal fun splitMarkdownTables(markdown: String): List<MarkdownSegment> {
@@ -815,18 +876,18 @@ internal fun splitMarkdownTables(markdown: String): List<MarkdownSegment> {
     var index = 1
 
     while (index < lines.size) {
-        val header = lines[index - 1]
-        val separator = lines[index]
-        if ('|' in header && MarkdownTableSeparator.matches(separator)) {
+        val headerCells = splitMarkdownTableCells(lines[index - 1])
+        val separatorColumns = markdownTableSeparatorColumns(lines[index])
+        if (headerCells != null && separatorColumns != null && headerCells.size == separatorColumns) {
             val tableStart = index - 1
-            if (tableStart > plainStart) {
-                segments += MarkdownSegment(false, lines.subList(plainStart, tableStart).joinToString("\n"))
-            }
+            if (tableStart > plainStart) addMarkdownSegment(segments, false, lines.subList(plainStart, tableStart))
             var tableEnd = index + 1
-            while (tableEnd < lines.size && lines[tableEnd].isNotBlank() && '|' in lines[tableEnd]) {
+            while (tableEnd < lines.size && lines[tableEnd].isNotBlank()) {
+                val rowCells = splitMarkdownTableCells(lines[tableEnd]) ?: break
+                if (rowCells.size != separatorColumns) break
                 tableEnd++
             }
-            segments += MarkdownSegment(true, lines.subList(tableStart, tableEnd).joinToString("\n"))
+            addMarkdownSegment(segments, true, lines.subList(tableStart, tableEnd))
             plainStart = tableEnd
             index = tableEnd + 1
         } else {
@@ -834,17 +895,16 @@ internal fun splitMarkdownTables(markdown: String): List<MarkdownSegment> {
         }
     }
 
-    if (plainStart < lines.size) {
-        segments += MarkdownSegment(false, lines.subList(plainStart, lines.size).joinToString("\n"))
-    }
-    return segments.filter { it.text.isNotBlank() }
+    if (plainStart < lines.size) addMarkdownSegment(segments, false, lines.subList(plainStart, lines.size))
+    return segments
 }
 
 internal fun estimateMarkdownTableWidthDp(markdown: String, viewportDp: Int): Int {
     val rows = markdown.lineSequence()
-        .filter { line -> line.isNotBlank() && !MarkdownTableSeparator.matches(line) && '|' in line }
-        .map { line ->
-            line.trim().trim('|').split('|').map { cell -> cell.trim().replace(Regex("""[`*_~]"""), "") }
+        .mapNotNull { line ->
+            val cells = splitMarkdownTableCells(line) ?: return@mapNotNull null
+            if (cells.all { MarkdownTableSeparatorCell.matches(it) }) null
+            else cells.map { cell -> cell.trim().replace(MarkdownTableFormatting, "") }
         }
         .toList()
     val columnCount = rows.maxOfOrNull { it.size } ?: return viewportDp.coerceAtLeast(240)

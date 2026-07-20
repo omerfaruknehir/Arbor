@@ -28,19 +28,26 @@ import app.arbor.chat.sandbox.StaticCodeLinter
 import app.arbor.chat.sandbox.UbuntuExecutionResult
 
 @Composable
-fun CodeSourcePanel(language: String, code: String, title: String = language.ifBlank { "code" }.uppercase()) {
-    val lint = remember(language, code) { StaticCodeLinter.lint(language, code) }
+fun CodeSourcePanel(
+    language: String,
+    code: String,
+    title: String = language.ifBlank { "code" }.uppercase(),
+    live: Boolean = false,
+) {
+    val lint = if (live) null else remember(language, code) { StaticCodeLinter.lint(language, code) }
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth()) {
         Column {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(title, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                CodeLintBadge(lint)
+                if (live) Text("Streaming…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else lint?.let { CodeLintBadge(it) }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             AutoLintedCodeText(
                 language = language,
                 code = code,
                 lintResult = lint,
+                lintEnabled = !live,
                 modifier = Modifier.horizontalScroll(rememberScrollState()).padding(12.dp),
                 style = MaterialTheme.typography.bodySmall,
                 softWrap = false,

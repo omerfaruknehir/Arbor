@@ -231,13 +231,8 @@ class GenerationWorker(
             argumentsJson: String = "",
         ): ToolExecution {
             val normalizedTool = request.type.lowercase()
-            val label = when (normalizedTool) {
-                "web_search", "search" -> "Searching the web"
-                "web_fetch", "fetch" -> "Reading a web page"
-                "ubuntu", "ubuntu_exec", "linux", "linux_exec", "shell" -> "Using Linux tools"
-                "send_file", "file_send" -> "Preparing a file"
-                else -> "Running Python"
-            }
+            val presentation = toolCallPresentation(request.type, argumentsJson)
+            val label = presentation.runningLabel
             val input = (request.query ?: request.url ?: request.command ?: request.code ?: request.path).orEmpty().take(4_000)
             val priorExecution = traces.lastOrNull { it.type.equals(request.type, ignoreCase = true) && it.input == input }
             if (priorExecution != null) {
@@ -248,14 +243,21 @@ class GenerationWorker(
                 return ToolExecution(priorOutput, priorExecution.status != "complete", replayed = true)
             }
 
+            val preparedIndex = timeline.indexOfLast { candidate ->
+                candidate.status in setOf("preparing", "prepared") &&
+                    ((providerCallId.isNotBlank() && candidate.providerCallId == providerCallId) ||
+                        (providerCallId.isBlank() && candidate.argumentsJson == argumentsJson && candidate.kind == presentation.kind))
+            }
+            val prepared = preparedIndex.takeIf { it >= 0 }?.let(timeline::get)
             val event = ToolTraceEvent(
+                id = prepared?.id ?: UUID.randomUUID().toString(),
                 type = request.type,
                 label = label,
                 status = "running",
                 input = input,
                 providerCallId = providerCallId,
                 argumentsJson = argumentsJson,
-                startedAt = System.currentTimeMillis(),
+                startedAt = prepared?.startedAt ?: System.currentTimeMillis(),
             )
             traces += event
             val timelineEvent = MessageTimelineEvent(
@@ -274,7 +276,7 @@ class GenerationWorker(
                 argumentsJson = argumentsJson,
                 startedAt = event.startedAt,
             )
-            timeline += timelineEvent
+            if (preparedIndex >= 0) timeline[preparedIndex] = timelineEvent else timeline += timelineEvent
             persistTimeline()
             setForeground(notification(label, indeterminate = true))
             val returnedFiles = mutableListOf<Triple<String, String, Long>>()
@@ -319,6 +321,31 @@ class GenerationWorker(
             }
             persistTimeline()
             return ToolExecution(toolOutput, toolError != null, replayed = false)
+        }
+
+        suspend fun rejectPreparedToolCall(call: NativeToolCall, reason: String) {
+            val presentation = toolCallPresentation(call.name, call.argumentsJson)
+            val now = System.currentTimeMillis()
+            val existingIndex = timeline.indexOfLast { candidate ->
+                candidate.status in setOf("preparing", "prepared") &&
+                    ((call.id.isNotBlank() && candidate.providerCallId == call.id) ||
+                        (candidate.argumentsJson == call.argumentsJson && candidate.kind == presentation.kind))
+            }
+            val existing = existingIndex.takeIf { it >= 0 }?.let(timeline::get)
+            val failed = MessageTimelineEvent(
+                id = existing?.id ?: UUID.randomUUID().toString(),
+                kind = presentation.kind,
+                label = presentation.preparingLabel,
+                status = "error",
+                input = presentation.input,
+                output = reason,
+                providerCallId = call.id,
+                argumentsJson = call.argumentsJson,
+                startedAt = existing?.startedAt ?: now,
+                finishedAt = now,
+            )
+            if (existingIndex >= 0) timeline[existingIndex] = failed else timeline += failed
+            persistTimeline()
         }
 
         fun roughInputTokens(inputs: List<InputMessage>): Int = inputs.sumOf { input ->
@@ -474,6 +501,8 @@ class GenerationWorker(
             var attempt = 0
             val passToolCalls = mutableListOf<NativeToolCall>()
             var passNativePayload = ""
+            val progressEventIds = mutableMapOf<Int, String>()
+            val progressWeights = mutableMapOf<Int, Int>()
 
             suspend fun flush() {
                 if (pendingCharacters == 0) return
@@ -484,6 +513,50 @@ class GenerationWorker(
                 if (now - lastNotification >= NOTIFICATION_UPDATE_MS) {
                     setForeground(notification("Working • ${savedContent.length + savedReasoning.length} chars", indeterminate = true))
                     lastNotification = now
+                }
+            }
+
+            suspend fun upsertToolCallProgress(progress: app.arbor.chat.provider.NativeToolCallProgress, requestId: String) {
+                val presentation = toolCallPresentation(progress.name, progress.argumentsJson)
+                val eventId = progressEventIds.getOrPut(progress.index) { "tool-call-$requestId-${progress.index}" }
+                val existingIndex = timeline.indexOfLast { it.id == eventId }
+                val existing = existingIndex.takeIf { it >= 0 }?.let(timeline::get)
+                val now = System.currentTimeMillis()
+                val event = MessageTimelineEvent(
+                    id = eventId,
+                    kind = presentation.kind,
+                    label = if (progress.complete) presentation.preparingLabel.replaceFirst("Preparing", "Prepared") else presentation.preparingLabel,
+                    status = if (progress.complete) "prepared" else "preparing",
+                    input = presentation.input,
+                    providerCallId = progress.id.ifBlank { existing?.providerCallId.orEmpty() },
+                    argumentsJson = progress.argumentsJson,
+                    startedAt = existing?.startedAt ?: now,
+                    finishedAt = if (progress.complete) now else null,
+                )
+                if (existingIndex >= 0) timeline[existingIndex] = event else timeline += event
+                val weight = progress.name.length + progress.argumentsJson.length
+                val previousWeight = progressWeights.put(progress.index, weight) ?: 0
+                pendingCharacters += (weight - previousWeight).coerceAtLeast(1)
+                if (existing == null) flush()
+            }
+
+            suspend fun failToolCallProgress(error: Throwable) {
+                val now = System.currentTimeMillis()
+                var changed = false
+                progressEventIds.values.forEach { eventId ->
+                    val index = timeline.indexOfLast { it.id == eventId }
+                    if (index >= 0 && timeline[index].status in setOf("preparing", "prepared")) {
+                        timeline[index] = timeline[index].copy(
+                            status = "error",
+                            output = "Tool call stream failed: ${safeError(error)}",
+                            finishedAt = now,
+                        )
+                        changed = true
+                    }
+                }
+                if (changed) {
+                    pendingCharacters++
+                    flush()
                 }
             }
 
@@ -517,7 +590,8 @@ class GenerationWorker(
                     val (request, preflightInputTokens) = prepareCountedRequest(baseRequest)
                     passInput = preflightInputTokens
                     container.providers.get(provider.kind).stream(request) { chunk ->
-                        if (chunk.text.isNotEmpty() || chunk.reasoning.isNotEmpty() || chunk.toolCalls.isNotEmpty()) passReceived = true
+                        if (chunk.text.isNotEmpty() || chunk.reasoning.isNotEmpty() || chunk.toolCallProgress.isNotEmpty() || chunk.toolCalls.isNotEmpty()) passReceived = true
+                        chunk.toolCallProgress.forEach { progress -> upsertToolCallProgress(progress, callId) }
                         if (chunk.toolCalls.isNotEmpty()) passToolCalls += chunk.toolCalls
                         if (chunk.nativeProviderPayloadJson.isNotBlank()) passNativePayload = chunk.nativeProviderPayloadJson
                         if (chunk.reasoning.isNotEmpty()) {
@@ -545,6 +619,7 @@ class GenerationWorker(
                     )
                     break
                 } catch (error: ProviderHttpException) {
+                    failToolCallProgress(error)
                     flush()
                     saveCallUsage(
                         callId, round, callStartedAt, outgoing, passReceived, passInput, passOutput, passCached,
@@ -569,6 +644,7 @@ class GenerationWorker(
                     }
                     throw error
                 } catch (error: IOException) {
+                    failToolCallProgress(error)
                     flush()
                     saveCallUsage(
                         callId, round, callStartedAt, outgoing, passReceived, passInput, passOutput, passCached,
@@ -582,6 +658,7 @@ class GenerationWorker(
                     throw error
                 } catch (cancelled: CancellationException) {
                     withContext(NonCancellable) {
+                        failToolCallProgress(cancelled)
                         flush()
                         saveCallUsage(
                             callId, round, callStartedAt, outgoing, passReceived, passInput, passOutput, passCached,
@@ -591,6 +668,7 @@ class GenerationWorker(
                     }
                     throw cancelled
                 } catch (error: Throwable) {
+                    failToolCallProgress(error)
                     flush()
                     saveCallUsage(
                         callId, round, callStartedAt, outgoing, passReceived, passInput, passOutput, passCached,
@@ -629,10 +707,12 @@ class GenerationWorker(
                 val results = calls.map { call ->
                     val parsed = runCatching { ArborNativeTools.request(call) }
                     if (parsed.isFailure) {
+                        val rejection = "Arbor rejected this tool call: ${parsed.exceptionOrNull()?.message ?: "invalid arguments"}"
+                        rejectPreparedToolCall(call, rejection)
                         NativeToolResult(
                             callId = call.id,
                             name = call.name,
-                            output = "Arbor rejected this tool call: ${parsed.exceptionOrNull()?.message ?: "invalid arguments"}",
+                            output = rejection,
                             isError = true,
                         )
                     } else {

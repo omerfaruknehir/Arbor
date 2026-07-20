@@ -56,7 +56,11 @@ class OpenAiCompatibleProvider(
             }
         }
         if (calls.isNotEmpty()) {
-            emit(StreamChunk(toolCalls = calls.toSortedMap().values.map { it.complete() }))
+            val completed = calls.toSortedMap()
+            emit(StreamChunk(
+                toolCallProgress = completed.map { (index, call) -> call.progress(index, complete = true) },
+                toolCalls = completed.values.map { it.complete() },
+            ))
         }
     }
 
@@ -171,6 +175,7 @@ class OpenAiCompatibleProvider(
         root.obj("error")?.let { error -> throw ProviderProtocolException(error.string("message") ?: "Provider returned a stream error") }
         val choice = root.array("choices")?.firstOrNull()?.jsonObject
         val delta = choice?.obj("delta")
+        val toolProgress = mutableListOf<NativeToolCallProgress>()
         delta?.array("tool_calls")?.forEach { element ->
             val item = element.jsonObject
             val index = item.long("index")?.toInt() ?: calls.size
@@ -180,6 +185,7 @@ class OpenAiCompatibleProvider(
                 function.string("name")?.let { accumulator.name += it }
                 function.string("arguments")?.let { accumulator.arguments.append(it) }
             }
+            toolProgress += accumulator.progress(index)
         }
         val usage = root.obj("usage")
         val details = usage?.obj("prompt_tokens_details")
@@ -191,6 +197,7 @@ class OpenAiCompatibleProvider(
             outputTokens = usage?.long("completion_tokens"),
             cachedInputTokens = details?.long("cached_tokens"),
             finishReason = choice?.string("finish_reason"),
+            toolCallProgress = toolProgress,
         )
     }
 
@@ -206,6 +213,14 @@ class OpenAiCompatibleProvider(
         var id: String = ""
         var name: String = ""
         val arguments = StringBuilder()
+
+        fun progress(index: Int, complete: Boolean = false) = NativeToolCallProgress(
+            index = index,
+            id = id,
+            name = name,
+            argumentsJson = arguments.toString(),
+            complete = complete,
+        )
 
         fun complete(): NativeToolCall {
             val stableId = id.ifBlank { "call_${name.hashCode().toUInt().toString(16)}" }

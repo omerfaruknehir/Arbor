@@ -38,6 +38,7 @@ data class StreamChunk(
     val outputTokens: Long? = null,
     val cachedInputTokens: Long? = null,
     val finishReason: String? = null,
+    val toolCallProgress: List<NativeToolCallProgress> = emptyList(),
     val toolCalls: List<NativeToolCall> = emptyList(),
     val nativeProviderPayloadJson: String = "",
 )

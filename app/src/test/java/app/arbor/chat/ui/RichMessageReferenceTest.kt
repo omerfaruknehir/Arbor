@@ -1,5 +1,6 @@
 package app.arbor.chat.ui
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -45,6 +46,43 @@ Outro""",
         assertTrue(segments.any { !it.table && "Intro" in it.text })
         assertTrue(segments.any { it.table && "| Name | Description |" in it.text })
         assertTrue(segments.any { !it.table && "Outro" in it.text })
+    }
+
+    @Test fun tableBoundariesDoNotLeakBlankLinesIntoAdjacentBlocks() {
+        val segments = splitMarkdownTables(
+            """Intro
+
+| Name | Status |
+| --- | --- |
+| Arbor | Ready |
+
+Outro""",
+        )
+        assertEquals(
+            listOf(
+                "Intro",
+                """| Name | Status |
+| --- | --- |
+| Arbor | Ready |""",
+                "Outro",
+            ),
+            segments.map { it.text },
+        )
+        assertTrue(segments.none { it.text.startsWith('\n') || it.text.endsWith('\n') })
+    }
+
+    @Test fun escapedAndInlineCodePipesDoNotCreatePhantomColumns() {
+        assertEquals(
+            listOf(" Name ", " `a|b` ", " c\\|d "),
+            splitMarkdownTableCells("| Name | `a|b` | c\\|d |"),
+        )
+        val segments = splitMarkdownTables(
+            """| Name | Expression |
+| --- | --- |
+| Arbor | `left|right` |""",
+        )
+        assertEquals(1, segments.size)
+        assertTrue(segments.single().table)
     }
 
     @Test fun wideTablesReceiveAWidthLargerThanTheViewport() {

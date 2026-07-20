@@ -1,3 +1,12 @@
+## 0.16.47
+
+- Prevent Markdown table boundaries from leaking blank lines into surrounding text blocks.
+- Parse table columns structurally so escaped pipes and inline-code pipes do not create phantom cells or broken spacing.
+- Surface OpenAI-compatible and Anthropic tool calls as soon as their streamed name or arguments arrive, including incremental code, command, query, URL, and path previews.
+- Surface Gemini function calls immediately when the provider emits the function-call part.
+- Reuse provisional tool events when execution begins, avoiding duplicate cards and preserving a single call lifecycle from preparing to running to complete.
+- Disable expensive linting while tool-call code is still streaming, then lint once the arguments are complete.
+
 ## 0.16.46
 
 - Keep a stable visible-message anchor throughout working-card collapse/expansion, streamed tool insertion, and Python-result insertion while detached from the bottom.

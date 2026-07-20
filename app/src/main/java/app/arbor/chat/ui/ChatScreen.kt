@@ -1016,7 +1016,12 @@ private fun TimelineWorkingBlock(
                                             append(index + 1).append(". ")
                                             append(event.label.ifBlank { if (event.kind == "reasoning") "Reasoning" else event.kind.replaceFirstChar(Char::uppercase) })
                                             if (duration != null) append(" • ").append(duration).append(" ms")
-                                            if (event.status == "error") append(" • error")
+                                            when (event.status) {
+                                                "preparing" -> append(" • streaming call")
+                                                "prepared" -> append(" • ready")
+                                                "running" -> append(" • running")
+                                                "error" -> append(" • error")
+                                            }
                                         },
                                         style = MaterialTheme.typography.labelMedium,
                                         color = if (event.status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
@@ -1031,6 +1036,7 @@ private fun TimelineWorkingBlock(
                                         if (event.input.isNotBlank()) AutoLintedCodeText(
                                             language = event.kind,
                                             code = event.input,
+                                            lintEnabled = event.status != "preparing",
                                             style = MaterialTheme.typography.labelSmall,
                                             softWrap = true,
                                         )
@@ -1121,6 +1127,7 @@ private fun ToolStepDetails(kind: String, input: String, output: String, status:
                     "ubuntu" -> "SHELL COMMAND"
                     else -> "INPUT"
                 },
+                live = status == "preparing",
             )
             if (output.isNotBlank()) {
                 val json = ChatMessageJson
@@ -1157,7 +1164,16 @@ private fun CompactSearchToolCard(query: String, output: String, status: String,
                 Icon(Icons.Outlined.Search, null, Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
                 Text("Search", Modifier.padding(start = 7.dp), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.weight(1f))
-                Text(if (status == "running") "Searching…" else if (sites.isEmpty()) "No opened sources" else "${sites.size} used", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    when (status) {
+                        "preparing" -> "Writing query…"
+                        "prepared" -> "Ready"
+                        "running" -> "Searching…"
+                        else -> if (sites.isEmpty()) "No opened sources" else "${sites.size} used"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             Text(parsed?.query ?: query, style = MaterialTheme.typography.bodyMedium)
             if (sites.isNotEmpty()) {
@@ -1212,7 +1228,16 @@ private fun CompactFetchToolCard(url: String, output: String, status: String) {
             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.TravelExplore, null, Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
                 Column(Modifier.padding(start = 8.dp).weight(1f)) {
-                    Text(if (status == "running") "Reading source…" else "Source read", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        when (status) {
+                            "preparing" -> "Writing source request…"
+                            "prepared" -> "Source request ready"
+                            "running" -> "Reading source…"
+                            else -> "Source read"
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                     Text(runCatching { Uri.parse(target).host }.getOrNull().orEmpty().removePrefix("www.").ifBlank { target }, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }

@@ -12,6 +12,14 @@ data class NativeToolCall(
     val argumentsJson: String,
 )
 
+data class NativeToolCallProgress(
+    val index: Int,
+    val id: String = "",
+    val name: String = "",
+    val argumentsJson: String = "",
+    val complete: Boolean = false,
+)
+
 data class NativeToolResult(
     val callId: String,
     val name: String,
