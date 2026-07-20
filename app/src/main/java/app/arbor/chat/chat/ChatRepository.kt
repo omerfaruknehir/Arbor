@@ -300,6 +300,37 @@ class ChatRepository(private val database: ArborDatabase) {
         return assistantId
     }
 
+    suspend fun activateBranch(nodeId: String) {
+        val requestedTarget = requireNotNull(database.messageDao().get(nodeId))
+        val conversation = requireNotNull(database.conversationDao().get(requestedTarget.conversationId))
+        val allMessages = database.messageDao().allForConversation(requestedTarget.conversationId)
+        val byId = allMessages.associateBy(MessageEntity::nodeId)
+        // Selecting an edited user node restores its generated response too when
+        // that direct sibling-pair is available. Assistant retries already point
+        // at the response node itself.
+        val target = if (requestedTarget.role == MessageRole.USER) {
+            allMessages
+                .filter { it.parentNodeId == requestedTarget.nodeId && it.role == MessageRole.ASSISTANT }
+                .maxWithOrNull(compareBy<MessageEntity> { it.createdAt }.thenBy { it.rowId })
+                ?: requestedTarget
+        } else requestedTarget
+        val targetPath = buildSet {
+            var cursor: MessageEntity? = target
+            while (cursor != null) {
+                add(cursor.nodeId)
+                cursor = cursor.parentNodeId?.let(byId::get)
+            }
+        }
+        val activeIds = allMessages.asSequence().filter { it.supersededAt == null }.map(MessageEntity::nodeId).toSet()
+        val deactivate = (activeIds - targetPath).toList()
+        val now = System.currentTimeMillis()
+        database.withTransaction {
+            if (deactivate.isNotEmpty()) database.messageDao().markSuperseded(deactivate, now)
+            database.messageDao().clearSuperseded(targetPath.toList())
+            database.conversationDao().setLeaf(conversation.id, target.nodeId, now)
+        }
+    }
+
     suspend fun retryAssistant(nodeId: String): String {
         val original = requireNotNull(database.messageDao().get(nodeId))
         require(original.role == MessageRole.ASSISTANT) { "Only assistant messages can be retried" }

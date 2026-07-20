@@ -44,6 +44,7 @@ import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Image
@@ -93,6 +94,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -144,6 +146,8 @@ import app.arbor.chat.sandbox.UbuntuExecutionResult
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.filterNotNull
@@ -177,7 +181,7 @@ internal fun calculateAutoFollowStepPx(
     return min(distancePx, min(easedStep, maxSpeedPxPerSecond * frameSeconds))
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val conversation by viewModel.conversation.collectAsStateWithLifecycle()
@@ -199,6 +203,8 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     var showHistory by remember { mutableStateOf(false) }
     var showChatConfiguration by remember { mutableStateOf(false) }
     val messageListState = rememberLazyListState()
+    val listScope = rememberCoroutineScope()
+    var viewportAnchorJob by remember { mutableStateOf<Job?>(null) }
     val blurState = rememberArborBackdropBlurState()
     val density = LocalDensity.current
     val topAppBarState = rememberTopAppBarState()
@@ -209,7 +215,54 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val relockThresholdPx = with(density) { 2.dp.roundToPx() }
     val autoFollowMaxSpeedPxPerSecond = with(density) { 4_800.dp.toPx() }
     var followLatest by remember(conversation?.id) { mutableStateOf(true) }
+    val followLatestState = rememberUpdatedState(followLatest)
     var frozenLatestMessage by remember(conversation?.id) { mutableStateOf<MessageEntity?>(null) }
+    val preserveViewportDuringCardAnimation: ((() -> Unit) -> Unit) = remember(messageListState, listScope) {
+        { mutate ->
+            viewportAnchorJob?.cancel()
+            if (!followLatestState.value && messageListState.isScrollInProgress) {
+                // Do not change a card's height underneath an active finger/fling.
+                // Automatic completion waits until the gesture settles, then the
+                // same viewport anchor used for manual toggles is applied.
+                viewportAnchorJob = listScope.launch {
+                    snapshotFlow { messageListState.isScrollInProgress }.first { !it }
+                    if (followLatestState.value) {
+                        mutate()
+                        return@launch
+                    }
+                    val anchorIndex = messageListState.firstVisibleItemIndex
+                    val anchorOffset = messageListState.firstVisibleItemScrollOffset
+                    mutate()
+                    val startedAt = androidx.compose.runtime.withFrameNanos { it }
+                    val durationNanos = (WorkingCardExpansionDurationMillis + 48L) * 1_000_000L
+                    var now = startedAt
+                    while (now - startedAt <= durationNanos && !messageListState.isScrollInProgress && !followLatestState.value) {
+                        messageListState.requestScrollToItem(anchorIndex, anchorOffset)
+                        now = androidx.compose.runtime.withFrameNanos { it }
+                    }
+                }
+            } else {
+                val shouldAnchor = !followLatestState.value
+                val anchorIndex = messageListState.firstVisibleItemIndex
+                val anchorOffset = messageListState.firstVisibleItemScrollOffset
+                mutate()
+                if (shouldAnchor) {
+                    viewportAnchorJob = listScope.launch {
+                        val startedAt = androidx.compose.runtime.withFrameNanos { it }
+                        val durationNanos = (WorkingCardExpansionDurationMillis + 48L) * 1_000_000L
+                        var now = startedAt
+                        while (now - startedAt <= durationNanos && !messageListState.isScrollInProgress && !followLatestState.value) {
+                            messageListState.requestScrollToItem(anchorIndex, anchorOffset)
+                            now = androidx.compose.runtime.withFrameNanos { it }
+                        }
+                        if (!messageListState.isScrollInProgress && !followLatestState.value) {
+                            messageListState.requestScrollToItem(anchorIndex, anchorOffset)
+                        }
+                    }
+                }
+            }
+        }
+    }
     var searchFocusHandled by remember(conversation?.id, focusedMessageNodeId) { mutableStateOf(false) }
     val latestMessageState = rememberUpdatedState(paging.itemSnapshotList.items.firstOrNull())
     val userScrollConnection = remember(conversation?.id) {
@@ -246,6 +299,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     LaunchedEffect(conversation?.id) {
         modelMenu = false
         chatMenu = false
+        viewportAnchorJob?.cancel()
         followLatest = true
         frozenLatestMessage = null
         messageListState.scrollToItem(0)
@@ -362,7 +416,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         DropdownMenu(expanded = chatMenu, onDismissRequest = { chatMenu = false }) {
                             DropdownMenuItem(text = { Text("Regenerate chat name") }, onClick = { viewModel.regenerateTitle(); chatMenu = false })
                             DropdownMenuItem(text = { Text("Chat configuration") }, leadingIcon = { Icon(Icons.Outlined.Tune, null) }, onClick = { showChatConfiguration = true; chatMenu = false })
-                            DropdownMenuItem(text = { Text("Edited message history (${revisionHistory.size})") }, leadingIcon = { Icon(Icons.Outlined.History, null) }, onClick = { showHistory = true; chatMenu = false })
+                            DropdownMenuItem(text = { Text("Conversation branches (${revisionHistory.size})") }, leadingIcon = { Icon(Icons.Outlined.History, null) }, onClick = { showHistory = true; chatMenu = false })
                         }
                     }
                 },
@@ -457,6 +511,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                 reasoningVisibility = conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
                                 activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
                                 freezeLiveUpdates = index == 0 && !followLatest && frozenLatestMessage?.nodeId == message.nodeId,
+                                preserveViewportDuringCardAnimation = preserveViewportDuringCardAnimation,
                             )
                         }
                     }
@@ -502,15 +557,30 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     }
     if (showHistory) ModalBottomSheet(onDismissRequest = { showHistory = false }) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-            Text("Edited message history", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text("Conversation branches", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text("Superseded branches remain saved; they are not sent as active context.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             LazyColumn(Modifier.fillMaxWidth().heightIn(max = 520.dp).padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(revisionHistory.size, key = { revisionHistory[it].nodeId }) { index ->
                     val message = revisionHistory[index]
                     Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp)) {
-                            Text(message.role.name.lowercase().replaceFirstChar(Char::uppercase), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            Text(
+                                when (message.role) {
+                                    MessageRole.USER -> "Edited user branch"
+                                    MessageRole.ASSISTANT -> "Regenerated response branch"
+                                    else -> "Saved branch"
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
                             Text(message.content.ifBlank { "(empty response)" }, maxLines = 8, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
+                                AssistChip(
+                                    onClick = { viewModel.activateBranch(message); showHistory = false },
+                                    label = { Text("Switch to this branch") },
+                                    leadingIcon = { Icon(Icons.AutoMirrored.Outlined.AltRoute, null, Modifier.size(16.dp)) },
+                                )
+                            }
                         }
                     }
                 }
@@ -573,6 +643,7 @@ private fun MessageCard(
     activeModel: ModelEntity?,
     modifier: Modifier = Modifier,
     freezeLiveUpdates: Boolean = false,
+    preserveViewportDuringCardAnimation: ((() -> Unit) -> Unit),
 ) {
     val liveAttachments by viewModel.run { containerAttachments(message.nodeId) }.collectAsStateWithLifecycle(initialValue = emptyList())
     val frozenAttachments = remember(message.nodeId, freezeLiveUpdates) {
@@ -608,6 +679,8 @@ private fun MessageCard(
     val displayContent = remember(message.content) { ResearchStateProtocol.extract(message.content).cleanedText }
     var editing by remember(message.nodeId) { mutableStateOf(false) }
     var editedText by remember(message.nodeId) { mutableStateOf(message.content) }
+    var copied by remember(message.nodeId) { mutableStateOf(false) }
+    val context = LocalContext.current
     Row(modifier.fillMaxWidth(), horizontalArrangement = if (user) Arrangement.End else Arrangement.Start) {
         Surface(
             shape = if (user) MaterialTheme.shapes.extraLarge else MaterialTheme.shapes.medium,
@@ -653,6 +726,7 @@ private fun MessageCard(
                         animateStreaming = animateStreaming,
                         visibility = reasoningVisibility,
                         viewModel = viewModel,
+                        preserveViewportDuringCardAnimation = preserveViewportDuringCardAnimation,
                     )
                 } else {
                     LegacyWorkingBlock(
@@ -661,6 +735,7 @@ private fun MessageCard(
                         toolTraceJson = message.toolTraceJson,
                         working = working,
                         animateStreaming = animateStreaming,
+                        preserveViewportDuringCardAnimation = preserveViewportDuringCardAnimation,
                     )
                     if (displayContent.isNotBlank()) RichMessage(
                         operationScope = message.nodeId,
@@ -696,6 +771,14 @@ private fun MessageCard(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    IconButton(onClick = {
+                        val label = if (user) "message" else "response"
+                        context.getSystemService(android.content.ClipboardManager::class.java)
+                            .setPrimaryClip(android.content.ClipData.newPlainText(label, message.content))
+                        copied = true
+                    }, modifier = Modifier.size(34.dp)) {
+                        Icon(if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, if (copied) "Copied" else "Copy", Modifier.size(18.dp))
+                    }
                     if (user) {
                         IconButton(onClick = { editedText = message.content; editing = true }, modifier = Modifier.size(34.dp)) {
                             Icon(Icons.Outlined.Edit, "Edit message", Modifier.size(18.dp))
@@ -739,6 +822,7 @@ private fun OrderedMessageTimeline(
     animateStreaming: Boolean,
     visibility: ReasoningVisibility,
     viewModel: ChatViewModel,
+    preserveViewportDuringCardAnimation: ((() -> Unit) -> Unit),
 ) {
     val orderedEvents = remember(events, attachments) {
         val explicitAttachmentIds = events.filter { it.kind == "file" }.map { it.output }.toSet()
@@ -771,6 +855,7 @@ private fun OrderedMessageTimeline(
                     visibility = visibility,
                     usedSourceUrls = usedSourceUrls,
                     viewModel = viewModel,
+                    preserveViewportDuringCardAnimation = preserveViewportDuringCardAnimation,
                 )
             } else {
                 segment.events.forEach { event ->
@@ -815,6 +900,7 @@ private fun TimelineWorkingBlock(
     @Suppress("UNUSED_PARAMETER") visibility: ReasoningVisibility,
     usedSourceUrls: Set<String>,
     viewModel: ChatViewModel,
+    preserveViewportDuringCardAnimation: ((() -> Unit) -> Unit),
 ) {
     if (events.isEmpty()) return
     // Expansion belongs to this working block, not to chat scroll position or the
@@ -825,13 +911,13 @@ private fun TimelineWorkingBlock(
     var previousActive by rememberSaveable("working-active-$stateKey") { mutableStateOf(active) }
     LaunchedEffect(active) {
         if (previousActive != active) {
-            expanded = active
+            preserveViewportDuringCardAnimation { expanded = active }
             previousActive = active
         }
     }
     StreamingFade(transitionKey = "working:$stateKey", enabled = animateStreaming) {
         Surface(
-            onClick = { expanded = !expanded },
+            onClick = { preserveViewportDuringCardAnimation { expanded = !expanded } },
             color = MaterialTheme.colorScheme.surfaceContainer,
             shape = MaterialTheme.shapes.medium,
             modifier = Modifier.fillMaxWidth(),
@@ -847,7 +933,7 @@ private fun TimelineWorkingBlock(
                     )
                     Text(if (expanded) "Collapse" else "Expand", style = MaterialTheme.typography.labelMedium)
                 }
-                AnimatedVisibility(expanded, enter = streamingFadeIn(), exit = streamingFadeOut()) {
+                AnimatedVisibility(expanded, enter = workingCardExpandIn(), exit = workingCardCollapseOut()) {
                     Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         events.forEachIndexed { index, event ->
                             val activeEvent = animateStreaming && index == events.lastIndex
@@ -906,6 +992,7 @@ private fun LegacyWorkingBlock(
     toolTraceJson: String,
     working: Boolean,
     animateStreaming: Boolean,
+    preserveViewportDuringCardAnimation: ((() -> Unit) -> Unit),
 ) {
     val traces = remember(toolTraceJson) {
         runCatching { ChatMessageJson.decodeFromString<List<ToolTraceEvent>>(toolTraceJson) }.getOrDefault(emptyList())
@@ -916,12 +1003,12 @@ private fun LegacyWorkingBlock(
     var previousActive by rememberSaveable("legacy-working-active-$messageKey") { mutableStateOf(working) }
     LaunchedEffect(working) {
         if (previousActive != working) {
-            expanded = working
+            preserveViewportDuringCardAnimation { expanded = working }
             previousActive = working
         }
     }
     Surface(
-        onClick = { expanded = !expanded },
+        onClick = { preserveViewportDuringCardAnimation { expanded = !expanded } },
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = MaterialTheme.shapes.medium,
         modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
@@ -933,7 +1020,7 @@ private fun LegacyWorkingBlock(
                 Text("Working", Modifier.padding(start = 8.dp).weight(1f), fontWeight = FontWeight.Medium)
                 Text(if (expanded) "Collapse" else "Expand", style = MaterialTheme.typography.labelMedium)
             }
-            AnimatedVisibility(expanded, enter = streamingFadeIn(), exit = streamingFadeOut()) {
+            AnimatedVisibility(expanded, enter = workingCardExpandIn(), exit = workingCardCollapseOut()) {
                 Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (text.isNotBlank()) StreamingPlainText(
                         text = text,
@@ -963,7 +1050,7 @@ private fun ToolStepDetails(kind: String, input: String, output: String, status:
     when (kind) {
         "search" -> CompactSearchToolCard(input, output, status, usedSourceUrls)
         "fetch" -> CompactFetchToolCard(input, output, status)
-        else -> {
+        else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (input.isNotBlank()) CodeSourcePanel(
                 language,
                 input,

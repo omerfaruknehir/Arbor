@@ -431,6 +431,15 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         container.scheduler.start(message.conversationId, assistantId, continuation = false)
     }
 
+    fun activateBranch(message: MessageEntity) = launchAction {
+        container.scheduler.stopConversation(message.conversationId)
+        container.repository.activeStreams(message.conversationId).forEach { active ->
+            container.repository.markInterrupted(active.nodeId, "Switched to another branch")
+        }
+        container.repository.activateBranch(message.nodeId)
+        notices.emit("Switched to saved branch")
+    }
+
     fun retryMessage(message: MessageEntity) = launchAction {
         container.scheduler.stopConversation(message.conversationId)
         container.repository.activeStreams(message.conversationId).forEach { active ->

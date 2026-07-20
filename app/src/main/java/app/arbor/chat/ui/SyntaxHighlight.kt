@@ -1,6 +1,7 @@
 package app.arbor.chat.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
@@ -337,11 +338,12 @@ internal fun AutoLintedCodeText(
 ) {
     val automatic = remember(language, code) { StaticCodeLinter.lint(language, code) }
     val diagnostics = lintResult?.diagnostics ?: automatic.diagnostics
-    Text(
-        highlightedCode(language, code, diagnostics),
-        modifier = modifier,
-        fontFamily = FontFamily.Monospace,
-        style = style,
-        softWrap = softWrap,
-    )
+    SelectionContainer(modifier = modifier) {
+        Text(
+            highlightedCode(language, code, diagnostics),
+            fontFamily = FontFamily.Monospace,
+            style = style,
+            softWrap = softWrap,
+        )
+    }
 }

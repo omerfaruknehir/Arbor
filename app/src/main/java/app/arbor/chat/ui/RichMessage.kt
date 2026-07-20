@@ -204,7 +204,7 @@ private fun SafeGeneratedBlock(label: String, source: String, retry: () -> Unit)
                 OutlinedButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Collapse source" else "Show source") }
                 Button(onClick = retry) { Text("Try full rendering") }
             }
-            AnimatedVisibility(expanded, enter = streamingFadeIn(), exit = streamingFadeOut()) {
+            AnimatedVisibility(expanded, enter = workingCardExpandIn(), exit = workingCardCollapseOut()) {
                 AutoLintedCodeText(
                     language = "text",
                     code = source,
@@ -297,7 +297,7 @@ private fun PackageRequestBlock(
                 }
                 Text("${current.decidedBy}: ${current.reason}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "Collapse package plan" else "Show complete package plan") }
-                AnimatedVisibility(showDetails, enter = streamingFadeIn(), exit = streamingFadeOut()) {
+                AnimatedVisibility(showDetails, enter = workingCardExpandIn(), exit = workingCardCollapseOut()) {
                     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         current.plan.items.forEach { item ->
                             val status = when (item.action) {
@@ -365,6 +365,7 @@ internal fun MarkdownBlock(
     val linkColor = MaterialTheme.colorScheme.primary.toArgbCompat()
     val pillBackground = MaterialTheme.colorScheme.secondaryContainer.toArgbCompat()
     val pillForeground = MaterialTheme.colorScheme.onSecondaryContainer.toArgbCompat()
+    val selectionColor = MaterialTheme.colorScheme.primary.copy(alpha = .32f).toArgbCompat()
     val tableViewportDp = (LocalConfiguration.current.screenWidthDp - 48).coerceAtLeast(240)
     val tableWidth = remember(markdown, tableViewportDp) {
         estimateMarkdownTableWidthDp(markdown, tableViewportDp).dp
@@ -389,6 +390,7 @@ internal fun MarkdownBlock(
                 linkColor = linkColor,
                 pillBackground = pillBackground,
                 pillForeground = pillForeground,
+                selectionColor = selectionColor,
                 onReference = { pendingReference = it },
                 modifier = Modifier.width(tableWidth),
             )
@@ -401,6 +403,7 @@ internal fun MarkdownBlock(
             linkColor = linkColor,
             pillBackground = pillBackground,
             pillForeground = pillForeground,
+            selectionColor = selectionColor,
             onReference = { pendingReference = it },
             modifier = Modifier.fillMaxWidth(),
         )
@@ -419,6 +422,7 @@ internal fun StreamingPlainText(
 ) {
     val renderedText = rememberBatchedStreamingText(text, streaming)
     val color = MaterialTheme.colorScheme.onSurfaceVariant.toArgbCompat()
+    val selectionColor = MaterialTheme.colorScheme.primary.copy(alpha = .32f).toArgbCompat()
     val textSizeSp = MaterialTheme.typography.bodySmall.fontSize.value
     AndroidView(
         factory = { context ->
@@ -428,12 +432,12 @@ internal fun StreamingPlainText(
                 setBackgroundColor(AndroidColor.TRANSPARENT)
                 includeFontPadding = false
                 movementMethod = selectableLinkMovementMethod
-                highlightColor = AndroidColor.TRANSPARENT
                 setLineSpacing(0f, 1.08f)
             }
         },
         update = { view ->
             view.setTextColor(color)
+            view.highlightColor = selectionColor
             view.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
             if (view.renderedSource != renderedText) {
                 view.setText(renderedText, TextView.BufferType.SPANNABLE)
@@ -452,6 +456,7 @@ private fun MarkdownAndroidView(
     linkColor: Int,
     pillBackground: Int,
     pillForeground: Int,
+    selectionColor: Int,
     onReference: (LinkReferencePreview) -> Unit,
     modifier: Modifier,
 ) {
@@ -465,13 +470,13 @@ private fun MarkdownAndroidView(
                 includeFontPadding = false
                 linksClickable = true
                 movementMethod = selectableLinkMovementMethod
-                highlightColor = AndroidColor.TRANSPARENT
                 setLineSpacing(0f, 1.08f)
             }
         },
         update = { view ->
             view.setTextColor(textColor)
             view.setLinkTextColor(linkColor)
+            view.highlightColor = selectionColor
             view.setHorizontallyScrolling(false)
             val styleKey = (((textColor * 31) + linkColor) * 31 + pillBackground) * 31 + pillForeground
             if (view.renderedSource != markdown || view.renderedStyleKey != styleKey) {

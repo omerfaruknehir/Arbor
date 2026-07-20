@@ -170,6 +170,10 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE nodeId = :nodeId")
     suspend fun get(nodeId: String): MessageEntity?
 
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt ASC, rowId ASC")
+    suspend fun allForConversation(conversationId: String): List<MessageEntity>
+
+
     @Query("""
         SELECT COUNT(*) FROM messages m
         WHERE m.conversationId = :conversationId AND m.supersededAt IS NULL
@@ -222,6 +226,9 @@ interface MessageDao {
 
     @Query("UPDATE messages SET supersededAt = :now WHERE nodeId IN (:nodeIds)")
     suspend fun markSuperseded(nodeIds: List<String>, now: Long)
+
+    @Query("UPDATE messages SET supersededAt = NULL WHERE nodeId IN (:nodeIds)")
+    suspend fun clearSuperseded(nodeIds: List<String>)
 
     @Query("UPDATE messages SET status = 'INTERRUPTED', error = 'Generation process stopped', updatedAt = :now WHERE status = 'STREAMING'")
     suspend fun markOrphanedStreamsInterrupted(now: Long)
