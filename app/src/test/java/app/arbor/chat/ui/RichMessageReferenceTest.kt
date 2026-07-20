@@ -155,9 +155,18 @@ Outro""",
         assertTrue(containsMarkdownTableCandidate("| A | B |\n| --- | --- |"))
     }
 
-    @Test fun everyStreamingTableUsesTheLightweightRenderer() {
-        assertTrue(shouldUseLightweightTableRenderer("| A | B |\n| --- | --- |\n| 1 | 2 |", streaming = true))
-        assertFalse(shouldUseLightweightTableRenderer("| A | B |\n| --- | --- |\n| 1 | 2 |", streaming = false))
+    @Test fun ordinaryStreamingTablesKeepTheRealTableRenderer() {
+        val small = "| A | B |\n| --- | --- |\n| 1 | 2 |"
+        assertFalse(shouldUseLightweightTableRenderer(small, streaming = true))
+        assertFalse(shouldUseLightweightTableRenderer(small, streaming = false))
+    }
+
+    @Test fun oversizedStreamingTablesUseTheBoundedRenderer() {
+        val rows = buildString {
+            append("| A | B |\n| --- | --- |\n")
+            repeat(StreamingTablePreviewMaxLines + 1) { append("| ").append(it).append(" | value |\n") }
+        }
+        assertTrue(shouldUseLightweightTableRenderer(rows, streaming = true))
     }
 
     @Test fun oversizedCompletedTablesAvoidMarkwonTableLayout() {
@@ -196,6 +205,29 @@ Outro""",
         assertTrue(preview.length <= 1_000)
         assertTrue(preview.startsWith("| A | B |\n| --- | --- |"))
         assertTrue("| 19999 | value |" in preview)
+    }
+
+    @Test fun streamingTableGridRendersAlignedCellsInsteadOfRawMarkdown() {
+        val markdown = "Intro\n\n| Name | Status |\n| --- | --- |\n| Arbor | Streaming |"
+        val start = findFirstMarkdownTableStart(markdown)
+        assertEquals(markdown.indexOf("| Name"), start)
+        val rendered = renderStreamingTableGrid(markdown, startOffset = start ?: 0)
+        assertTrue(rendered.text.startsWith("┌"))
+        assertTrue("│ Name" in rendered.text)
+        assertTrue("Arbor" in rendered.text)
+        assertFalse("| --- |" in rendered.text)
+    }
+
+    @Test fun hugeStreamingTableGridKeepsHeaderAndNewestRowsBounded() {
+        val table = buildString {
+            append("| Index | Value |\n| --- | --- |\n")
+            repeat(2_000) { append("| ").append(it).append(" | row-").append(it).append(" |\n") }
+        }
+        val rendered = renderStreamingTableGrid(table, maxChars = 1_200, maxLines = 14)
+        assertTrue("Index" in rendered.text)
+        assertTrue("row-1999" in rendered.text)
+        assertTrue("omitted" in rendered.text)
+        assertTrue(rendered.displayedRows <= 14)
     }
 
 }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -161,9 +162,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.conflate
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.min
@@ -188,7 +187,7 @@ internal fun calculateAutoFollowStepPx(
     maxSpeedPxPerSecond: Float,
 ): Float {
     if (distancePx <= 0f || frameSeconds <= 0f || maxSpeedPxPerSecond <= 0f) return 0f
-    val response = 1f - exp(-10f * frameSeconds)
+    val response = 1f - exp(-6f * frameSeconds)
     val easedStep = (distancePx * response).coerceAtLeast(min(0.75f, distancePx))
     return min(distancePx, min(easedStep, maxSpeedPxPerSecond * frameSeconds))
 }
@@ -266,20 +265,11 @@ private data class WorkingCardViewportController(
     }
 }
 
-private data class ChatBottomLayoutSnapshot(
-    val totalItems: Int,
-    val lastVisibleIndex: Int,
-    val lastVisibleBottomPx: Int,
-    val visibleViewportEndPx: Int,
-    val scrollInProgress: Boolean,
-    val followMode: ChatFollowMode,
-    val manualHold: Boolean,
-)
-
 internal fun calculateVisibleChatViewportEndPx(viewportEndPx: Int, obscuredBottomPx: Int): Int =
     (viewportEndPx - obscuredBottomPx.coerceAtLeast(0)).coerceAtLeast(0)
 
-private const val ChatFollowMaxSpeedPxPerSecond = 1_350f
+private const val ChatFollowMaxSpeedPxPerSecond = 900f
+private const val ChatFollowSeekSpeedPxPerSecond = 1_100f
 
 private suspend fun snapChatToBottom(
     state: androidx.compose.foundation.lazy.LazyListState,
@@ -294,26 +284,6 @@ private suspend fun snapChatToBottom(
     val visibleEnd = calculateVisibleChatViewportEndPx(layout.viewportEndOffset, obscuredBottomPx)
     val overflow = last.offset + last.size - visibleEnd
     if (overflow > 0) state.scrollBy(overflow.toFloat())
-}
-
-private suspend fun easeChatFollowBy(
-    state: androidx.compose.foundation.lazy.LazyListState,
-    distancePx: Float,
-    shouldContinue: () -> Boolean,
-) {
-    var remaining = distancePx.coerceAtLeast(0f)
-    if (remaining < 0.75f) return
-    var previousFrame = withFrameNanos { it }
-    while (remaining >= 0.75f && shouldContinue()) {
-        val frame = withFrameNanos { it }
-        val seconds = ((frame - previousFrame).coerceAtLeast(1L) / 1_000_000_000f).coerceAtMost(0.05f)
-        previousFrame = frame
-        val step = calculateAutoFollowStepPx(remaining, seconds, ChatFollowMaxSpeedPxPerSecond)
-        if (step <= 0f) break
-        val consumed = state.scrollBy(step)
-        if (consumed <= 0.1f) break
-        remaining = (remaining - consumed).coerceAtLeast(0f)
-    }
 }
 
 internal fun calculateComposerChromeProgressFromBottom(
@@ -352,6 +322,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     var chatMenu by remember { mutableStateOf(false) }
     var showChatConfiguration by remember { mutableStateOf(false) }
     val messageListState = rememberLazyListState()
+    val userDraggingMessageList by messageListState.interactionSource.collectIsDraggedAsState()
     val listScope = rememberCoroutineScope()
     val blurState = rememberArborBackdropBlurState()
     val density = LocalDensity.current
@@ -454,46 +425,80 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         }
     }
 
-    // One bottom-follow loop owns programmatic scrolling. It reacts to actual
-    // layout growth (including the 30 Hz streamed-text reveal), so there is no
-    // competing per-token scroll effect and no repeated scrollToItem jump.
-    LaunchedEffect(messageListState, conversation?.id, initialPositioned) {
-        snapshotFlow {
-            val layout = messageListState.layoutInfo
-            val last = layout.visibleItemsInfo.lastOrNull()
-            ChatBottomLayoutSnapshot(
-                totalItems = layout.totalItemsCount,
-                lastVisibleIndex = last?.index ?: -1,
-                lastVisibleBottomPx = last?.let { it.offset + it.size } ?: 0,
-                visibleViewportEndPx = calculateVisibleChatViewportEndPx(
-                    viewportEndPx = layout.viewportEndOffset,
-                    obscuredBottomPx = messageBottomInsetPx,
-                ),
-                scrollInProgress = messageListState.isScrollInProgress,
-                followMode = followMode,
-                manualHold = manualFollowHold,
-            )
+    // A new immediate turn always reattaches follow mode. This is separate from
+    // the streaming loop because a user may have scrolled away before pressing
+    // Send; leaving the previous DETACHED state in place made auto-follow appear
+    // completely dead for the next response.
+    LaunchedEffect(generating, paging.itemCount, messageBottomInsetPx, initialPositioned) {
+        if (generating && initialPositioned && paging.itemCount > 0 && messageBottomInsetPx > 0) {
+            manualFollowHold = false
+            followMode = ChatFollowMode.FOLLOWING
+            withFrameNanos { }
+            snapChatToBottom(messageListState, paging.itemCount - 1, messageBottomInsetPx)
         }
-            .distinctUntilChanged()
-            .conflate()
-            .collect { snapshot ->
-                if (!initialPositioned || snapshot.totalItems == 0 || snapshot.scrollInProgress ||
-                    snapshot.followMode != ChatFollowMode.FOLLOWING || snapshot.manualHold
-                ) return@collect
+    }
 
-                val lastIndex = snapshot.totalItems - 1
-                if (snapshot.lastVisibleIndex < lastIndex) {
-                    messageListState.animateScrollToItem(lastIndex)
-                    snapChatToBottom(messageListState, lastIndex, messageBottomInsetPx)
-                } else {
-                    val overflow = snapshot.lastVisibleBottomPx - snapshot.visibleViewportEndPx
-                    if (overflow > 0.75f) {
-                        easeChatFollowBy(messageListState, overflow.toFloat()) {
-                            followMode == ChatFollowMode.FOLLOWING && !manualFollowHold
-                        }
-                    }
+    // Follow the growing response from the rendered layout, not from database
+    // token events. A frame-paced loop remains active for the whole generation
+    // and briefly after completion so the final batched Markdown frame is not
+    // left under the composer. User input immediately switches followMode to
+    // DETACHED and cancels this effect.
+    LaunchedEffect(
+        messageListState,
+        conversation?.id,
+        initialPositioned,
+        generating,
+        messageBottomInsetPx,
+        followMode,
+        manualFollowHold,
+    ) {
+        if (!initialPositioned || followMode != ChatFollowMode.FOLLOWING || manualFollowHold) return@LaunchedEffect
+
+        var settleFramesRemaining = if (generating) Int.MAX_VALUE else 36
+        var previousFrameNanos = withFrameNanos { it }
+        while (generating || settleFramesRemaining-- > 0) {
+            currentCoroutineContext().ensureActive()
+            val frameNanos = withFrameNanos { it }
+            val frameSeconds = ((frameNanos - previousFrameNanos).coerceAtLeast(1L) / 1_000_000_000f)
+                .coerceAtMost(0.05f)
+            previousFrameNanos = frameNanos
+
+            if (followMode != ChatFollowMode.FOLLOWING || manualFollowHold) break
+            // Only a finger drag suspends follow. isScrollInProgress also becomes
+            // true for our own scrollBy/animate calls, which previously caused the
+            // loop to suppress itself and made auto-scroll stop altogether.
+            if (userDraggingMessageList) continue
+
+            val layout = messageListState.layoutInfo
+            val lastIndex = layout.totalItemsCount - 1
+            if (lastIndex < 0) continue
+            val lastVisible = layout.visibleItemsInfo.lastOrNull()
+
+            if (lastVisible == null || lastVisible.index < lastIndex) {
+                // Never jump directly to the tail. Move at a capped velocity until
+                // it enters the viewport; this keeps large tool/table insertions
+                // smooth instead of producing a harsh animateScrollToItem seek.
+                if (messageListState.canScrollForward) {
+                    val step = ChatFollowSeekSpeedPxPerSecond * frameSeconds
+                    if (step > 0f) messageListState.scrollBy(step)
                 }
+                continue
             }
+
+            val visibleEnd = calculateVisibleChatViewportEndPx(
+                viewportEndPx = layout.viewportEndOffset,
+                obscuredBottomPx = messageBottomInsetPx,
+            )
+            val overflow = (lastVisible.offset + lastVisible.size - visibleEnd).toFloat()
+            if (overflow > 0.5f) {
+                val step = calculateAutoFollowStepPx(
+                    distancePx = overflow,
+                    frameSeconds = frameSeconds,
+                    maxSpeedPxPerSecond = ChatFollowMaxSpeedPxPerSecond,
+                )
+                if (step > 0f) messageListState.scrollBy(step)
+            }
+        }
     }
 
     LaunchedEffect(messageListState, conversation?.id) {
@@ -595,6 +600,10 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 generating = generating,
                 chromeProgress = composerChromeProgress,
                 blurState = blurState,
+                onImmediateSend = {
+                    manualFollowHold = false
+                    followMode = ChatFollowMode.FOLLOWING
+                },
             )
         },
     ) { padding ->
@@ -1461,6 +1470,7 @@ private fun Composer(
     generating: Boolean,
     chromeProgress: Float,
     blurState: ArborBackdropBlurState,
+    onImmediateSend: () -> Unit,
 ) {
     val conversation by viewModel.conversation.collectAsStateWithLifecycle()
     val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsStateWithLifecycle()
@@ -1603,7 +1613,14 @@ private fun Composer(
                     color = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(48.dp).combinedClickable(
-                        onClick = { if (generating && draft.isBlank() && staged.isEmpty()) viewModel.stop() else viewModel.send() },
+                        onClick = {
+                            if (generating && draft.isBlank() && staged.isEmpty()) {
+                                viewModel.stop()
+                            } else {
+                                onImmediateSend()
+                                viewModel.send()
+                            }
+                        },
                         onLongClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             sendMenu = true
@@ -1678,8 +1695,8 @@ private fun Composer(
                     supportingContent = { Text(if (!hasPayload) "Type a message or attach a file first" else if (generating) "Stop it, preserve its state, insert this message, then continue" else "Start a response immediately") },
                     leadingContent = { Icon(if (generating) Icons.AutoMirrored.Outlined.AltRoute else Icons.AutoMirrored.Filled.Send, null) },
                     modifier = Modifier.combinedClickable(
-                        onClick = { if (hasPayload) { viewModel.send(if (generating) SendMode.STEER else SendMode.SEND_NOW); sendMenu = false } },
-                        onLongClick = { if (hasPayload) { viewModel.send(if (generating) SendMode.STEER else SendMode.SEND_NOW); sendMenu = false } },
+                        onClick = { if (hasPayload) { onImmediateSend(); viewModel.send(if (generating) SendMode.STEER else SendMode.SEND_NOW); sendMenu = false } },
+                        onLongClick = { if (hasPayload) { onImmediateSend(); viewModel.send(if (generating) SendMode.STEER else SendMode.SEND_NOW); sendMenu = false } },
                     ),
                     colors = androidx.compose.material3.ListItemDefaults.colors(
                         headlineColor = if (hasPayload) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = .38f),
@@ -1695,7 +1712,7 @@ private fun Composer(
                     headlineContent = { Text("Start a separate turn") },
                     supportingContent = { Text(if (hasPayload) "Let both responses run concurrently" else "Type a message or attach a file first") },
                     leadingContent = { Icon(Icons.AutoMirrored.Filled.Send, null) },
-                    modifier = Modifier.combinedClickable(onClick = { if (hasPayload) { viewModel.send(SendMode.SEND_NOW); sendMenu = false } }, onLongClick = { if (hasPayload) { viewModel.send(SendMode.SEND_NOW); sendMenu = false } }),
+                    modifier = Modifier.combinedClickable(onClick = { if (hasPayload) { onImmediateSend(); viewModel.send(SendMode.SEND_NOW); sendMenu = false } }, onLongClick = { if (hasPayload) { onImmediateSend(); viewModel.send(SendMode.SEND_NOW); sendMenu = false } }),
                 )
             }
         }

@@ -13,7 +13,7 @@ import androidx.compose.ui.platform.ViewConfiguration
 
 /**
  * Horizontal containers used inside the vertically scrolling chat require a
- * deliberate sideways gesture. The larger horizontal touch slop lets the
+ * deliberate sideways gesture. A modestly larger horizontal touch slop lets the
  * parent LazyColumn win ordinary diagonal/vertical drags instead of making the
  * conversation feel stuck.
  */
@@ -22,7 +22,7 @@ internal fun LowSensitivityHorizontalScroll(
     modifier: Modifier = Modifier,
     state: ScrollState = rememberScrollState(),
     enabled: Boolean = true,
-    touchSlopMultiplier: Float = 1.85f,
+    touchSlopMultiplier: Float = 1.35f,
     content: @Composable () -> Unit,
 ) {
     val base = LocalViewConfiguration.current

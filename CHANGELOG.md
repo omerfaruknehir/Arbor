@@ -1,3 +1,9 @@
+## 0.16.54
+
+- Fixed auto-scroll no longer following streamed output.
+- Render tables as bounded aligned grids during streaming instead of raw Markdown.
+- Preserve freeze protection for huge generated tables.
+
 ## 0.16.53
 
 - Fixed the apparent token-by-token line breaks by forcing every streaming fade/tail wrapper to inherit the full message width and propagate its constraints to the Android Markdown view.
