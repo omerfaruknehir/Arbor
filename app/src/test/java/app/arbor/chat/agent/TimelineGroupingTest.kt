@@ -72,6 +72,36 @@ class TimelineGroupingTest {
         assertEquals("second", materialized[2].content)
     }
 
+
+    @Test
+    fun alternatingReasoningAndTextChunksDoNotBecomeTokenBlocks() {
+        val events = listOf(
+            MessageTimelineEvent(kind = "reasoning", content = "think", startedAt = 1),
+            MessageTimelineEvent(kind = "text", content = "**Buil", startedAt = 2),
+            MessageTimelineEvent(kind = "reasoning", content = " more", startedAt = 3),
+            MessageTimelineEvent(kind = "text", content = "d a UI**", startedAt = 4),
+        )
+
+        val materialized = materializeTimelineContent(events, content = "", reasoning = "")
+
+        assertEquals(listOf("reasoning", "text"), materialized.map { it.kind })
+        assertEquals(listOf("think more", "**Build a UI**"), materialized.map { it.content })
+    }
+
+    @Test
+    fun toolEventsRemainHardTimelineBoundaries() {
+        val events = listOf(
+            MessageTimelineEvent(kind = "text", content = "before", startedAt = 1),
+            MessageTimelineEvent(kind = "search", input = "query", startedAt = 2),
+            MessageTimelineEvent(kind = "text", content = "after", startedAt = 3),
+        )
+
+        val materialized = materializeTimelineContent(events, content = "", reasoning = "")
+
+        assertEquals(listOf("text", "search", "text"), materialized.map { it.kind })
+        assertEquals(listOf("before", "", "after"), materialized.map { it.content })
+    }
+
     private fun event(kind: String, content: String) = MessageTimelineEvent(
         kind = kind,
         content = content,

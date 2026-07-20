@@ -75,19 +75,62 @@ fun materializeTimelineContent(
     events: List<MessageTimelineEvent>,
     content: String,
     reasoning: String,
-): List<MessageTimelineEvent> = events.mapIndexed { index, event ->
-    if (event.content.isNotEmpty() || event.sourceStart < 0 || event.kind !in setOf("text", "reasoning")) {
-        event
-    } else {
-        val source = if (event.kind == "reasoning") reasoning else content
-        val start = event.sourceStart.coerceIn(0, source.length)
-        val nextStart = events.asSequence()
-            .drop(index + 1)
-            .firstOrNull { it.kind == event.kind && it.sourceStart >= 0 }
-            ?.sourceStart
-        val end = (event.sourceEnd ?: nextStart ?: source.length).coerceIn(start, source.length)
-        event.copy(content = source.substring(start, end))
+): List<MessageTimelineEvent> {
+    val materialized = events.mapIndexed { index, event ->
+        if (event.content.isNotEmpty() || event.sourceStart < 0 || event.kind !in setOf("text", "reasoning")) {
+            event
+        } else {
+            val source = if (event.kind == "reasoning") reasoning else content
+            val start = event.sourceStart.coerceIn(0, source.length)
+            val nextStart = events.asSequence()
+                .drop(index + 1)
+                .firstOrNull { it.kind == event.kind && it.sourceStart >= 0 }
+                ?.sourceStart
+            val end = (event.sourceEnd ?: nextStart ?: source.length).coerceIn(start, source.length)
+            event.copy(content = source.substring(start, end))
+        }
     }
+    return coalesceStreamingTextFragments(materialized)
+}
+
+/**
+ * Providers may emit reasoning and visible text in the same SSE event. Older
+ * timeline code treated every field switch as a new visual block, so a provider
+ * which repeated both fields produced one Markdown block per token. Within each
+ * tool-free run, text and reasoning are aggregate streams: keep one event per
+ * kind and concatenate the exact fragments without inserting whitespace.
+ */
+internal fun coalesceStreamingTextFragments(events: List<MessageTimelineEvent>): List<MessageTimelineEvent> {
+    if (events.size < 2) return events
+    val result = mutableListOf<MessageTimelineEvent>()
+    val streamRun = mutableListOf<MessageTimelineEvent>()
+
+    fun flushStreamRun() {
+        if (streamRun.isEmpty()) return
+        val byKind = linkedMapOf<String, MutableList<MessageTimelineEvent>>()
+        streamRun.forEach { event -> byKind.getOrPut(event.kind) { mutableListOf() } += event }
+        byKind.values.forEach { fragments ->
+            val first = fragments.first()
+            result += first.copy(
+                content = buildString { fragments.forEach { append(it.content) } },
+                finishedAt = if (fragments.any { it.finishedAt == null }) null else fragments.maxOfOrNull { it.finishedAt ?: it.startedAt },
+                sourceStart = -1,
+                sourceEnd = null,
+            )
+        }
+        streamRun.clear()
+    }
+
+    events.forEach { event ->
+        if (event.kind in setOf("text", "reasoning")) {
+            streamRun += event
+        } else {
+            flushStreamRun()
+            result += event
+        }
+    }
+    flushStreamRun()
+    return result
 }
 
 data class TimelineRun(val working: Boolean, val events: List<MessageTimelineEvent>)

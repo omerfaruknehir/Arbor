@@ -184,30 +184,34 @@ class GenerationWorker(
 
         fun aggregateLength(kind: String): Int = if (kind == "reasoning") savedReasoning.length else savedContent.length
 
-        fun closeOpenStreamEvent(now: Long = System.currentTimeMillis()) {
-            val last = timeline.lastOrNull() ?: return
-            if (last.kind !in setOf("text", "reasoning") || last.sourceStart < 0 || last.sourceEnd != null) return
-            timeline[timeline.lastIndex] = last.copy(
-                sourceEnd = aggregateLength(last.kind).coerceAtLeast(last.sourceStart),
-                finishedAt = now,
-            )
-            timelineDirty = true
+        fun closeOpenStreamEvents(now: Long = System.currentTimeMillis()) {
+            timeline.indices.forEach { index ->
+                val event = timeline[index]
+                if (event.kind in setOf("text", "reasoning") && event.sourceStart >= 0 && event.sourceEnd == null) {
+                    timeline[index] = event.copy(
+                        sourceEnd = aggregateLength(event.kind).coerceAtLeast(event.sourceStart),
+                        finishedAt = now,
+                    )
+                    timelineDirty = true
+                }
+            }
         }
 
         fun appendTimeline(kind: String, value: String) {
             if (value.isEmpty()) return
-            val now = System.currentTimeMillis()
-            val last = timeline.lastOrNull()
-            if (last != null && last.kind == kind && last.sourceStart >= 0 && last.sourceEnd == null) {
-                // The live event's end is derived from content/reasoning length in
-                // the UI. Do not rewrite the entire timeline for every chunk.
+            val existingOpenStream = timeline.any { event ->
+                event.kind == kind && event.sourceStart >= 0 && event.sourceEnd == null
+            }
+            if (existingOpenStream) {
+                // Text and reasoning are independent aggregate streams. Some
+                // providers emit both in every SSE event; keeping both ranges
+                // open prevents token boundaries becoming visual block breaks.
                 return
             }
-            closeOpenStreamEvent(now)
             val end = aggregateLength(kind)
             timeline += MessageTimelineEvent(
                 kind = kind,
-                startedAt = now,
+                startedAt = System.currentTimeMillis(),
                 sourceStart = (end - value.length).coerceAtLeast(0),
             )
             timelineDirty = true
@@ -303,7 +307,7 @@ class GenerationWorker(
                         (providerCallId.isBlank() && candidate.argumentsJson == argumentsJson && candidate.kind == presentation.kind))
             }
             val prepared = preparedIndex.takeIf { it >= 0 }?.let(timeline::get)
-            closeOpenStreamEvent()
+            closeOpenStreamEvents()
             val event = ToolTraceEvent(
                 id = prepared?.id ?: UUID.randomUUID().toString(),
                 type = request.type,
@@ -384,7 +388,7 @@ class GenerationWorker(
         }
 
         suspend fun rejectPreparedToolCall(call: NativeToolCall, reason: String) {
-            closeOpenStreamEvent()
+            closeOpenStreamEvents()
             val presentation = toolCallPresentation(call.name, call.argumentsJson)
             val now = System.currentTimeMillis()
             val existingIndex = timeline.indexOfLast { candidate ->
@@ -579,7 +583,7 @@ class GenerationWorker(
             }
 
             suspend fun upsertToolCallProgress(progress: app.arbor.chat.provider.NativeToolCallProgress, requestId: String) {
-                closeOpenStreamEvent()
+                closeOpenStreamEvents()
                 val presentation = toolCallPresentation(progress.name, progress.argumentsJson)
                 val eventId = progressEventIds.getOrPut(progress.index) { "tool-call-$requestId-${progress.index}" }
                 val existingIndex = timeline.indexOfLast { it.id == eventId }
@@ -828,7 +832,7 @@ class GenerationWorker(
             )?.let { persistResearchState(it, addToContext = false) }
         }
 
-        closeOpenStreamEvent()
+        closeOpenStreamEvents()
         persistTimeline(forceMetadata = true)
         val final = requireNotNull(repository.message(assistantId))
         if (final.content.isBlank() && final.reasoning.isBlank()) throw ProviderProtocolException("Provider completed without returning any content")

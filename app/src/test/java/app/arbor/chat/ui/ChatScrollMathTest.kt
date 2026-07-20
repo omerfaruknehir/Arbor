@@ -52,4 +52,11 @@ class ChatScrollMathTest {
         assertEquals(4, chronologicalUiIndex(0, 5))
     }
 
+    @Test
+    fun visibleViewportEndsAboveComposerAndBottomGutter() {
+        assertEquals(700, calculateVisibleChatViewportEndPx(viewportEndPx = 1_000, obscuredBottomPx = 300))
+        assertEquals(0, calculateVisibleChatViewportEndPx(viewportEndPx = 200, obscuredBottomPx = 300))
+        assertEquals(1_000, calculateVisibleChatViewportEndPx(viewportEndPx = 1_000, obscuredBottomPx = -10))
+    }
+
 }

@@ -1,3 +1,9 @@
+## 0.16.52
+
+- Prevented alternating reasoning/text provider chunks from becoming one rendered Markdown block per token; fragments are concatenated exactly with no inserted whitespace.
+- Kept visible text and reasoning as independent aggregate timeline streams and repaired already-fragmented timelines at render time.
+- Corrected streaming auto-follow to stop above the full composer and bottom gutter rather than at the physical screen edge.
+
 ## 0.16.51
 
 - Rewrote the chat viewport around one chronological keyed list and one measured bottom-follow loop; removed reverse-layout correction, frozen snapshots, and competing scroll jobs.

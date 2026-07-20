@@ -268,11 +268,14 @@ private data class ChatBottomLayoutSnapshot(
     val totalItems: Int,
     val lastVisibleIndex: Int,
     val lastVisibleBottomPx: Int,
-    val viewportEndPx: Int,
+    val visibleViewportEndPx: Int,
     val scrollInProgress: Boolean,
     val followMode: ChatFollowMode,
     val manualHold: Boolean,
 )
+
+internal fun calculateVisibleChatViewportEndPx(viewportEndPx: Int, obscuredBottomPx: Int): Int =
+    (viewportEndPx - obscuredBottomPx.coerceAtLeast(0)).coerceAtLeast(0)
 
 private suspend fun snapChatToBottom(state: androidx.compose.foundation.lazy.LazyListState, lastIndex: Int) {
     if (lastIndex < 0) return
@@ -331,6 +334,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     var manualFollowHold by remember(conversation?.id) { mutableStateOf(false) }
     var initialPositioned by remember(conversation?.id) { mutableStateOf(false) }
     var messageViewportBounds by remember(conversation?.id) { mutableStateOf<Rect?>(null) }
+    var messageBottomInsetPx by remember(conversation?.id) { mutableStateOf(0) }
     val messageViewportBoundsState = rememberUpdatedState(messageViewportBounds)
     var searchFocusHandled by remember(conversation?.id, focusedMessageNodeId) { mutableStateOf(false) }
 
@@ -429,7 +433,10 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 totalItems = layout.totalItemsCount,
                 lastVisibleIndex = last?.index ?: -1,
                 lastVisibleBottomPx = last?.let { it.offset + it.size } ?: 0,
-                viewportEndPx = layout.viewportEndOffset,
+                visibleViewportEndPx = calculateVisibleChatViewportEndPx(
+                    viewportEndPx = layout.viewportEndOffset,
+                    obscuredBottomPx = messageBottomInsetPx,
+                ),
                 scrollInProgress = messageListState.isScrollInProgress,
                 followMode = followMode,
                 manualHold = manualFollowHold,
@@ -445,7 +452,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 if (snapshot.lastVisibleIndex < lastIndex) {
                     snapChatToBottom(messageListState, lastIndex)
                 } else {
-                    val overflow = snapshot.lastVisibleBottomPx - snapshot.viewportEndPx
+                    val overflow = snapshot.lastVisibleBottomPx - snapshot.visibleViewportEndPx
                     if (overflow > 0) messageListState.scrollBy(overflow.toFloat())
                 }
             }
@@ -553,6 +560,13 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             )
         },
     ) { padding ->
+        val messageBottomGutter = 18.dp
+        val measuredMessageBottomInsetPx = with(density) {
+            (padding.calculateBottomPadding() + messageBottomGutter).roundToPx()
+        }
+        LaunchedEffect(measuredMessageBottomInsetPx) {
+            messageBottomInsetPx = measuredMessageBottomInsetPx
+        }
         Box(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxSize().arborBackdropSource(blurState)) {
                 if (paging.itemCount == 0 && recoverable.isEmpty()) {
@@ -577,7 +591,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         start = 12.dp,
                         end = 12.dp,
                         top = padding.calculateTopPadding() + 28.dp,
-                        bottom = padding.calculateBottomPadding() + 18.dp,
+                        bottom = padding.calculateBottomPadding() + messageBottomGutter,
                     ),
                 ) {
                     items(
