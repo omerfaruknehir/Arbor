@@ -1,3 +1,9 @@
+## 0.16.50
+
+- Fixed stale assistant retry siblings rendering as consecutive messages with duplicate Working cards and identical branch counters.
+- Added transactional active-path repair from the conversation leaf before a chat is displayed.
+- Kept every repaired alternative available through the inline branch controls; no branch content is deleted.
+
 ## 0.16.48
 
 - Pinned manually expanded Working cards so they grow downward without moving their header.

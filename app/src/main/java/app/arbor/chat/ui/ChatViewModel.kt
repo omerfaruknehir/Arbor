@@ -247,6 +247,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
             if (draftConversation.value == null) draftConversation.value = container.repository.newConversationDraft(defaults = newChatDefaults.value)
             stagedAttachments.value = emptyList()
         } else {
+            container.repository.repairActiveMessagePath(target.id)
             draftConversation.value = null
             selectedConversationId.value = target.id
             stagedAttachments.value = container.database.attachmentDao().stagedForConversation(target.id)
@@ -280,19 +281,19 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         screen.value = Screen.CHAT
     }
 
-    fun selectConversation(id: String) {
+    fun selectConversation(id: String) = launchAction {
+        container.repository.repairActiveMessagePath(id)
         draftConversation.value = null
         focusedMessageNodeId.value = null
         focusedMessageIndex.value = null
         selectedConversationId.value = id
         screen.value = Screen.CHAT
-        launchAction {
-            container.repository.markRead(id)
-            stagedAttachments.value = container.database.attachmentDao().stagedForConversation(id)
-        }
+        container.repository.markRead(id)
+        stagedAttachments.value = container.database.attachmentDao().stagedForConversation(id)
     }
 
     fun openSearchResult(conversationId: String, nodeId: String) = launchAction {
+        container.repository.repairActiveMessagePath(conversationId)
         focusedMessageNodeId.value = nodeId
         focusedMessageIndex.value = container.repository.messageIndexFromLatest(conversationId, nodeId)
         selectedConversationId.value = conversationId

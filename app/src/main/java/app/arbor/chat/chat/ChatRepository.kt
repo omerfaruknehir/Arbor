@@ -29,6 +29,20 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID
 
+internal fun activeMessagePathNodeIds(
+    messages: List<MessageEntity>,
+    leafNodeId: String?,
+): Set<String> {
+    if (leafNodeId.isNullOrBlank()) return emptySet()
+    val byId = messages.associateBy(MessageEntity::nodeId)
+    val path = LinkedHashSet<String>()
+    var cursor = byId[leafNodeId]
+    while (cursor != null && path.add(cursor.nodeId)) {
+        cursor = cursor.parentNodeId?.let(byId::get)
+    }
+    return path
+}
+
 class ChatRepository(private val database: ArborDatabase) {
     val conversations: Flow<List<ConversationListItem>> = database.conversationDao().observeAll()
     val archivedConversations: Flow<List<ConversationListItem>> = database.conversationDao().observeArchived()
@@ -51,6 +65,40 @@ class ChatRepository(private val database: ArborDatabase) {
 
     suspend fun messageIndexFromLatest(conversationId: String, nodeId: String) =
         database.messageDao().indexFromLatest(conversationId, nodeId)
+
+    /**
+     * Enforce the single active conversation path described by activeLeafNodeId.
+     * Older builds could leave sibling retries marked active, which made several
+     * complete assistant responses appear one after another in the chat.
+     */
+    suspend fun repairActiveMessagePath(conversationId: String) {
+        database.withTransaction {
+            val conversation = database.conversationDao().get(conversationId) ?: return@withTransaction
+            val allMessages = database.messageDao().allForConversation(conversationId)
+            if (allMessages.isEmpty()) return@withTransaction
+            val byId = allMessages.associateBy(MessageEntity::nodeId)
+            val target = conversation.activeLeafNodeId?.let(byId::get)
+                ?: allMessages.asSequence()
+                    .filter { it.supersededAt == null }
+                    .maxWithOrNull(compareBy<MessageEntity> { it.createdAt }.thenBy { it.rowId })
+                ?: allMessages.maxWithOrNull(compareBy<MessageEntity> { it.createdAt }.thenBy { it.rowId })
+                ?: return@withTransaction
+            val targetPath = activeMessagePathNodeIds(allMessages, target.nodeId)
+            if (targetPath.isEmpty()) return@withTransaction
+            val activeIds = allMessages.asSequence()
+                .filter { it.supersededAt == null }
+                .map(MessageEntity::nodeId)
+                .toSet()
+            val now = System.currentTimeMillis()
+            val strayActive = (activeIds - targetPath).toList()
+            val hiddenPathNodes = targetPath.filter { byId[it]?.supersededAt != null }
+            if (strayActive.isNotEmpty()) database.messageDao().markSuperseded(strayActive, now)
+            if (hiddenPathNodes.isNotEmpty()) database.messageDao().clearSuperseded(hiddenPathNodes)
+            if (conversation.activeLeafNodeId != target.nodeId) {
+                database.conversationDao().setLeaf(conversationId, target.nodeId, now)
+            }
+        }
+    }
 
     fun newConversationDraft(projectId: String? = null, defaults: NewChatDefaults = NewChatDefaults()): ConversationEntity {
         val now = System.currentTimeMillis()
@@ -304,7 +352,6 @@ class ChatRepository(private val database: ArborDatabase) {
         val requestedTarget = requireNotNull(database.messageDao().get(nodeId))
         val conversation = requireNotNull(database.conversationDao().get(requestedTarget.conversationId))
         val allMessages = database.messageDao().allForConversation(requestedTarget.conversationId)
-        val byId = allMessages.associateBy(MessageEntity::nodeId)
         // Selecting an edited user node restores its generated response too when
         // that direct sibling-pair is available. Assistant retries already point
         // at the response node itself.
@@ -314,13 +361,7 @@ class ChatRepository(private val database: ArborDatabase) {
                 .maxWithOrNull(compareBy<MessageEntity> { it.createdAt }.thenBy { it.rowId })
                 ?: requestedTarget
         } else requestedTarget
-        val targetPath = buildSet {
-            var cursor: MessageEntity? = target
-            while (cursor != null) {
-                add(cursor.nodeId)
-                cursor = cursor.parentNodeId?.let(byId::get)
-            }
-        }
+        val targetPath = activeMessagePathNodeIds(allMessages, target.nodeId)
         val activeIds = allMessages.asSequence().filter { it.supersededAt == null }.map(MessageEntity::nodeId).toSet()
         val deactivate = (activeIds - targetPath).toList()
         val now = System.currentTimeMillis()
