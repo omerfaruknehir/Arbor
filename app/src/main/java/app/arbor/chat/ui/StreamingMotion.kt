@@ -3,7 +3,7 @@ package app.arbor.chat.ui
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -19,23 +19,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import kotlinx.coroutines.delay
+import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.isActive
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 
 internal const val StreamingFadeDurationMillis = 180
 internal const val StreamingFadeOutDurationMillis = 120
-internal const val StreamingFadeStartAlpha = 0.22f
+internal const val StreamingFadeStartAlpha = 0.48f
 internal const val WorkingCardExpansionDurationMillis = 220
 
 internal fun streamingFadeIn(): EnterTransition = fadeIn(
     initialAlpha = StreamingFadeStartAlpha,
-    animationSpec = tween(StreamingFadeDurationMillis, easing = LinearEasing),
+    animationSpec = tween(StreamingFadeDurationMillis, easing = FastOutSlowInEasing),
 )
 
 internal fun streamingFadeOut(): ExitTransition = fadeOut(
-    animationSpec = tween(StreamingFadeOutDurationMillis, easing = LinearEasing),
+    animationSpec = tween(StreamingFadeOutDurationMillis, easing = FastOutSlowInEasing),
 )
 
 internal fun workingCardExpandIn(): EnterTransition =
@@ -77,7 +77,7 @@ internal fun StreamingFade(
             alpha.snapTo(StreamingFadeStartAlpha)
             alpha.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(StreamingFadeDurationMillis, easing = LinearEasing),
+                animationSpec = tween(StreamingFadeDurationMillis, easing = FastOutSlowInEasing),
             )
         } else {
             alpha.snapTo(1f)
@@ -93,28 +93,51 @@ internal fun StreamingFade(
     }
 }
 
+
+internal fun nextStreamingTextFrame(rendered: String, target: String): String = when {
+    target == rendered -> rendered
+    target.startsWith(rendered) -> {
+        val backlog = target.length - rendered.length
+        val step = when {
+            backlog > 768 -> 192
+            backlog > 256 -> 96
+            backlog > 96 -> 48
+            backlog > 32 -> 24
+            else -> backlog
+        }.coerceAtMost(backlog)
+        target.take(rendered.length + step)
+    }
+    else -> target
+}
+
 /**
- * Coalesces fast token/database updates before expensive Markdown parsing.
- * The text itself updates at 20 Hz while scrolling and layer animations remain
- * frame-paced by the renderer. Final content is exposed immediately.
+ * Frame-aligns streaming commits and smooths large provider chunks before
+ * expensive Markdown parsing. Thirty visible updates per second are materially
+ * smoother than the former 20 Hz timer, while still avoiding a full parse on
+ * every display frame. Large chunks are revealed over several commits instead
+ * of appearing as one jump.
  */
 @Composable
 internal fun rememberBatchedStreamingText(
     text: String,
     streaming: Boolean,
-    intervalMillis: Long = 50L,
+    intervalNanos: Long = 33_000_000L,
 ): String {
     val latestText by rememberUpdatedState(text)
     var renderedText by remember { mutableStateOf(text) }
-    LaunchedEffect(streaming, intervalMillis) {
+    LaunchedEffect(streaming, intervalNanos) {
         if (!streaming) {
             renderedText = latestText
             return@LaunchedEffect
         }
+
+        var lastCommitNanos = 0L
         while (isActive) {
-            val next = latestText
-            if (next != renderedText) renderedText = next
-            delay(intervalMillis)
+            val frameNanos = withFrameNanos { it }
+            if (lastCommitNanos != 0L && frameNanos - lastCommitNanos < intervalNanos) continue
+            lastCommitNanos = frameNanos
+
+            renderedText = nextStreamingTextFrame(renderedText, latestText)
         }
     }
     return if (streaming) renderedText else text

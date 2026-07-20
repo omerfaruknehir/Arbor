@@ -216,55 +216,65 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val autoFollowMaxSpeedPxPerSecond = with(density) { 4_800.dp.toPx() }
     var followLatest by remember(conversation?.id) { mutableStateOf(true) }
     val followLatestState = rememberUpdatedState(followLatest)
-    var frozenLatestMessage by remember(conversation?.id) { mutableStateOf<MessageEntity?>(null) }
+    // Once the user leaves the bottom, render an immutable snapshot of every
+    // currently loaded message. Freezing only index 0 was insufficient when a
+    // tool/reasoning response was not the newest paging item: its card could
+    // still grow, collapse, or insert Python output underneath the viewport.
+    var detachedMessages by remember(conversation?.id) { mutableStateOf<List<MessageEntity>?>(null) }
+    val loadedMessagesState = rememberUpdatedState(paging.itemSnapshotList.items.toList())
     val preserveViewportDuringCardAnimation: ((() -> Unit) -> Unit) = remember(messageListState, listScope) {
         { mutate ->
             viewportAnchorJob?.cancel()
-            if (!followLatestState.value && messageListState.isScrollInProgress) {
-                // Do not change a card's height underneath an active finger/fling.
-                // Automatic completion waits until the gesture settles, then the
-                // same viewport anchor used for manual toggles is applied.
-                viewportAnchorJob = listScope.launch {
-                    snapshotFlow { messageListState.isScrollInProgress }.first { !it }
-                    if (followLatestState.value) {
-                        mutate()
-                        return@launch
-                    }
-                    val anchorIndex = messageListState.firstVisibleItemIndex
-                    val anchorOffset = messageListState.firstVisibleItemScrollOffset
-                    mutate()
-                    val startedAt = androidx.compose.runtime.withFrameNanos { it }
-                    val durationNanos = (WorkingCardExpansionDurationMillis + 48L) * 1_000_000L
-                    var now = startedAt
-                    while (now - startedAt <= durationNanos && !messageListState.isScrollInProgress && !followLatestState.value) {
-                        messageListState.requestScrollToItem(anchorIndex, anchorOffset)
-                        now = androidx.compose.runtime.withFrameNanos { it }
-                    }
-                }
-            } else {
-                val shouldAnchor = !followLatestState.value
-                val anchorIndex = messageListState.firstVisibleItemIndex
-                val anchorOffset = messageListState.firstVisibleItemScrollOffset
+            val applyAnchoredMutation: () -> Unit = {
+                val layout = messageListState.layoutInfo
+                val viewportStart = layout.viewportStartOffset
+                val viewportEnd = layout.viewportEndOffset
+                val anchor = layout.visibleItemsInfo
+                    .asSequence()
+                    .filter { it.offset + it.size > viewportStart && it.offset < viewportEnd }
+                    .minByOrNull { kotlin.math.abs(it.offset - viewportStart) }
+                    ?.let { it.key to it.offset }
+
                 mutate()
-                if (shouldAnchor) {
+                if (!followLatestState.value && anchor != null) {
                     viewportAnchorJob = listScope.launch {
+                        val (anchorKey, anchorOffset) = anchor
                         val startedAt = androidx.compose.runtime.withFrameNanos { it }
-                        val durationNanos = (WorkingCardExpansionDurationMillis + 48L) * 1_000_000L
+                        val durationNanos = (WorkingCardExpansionDurationMillis + 64L) * 1_000_000L
                         var now = startedAt
-                        while (now - startedAt <= durationNanos && !messageListState.isScrollInProgress && !followLatestState.value) {
-                            messageListState.requestScrollToItem(anchorIndex, anchorOffset)
+                        while (
+                            now - startedAt <= durationNanos &&
+                            !messageListState.isScrollInProgress &&
+                            !followLatestState.value
+                        ) {
+                            val current = messageListState.layoutInfo.visibleItemsInfo
+                                .firstOrNull { it.key == anchorKey }
+                                ?: break
+                            val driftPx = current.offset - anchorOffset
+                            if (kotlin.math.abs(driftPx) >= 1) {
+                                // reverseLayout=true: negative scroll cancels a
+                                // positive screen-coordinate drift. Anchoring by
+                                // key survives paging insertions; anchoring by
+                                // index did not.
+                                messageListState.scrollBy(-driftPx.toFloat())
+                            }
                             now = androidx.compose.runtime.withFrameNanos { it }
-                        }
-                        if (!messageListState.isScrollInProgress && !followLatestState.value) {
-                            messageListState.requestScrollToItem(anchorIndex, anchorOffset)
                         }
                     }
                 }
             }
+
+            if (!followLatestState.value && messageListState.isScrollInProgress) {
+                viewportAnchorJob = listScope.launch {
+                    snapshotFlow { messageListState.isScrollInProgress }.first { !it }
+                    applyAnchoredMutation()
+                }
+            } else {
+                applyAnchoredMutation()
+            }
         }
     }
     var searchFocusHandled by remember(conversation?.id, focusedMessageNodeId) { mutableStateOf(false) }
-    val latestMessageState = rememberUpdatedState(paging.itemSnapshotList.items.firstOrNull())
     val userScrollConnection = remember(conversation?.id) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -272,7 +282,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     // Freeze the actively growing message at the first user drag.
                     // While detached, the rendered list is immutable, so generation
                     // cannot shift the viewport by even one pixel.
-                    if (followLatest) frozenLatestMessage = latestMessageState.value
+                    if (followLatest) detachedMessages = loadedMessagesState.value
                     followLatest = false
                 }
                 return Offset.Zero
@@ -301,7 +311,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         chatMenu = false
         viewportAnchorJob?.cancel()
         followLatest = true
-        frozenLatestMessage = null
+        detachedMessages = null
         messageListState.scrollToItem(0)
         topAppBarState.contentOffset = 0f
         topAppBarState.heightOffset = 0f
@@ -313,6 +323,19 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             topAppBarState.heightOffsetLimit to paging.itemCount
         }.first { (limit, count) -> limit < 0f && count > 0 }.first
         topAppBarState.heightOffset = collapsedOffset
+    }
+
+    LaunchedEffect(conversation?.id, paging) {
+        snapshotFlow { paging.itemSnapshotList.items.map { it.nodeId to it.status } }
+            .collect { liveStatuses ->
+                val frozen = detachedMessages ?: return@collect
+                val statusById = liveStatuses.toMap()
+                val updated = frozen.map { message ->
+                    val liveStatus = statusById[message.nodeId]
+                    if (liveStatus != null && liveStatus != message.status) message.copy(status = liveStatus) else message
+                }
+                if (updated != frozen) detachedMessages = updated
+            }
     }
 
     LaunchedEffect(messageListState, conversation?.id, relockThresholdPx) {
@@ -329,7 +352,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 // Re-lock only after the gesture/fling has actually settled at
                 // the real bottom, not merely inside the broad FAB threshold.
                 followLatest = true
-                frozenLatestMessage = null
+                detachedMessages = null
             }
         }
     }
@@ -380,7 +403,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         if (!searchFocusHandled) {
             val index = paging.itemSnapshotList.items.indexOfFirst { it.nodeId == target }
             if (index >= 0) {
-                if (followLatest) frozenLatestMessage = latestMessageState.value
+                if (followLatest) detachedMessages = loadedMessagesState.value
                 followLatest = false
                 messageListState.scrollToItem(index)
                 searchFocusHandled = true
@@ -490,29 +513,39 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         bottom = padding.calculateBottomPadding() + 18.dp,
                     ),
                 ) {
-                    items(
-                        count = paging.itemCount,
-                        key = { index -> paging.peek(index)?.nodeId ?: index },
-                        contentType = { index -> paging.peek(index)?.role },
-                    ) { index ->
-                        paging[index]?.let { message ->
-                            val renderedMessage = if (
-                                index == 0 &&
-                                !followLatest &&
-                                frozenLatestMessage?.nodeId == message.nodeId
-                            ) {
-                                frozenLatestMessage ?: message
-                            } else {
-                                message
-                            }
+                    val frozen = detachedMessages
+                    if (frozen != null) {
+                        items(
+                            count = frozen.size,
+                            key = { index -> frozen[index].nodeId },
+                            contentType = { index -> frozen[index].role },
+                        ) { index ->
+                            val message = frozen[index]
                             MessageCard(
-                                message = renderedMessage,
+                                message = message,
                                 viewModel = viewModel,
                                 reasoningVisibility = conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
                                 activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
-                                freezeLiveUpdates = index == 0 && !followLatest && frozenLatestMessage?.nodeId == message.nodeId,
+                                freezeLiveUpdates = true,
                                 preserveViewportDuringCardAnimation = preserveViewportDuringCardAnimation,
                             )
+                        }
+                    } else {
+                        items(
+                            count = paging.itemCount,
+                            key = { index -> paging.peek(index)?.nodeId ?: index },
+                            contentType = { index -> paging.peek(index)?.role },
+                        ) { index ->
+                            paging[index]?.let { message ->
+                                MessageCard(
+                                    message = message,
+                                    viewModel = viewModel,
+                                    reasoningVisibility = conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
+                                    activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
+                                    freezeLiveUpdates = false,
+                                    preserveViewportDuringCardAnimation = preserveViewportDuringCardAnimation,
+                                )
+                            }
                         }
                     }
                 }
@@ -525,7 +558,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 SmallFloatingActionButton(
                     onClick = {
                         followLatest = true
-                        frozenLatestMessage = null
+                        detachedMessages = null
                     },
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -915,8 +948,7 @@ private fun TimelineWorkingBlock(
             previousActive = active
         }
     }
-    StreamingFade(transitionKey = "working:$stateKey", enabled = animateStreaming) {
-        Surface(
+    Surface(
             onClick = { preserveViewportDuringCardAnimation { expanded = !expanded } },
             color = MaterialTheme.colorScheme.surfaceContainer,
             shape = MaterialTheme.shapes.medium,
@@ -955,12 +987,7 @@ private fun TimelineWorkingBlock(
                                         streaming = activeEvent,
                                     )
                                     if (event.kind in setOf("python", "ubuntu", "search", "fetch")) {
-                                        StreamingFade(
-                                            transitionKey = "working-details:${event.id}:${event.output.isNotBlank()}:${event.status}",
-                                            enabled = activeEvent,
-                                        ) {
-                                            ToolStepDetails(event.kind, event.input, event.output, event.status, usedSourceUrls, viewModel)
-                                        }
+                                        ToolStepDetails(event.kind, event.input, event.output, event.status, usedSourceUrls, viewModel)
                                     } else {
                                         if (event.input.isNotBlank()) AutoLintedCodeText(
                                             language = event.kind,
@@ -968,10 +995,7 @@ private fun TimelineWorkingBlock(
                                             style = MaterialTheme.typography.labelSmall,
                                             softWrap = true,
                                         )
-                                        if (event.output.isNotBlank()) StreamingFade(
-                                            transitionKey = "working-output:${event.id}",
-                                            enabled = activeEvent,
-                                        ) {
+                                        if (event.output.isNotBlank()) {
                                             GenericToolOutputCard(event.output, failed = event.status == "error")
                                         }
                                     }
@@ -982,7 +1006,6 @@ private fun TimelineWorkingBlock(
                 }
             }
         }
-    }
 }
 
 @Composable

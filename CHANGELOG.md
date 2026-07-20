@@ -1,3 +1,8 @@
+## 0.16.45
+
+- Stable detached-chat viewport across tool insertions and working-card height changes.
+- Smoother frame-aligned streaming and single-layer event fades.
+
 ## 0.16.41
 
 - Smooth frame-paced chat auto-follow without per-token scroll jobs.
