@@ -112,4 +112,42 @@ Outro""",
         assertEquals(3, splitMarkdownTableCells(stabilized!!)?.size)
     }
 
+    @Test fun incrementalParserKeepsCompletedBlocksStable() {
+        val parser = IncrementalRichTextParser()
+        val first = parser.update("First paragraph.\n\nTail", streaming = true)
+        assertEquals(2, first.size)
+        assertFalse(first.first().liveTail)
+        assertTrue(first.last().liveTail)
+
+        val second = parser.update("First paragraph.\n\nTail grows", streaming = true)
+        assertEquals(first.first().key, second.first().key)
+        assertEquals(first.first().block, second.first().block)
+        assertEquals(first.last().key, second.last().key)
+    }
+
+    @Test fun blankLinesInsideCodeFencesAreNotCommittedAsMarkdown() {
+        val source = "```python\nprint('a')\n\nprint('b')"
+        assertEquals(0, stableMarkdownPrefixLength(source))
+        val block = parseBlocks(source, streaming = true).single() as RichBlock.Code
+        assertFalse(block.complete)
+        assertTrue("print('b')" in block.code)
+    }
+
+    @Test fun closingFenceCommitsTheCodeBlock() {
+        val source = "```python\nprint('ok')\n```\n"
+        assertEquals(source.length, stableMarkdownPrefixLength(source))
+        val block = parseBlocks(source, streaming = true).single() as RichBlock.Code
+        assertTrue(block.complete)
+        assertEquals("python", block.language)
+    }
+
+    @Test fun streamingTableKeepsOneTailIdentityWhileCellsArrive() {
+        val parser = IncrementalRichTextParser()
+        val first = parser.update("| Name | Status |\n| --- | --- |\n| Arbor", streaming = true)
+        val second = parser.update("| Name | Status |\n| --- | --- |\n| Arbor | Ready", streaming = true)
+        assertEquals(first.single().key, second.single().key)
+        assertTrue(first.single().block is RichBlock.Table)
+        assertTrue(second.single().block is RichBlock.Table)
+    }
+
 }

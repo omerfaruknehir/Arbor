@@ -184,7 +184,7 @@ fun NativeDiagramBlock(source: String) {
     val diagram = remember(source) { NativeDiagramParser.parse(source) }
     var expanded by remember(source) { mutableStateOf(false) }
     VisualFrame("DIAGRAM • native", onExpand = { expanded = true }) {
-        if (diagram.nodes.isEmpty()) AutoLintedCodeText(
+        if (diagram.nodes.isEmpty()) HighlightedCodeText(
             language = "mermaid",
             code = source,
             style = MaterialTheme.typography.bodySmall,

@@ -148,6 +148,7 @@ import app.arbor.chat.agent.WebSearchResponse
 import app.arbor.chat.provider.ThinkingLevelOption
 import app.arbor.chat.provider.supportedThinkingLevels
 import app.arbor.chat.agent.MessageTimelineEvent
+import app.arbor.chat.agent.materializeTimelineContent
 import app.arbor.chat.agent.groupOrderedTimeline
 import app.arbor.chat.sandbox.ExecutionResult
 import coil.compose.AsyncImage
@@ -159,6 +160,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlin.math.abs
 import kotlin.math.exp
@@ -189,11 +191,6 @@ internal fun calculateAutoFollowStepPx(
     return min(distancePx, min(easedStep, maxSpeedPxPerSecond * frameSeconds))
 }
 
-private data class ChatViewportAnchor(
-    val key: Any,
-    val screenOffsetPx: Int,
-)
-
 internal data class MessageBranchKey(
     val conversationId: String,
     val parentNodeId: String?,
@@ -216,8 +213,8 @@ internal fun inlineBranchOptions(
     revisionGroups: Map<MessageBranchKey, List<MessageEntity>>,
 ): List<MessageEntity> {
     if (activeMessage.role != MessageRole.USER && activeMessage.role != MessageRole.ASSISTANT) return emptyList()
-    val key = MessageBranchKey(activeMessage.conversationId, activeMessage.parentNodeId, activeMessage.role)
-    val revisions = revisionGroups[key].orEmpty()
+    val branchKey = MessageBranchKey(activeMessage.conversationId, activeMessage.parentNodeId, activeMessage.role)
+    val revisions = revisionGroups[branchKey].orEmpty()
     if (revisions.isEmpty()) return emptyList()
     return (revisions + activeMessage)
         .distinctBy(MessageEntity::nodeId)
@@ -226,21 +223,14 @@ internal fun inlineBranchOptions(
         .orEmpty()
 }
 
-private fun captureChatViewportAnchor(layoutInfo: LazyListLayoutInfo): ChatViewportAnchor? {
-    val viewportStart = layoutInfo.viewportStartOffset
-    val viewportEnd = layoutInfo.viewportEndOffset
-    return layoutInfo.visibleItemsInfo
-        .asSequence()
-        .filter { it.offset + it.size > viewportStart && it.offset < viewportEnd }
-        .minByOrNull { abs(it.offset - viewportStart) }
-        ?.let { ChatViewportAnchor(it.key, it.offset) }
-}
+internal fun chronologicalSourceIndex(uiIndex: Int, itemCount: Int): Int =
+    (itemCount - 1 - uiIndex).coerceIn(0, (itemCount - 1).coerceAtLeast(0))
 
-/**
- * LazyListState.scrollBy uses scroll-position coordinates even with
- * reverseLayout=true: a positive delta increases the list scroll offset and
- * moves a positively drifted item back towards its captured screen position.
- */
+internal fun chronologicalUiIndex(sourceIndex: Int, itemCount: Int): Int =
+    (itemCount - 1 - sourceIndex).coerceIn(0, (itemCount - 1).coerceAtLeast(0))
+
+private enum class ChatFollowMode { FOLLOWING, DETACHED }
+
 internal fun calculateViewportCorrectionDeltaPx(
     currentScreenOffsetPx: Int,
     anchoredScreenOffsetPx: Int,
@@ -261,23 +251,51 @@ internal fun calculateCenteredCardCorrectionPx(
 internal fun shouldCenterCollapsedCard(expandedHeightPx: Float, viewportHeightPx: Float): Boolean =
     viewportHeightPx > 0f && expandedHeightPx >= viewportHeightPx * 0.55f
 
-private enum class WorkingCardMutation {
-    AUTO_EXPAND,
-    AUTO_COLLAPSE,
-    MANUAL_EXPAND,
-    MANUAL_COLLAPSE,
-}
-
 private data class WorkingCardViewportController(
     val viewportBounds: Rect?,
     val listScrolling: Boolean,
-    val applyMutation: (WorkingCardMutation, () -> Rect?, () -> Unit) -> Unit,
+    val beginManualInteraction: () -> Unit,
+    val centerAfterCollapse: (Rect?, () -> Rect?) -> Unit,
 ) {
     fun isVisible(bounds: Rect?): Boolean {
         val viewport = viewportBounds ?: return true
         val card = bounds ?: return true
         return card.bottom > viewport.top && card.top < viewport.bottom
     }
+}
+
+private data class ChatBottomLayoutSnapshot(
+    val totalItems: Int,
+    val lastVisibleIndex: Int,
+    val lastVisibleBottomPx: Int,
+    val viewportEndPx: Int,
+    val scrollInProgress: Boolean,
+    val followMode: ChatFollowMode,
+    val manualHold: Boolean,
+)
+
+private suspend fun snapChatToBottom(state: androidx.compose.foundation.lazy.LazyListState, lastIndex: Int) {
+    if (lastIndex < 0) return
+    state.scrollToItem(lastIndex)
+    androidx.compose.runtime.withFrameNanos { }
+    val layout = state.layoutInfo
+    val last = layout.visibleItemsInfo.firstOrNull { it.index == lastIndex } ?: return
+    val overflow = last.offset + last.size - layout.viewportEndOffset
+    if (overflow > 0) state.scrollBy(overflow.toFloat())
+}
+
+internal fun calculateComposerChromeProgressFromBottom(
+    layoutInfo: LazyListLayoutInfo,
+    startPx: Int,
+    endPx: Int,
+): Float {
+    val total = layoutInfo.totalItemsCount
+    if (total == 0) return 0f
+    val last = layoutInfo.visibleItemsInfo.lastOrNull()
+    if (last == null || last.index != total - 1) return 1f
+    val distance = (last.offset + last.size - layoutInfo.viewportEndOffset).coerceAtLeast(0)
+    if (endPx <= startPx) return if (distance > startPx) 1f else 0f
+    return ((distance - startPx).toFloat() / (endPx - startPx).toFloat()).coerceIn(0f, 1f)
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -307,262 +325,137 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val density = LocalDensity.current
     val topAppBarState = rememberTopAppBarState()
     val topAppBarScrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
-    val latestThresholdPx = with(density) { 48.dp.roundToPx() }
     val chromeStartPx = with(density) { 56.dp.roundToPx() }
     val chromeEndPx = with(density) { 176.dp.roundToPx() }
-    val relockThresholdPx = with(density) { 2.dp.roundToPx() }
-    val autoFollowMaxSpeedPxPerSecond = with(density) { 4_800.dp.toPx() }
-    var followLatest by remember(conversation?.id) { mutableStateOf(true) }
-    val followLatestState = rememberUpdatedState(followLatest)
-    // Once the user leaves the bottom, render an immutable snapshot of every
-    // currently loaded message. Freezing only index 0 was insufficient when a
-    // tool/reasoning response was not the newest paging item: its card could
-    // still grow, collapse, or insert Python output underneath the viewport.
-    var detachedMessages by remember(conversation?.id) { mutableStateOf<List<MessageEntity>?>(null) }
-    var detachedViewportAnchor by remember(conversation?.id) { mutableStateOf<ChatViewportAnchor?>(null) }
+    var followMode by remember(conversation?.id) { mutableStateOf(ChatFollowMode.FOLLOWING) }
+    var manualFollowHold by remember(conversation?.id) { mutableStateOf(false) }
+    var initialPositioned by remember(conversation?.id) { mutableStateOf(false) }
     var messageViewportBounds by remember(conversation?.id) { mutableStateOf<Rect?>(null) }
-    var manualCardViewportLock by remember(conversation?.id) { mutableStateOf(false) }
     val messageViewportBoundsState = rememberUpdatedState(messageViewportBounds)
-    val loadedMessagesState = rememberUpdatedState(paging.itemSnapshotList.items.toList())
-    val preserveViewportDuringCardAnimation = remember(messageListState, listScope) {
-        { mutation: WorkingCardMutation, boundsProvider: () -> Rect?, mutate: () -> Unit ->
-            val manual = mutation == WorkingCardMutation.MANUAL_EXPAND || mutation == WorkingCardMutation.MANUAL_COLLAPSE
-            val runMutation: suspend () -> Unit = runMutation@{
-                val before = boundsProvider()
-                if (manual) {
-                    manualCardViewportLock = true
-                    followLatest = false
-                    detachedViewportAnchor = null
-                } else if (!followLatestState.value) {
-                    detachedViewportAnchor = captureChatViewportAnchor(messageListState.layoutInfo)
-                        ?: detachedViewportAnchor
-                }
-                mutate()
-                if (!manual || before == null) return@runMutation
+    var searchFocusHandled by remember(conversation?.id, focusedMessageNodeId) { mutableStateOf(false) }
 
-                val targetTop = before.top
-                val startedAt = androidx.compose.runtime.withFrameNanos { it }
-                var frameNanos = startedAt
-                while (frameNanos - startedAt <= (WorkingCardExpansionDurationMillis + 40L) * 1_000_000L) {
-                    val current = boundsProvider() ?: break
-                    val correction = calculateCardViewportCorrectionPx(current.top, targetTop)
-                    if (abs(correction) >= 0.25f) messageListState.scrollBy(correction)
-                    frameNanos = androidx.compose.runtime.withFrameNanos { it }
-                }
-
-                if (mutation == WorkingCardMutation.MANUAL_COLLAPSE) {
-                    repeat(2) { androidx.compose.runtime.withFrameNanos { } }
+    val beginManualCardInteraction = remember(conversation?.id) {
+        {
+            manualFollowHold = true
+            followMode = ChatFollowMode.DETACHED
+        }
+    }
+    val centerCollapsedCard = remember(messageListState, listScope, conversation?.id) {
+        { before: Rect?, boundsProvider: () -> Rect? ->
+            if (before != null) {
+                listScope.launch {
+                    kotlinx.coroutines.delay(WorkingCardExpansionDurationMillis.toLong() + 24L)
                     val viewport = messageViewportBoundsState.value
                     val collapsed = boundsProvider()
                     if (viewport != null && collapsed != null && shouldCenterCollapsedCard(before.height, viewport.height)) {
-                        val centerCorrection = calculateCenteredCardCorrectionPx(
+                        val correction = calculateCenteredCardCorrectionPx(
                             cardTopPx = collapsed.top,
                             cardBottomPx = collapsed.bottom,
                             viewportTopPx = viewport.top,
                             viewportBottomPx = viewport.bottom,
                         )
-                        if (abs(centerCorrection) >= 1f) {
-                            messageListState.animateScrollBy(
-                                value = centerCorrection,
-                                animationSpec = tween(durationMillis = 180),
-                            )
+                        if (abs(correction) >= 1f) {
+                            messageListState.animateScrollBy(correction, tween(durationMillis = 180))
                         }
                     }
                 }
-                detachedViewportAnchor = captureChatViewportAnchor(messageListState.layoutInfo)
-            }
-
-            if (manual && messageListState.isScrollInProgress) {
-                listScope.launch {
-                    snapshotFlow { messageListState.isScrollInProgress }.first { !it }
-                    runMutation()
-                }
-            } else {
-                listScope.launch { runMutation() }
             }
             Unit
         }
     }
-    var searchFocusHandled by remember(conversation?.id, focusedMessageNodeId) { mutableStateOf(false) }
-    val userScrollConnection = remember(conversation?.id, relockThresholdPx) {
+    val userScrollConnection = remember(messageListState, conversation?.id) {
         object : NestedScrollConnection {
-            private fun detachAfterRealMovement() {
-                if (followLatest) detachedMessages = loadedMessagesState.value
-                detachedViewportAnchor = null
-                manualCardViewportLock = false
-                followLatest = false
-            }
-
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.UserInput && available.y != 0f) {
-                    val alreadyAway = messageListState.firstVisibleItemIndex > 0 ||
-                        messageListState.firstVisibleItemScrollOffset > relockThresholdPx
-                    if (alreadyAway) detachAfterRealMovement()
-                }
-                return Offset.Zero
-            }
-
             override fun onPostScroll(
                 consumed: Offset,
                 available: Offset,
                 source: NestedScrollSource,
             ): Offset {
-                if (source == NestedScrollSource.UserInput && consumed.y != 0f) {
-                    val movedAway = messageListState.firstVisibleItemIndex > 0 ||
-                        messageListState.firstVisibleItemScrollOffset > relockThresholdPx
-                    if (movedAway) detachAfterRealMovement()
+                if (source == NestedScrollSource.UserInput && abs(consumed.y) >= 0.5f) {
+                    manualFollowHold = false
+                    followMode = if (messageListState.canScrollForward) {
+                        ChatFollowMode.DETACHED
+                    } else {
+                        ChatFollowMode.FOLLOWING
+                    }
                 }
                 return Offset.Zero
             }
         }
     }
-    val isAtLatest by remember(messageListState, latestThresholdPx) {
+    val isAtLatest by remember(messageListState) {
         derivedStateOf {
-            messageListState.layoutInfo.totalItemsCount == 0 ||
-                (messageListState.firstVisibleItemIndex == 0 &&
-                    messageListState.firstVisibleItemScrollOffset <= latestThresholdPx)
+            messageListState.layoutInfo.totalItemsCount == 0 || !messageListState.canScrollForward
         }
     }
     val composerChromeProgress by remember(messageListState, chromeStartPx, chromeEndPx) {
         derivedStateOf {
-            calculateComposerChromeProgress(
-                firstVisibleItemIndex = messageListState.firstVisibleItemIndex,
-                firstVisibleItemScrollOffset = messageListState.firstVisibleItemScrollOffset,
+            calculateComposerChromeProgressFromBottom(
+                layoutInfo = messageListState.layoutInfo,
                 startPx = chromeStartPx,
                 endPx = chromeEndPx,
             )
         }
     }
+
     LaunchedEffect(conversation?.id) {
         modelMenu = false
         chatMenu = false
-        followLatest = true
-        detachedMessages = null
-        detachedViewportAnchor = null
-        manualCardViewportLock = false
-        messageListState.scrollToItem(0)
+        followMode = ChatFollowMode.FOLLOWING
+        manualFollowHold = false
+        initialPositioned = false
         topAppBarState.contentOffset = 0f
         topAppBarState.heightOffset = 0f
 
-        // Chat uses the same Material scroll controller as Settings. A loaded
-        // conversation starts compact at the latest message; subsequent title
-        // movement is driven only by nested-scroll distance.
-        val collapsedOffset = snapshotFlow {
-            topAppBarState.heightOffsetLimit to paging.itemCount
-        }.first { (limit, count) -> limit < 0f && count > 0 }.first
+        val collapsedOffset = snapshotFlow { topAppBarState.heightOffsetLimit }
+            .first { it < 0f }
         topAppBarState.heightOffset = collapsedOffset
     }
 
-    LaunchedEffect(conversation?.id, paging) {
-        snapshotFlow { paging.itemSnapshotList.items.map { it.nodeId to it.status } }
-            .collect { liveStatuses ->
-                val frozen = detachedMessages ?: return@collect
-                val statusById = liveStatuses.toMap()
-                val updated = frozen.map { message ->
-                    val liveStatus = statusById[message.nodeId]
-                    if (liveStatus != null && liveStatus != message.status) message.copy(status = liveStatus) else message
-                }
-                if (updated != frozen) {
-                    // Status completion can immediately alter labels/icons and
-                    // then trigger a working-card collapse. Capture before the
-                    // status snapshot is replaced so even the first layout pass
-                    // is corrected, not only the subsequent animation frames.
-                    detachedViewportAnchor = captureChatViewportAnchor(messageListState.layoutInfo)
-                        ?: detachedViewportAnchor
-                    detachedMessages = updated
-                }
-            }
+    LaunchedEffect(conversation?.id, paging.itemCount, initialPositioned) {
+        if (!initialPositioned && paging.itemCount > 0) {
+            snapChatToBottom(messageListState, paging.itemCount - 1)
+            initialPositioned = true
+        }
     }
 
-    LaunchedEffect(messageListState, conversation?.id, relockThresholdPx) {
+    // One bottom-follow loop owns programmatic scrolling. It reacts to actual
+    // layout growth (including the 30 Hz streamed-text reveal), so there is no
+    // competing per-token scroll effect and no repeated scrollToItem jump.
+    LaunchedEffect(messageListState, conversation?.id, initialPositioned) {
         snapshotFlow {
-            Triple(
-                messageListState.isScrollInProgress,
-                messageListState.firstVisibleItemIndex,
-                messageListState.firstVisibleItemScrollOffset,
+            val layout = messageListState.layoutInfo
+            val last = layout.visibleItemsInfo.lastOrNull()
+            ChatBottomLayoutSnapshot(
+                totalItems = layout.totalItemsCount,
+                lastVisibleIndex = last?.index ?: -1,
+                lastVisibleBottomPx = last?.let { it.offset + it.size } ?: 0,
+                viewportEndPx = layout.viewportEndOffset,
+                scrollInProgress = messageListState.isScrollInProgress,
+                followMode = followMode,
+                manualHold = manualFollowHold,
             )
-        }.collect { (scrolling, index, offset) ->
-            val empty = messageListState.layoutInfo.totalItemsCount == 0
-            val atTrueLatest = empty || (index == 0 && offset <= relockThresholdPx)
-            if (!scrolling && atTrueLatest && !manualCardViewportLock) {
-                // Re-lock only after the gesture/fling has actually settled at
-                // the real bottom, not merely inside the broad FAB threshold.
-                followLatest = true
-                detachedMessages = null
-                detachedViewportAnchor = null
-            } else if (!scrolling && !followLatest) {
-                // A completed drag/fling establishes the new stationary screen
-                // position which all later below-viewport layout changes preserve.
-                detachedViewportAnchor = captureChatViewportAnchor(messageListState.layoutInfo)
-            }
         }
-    }
+            .distinctUntilChanged()
+            .collect { snapshot ->
+                if (!initialPositioned || snapshot.totalItems == 0 || snapshot.scrollInProgress ||
+                    snapshot.followMode != ChatFollowMode.FOLLOWING || snapshot.manualHold
+                ) return@collect
 
-    LaunchedEffect(conversation?.id, messageListState) {
-        snapshotFlow {
-            val anchor = detachedViewportAnchor
-            if (followLatest || anchor == null || messageListState.isScrollInProgress) {
-                null
-            } else {
-                messageListState.layoutInfo.visibleItemsInfo
-                    .firstOrNull { it.key == anchor.key }
-                    ?.let { current ->
-                        calculateViewportCorrectionDeltaPx(
-                            currentScreenOffsetPx = current.offset,
-                            anchoredScreenOffsetPx = anchor.screenOffsetPx,
-                        )
-                    }
-            }
-        }
-            .filterNotNull()
-            .collect { correctionPx ->
-                if (abs(correctionPx) >= 0.5f && !followLatest && !messageListState.isScrollInProgress) {
-                    // Correct every layout frame, not only the explicit click or
-                    // status mutation. This also catches Python/tool insertions,
-                    // paging remeasurements, and AnimatedVisibility intermediate
-                    // sizes which previously escaped the one-shot anchor logic.
-                    messageListState.scrollBy(correctionPx)
+                val lastIndex = snapshot.totalItems - 1
+                if (snapshot.lastVisibleIndex < lastIndex) {
+                    snapChatToBottom(messageListState, lastIndex)
+                } else {
+                    val overflow = snapshot.lastVisibleBottomPx - snapshot.viewportEndPx
+                    if (overflow > 0) messageListState.scrollBy(overflow.toFloat())
                 }
             }
     }
 
-    LaunchedEffect(conversation?.id, messageListState, relockThresholdPx) {
-        snapshotFlow {
-            if (!followLatest || messageListState.isScrollInProgress) null
-            else messageListState.firstVisibleItemIndex to messageListState.firstVisibleItemScrollOffset
-        }
-            .filterNotNull()
-            .collect { (index, initialOffset) ->
-                try {
-                    if (index > 0) {
-                        messageListState.animateScrollToItem(0)
-                        return@collect
-                    }
-                    if (initialOffset <= relockThresholdPx) return@collect
-
-                    var previousFrameNanos = 0L
-                    while (followLatest && messageListState.firstVisibleItemIndex == 0) {
-                        val distance = messageListState.firstVisibleItemScrollOffset.toFloat()
-                        if (distance <= relockThresholdPx) break
-                        val frameNanos = androidx.compose.runtime.withFrameNanos { it }
-                        val frameSeconds = if (previousFrameNanos == 0L) {
-                            1f / 60f
-                        } else {
-                            ((frameNanos - previousFrameNanos) / 1_000_000_000f).coerceIn(1f / 240f, 1f / 20f)
-                        }
-                        previousFrameNanos = frameNanos
-                        val step = calculateAutoFollowStepPx(
-                            distancePx = distance,
-                            frameSeconds = frameSeconds,
-                            maxSpeedPxPerSecond = autoFollowMaxSpeedPxPerSecond,
-                        )
-                        val consumed = messageListState.scrollBy(-step)
-                        if (abs(consumed) < 0.05f) break
-                    }
-                } catch (_: CancellationException) {
-                    // A real user drag has higher scroll priority and is allowed to
-                    // cancel the follower without killing this long-lived collector.
-                    currentCoroutineContext().ensureActive()
+    LaunchedEffect(messageListState, conversation?.id) {
+        snapshotFlow { messageListState.isScrollInProgress to messageListState.canScrollForward }
+            .collect { (scrolling, canScrollForward) ->
+                if (!scrolling && !canScrollForward && !manualFollowHold) {
+                    followMode = ChatFollowMode.FOLLOWING
                 }
             }
     }
@@ -570,15 +463,12 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     LaunchedEffect(focusedMessageNodeId, paging.itemSnapshotList.items.map { it.nodeId }, searchFocusHandled) {
         val target = focusedMessageNodeId ?: return@LaunchedEffect
         if (!searchFocusHandled) {
-            val index = paging.itemSnapshotList.items.indexOfFirst { it.nodeId == target }
-            if (index >= 0) {
-                // A branch switch can happen while the chat is detached from live
-                // paging. Refresh the frozen snapshot to the newly active path before
-                // scrolling, otherwise the old branch would remain rendered.
-                detachedMessages = loadedMessagesState.value
-                followLatest = false
-                messageListState.scrollToItem(index)
-                detachedViewportAnchor = captureChatViewportAnchor(messageListState.layoutInfo)
+            val sourceIndex = paging.itemSnapshotList.items.indexOfFirst { it.nodeId == target }
+            if (sourceIndex >= 0) {
+                val uiIndex = chronologicalUiIndex(sourceIndex, paging.itemCount)
+                manualFollowHold = true
+                followMode = ChatFollowMode.DETACHED
+                messageListState.scrollToItem(uiIndex.coerceAtLeast(0))
                 searchFocusHandled = true
             }
         }
@@ -682,7 +572,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             if (messageViewportBounds != bounds) messageViewportBounds = bounds
                         },
                     state = messageListState,
-                    reverseLayout = true,
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
                         start = 12.dp,
@@ -691,64 +580,46 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         bottom = padding.calculateBottomPadding() + 18.dp,
                     ),
                 ) {
-                    val frozen = detachedMessages
-                    if (frozen != null) {
-                        items(
-                            count = frozen.size,
-                            key = { index -> frozen[index].nodeId },
-                            contentType = { index -> frozen[index].role },
-                        ) { index ->
-                            val message = frozen[index]
+                    items(
+                        count = paging.itemCount,
+                        key = { uiIndex ->
+                            val sourceIndex = chronologicalSourceIndex(uiIndex, paging.itemCount)
+                            paging.peek(sourceIndex)?.nodeId ?: "loading-$uiIndex"
+                        },
+                        contentType = { uiIndex ->
+                            val sourceIndex = chronologicalSourceIndex(uiIndex, paging.itemCount)
+                            paging.peek(sourceIndex)?.role
+                        },
+                    ) { uiIndex ->
+                        val sourceIndex = chronologicalSourceIndex(uiIndex, paging.itemCount)
+                        paging[sourceIndex]?.let { message ->
                             MessageCard(
                                 message = message,
                                 viewModel = viewModel,
                                 reasoningVisibility = conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
                                 activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
                                 branchOptions = inlineBranchOptions(message, revisionBranchGroups),
-                                freezeLiveUpdates = true,
                                 workingCardViewport = WorkingCardViewportController(
                                     viewportBounds = messageViewportBounds,
                                     listScrolling = messageListState.isScrollInProgress,
-                                    applyMutation = preserveViewportDuringCardAnimation,
+                                    beginManualInteraction = beginManualCardInteraction,
+                                    centerAfterCollapse = centerCollapsedCard,
                                 ),
                             )
-                        }
-                    } else {
-                        items(
-                            count = paging.itemCount,
-                            key = { index -> paging.peek(index)?.nodeId ?: index },
-                            contentType = { index -> paging.peek(index)?.role },
-                        ) { index ->
-                            paging[index]?.let { message ->
-                                MessageCard(
-                                    message = message,
-                                    viewModel = viewModel,
-                                    reasoningVisibility = conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
-                                    activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
-                                    branchOptions = inlineBranchOptions(message, revisionBranchGroups),
-                                    freezeLiveUpdates = false,
-                                    workingCardViewport = WorkingCardViewportController(
-                                    viewportBounds = messageViewportBounds,
-                                    listScrolling = messageListState.isScrollInProgress,
-                                    applyMutation = preserveViewportDuringCardAnimation,
-                                ),
-                                )
-                            }
                         }
                     }
                 }
             }
 
             AnimatedVisibility(
-                visible = paging.itemCount > 0 && !isAtLatest,
+                visible = paging.itemCount > 0 && followMode == ChatFollowMode.DETACHED && !isAtLatest,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = padding.calculateBottomPadding() + 16.dp),
             ) {
                 SmallFloatingActionButton(
                     onClick = {
-                        followLatest = true
-                        detachedMessages = null
-                        detachedViewportAnchor = null
-                        manualCardViewportLock = false
+                        manualFollowHold = false
+                        followMode = ChatFollowMode.FOLLOWING
+                        listScope.launch { snapChatToBottom(messageListState, paging.itemCount - 1) }
                     },
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -832,22 +703,18 @@ private fun MessageCard(
     activeModel: ModelEntity?,
     branchOptions: List<MessageEntity>,
     modifier: Modifier = Modifier,
-    freezeLiveUpdates: Boolean = false,
     workingCardViewport: WorkingCardViewportController,
 ) {
-    val liveAttachments by viewModel.run { containerAttachments(message.nodeId) }.collectAsStateWithLifecycle(initialValue = emptyList())
-    val frozenAttachments = remember(message.nodeId, freezeLiveUpdates) {
-        if (freezeLiveUpdates) liveAttachments else null
-    }
-    val attachments = frozenAttachments ?: liveAttachments
-    // Keep work-state separate from animation/live-update state. Detaching from
-    // auto-follow freezes the rendered message, but must not make its active card
-    // look completed merely because streaming animations are paused.
+    val attachments by viewModel.run { containerAttachments(message.nodeId) }
+        .collectAsStateWithLifecycle(initialValue = emptyList())
     val working = message.status == MessageStatus.STREAMING
-    val animateStreaming = working && !freezeLiveUpdates
+    val animateStreaming = working
     val user = message.role == MessageRole.USER
-    val rawTimeline = remember(message.timelineJson) {
+    val encodedTimeline = remember(message.timelineJson) {
         runCatching { ChatMessageJson.decodeFromString<List<MessageTimelineEvent>>(message.timelineJson) }.getOrDefault(emptyList())
+    }
+    val rawTimeline = remember(encodedTimeline, message.content, message.reasoning) {
+        materializeTimelineContent(encodedTimeline, message.content, message.reasoning)
     }
     val deepResearchResponse = remember(message.role, message.requestSnapshotJson) {
         ResearchStateProtocol.isDeepResearchResponse(message.role, message.requestSnapshotJson)
@@ -859,14 +726,20 @@ private fun MessageCard(
             else listOf(message.reasoning, message.content),
         )
     }
-    val timeline = remember(rawTimeline) {
-        rawTimeline.map { event -> event.copy(content = ResearchStateProtocol.extract(event.content).cleanedText) }
-            .filterNot { event ->
-                event.kind in setOf("text", "reasoning") && event.content.isBlank() && event.input.isBlank() && event.output.isBlank()
-            }
+    val timeline = remember(rawTimeline, deepResearchResponse) {
+        rawTimeline.map { event ->
+            if (deepResearchResponse) event.copy(content = ResearchStateProtocol.extract(event.content).cleanedText)
+            else event
+        }.filterNot { event ->
+            event.kind in setOf("text", "reasoning") && event.content.isBlank() && event.input.isBlank() && event.output.isBlank()
+        }
     }
-    val displayReasoning = remember(message.reasoning) { ResearchStateProtocol.extract(message.reasoning).cleanedText }
-    val displayContent = remember(message.content) { ResearchStateProtocol.extract(message.content).cleanedText }
+    val displayReasoning = if (deepResearchResponse) {
+        remember(message.reasoning) { ResearchStateProtocol.extract(message.reasoning).cleanedText }
+    } else message.reasoning
+    val displayContent = if (deepResearchResponse) {
+        remember(message.content) { ResearchStateProtocol.extract(message.content).cleanedText }
+    } else message.content
     var editing by remember(message.nodeId) { mutableStateOf(false) }
     var editedText by remember(message.nodeId) { mutableStateOf(message.content) }
     var copied by remember(message.nodeId) { mutableStateOf(false) }
@@ -1145,13 +1018,10 @@ private fun TimelineWorkingBlock(
     var cardBounds by remember(stateKey) { mutableStateOf<Rect?>(null) }
     var animateVisibility by remember(stateKey) { mutableStateOf(true) }
     val cardVisible = workingCardViewport.isVisible(cardBounds)
-    LaunchedEffect(active, cardVisible, workingCardViewport.listScrolling) {
-        if (previousActive != active && (cardVisible || workingCardViewport.listScrolling)) {
+    LaunchedEffect(active) {
+        if (previousActive != active) {
             animateVisibility = cardVisible && !workingCardViewport.listScrolling
-            workingCardViewport.applyMutation(
-                if (active) WorkingCardMutation.AUTO_EXPAND else WorkingCardMutation.AUTO_COLLAPSE,
-                { cardBounds },
-            ) { expanded = active }
+            expanded = active
             previousActive = active
             if (!animateVisibility) {
                 androidx.compose.runtime.withFrameNanos { }
@@ -1162,10 +1032,14 @@ private fun TimelineWorkingBlock(
     Surface(
             onClick = {
                 animateVisibility = true
-                workingCardViewport.applyMutation(
-                    if (expanded) WorkingCardMutation.MANUAL_COLLAPSE else WorkingCardMutation.MANUAL_EXPAND,
-                    { cardBounds },
-                ) { expanded = !expanded }
+                workingCardViewport.beginManualInteraction()
+                if (expanded) {
+                    val before = cardBounds
+                    expanded = false
+                    workingCardViewport.centerAfterCollapse(before) { cardBounds }
+                } else {
+                    expanded = true
+                }
             },
             color = MaterialTheme.colorScheme.surfaceContainer,
             shape = MaterialTheme.shapes.medium,
@@ -1215,10 +1089,9 @@ private fun TimelineWorkingBlock(
                                     if (event.kind in setOf("python", "ubuntu", "search", "fetch")) {
                                         ToolStepDetails(event.kind, event.input, event.output, event.status, usedSourceUrls, viewModel)
                                     } else {
-                                        if (event.input.isNotBlank()) AutoLintedCodeText(
+                                        if (event.input.isNotBlank()) HighlightedCodeText(
                                             language = event.kind,
                                             code = event.input,
-                                            lintEnabled = event.status != "preparing",
                                             style = MaterialTheme.typography.labelSmall,
                                             softWrap = true,
                                         )
@@ -1254,13 +1127,10 @@ private fun LegacyWorkingBlock(
     var cardBounds by remember(messageKey) { mutableStateOf<Rect?>(null) }
     var animateVisibility by remember(messageKey) { mutableStateOf(true) }
     val cardVisible = workingCardViewport.isVisible(cardBounds)
-    LaunchedEffect(working, cardVisible, workingCardViewport.listScrolling) {
-        if (previousActive != working && (cardVisible || workingCardViewport.listScrolling)) {
+    LaunchedEffect(working) {
+        if (previousActive != working) {
             animateVisibility = cardVisible && !workingCardViewport.listScrolling
-            workingCardViewport.applyMutation(
-                if (working) WorkingCardMutation.AUTO_EXPAND else WorkingCardMutation.AUTO_COLLAPSE,
-                { cardBounds },
-            ) { expanded = working }
+            expanded = working
             previousActive = working
             if (!animateVisibility) {
                 androidx.compose.runtime.withFrameNanos { }
@@ -1271,10 +1141,14 @@ private fun LegacyWorkingBlock(
     Surface(
         onClick = {
             animateVisibility = true
-            workingCardViewport.applyMutation(
-                if (expanded) WorkingCardMutation.MANUAL_COLLAPSE else WorkingCardMutation.MANUAL_EXPAND,
-                { cardBounds },
-            ) { expanded = !expanded }
+            workingCardViewport.beginManualInteraction()
+            if (expanded) {
+                val before = cardBounds
+                expanded = false
+                workingCardViewport.centerAfterCollapse(before) { cardBounds }
+            } else {
+                expanded = true
+            }
         },
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = MaterialTheme.shapes.medium,

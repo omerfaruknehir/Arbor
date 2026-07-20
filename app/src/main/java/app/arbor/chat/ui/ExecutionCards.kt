@@ -9,22 +9,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import app.arbor.chat.sandbox.CodeLintResult
 import app.arbor.chat.sandbox.ExecutionResult
-import app.arbor.chat.sandbox.LintSeverity
-import app.arbor.chat.sandbox.StaticCodeLinter
 import app.arbor.chat.sandbox.UbuntuExecutionResult
 
 @Composable
@@ -34,83 +29,20 @@ fun CodeSourcePanel(
     title: String = language.ifBlank { "code" }.uppercase(),
     live: Boolean = false,
 ) {
-    val lint = if (live) null else remember(language, code) { StaticCodeLinter.lint(language, code) }
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth()) {
         Column {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(title, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                 if (live) Text("Streaming…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else lint?.let { CodeLintBadge(it) }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            AutoLintedCodeText(
+            HighlightedCodeText(
                 language = language,
                 code = code,
-                lintResult = lint,
-                lintEnabled = !live,
                 modifier = Modifier.horizontalScroll(rememberScrollState()).padding(12.dp),
                 style = MaterialTheme.typography.bodySmall,
                 softWrap = false,
             )
-        }
-    }
-}
-
-@Composable
-fun CodeLintBadge(result: CodeLintResult) {
-    val errors = result.diagnostics.count { it.severity == LintSeverity.ERROR }
-    val warnings = result.diagnostics.count { it.severity == LintSeverity.WARNING }
-    val infos = result.diagnostics.count { it.severity == LintSeverity.INFO }
-    val label = when {
-        errors > 0 -> "$errors error${if (errors == 1) "" else "s"}"
-        warnings > 0 -> "$warnings warning${if (warnings == 1) "" else "s"}"
-        infos > 0 -> "$infos note${if (infos == 1) "" else "s"}"
-        else -> "Lint clean"
-    }
-    Text(
-        label,
-        style = MaterialTheme.typography.labelSmall,
-        color = when {
-            errors > 0 -> MaterialTheme.colorScheme.error
-            warnings > 0 -> MaterialTheme.colorScheme.tertiary
-            else -> MaterialTheme.colorScheme.onSurfaceVariant
-        },
-    )
-}
-
-@Composable
-fun CodeLintPanel(result: CodeLintResult?, checking: Boolean = false) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (checking) CircularProgressIndicator(Modifier.padding(end = 8.dp), strokeWidth = 2.dp)
-                val hasErrors = result?.hasErrors == true
-                Text(
-                    when {
-                        checking -> "Linting…"
-                        result == null -> "Lint unavailable"
-                        result.diagnostics.isEmpty() -> "Lint clean"
-                        hasErrors -> "Lint found errors"
-                        else -> "Lint found ${result.diagnostics.size} note${if (result.diagnostics.size == 1) "" else "s"}"
-                    },
-                    Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (hasErrors) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                )
-                result?.engine?.takeIf(String::isNotBlank)?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            }
-            result?.diagnostics?.take(12)?.forEach { diagnostic ->
-                Text(
-                    buildString {
-                        append(diagnostic.severity.name.lowercase().replaceFirstChar(Char::uppercase))
-                        diagnostic.line?.let { append(" • line ").append(it); diagnostic.column?.let { column -> append(':').append(column) } }
-                        append(" — ").append(diagnostic.message)
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (diagnostic.severity == LintSeverity.ERROR) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
         }
     }
 }

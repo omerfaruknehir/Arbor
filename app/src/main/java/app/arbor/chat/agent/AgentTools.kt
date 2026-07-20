@@ -62,7 +62,33 @@ data class MessageTimelineEvent(
     val argumentsJson: String = "",
     val startedAt: Long,
     val finishedAt: Long? = null,
+    /**
+     * Text/reasoning events created by current Arbor builds reference the
+     * aggregate message field instead of duplicating a growing string inside
+     * timelineJson. A null sourceEnd marks the currently streaming segment.
+     */
+    val sourceStart: Int = -1,
+    val sourceEnd: Int? = null,
 )
+
+fun materializeTimelineContent(
+    events: List<MessageTimelineEvent>,
+    content: String,
+    reasoning: String,
+): List<MessageTimelineEvent> = events.mapIndexed { index, event ->
+    if (event.content.isNotEmpty() || event.sourceStart < 0 || event.kind !in setOf("text", "reasoning")) {
+        event
+    } else {
+        val source = if (event.kind == "reasoning") reasoning else content
+        val start = event.sourceStart.coerceIn(0, source.length)
+        val nextStart = events.asSequence()
+            .drop(index + 1)
+            .firstOrNull { it.kind == event.kind && it.sourceStart >= 0 }
+            ?.sourceStart
+        val end = (event.sourceEnd ?: nextStart ?: source.length).coerceIn(start, source.length)
+        event.copy(content = source.substring(start, end))
+    }
+}
 
 data class TimelineRun(val working: Boolean, val events: List<MessageTimelineEvent>)
 
@@ -117,8 +143,6 @@ class AgentTools(
         "python", "python_exec" -> {
             check(conversation.agentPythonEnabled) { "Agent Python is disabled for this conversation." }
             val code = requireNotNull(request.code) { "Python code is missing" }
-            val lint = ubuntu.lintPython(conversation.id, code)
-            require(!lint.hasErrors) { "Python lint failed: ${lint.diagnostics.joinToString { it.message }}" }
             val result = ubuntu.executePython(conversation.id, code, (request.timeoutSeconds ?: DEFAULT_PYTHON_SECONDS).coerceIn(1, 600))
             AgentToolOutcome(json.encodeToString(result))
         }
@@ -129,8 +153,6 @@ class AgentTools(
             require(!PACKAGE_COMMAND.containsMatchIn(command)) {
                 "Package-manager commands require a visible ubuntu-packages request and approval."
             }
-            val lint = ubuntu.lintShell(conversation.id, command)
-            require(!lint.hasErrors) { "Shell lint failed: ${lint.diagnostics.joinToString { it.message }}" }
             val result = ubuntu.execute(conversation.id, command, (request.timeoutSeconds ?: DEFAULT_LINUX_SECONDS).coerceIn(1, 900))
             AgentToolOutcome(json.encodeToString(UbuntuToolResult(
                 result.stdout, result.stderr, result.exitCode, result.files, result.elapsedMs, result.timedOut,

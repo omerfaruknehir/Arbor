@@ -107,27 +107,6 @@ def run_code(code, workspace, output_limit=1_000_000, timeout_seconds=90):
     })
 
 
-def lint_python(code):
-    diagnostics = []
-    try:
-        compile(code, "<arbor-lint>", "exec")
-    except SyntaxError as error:
-        diagnostics.append({
-            "severity": "ERROR",
-            "line": error.lineno,
-            "column": error.offset,
-            "message": error.msg or "Python syntax error",
-        })
-    for number, line in enumerate(code.splitlines(), 1):
-        if line.endswith((" ", "\t")):
-            diagnostics.append({"severity": "WARNING", "line": number, "column": len(line), "message": "Trailing whitespace"})
-        if line[:len(line) - len(line.lstrip())].find("\t") >= 0:
-            diagnostics.append({"severity": "WARNING", "line": number, "column": 1, "message": "Tab used for indentation"})
-        if len(line) > 140:
-            diagnostics.append({"severity": "INFO", "line": number, "column": 141, "message": "Line is longer than 140 characters"})
-    return json.dumps({"language": "python", "engine": "CPython compile + Arbor style", "diagnostics": diagnostics})
-
-
 def preflight_packages(requirements_json, workspace, platform_tag):
     requirements = json.loads(requirements_json)
     target = os.path.join(workspace, ".packages")

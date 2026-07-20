@@ -229,19 +229,6 @@ class UbuntuRuntime(
         )
     }
 
-    suspend fun lintPython(conversationId: String, code: String): CodeLintResult {
-        if (!status.value.installed) return StaticCodeLinter.lint("python", code).copy(engine = "Arbor static lint • install a Linux distribution for distro Python")
-        val workspace = python.workspace(conversationId)
-        val script = File(workspace, ".arbor-lint.py").apply { writeText(code) }
-        val result = execute(conversationId, "python3 -m py_compile /workspace/.arbor-lint.py", 30)
-        val diagnostics = if (result.exitCode == 0) emptyList() else listOf(CodeDiagnostic(
-            severity = LintSeverity.ERROR,
-            line = Regex("line (\\d+)").find(result.stderr)?.groupValues?.get(1)?.toIntOrNull(),
-            message = result.stderr.lineSequence().lastOrNull(String::isNotBlank) ?: "Python syntax error",
-        ))
-        return CodeLintResult("python", "${distribution.value.displayName} python3 -m py_compile", diagnostics)
-    }
-
     suspend fun pythonEnvironment(conversationId: String): PythonEnvironmentInfo {
         ensurePythonEnvironment(conversationId)
         val code = """import json, sys, os, importlib.metadata as m
@@ -359,19 +346,6 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
     }
 
     private fun normalizePythonName(value: String) = value.lowercase().replace(Regex("[-_.]+"), "-")
-
-    suspend fun lintShell(conversationId: String, code: String): CodeLintResult {
-        val distro = distribution.value
-        val basic = StaticCodeLinter.lint("bash", code)
-        if (!status.value.installed && !rootfsMarker().isFile) return basic.copy(engine = "Arbor static lint • ${distro.displayName} is not installed")
-        val checked = execute(conversationId, "sh -n -c ${shellQuote(code)}", 30)
-        val syntax = if (checked.exitCode == 0) emptyList() else listOf(CodeDiagnostic(
-            severity = LintSeverity.ERROR,
-            line = Regex("line (\\d+)").find(checked.stderr)?.groupValues?.get(1)?.toIntOrNull(),
-            message = checked.stderr.lineSequence().filter(String::isNotBlank).lastOrNull()?.removePrefix("sh: ") ?: "Shell syntax error",
-        ))
-        return CodeLintResult("bash", "${distro.displayName} sh -n + Arbor style", (syntax + basic.diagnostics).distinct())
-    }
 
     suspend fun preflightPackages(conversationId: String, raw: String, restrictionsEnabled: Boolean): PackagePlan =
         if (distribution.value.packageManager == LinuxPackageManager.APK) preflightApk(conversationId, raw, restrictionsEnabled)

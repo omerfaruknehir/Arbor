@@ -44,4 +44,12 @@ class ChatScrollMathTest {
         assertTrue(!shouldCenterCollapsedCard(400f, 900f))
     }
 
+    @Test
+    fun descendingPagingIsMappedToChronologicalUiOrder() {
+        assertEquals(4, chronologicalSourceIndex(0, 5))
+        assertEquals(0, chronologicalSourceIndex(4, 5))
+        assertEquals(0, chronologicalUiIndex(4, 5))
+        assertEquals(4, chronologicalUiIndex(0, 5))
+    }
+
 }

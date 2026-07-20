@@ -171,7 +171,7 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel) {
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.labelSmall,
                         )
-                        AutoLintedCodeText(
+                        HighlightedCodeText(
                             language = "bash",
                             code = entry.command,
                             style = MaterialTheme.typography.bodyMedium.copy(

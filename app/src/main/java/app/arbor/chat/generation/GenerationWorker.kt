@@ -155,33 +155,87 @@ class GenerationWorker(
             ?: mutableListOf()
         var savedContent = initial.content
         var savedReasoning = initial.reasoning
+        var timelineDirty = false
+        var tracesDirty = false
+        var persistedContentLength = savedContent.length
+        var persistedReasoningLength = savedReasoning.length
 
         // A response started on an older app version has no ordered timeline.
-        // Preserve it on resume with the best ordering the legacy fields allow.
+        // Preserve it on resume, but reference the aggregate fields instead of
+        // duplicating potentially megabytes of text inside timelineJson.
         if (timeline.isEmpty() && (savedContent.isNotBlank() || savedReasoning.isNotBlank())) {
             val now = System.currentTimeMillis()
-            if (savedReasoning.isNotBlank()) timeline += MessageTimelineEvent(kind = "reasoning", content = savedReasoning, startedAt = now)
-            if (savedContent.isNotBlank()) timeline += MessageTimelineEvent(kind = "text", content = savedContent, startedAt = now + 1)
+            if (savedReasoning.isNotBlank()) timeline += MessageTimelineEvent(
+                kind = "reasoning",
+                startedAt = now,
+                finishedAt = now,
+                sourceStart = 0,
+                sourceEnd = savedReasoning.length,
+            )
+            if (savedContent.isNotBlank()) timeline += MessageTimelineEvent(
+                kind = "text",
+                startedAt = now + 1,
+                finishedAt = now + 1,
+                sourceStart = 0,
+                sourceEnd = savedContent.length,
+            )
+            timelineDirty = true
+        }
+
+        fun aggregateLength(kind: String): Int = if (kind == "reasoning") savedReasoning.length else savedContent.length
+
+        fun closeOpenStreamEvent(now: Long = System.currentTimeMillis()) {
+            val last = timeline.lastOrNull() ?: return
+            if (last.kind !in setOf("text", "reasoning") || last.sourceStart < 0 || last.sourceEnd != null) return
+            timeline[timeline.lastIndex] = last.copy(
+                sourceEnd = aggregateLength(last.kind).coerceAtLeast(last.sourceStart),
+                finishedAt = now,
+            )
+            timelineDirty = true
         }
 
         fun appendTimeline(kind: String, value: String) {
             if (value.isEmpty()) return
             val now = System.currentTimeMillis()
             val last = timeline.lastOrNull()
-            if (last != null && last.kind == kind && kind in setOf("text", "reasoning")) {
-                timeline[timeline.lastIndex] = last.copy(content = last.content + value, finishedAt = now)
-            } else {
-                timeline += MessageTimelineEvent(kind = kind, content = value, startedAt = now, finishedAt = now)
+            if (last != null && last.kind == kind && last.sourceStart >= 0 && last.sourceEnd == null) {
+                // The live event's end is derived from content/reasoning length in
+                // the UI. Do not rewrite the entire timeline for every chunk.
+                return
             }
+            closeOpenStreamEvent(now)
+            val end = aggregateLength(kind)
+            timeline += MessageTimelineEvent(
+                kind = kind,
+                startedAt = now,
+                sourceStart = (end - value.length).coerceAtLeast(0),
+            )
+            timelineDirty = true
         }
 
-        suspend fun persistTimeline() = repository.replaceWorkingState(
-            assistantId,
-            savedContent,
-            savedReasoning,
-            json.encodeToString(traces),
-            json.encodeToString(timeline),
-        )
+        suspend fun persistTimeline(forceMetadata: Boolean = false) {
+            if (forceMetadata || timelineDirty || tracesDirty) {
+                repository.replaceWorkingState(
+                    assistantId,
+                    savedContent,
+                    savedReasoning,
+                    json.encodeToString(traces),
+                    json.encodeToString(timeline),
+                )
+                timelineDirty = false
+                tracesDirty = false
+                persistedContentLength = savedContent.length
+                persistedReasoningLength = savedReasoning.length
+            } else {
+                val contentDelta = savedContent.substring(persistedContentLength.coerceAtMost(savedContent.length))
+                val reasoningDelta = savedReasoning.substring(persistedReasoningLength.coerceAtMost(savedReasoning.length))
+                if (contentDelta.isNotEmpty() || reasoningDelta.isNotEmpty()) {
+                    repository.append(assistantId, contentDelta, reasoningDelta)
+                    persistedContentLength = savedContent.length
+                    persistedReasoningLength = savedReasoning.length
+                }
+            }
+        }
 
         suspend fun saveCallUsage(
             id: String,
@@ -249,6 +303,7 @@ class GenerationWorker(
                         (providerCallId.isBlank() && candidate.argumentsJson == argumentsJson && candidate.kind == presentation.kind))
             }
             val prepared = preparedIndex.takeIf { it >= 0 }?.let(timeline::get)
+            closeOpenStreamEvent()
             val event = ToolTraceEvent(
                 id = prepared?.id ?: UUID.randomUUID().toString(),
                 type = request.type,
@@ -260,6 +315,7 @@ class GenerationWorker(
                 startedAt = prepared?.startedAt ?: System.currentTimeMillis(),
             )
             traces += event
+            tracesDirty = true
             val timelineEvent = MessageTimelineEvent(
                 id = event.id,
                 kind = when (normalizedTool) {
@@ -277,6 +333,7 @@ class GenerationWorker(
                 startedAt = event.startedAt,
             )
             if (preparedIndex >= 0) timeline[preparedIndex] = timelineEvent else timeline += timelineEvent
+            timelineDirty = true
             persistTimeline()
             setForeground(notification(label, indeterminate = true))
             val returnedFiles = mutableListOf<Triple<String, String, Long>>()
@@ -301,6 +358,7 @@ class GenerationWorker(
                 output = toolOutput,
                 finishedAt = System.currentTimeMillis(),
             )
+            tracesDirty = true
             val completedAt = traces.last().finishedAt
             val timelineIndex = timeline.indexOfLast { it.id == event.id }
             if (timelineIndex >= 0) timeline[timelineIndex] = timelineEvent.copy(
@@ -308,6 +366,7 @@ class GenerationWorker(
                 output = toolOutput,
                 finishedAt = completedAt,
             )
+            timelineDirty = true
             returnedFiles.forEach { (attachmentId, displayName, createdAt) ->
                 timeline += MessageTimelineEvent(
                     kind = "file",
@@ -319,11 +378,13 @@ class GenerationWorker(
                     finishedAt = createdAt,
                 )
             }
+            if (returnedFiles.isNotEmpty()) timelineDirty = true
             persistTimeline()
             return ToolExecution(toolOutput, toolError != null, replayed = false)
         }
 
         suspend fun rejectPreparedToolCall(call: NativeToolCall, reason: String) {
+            closeOpenStreamEvent()
             val presentation = toolCallPresentation(call.name, call.argumentsJson)
             val now = System.currentTimeMillis()
             val existingIndex = timeline.indexOfLast { candidate ->
@@ -345,6 +406,7 @@ class GenerationWorker(
                 finishedAt = now,
             )
             if (existingIndex >= 0) timeline[existingIndex] = failed else timeline += failed
+            timelineDirty = true
             persistTimeline()
         }
 
@@ -517,6 +579,7 @@ class GenerationWorker(
             }
 
             suspend fun upsertToolCallProgress(progress: app.arbor.chat.provider.NativeToolCallProgress, requestId: String) {
+                closeOpenStreamEvent()
                 val presentation = toolCallPresentation(progress.name, progress.argumentsJson)
                 val eventId = progressEventIds.getOrPut(progress.index) { "tool-call-$requestId-${progress.index}" }
                 val existingIndex = timeline.indexOfLast { it.id == eventId }
@@ -534,6 +597,7 @@ class GenerationWorker(
                     finishedAt = if (progress.complete) now else null,
                 )
                 if (existingIndex >= 0) timeline[existingIndex] = event else timeline += event
+                timelineDirty = true
                 val weight = progress.name.length + progress.argumentsJson.length
                 val previousWeight = progressWeights.put(progress.index, weight) ?: 0
                 pendingCharacters += (weight - previousWeight).coerceAtLeast(1)
@@ -551,6 +615,7 @@ class GenerationWorker(
                             output = "Tool call stream failed: ${safeError(error)}",
                             finishedAt = now,
                         )
+                        timelineDirty = true
                         changed = true
                     }
                 }
@@ -763,7 +828,8 @@ class GenerationWorker(
             )?.let { persistResearchState(it, addToContext = false) }
         }
 
-        persistTimeline()
+        closeOpenStreamEvent()
+        persistTimeline(forceMetadata = true)
         val final = requireNotNull(repository.message(assistantId))
         if (final.content.isBlank() && final.reasoning.isBlank()) throw ProviderProtocolException("Provider completed without returning any content")
         val usage = repository.generationUsage(assistantId)

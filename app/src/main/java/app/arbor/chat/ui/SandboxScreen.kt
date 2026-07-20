@@ -50,7 +50,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.arbor.chat.R
 import app.arbor.chat.sandbox.ExecutionResult
-import app.arbor.chat.sandbox.CodeLintResult
 import app.arbor.chat.sandbox.PackageInstallResult
 import app.arbor.chat.sandbox.PythonEnvironmentInfo
 import app.arbor.chat.sandbox.PythonPackageSearchResult
@@ -77,8 +76,6 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                 "print('Workspace:', Path.cwd())\n",
         )
     }
-    var codeLint by remember { mutableStateOf<CodeLintResult?>(null) }
-    var codeLinting by remember { mutableStateOf(true) }
     var packages by remember { mutableStateOf("") }
     var packageQuery by remember { mutableStateOf("") }
     var packageSearching by remember { mutableStateOf(false) }
@@ -93,8 +90,6 @@ fun SandboxScreen(viewModel: ChatViewModel) {
     var timeoutSeconds by remember { mutableStateOf("90") }
     var linuxTimeoutSeconds by remember { mutableStateOf("180") }
     var ubuntuCommand by remember { mutableStateOf("uname -a\npython3 --version || true\nls -la") }
-    var ubuntuLint by remember { mutableStateOf<CodeLintResult?>(null) }
-    var ubuntuLinting by remember { mutableStateOf(true) }
     var ubuntuPackages by remember { mutableStateOf("") }
     var ubuntuReview by remember { mutableStateOf<PackageReview?>(null) }
     var confirmUbuntuInstall by remember { mutableStateOf(false) }
@@ -137,18 +132,6 @@ fun SandboxScreen(viewModel: ChatViewModel) {
             clock = System.currentTimeMillis()
             delay(1_000)
         }
-    }
-    LaunchedEffect(code, conversationId) {
-        delay(300)
-        codeLinting = true
-        codeLint = runCatching { viewModel.lintCode("python", code) }.getOrNull()
-        codeLinting = false
-    }
-    LaunchedEffect(ubuntuCommand, conversationId, ubuntuStatus.installed) {
-        delay(300)
-        ubuntuLinting = true
-        ubuntuLint = runCatching { viewModel.lintCode("bash", ubuntuCommand) }.getOrNull()
-        ubuntuLinting = false
     }
     LaunchedEffect(packageQuery) {
         delay(350)
@@ -340,15 +323,14 @@ fun SandboxScreen(viewModel: ChatViewModel) {
             OutlinedTextField(
                 code, { code = it },
                 textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                visualTransformation = rememberCodeVisualTransformation("python", if (codeLinting) null else codeLint?.diagnostics),
+                visualTransformation = rememberCodeVisualTransformation("python"),
                 minLines = 12,
                 label = { Text("Distro Python (root)") },
                 modifier = Modifier.fillMaxWidth(),
             )
-            CodeLintPanel(codeLint, codeLinting)
             Button(
                 onClick = { viewModel.startPythonRun(code, timeoutSeconds.toIntOrNull()?.coerceIn(1, 600) ?: 90) },
-                enabled = !running && !codeLinting && codeLint?.hasErrors != true,
+                enabled = code.isNotBlank() && !running,
             ) { Icon(Icons.Outlined.PlayArrow, null); Text(if (running) "Running…" else "Run", Modifier.padding(start = 8.dp)) }
             if (running) Text(
                 "Running in the background • ${(clock - (pythonRun?.startedAt ?: clock)) / 1_000}s • you can browse other chats",
@@ -410,14 +392,13 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                     ubuntuCommand, { ubuntuCommand = it },
                     label = { Text("${ubuntuStatus.distribution.displayName} shell command") },
                     textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                    visualTransformation = rememberCodeVisualTransformation("bash", if (ubuntuLinting) null else ubuntuLint?.diagnostics),
+                    visualTransformation = rememberCodeVisualTransformation("bash"),
                     minLines = 4,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                CodeLintPanel(ubuntuLint, ubuntuLinting)
                 Button(
                     onClick = { viewModel.startLinuxRun(ubuntuCommand, linuxTimeoutSeconds.toIntOrNull()?.coerceIn(1, 3_600) ?: 180) },
-                    enabled = ubuntuCommand.isNotBlank() && !ubuntuRunning && !ubuntuLinting && ubuntuLint?.hasErrors != true,
+                    enabled = ubuntuCommand.isNotBlank() && !ubuntuRunning,
                 ) { Icon(Icons.Outlined.PlayArrow, null); Text(if (ubuntuRunning) "Running…" else "Run in ${ubuntuStatus.distribution.displayName}", Modifier.padding(start = 8.dp)) }
                 if (ubuntuRunning) Text(
                     "Running in the background • ${(clock - (linuxRun?.startedAt ?: clock)) / 1_000}s • safe to leave this screen",

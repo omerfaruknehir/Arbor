@@ -31,8 +31,6 @@ import app.arbor.chat.provider.ProviderCredentialPolicy
 import app.arbor.chat.provider.ProviderEndpointPolicy
 import app.arbor.chat.provider.parseHeaders
 import app.arbor.chat.sandbox.ExecutionResult
-import app.arbor.chat.sandbox.CodeLintResult
-import app.arbor.chat.sandbox.StaticCodeLinter
 import app.arbor.chat.sandbox.PackageInstallResult
 import app.arbor.chat.sandbox.PythonEnvironmentInfo
 import app.arbor.chat.sandbox.PackageReview
@@ -623,15 +621,6 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     suspend fun executePython(code: String, timeoutSeconds: Int): ExecutionResult {
         val id = selectedConversationId.value ?: error("No conversation")
         return container.ubuntuRuntime.executePython(id, code, timeoutSeconds)
-    }
-
-    suspend fun lintCode(language: String, code: String): CodeLintResult {
-        val id = selectedConversationId.value ?: error("No conversation")
-        return when (language.trim().lowercase()) {
-            "python", "py" -> container.ubuntuRuntime.lintPython(id, code)
-            "bash", "sh", "shell", "zsh", "ubuntu" -> container.ubuntuRuntime.lintShell(id, code)
-            else -> StaticCodeLinter.lint(language, code)
-        }
     }
 
     suspend fun installPythonPackages(requirements: String, approvedPlan: PackagePlan? = null): PackageInstallResult {

@@ -1,3 +1,10 @@
+## 0.16.51
+
+- Rewrote the chat viewport around one chronological keyed list and one measured bottom-follow loop; removed reverse-layout correction, frozen snapshots, and competing scroll jobs.
+- Added append-only Markdown block parsing so completed blocks stay stable and only the unfinished streaming tail is reparsed.
+- Replaced growing timeline text duplication with compact aggregate-field ranges, and delta-only text persistence, avoiding full timeline JSON serialization/decoding on ordinary stream flushes.
+- Removed code linting from rendering, editors, and tool execution while retaining syntax colouring.
+
 ## 0.16.50
 
 - Fixed stale assistant retry siblings rendering as consecutive messages with duplicate Working cards and identical branch counters.

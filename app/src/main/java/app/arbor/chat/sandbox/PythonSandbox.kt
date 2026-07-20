@@ -11,7 +11,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -80,22 +79,6 @@ class PythonSandbox(private val context: Context) {
         val marker = File(workspace(conversationId), ".arbor-cancel")
         runCatching { marker.writeText("Stop requested by user.\n") }
     }
-
-    suspend fun lint(code: String): CodeLintResult = withContext(Dispatchers.IO) { mutex.withLock {
-        startPython()
-        val raw = Python.getInstance().getModule("sandbox_runner").callAttr("lint_python", code).toString()
-        val root = json.parseToJsonElement(raw).jsonObject
-        val diagnostics = root["diagnostics"]?.jsonArray.orEmpty().map { value ->
-            val item = value.jsonObject
-            CodeDiagnostic(
-                severity = runCatching { LintSeverity.valueOf(item["severity"]?.jsonPrimitive?.content.orEmpty()) }.getOrDefault(LintSeverity.INFO),
-                line = item["line"]?.jsonPrimitive?.intOrNull,
-                column = item["column"]?.jsonPrimitive?.intOrNull,
-                message = item["message"]?.jsonPrimitive?.content.orEmpty(),
-            )
-        }
-        CodeLintResult("python", root["engine"]?.jsonPrimitive?.content.orEmpty(), diagnostics)
-    } }
 
     suspend fun preflight(conversationId: String, rawRequirements: String, restrictionsEnabled: Boolean): PackagePlan = withContext(Dispatchers.IO) { mutex.withLock {
         val requirements = parseRequirements(rawRequirements, restrictionsEnabled)

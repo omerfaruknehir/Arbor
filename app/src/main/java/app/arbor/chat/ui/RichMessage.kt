@@ -61,6 +61,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -77,7 +78,6 @@ import app.arbor.chat.sandbox.PackageAction
 import app.arbor.chat.sandbox.PackageApprovalState
 import app.arbor.chat.sandbox.PackageReview
 import app.arbor.chat.sandbox.PackagePlan
-import app.arbor.chat.sandbox.StaticCodeLinter
 import app.arbor.chat.sandbox.UbuntuExecutionResult
 import app.arbor.chat.sandbox.UbuntuPackageInstallResult
 import app.arbor.chat.widgets.ProgrammableWidgetBlock
@@ -96,10 +96,60 @@ import kotlinx.serialization.json.jsonPrimitive
 import java.net.URLEncoder
 import kotlin.math.roundToInt
 
-private sealed interface RichBlock {
+internal sealed interface RichBlock {
     data class Markdown(val text: String) : RichBlock
     data class Table(val text: String) : RichBlock
-    data class Code(val language: String, val code: String) : RichBlock
+    data class Code(val language: String, val code: String, val complete: Boolean = true) : RichBlock
+}
+
+internal data class StableRichBlock(
+    val key: String,
+    val block: RichBlock,
+    val liveTail: Boolean,
+)
+
+/**
+ * Append-only parser state for a single streamed response. Completed Markdown
+ * regions are parsed once and retained; only the unfinished tail is reparsed.
+ */
+internal class IncrementalRichTextParser {
+    private var previousLength = 0
+    private var previousSuffix = ""
+    private var committedOffset = 0
+    private var nextStableId = 0L
+    private val committedBlocks = mutableListOf<StableRichBlock>()
+
+    fun update(source: String, streaming: Boolean): List<StableRichBlock> {
+        val suffixStart = previousLength - previousSuffix.length
+        val appendCompatible = source.length >= previousLength &&
+            (previousSuffix.isEmpty() || source.regionMatches(suffixStart, previousSuffix, 0, previousSuffix.length))
+        if (!appendCompatible) reset()
+
+        val uncommitted = source.substring(committedOffset.coerceAtMost(source.length))
+        val stableLength = if (streaming) stableMarkdownPrefixLength(uncommitted) else uncommitted.length
+        if (stableLength > 0) {
+            parseBlocks(uncommitted.substring(0, stableLength), streaming = false).forEach { block ->
+                committedBlocks += StableRichBlock("stable-${nextStableId++}", block, liveTail = false)
+            }
+            committedOffset += stableLength
+        }
+
+        val tail = source.substring(committedOffset)
+        val tailBlocks = if (tail.isBlank()) emptyList() else parseBlocks(tail, streaming = streaming)
+        previousLength = source.length
+        previousSuffix = source.takeLast(96)
+        return committedBlocks + tailBlocks.mapIndexed { index, block ->
+            StableRichBlock("tail-$committedOffset-$index", block, liveTail = streaming)
+        }
+    }
+
+    private fun reset() {
+        previousLength = 0
+        previousSuffix = ""
+        committedOffset = 0
+        nextStableId = 0L
+        committedBlocks.clear()
+    }
 }
 
 @Composable
@@ -120,74 +170,85 @@ fun RichMessage(
     val crashReporter = (context.applicationContext as? ArborApplication)?.container?.crashReporter
     val safeRendering by crashReporter?.renderSafeMode?.collectAsState() ?: remember { mutableStateOf(false) }
     val renderedText = rememberBatchedStreamingText(text, streaming)
-    val blocks = remember(renderedText, streaming) { parseBlocks(renderedText, streaming) }
+    val incrementalParser = remember(operationScope) { IncrementalRichTextParser() }
+    val blocks = remember(renderedText, streaming) { incrementalParser.update(renderedText, streaming) }
+    val markwon = remember(context.applicationContext) { ArborMarkwonCache.get(context.applicationContext) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        blocks.forEachIndexed { index, block ->
-            when (block) {
-                is RichBlock.Markdown -> StreamingFade(
-                    transitionKey = "$operationScope:markdown:$index",
-                    enabled = streaming && index == blocks.lastIndex,
-                ) {
-                    MarkdownBlock(
-                        markdown = block.text,
-                        key = "$operationScope:markdown:$index",
-                        streaming = streaming && index == blocks.lastIndex,
-                    )
-                }
-                is RichBlock.Table -> StreamingFade(
-                    transitionKey = "$operationScope:table:$index",
-                    enabled = streaming && index == blocks.lastIndex,
-                ) {
-                    MarkdownBlock(
-                        markdown = block.text,
-                        key = "$operationScope:table:$index",
-                        horizontallyScrollable = true,
-                        streaming = streaming && index == blocks.lastIndex,
-                    )
-                }
-                is RichBlock.Code -> StreamingFade(
-                    transitionKey = "$operationScope:code:$index:${block.language.lowercase()}",
-                    enabled = streaming && index == blocks.lastIndex,
-                ) {
-                    when (block.language.lowercase()) {
-                        "mermaid", "graph", "diagram", "dot", "graphviz" -> if (safeRendering) SafeGeneratedBlock("Diagram", block.code) { crashReporter?.setRenderSafeMode(false) } else NativeDiagramBlock(block.code)
-                        "chart", "arbor-chart", "bar-chart", "barchart", "line-chart", "pie-chart" -> if (safeRendering) SafeGeneratedBlock("Chart", block.code) { crashReporter?.setRenderSafeMode(false) } else NativeChartBlock(block.code)
-                        "arbor-ui", "ui", "arbor-form" -> ProgrammableWidgetBlock(block.code, onWidgetSubmit, onReviewWidgetSecurity, allowHomePinning = false)
-                        "arbor-widget", "widget" -> ProgrammableWidgetBlock(block.code, onWidgetSubmit, onReviewWidgetSecurity, allowHomePinning = true)
-                        "python-requirements", "requirements", "pip" -> PackageRequestBlock(
-                            operationKey = "$operationScope:package:$index",
-                            title = "Python package request",
-                            requirements = block.code,
-                            onReview = { requested -> onReviewPythonPackages("$operationScope:package:$index", requested) },
-                            onInstall = { requested, plan ->
-                                val result = onInstallPackages("$operationScope:package:$index", requested, plan)
-                                InstallUiResult(
-                                    result.success && result.importErrors.isEmpty(),
-                                    if (result.success && result.importErrors.isEmpty()) "Installed and import-verified: ${result.packages.joinToString()}"
-                                    else if (result.success) "Installed, but import verification found a problem" else "Install failed",
-                                    buildString {
-                                        if (result.importNames.isNotEmpty()) append(result.importNames.entries.joinToString("\n") { (distribution, names) -> "$distribution → import ${names.joinToString().ifBlank { "name unavailable" }}" })
-                                        if (result.importErrors.isNotEmpty()) append("\n").append(result.importErrors.entries.joinToString("\n") { "${it.key}: ${it.value}" })
-                                        if (!result.success) append("\n").append(result.stderr.lines().takeLast(12).joinToString("\n"))
-                                    }.trim().takeLast(2_000),
-                                )
-                            },
+        blocks.forEach { parsed ->
+            key("$operationScope:${parsed.key}") {
+                val block = parsed.block
+                val live = streaming && parsed.liveTail
+                when (block) {
+                    is RichBlock.Markdown -> StreamingFade(
+                        transitionKey = "$operationScope:${parsed.key}:markdown",
+                        enabled = live,
+                    ) {
+                        MarkdownBlock(
+                            markwon = markwon,
+                            markdown = block.text,
+                            key = "$operationScope:${parsed.key}",
+                            streaming = live,
                         )
-                        "linux-packages", "ubuntu-packages", "apt", "apt-packages", "apk", "apk-packages" -> PackageRequestBlock(
-                            operationKey = "$operationScope:package:$index",
-                            title = "Linux package request",
-                            requirements = block.code,
-                            onReview = { requested -> onReviewUbuntuPackages("$operationScope:package:$index", requested) },
-                            onInstall = { requested, plan ->
-                                val result = onInstallUbuntuPackages("$operationScope:package:$index", requested, plan)
-                                InstallUiResult(
-                                    result.success,
-                                    if (result.success) "Installed: ${result.packages.joinToString()}" else "Package installation failed",
-                                    (result.stderr.ifBlank { result.stdout }).lines().takeLast(16).joinToString("\n").takeLast(2_000),
-                                )
-                            },
+                    }
+                    is RichBlock.Table -> StreamingFade(
+                        transitionKey = "$operationScope:${parsed.key}:table",
+                        enabled = live,
+                    ) {
+                        MarkdownBlock(
+                            markwon = markwon,
+                            markdown = block.text,
+                            key = "$operationScope:${parsed.key}",
+                            horizontallyScrollable = true,
+                            streaming = live,
                         )
-                        else -> CodeBlock(block.language, block.code, onRunPython, onRunUbuntu)
+                    }
+                    is RichBlock.Code -> StreamingFade(
+                        transitionKey = "$operationScope:${parsed.key}:code:${block.language.lowercase()}",
+                        enabled = live,
+                    ) {
+                        val operationKey = "$operationScope:${parsed.key}"
+                        if (!block.complete) {
+                            CodeBlock(block.language, block.code, onRunPython, onRunUbuntu, executable = false)
+                        } else when (block.language.lowercase()) {
+                            "mermaid", "graph", "diagram", "dot", "graphviz" -> if (safeRendering) SafeGeneratedBlock("Diagram", block.code) { crashReporter?.setRenderSafeMode(false) } else NativeDiagramBlock(block.code)
+                            "chart", "arbor-chart", "bar-chart", "barchart", "line-chart", "pie-chart" -> if (safeRendering) SafeGeneratedBlock("Chart", block.code) { crashReporter?.setRenderSafeMode(false) } else NativeChartBlock(block.code)
+                            "arbor-ui", "ui", "arbor-form" -> ProgrammableWidgetBlock(block.code, onWidgetSubmit, onReviewWidgetSecurity, allowHomePinning = false)
+                            "arbor-widget", "widget" -> ProgrammableWidgetBlock(block.code, onWidgetSubmit, onReviewWidgetSecurity, allowHomePinning = true)
+                            "python-requirements", "requirements", "pip" -> PackageRequestBlock(
+                                operationKey = operationKey,
+                                title = "Python package request",
+                                requirements = block.code,
+                                onReview = { requested -> onReviewPythonPackages(operationKey, requested) },
+                                onInstall = { requested, plan ->
+                                    val result = onInstallPackages(operationKey, requested, plan)
+                                    InstallUiResult(
+                                        result.success && result.importErrors.isEmpty(),
+                                        if (result.success && result.importErrors.isEmpty()) "Installed and import-verified: ${result.packages.joinToString()}"
+                                        else if (result.success) "Installed, but import verification found a problem" else "Install failed",
+                                        buildString {
+                                            if (result.importNames.isNotEmpty()) append(result.importNames.entries.joinToString("\n") { (distribution, names) -> "$distribution → import ${names.joinToString().ifBlank { "name unavailable" }}" })
+                                            if (result.importErrors.isNotEmpty()) append("\n").append(result.importErrors.entries.joinToString("\n") { "${it.key}: ${it.value}" })
+                                            if (!result.success) append("\n").append(result.stderr.lines().takeLast(12).joinToString("\n"))
+                                        }.trim().takeLast(2_000),
+                                    )
+                                },
+                            )
+                            "linux-packages", "ubuntu-packages", "apt", "apt-packages", "apk", "apk-packages" -> PackageRequestBlock(
+                                operationKey = operationKey,
+                                title = "Linux package request",
+                                requirements = block.code,
+                                onReview = { requested -> onReviewUbuntuPackages(operationKey, requested) },
+                                onInstall = { requested, plan ->
+                                    val result = onInstallUbuntuPackages(operationKey, requested, plan)
+                                    InstallUiResult(
+                                        result.success,
+                                        if (result.success) "Installed: ${result.packages.joinToString()}" else "Package installation failed",
+                                        (result.stderr.ifBlank { result.stdout }).lines().takeLast(16).joinToString("\n").takeLast(2_000),
+                                    )
+                                },
+                            )
+                            else -> CodeBlock(block.language, block.code, onRunPython, onRunUbuntu)
+                        }
                     }
                 }
             }
@@ -208,7 +269,7 @@ private fun SafeGeneratedBlock(label: String, source: String, retry: () -> Unit)
                 Button(onClick = retry) { Text("Try full rendering") }
             }
             AnimatedVisibility(expanded, enter = workingCardExpandIn(), exit = workingCardCollapseOut()) {
-                AutoLintedCodeText(
+                HighlightedCodeText(
                     language = "text",
                     code = source,
                     style = MaterialTheme.typography.bodySmall,
@@ -357,8 +418,23 @@ internal fun prepareReferenceMarkdown(markdown: String): String = ArborReference
     "[$label](arbor-$kind://reference?target=$target)"
 }
 
+private object ArborMarkwonCache {
+    @Volatile private var instance: Markwon? = null
+
+    fun get(context: Context): Markwon = instance ?: synchronized(this) {
+        instance ?: Markwon.builder(context.applicationContext)
+            .usePlugin(StrikethroughPlugin.create())
+            .usePlugin(TablePlugin.create(context.applicationContext))
+            .usePlugin(TaskListPlugin.create(context.applicationContext))
+            .usePlugin(JLatexMathPlugin.create(42f))
+            .build()
+            .also { instance = it }
+    }
+}
+
 @Composable
 internal fun MarkdownBlock(
+    markwon: Markwon,
     markdown: String,
     key: String,
     horizontallyScrollable: Boolean = false,
@@ -380,15 +456,6 @@ internal fun MarkdownBlock(
     val tableWidth = (if (streaming) streamingTableWidthDp else estimatedTableWidthDp).dp
     var pendingReference by remember(key) { mutableStateOf<LinkReferencePreview?>(null) }
     val renderedMarkdown = remember(markdown) { prepareReferenceMarkdown(markdown) }
-    val markwon = remember(context) {
-        Markwon.builder(context)
-            .usePlugin(StrikethroughPlugin.create())
-            .usePlugin(TablePlugin.create(context))
-            .usePlugin(TaskListPlugin.create(context))
-            .usePlugin(JLatexMathPlugin.create(42f))
-            .build()
-    }
-
     if (horizontallyScrollable) {
         Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
             MarkdownAndroidView(
@@ -737,10 +804,10 @@ private fun CodeBlock(
     code: String,
     onRunPython: suspend (String) -> ExecutionResult,
     onRunUbuntu: suspend (String) -> UbuntuExecutionResult,
+    executable: Boolean = true,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val lint = remember(language, code) { StaticCodeLinter.lint(language, code) }
     var copied by remember { mutableStateOf(false) }
     var running by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<ExecutionResult?>(null) }
@@ -749,8 +816,7 @@ private fun CodeBlock(
         Column {
             Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(language.ifBlank { "code" }.uppercase(), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                CodeLintBadge(lint)
-                if (language.lowercase() in setOf("python", "py")) {
+                if (executable && language.lowercase() in setOf("python", "py")) {
                     IconButton(onClick = {
                         scope.launch {
                             running = true
@@ -759,7 +825,7 @@ private fun CodeBlock(
                         }
                     }, enabled = !running) { Icon(Icons.Outlined.PlayArrow, "Run in workspace") }
                 }
-                if (language.lowercase() in setOf("bash", "sh", "shell", "ubuntu", "debian", "alpine", "linux")) {
+                if (executable && language.lowercase() in setOf("bash", "sh", "shell", "ubuntu", "debian", "alpine", "linux")) {
                     IconButton(onClick = {
                         scope.launch {
                             running = true
@@ -774,10 +840,9 @@ private fun CodeBlock(
                 }) { Icon(if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, "Copy") }
             }
             Box(Modifier.horizontalScroll(rememberScrollState()).padding(14.dp)) {
-                AutoLintedCodeText(
+                HighlightedCodeText(
                     language = language,
                     code = code,
-                    lintResult = lint,
                     style = MaterialTheme.typography.bodyMedium,
                     softWrap = false,
                 )
@@ -792,17 +857,113 @@ private fun CodeBlock(
     }
 }
 
-private val CodeFenceRegex = Regex("""```([^\n`]*)\n([\s\S]*?)```""", RegexOption.MULTILINE)
+private data class MarkdownFence(val marker: String, val info: String, val lineEndExclusive: Int)
 
-private fun parseBlocks(text: String, streaming: Boolean): List<RichBlock> {
+private fun markdownFenceAtLine(line: String): String? {
+    val leading = line.indexOfFirst { it != ' ' && it != '\t' }.let { if (it < 0) line.length else it }
+    if (leading > 3 || leading >= line.length) return null
+    val char = line[leading]
+    if (char != '`' && char != '~') return null
+    var end = leading
+    while (end < line.length && line[end] == char) end++
+    return line.substring(leading, end).takeIf { it.length >= 3 }
+}
+
+private fun findOpeningFence(text: String, fromIndex: Int): Pair<Int, MarkdownFence>? {
+    var lineStart = fromIndex.coerceAtLeast(0)
+    if (lineStart > 0 && text.getOrNull(lineStart - 1) != '\n') {
+        lineStart = text.indexOf('\n', lineStart).let { if (it < 0) return null else it + 1 }
+    }
+    while (lineStart < text.length) {
+        val newline = text.indexOf('\n', lineStart)
+        val lineEnd = if (newline < 0) text.length else newline
+        val rawLine = text.substring(lineStart, lineEnd).trimEnd('\r')
+        val marker = markdownFenceAtLine(rawLine)
+        if (marker != null) {
+            val trimmed = rawLine.trimStart()
+            val info = trimmed.drop(marker.length).trim()
+            return lineStart to MarkdownFence(
+                marker = marker,
+                info = info,
+                lineEndExclusive = if (newline < 0) text.length else newline + 1,
+            )
+        }
+        if (newline < 0) break
+        lineStart = newline + 1
+    }
+    return null
+}
+
+private fun findClosingFence(text: String, fromIndex: Int, marker: String): IntRange? {
+    var lineStart = fromIndex
+    while (lineStart < text.length) {
+        val newline = text.indexOf('\n', lineStart)
+        val lineEnd = if (newline < 0) text.length else newline
+        val rawLine = text.substring(lineStart, lineEnd).trimEnd('\r')
+        val candidate = markdownFenceAtLine(rawLine)
+        if (candidate != null && candidate.first() == marker.first() && candidate.length >= marker.length) {
+            val remainder = rawLine.trimStart().drop(candidate.length)
+            if (remainder.isBlank()) return lineStart until lineEnd
+        }
+        if (newline < 0) break
+        lineStart = newline + 1
+    }
+    return null
+}
+
+/** Returns the append-only prefix which can no longer change Markdown meaning. */
+internal fun stableMarkdownPrefixLength(text: String): Int {
+    var lineStart = 0
+    var openFence: String? = null
+    var lastStable = 0
+    while (lineStart < text.length) {
+        val newline = text.indexOf('\n', lineStart)
+        val lineEnd = if (newline < 0) text.length else newline
+        val rawLine = text.substring(lineStart, lineEnd).trimEnd('\r')
+        val marker = markdownFenceAtLine(rawLine)
+        if (openFence == null) {
+            if (marker != null) {
+                openFence = marker
+            } else if (rawLine.isBlank()) {
+                lastStable = if (newline < 0) text.length else newline + 1
+            }
+        } else if (marker != null && marker.first() == openFence.first() && marker.length >= openFence.length) {
+            val remainder = rawLine.trimStart().drop(marker.length)
+            if (remainder.isBlank()) {
+                openFence = null
+                lastStable = if (newline < 0) text.length else newline + 1
+            }
+        }
+        if (newline < 0) break
+        lineStart = newline + 1
+    }
+    return lastStable
+}
+
+internal fun parseBlocks(text: String, streaming: Boolean): List<RichBlock> {
+    if (text.isBlank()) return emptyList()
     val result = mutableListOf<RichBlock>()
     var cursor = 0
-    CodeFenceRegex.findAll(text).forEach { match ->
-        if (match.range.first > cursor) appendMarkdownBlocks(result, text.substring(cursor, match.range.first), streaming)
-        result += RichBlock.Code(match.groupValues[1].trim(), match.groupValues[2].trimEnd())
-        cursor = match.range.last + 1
+    while (cursor < text.length) {
+        val opening = findOpeningFence(text, cursor)
+        if (opening == null) {
+            appendMarkdownBlocks(result, text.substring(cursor), streaming)
+            break
+        }
+        val (openingStart, fence) = opening
+        if (openingStart > cursor) appendMarkdownBlocks(result, text.substring(cursor, openingStart), streaming)
+        val closing = findClosingFence(text, fence.lineEndExclusive, fence.marker)
+        val language = fence.info.substringBefore(' ').trim()
+        if (closing == null) {
+            val code = text.substring(fence.lineEndExclusive).trimEnd('\r', '\n')
+            result += RichBlock.Code(language, code, complete = false)
+            break
+        }
+        val code = text.substring(fence.lineEndExclusive, closing.first).trimEnd('\r', '\n')
+        result += RichBlock.Code(language, code, complete = true)
+        val newlineAfterClosing = text.indexOf('\n', closing.last + 1)
+        cursor = if (newlineAfterClosing < 0) text.length else newlineAfterClosing + 1
     }
-    if (cursor < text.length) appendMarkdownBlocks(result, text.substring(cursor), streaming)
     return result.filterNot {
         (it is RichBlock.Markdown && it.text.isBlank()) || (it is RichBlock.Table && it.text.isBlank())
     }
