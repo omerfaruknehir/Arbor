@@ -57,6 +57,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -119,7 +120,7 @@ fun RichMessage(
     val crashReporter = (context.applicationContext as? ArborApplication)?.container?.crashReporter
     val safeRendering by crashReporter?.renderSafeMode?.collectAsState() ?: remember { mutableStateOf(false) }
     val renderedText = rememberBatchedStreamingText(text, streaming)
-    val blocks = remember(renderedText) { parseBlocks(renderedText) }
+    val blocks = remember(renderedText, streaming) { parseBlocks(renderedText, streaming) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         blocks.forEachIndexed { index, block ->
             when (block) {
@@ -130,6 +131,7 @@ fun RichMessage(
                     MarkdownBlock(
                         markdown = block.text,
                         key = "$operationScope:markdown:$index",
+                        streaming = streaming && index == blocks.lastIndex,
                     )
                 }
                 is RichBlock.Table -> StreamingFade(
@@ -140,6 +142,7 @@ fun RichMessage(
                         markdown = block.text,
                         key = "$operationScope:table:$index",
                         horizontallyScrollable = true,
+                        streaming = streaming && index == blocks.lastIndex,
                     )
                 }
                 is RichBlock.Code -> StreamingFade(
@@ -359,6 +362,7 @@ internal fun MarkdownBlock(
     markdown: String,
     key: String,
     horizontallyScrollable: Boolean = false,
+    streaming: Boolean = false,
 ) {
     val context = LocalContext.current
     val color = MaterialTheme.colorScheme.onSurface.toArgbCompat()
@@ -367,9 +371,13 @@ internal fun MarkdownBlock(
     val pillForeground = MaterialTheme.colorScheme.onSecondaryContainer.toArgbCompat()
     val selectionColor = MaterialTheme.colorScheme.primary.copy(alpha = .32f).toArgbCompat()
     val tableViewportDp = (LocalConfiguration.current.screenWidthDp - 48).coerceAtLeast(240)
-    val tableWidth = remember(markdown, tableViewportDp) {
-        estimateMarkdownTableWidthDp(markdown, tableViewportDp).dp
+    val estimatedTableWidthDp = remember(markdown, tableViewportDp) {
+        estimateMarkdownTableWidthDp(markdown, tableViewportDp)
     }
+    val streamingTableWidthDp by remember(key, tableViewportDp) {
+        mutableIntStateOf(estimatedTableWidthDp)
+    }
+    val tableWidth = (if (streaming) streamingTableWidthDp else estimatedTableWidthDp).dp
     var pendingReference by remember(key) { mutableStateOf<LinkReferencePreview?>(null) }
     val renderedMarkdown = remember(markdown) { prepareReferenceMarkdown(markdown) }
     val markwon = remember(context) {
@@ -786,15 +794,15 @@ private fun CodeBlock(
 
 private val CodeFenceRegex = Regex("""```([^\n`]*)\n([\s\S]*?)```""", RegexOption.MULTILINE)
 
-private fun parseBlocks(text: String): List<RichBlock> {
+private fun parseBlocks(text: String, streaming: Boolean): List<RichBlock> {
     val result = mutableListOf<RichBlock>()
     var cursor = 0
     CodeFenceRegex.findAll(text).forEach { match ->
-        if (match.range.first > cursor) appendMarkdownBlocks(result, text.substring(cursor, match.range.first))
+        if (match.range.first > cursor) appendMarkdownBlocks(result, text.substring(cursor, match.range.first), streaming)
         result += RichBlock.Code(match.groupValues[1].trim(), match.groupValues[2].trimEnd())
         cursor = match.range.last + 1
     }
-    if (cursor < text.length) appendMarkdownBlocks(result, text.substring(cursor))
+    if (cursor < text.length) appendMarkdownBlocks(result, text.substring(cursor), streaming)
     return result.filterNot {
         (it is RichBlock.Markdown && it.text.isBlank()) || (it is RichBlock.Table && it.text.isBlank())
     }
@@ -856,6 +864,25 @@ private fun markdownTableSeparatorColumns(line: String): Int? = splitMarkdownTab
     ?.takeIf { cells -> cells.all { MarkdownTableSeparatorCell.matches(it) } }
     ?.size
 
+/**
+ * Keeps the currently-written final row structurally inside its table. Without
+ * this, every partial row alternates between a plain Markdown block and a table
+ * block as pipes arrive, recreating the TextView and visibly flickering.
+ */
+internal fun stabilizeStreamingTableRow(line: String, expectedColumns: Int): String? {
+    if (expectedColumns < 2 || line.isBlank()) return null
+    var candidate = line.trimEnd()
+    if (!candidate.trimStart().startsWith('|')) candidate = "| $candidate"
+    if (!candidate.endsWith('|')) candidate += " |"
+
+    var cells = splitMarkdownTableCells(candidate) ?: emptyList()
+    while (cells.size < expectedColumns) {
+        candidate += " |"
+        cells = splitMarkdownTableCells(candidate) ?: emptyList()
+    }
+    return candidate.takeIf { cells.size == expectedColumns }
+}
+
 private fun addMarkdownSegment(
     destination: MutableList<MarkdownSegment>,
     table: Boolean,
@@ -868,7 +895,7 @@ private fun addMarkdownSegment(
 }
 
 /** Splits complete Markdown tables so only the table receives horizontal scrolling. */
-internal fun splitMarkdownTables(markdown: String): List<MarkdownSegment> {
+internal fun splitMarkdownTables(markdown: String, streaming: Boolean = false): List<MarkdownSegment> {
     if (markdown.isBlank()) return emptyList()
     val lines = markdown.split('\n')
     val segments = mutableListOf<MarkdownSegment>()
@@ -882,12 +909,24 @@ internal fun splitMarkdownTables(markdown: String): List<MarkdownSegment> {
             val tableStart = index - 1
             if (tableStart > plainStart) addMarkdownSegment(segments, false, lines.subList(plainStart, tableStart))
             var tableEnd = index + 1
+            var stabilizedTrailingRow: String? = null
             while (tableEnd < lines.size && lines[tableEnd].isNotBlank()) {
-                val rowCells = splitMarkdownTableCells(lines[tableEnd]) ?: break
-                if (rowCells.size != separatorColumns) break
-                tableEnd++
+                val rowCells = splitMarkdownTableCells(lines[tableEnd])
+                if (rowCells != null && rowCells.size == separatorColumns) {
+                    tableEnd++
+                    continue
+                }
+                if (streaming && tableEnd == lines.lastIndex) {
+                    stabilizedTrailingRow = stabilizeStreamingTableRow(lines[tableEnd], separatorColumns)
+                    if (stabilizedTrailingRow != null) tableEnd++
+                }
+                break
             }
-            addMarkdownSegment(segments, true, lines.subList(tableStart, tableEnd))
+            val tableLines = lines.subList(tableStart, tableEnd).toMutableList()
+            if (stabilizedTrailingRow != null && tableLines.isNotEmpty()) {
+                tableLines[tableLines.lastIndex] = stabilizedTrailingRow
+            }
+            addMarkdownSegment(segments, true, tableLines)
             plainStart = tableEnd
             index = tableEnd + 1
         } else {
@@ -915,8 +954,8 @@ internal fun estimateMarkdownTableWidthDp(markdown: String, viewportDp: Int): In
     return estimated.coerceAtLeast(viewportDp.coerceAtLeast(240)).coerceAtMost(2400)
 }
 
-private fun appendMarkdownBlocks(destination: MutableList<RichBlock>, markdown: String) {
-    splitMarkdownTables(markdown).forEach { segment ->
+private fun appendMarkdownBlocks(destination: MutableList<RichBlock>, markdown: String, streaming: Boolean) {
+    splitMarkdownTables(markdown, streaming).forEach { segment ->
         destination += if (segment.table) RichBlock.Table(segment.text) else RichBlock.Markdown(segment.text)
     }
 }

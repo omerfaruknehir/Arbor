@@ -1,3 +1,11 @@
+## 0.16.48
+
+- Pinned manually expanded Working cards so they grow downward without moving their header.
+- Centered large Working cards after manual collapse.
+- Deferred offscreen automatic Working-card expansion/collapse until scrolling or visibility, eliminating below-view animation drift.
+- Prevented no-op bottom gestures from detaching and reattaching the live message list.
+- Stabilized partial Markdown table rows and locked table width during streaming to eliminate layout flicker.
+
 ## 0.16.47
 
 - Prevent Markdown table boundaries from leaking blank lines into surrounding text blocks.

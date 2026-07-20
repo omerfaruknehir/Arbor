@@ -95,4 +95,21 @@ Outro""",
         assertTrue(width > 360)
     }
 
+    @Test fun streamingPartialTableRowStaysInsideTheTable() {
+        val segments = splitMarkdownTables(
+            """| Name | Status |
+| --- | --- |
+| Arbor""",
+            streaming = true,
+        )
+        assertEquals(1, segments.size)
+        assertTrue(segments.single().table)
+        assertTrue(segments.single().text.lines().last().count { it == '|' } >= 3)
+    }
+
+    @Test fun partialStreamingRowsArePaddedToTheExpectedColumnCount() {
+        val stabilized = stabilizeStreamingTableRow("Arbor | Ready", 3)
+        assertEquals(3, splitMarkdownTableCells(stabilized!!)?.size)
+    }
+
 }

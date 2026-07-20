@@ -6,8 +6,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
@@ -114,6 +118,9 @@ import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -206,6 +213,40 @@ internal fun calculateViewportCorrectionDeltaPx(
     anchoredScreenOffsetPx: Int,
 ): Float = (currentScreenOffsetPx - anchoredScreenOffsetPx).toFloat()
 
+internal fun calculateCardViewportCorrectionPx(
+    currentPositionPx: Float,
+    targetPositionPx: Float,
+): Float = currentPositionPx - targetPositionPx
+
+internal fun calculateCenteredCardCorrectionPx(
+    cardTopPx: Float,
+    cardBottomPx: Float,
+    viewportTopPx: Float,
+    viewportBottomPx: Float,
+): Float = ((cardTopPx + cardBottomPx) / 2f) - ((viewportTopPx + viewportBottomPx) / 2f)
+
+internal fun shouldCenterCollapsedCard(expandedHeightPx: Float, viewportHeightPx: Float): Boolean =
+    viewportHeightPx > 0f && expandedHeightPx >= viewportHeightPx * 0.55f
+
+private enum class WorkingCardMutation {
+    AUTO_EXPAND,
+    AUTO_COLLAPSE,
+    MANUAL_EXPAND,
+    MANUAL_COLLAPSE,
+}
+
+private data class WorkingCardViewportController(
+    val viewportBounds: Rect?,
+    val listScrolling: Boolean,
+    val applyMutation: (WorkingCardMutation, () -> Rect?, () -> Unit) -> Unit,
+) {
+    fun isVisible(bounds: Rect?): Boolean {
+        val viewport = viewportBounds ?: return true
+        val card = bounds ?: return true
+        return card.bottom > viewport.top && card.top < viewport.bottom
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
@@ -246,40 +287,97 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     // still grow, collapse, or insert Python output underneath the viewport.
     var detachedMessages by remember(conversation?.id) { mutableStateOf<List<MessageEntity>?>(null) }
     var detachedViewportAnchor by remember(conversation?.id) { mutableStateOf<ChatViewportAnchor?>(null) }
+    var messageViewportBounds by remember(conversation?.id) { mutableStateOf<Rect?>(null) }
+    var manualCardViewportLock by remember(conversation?.id) { mutableStateOf(false) }
+    val messageViewportBoundsState = rememberUpdatedState(messageViewportBounds)
     val loadedMessagesState = rememberUpdatedState(paging.itemSnapshotList.items.toList())
-    val preserveViewportDuringCardAnimation: ((() -> Unit) -> Unit) = remember(messageListState, listScope) {
-        { mutate ->
-            val applyAnchoredMutation: () -> Unit = {
-                if (!followLatestState.value) {
+    val preserveViewportDuringCardAnimation = remember(messageListState, listScope) {
+        { mutation: WorkingCardMutation, boundsProvider: () -> Rect?, mutate: () -> Unit ->
+            val manual = mutation == WorkingCardMutation.MANUAL_EXPAND || mutation == WorkingCardMutation.MANUAL_COLLAPSE
+            val runMutation: suspend () -> Unit = runMutation@{
+                val before = boundsProvider()
+                if (manual) {
+                    manualCardViewportLock = true
+                    followLatest = false
+                    detachedViewportAnchor = null
+                } else if (!followLatestState.value) {
                     detachedViewportAnchor = captureChatViewportAnchor(messageListState.layoutInfo)
                         ?: detachedViewportAnchor
                 }
                 mutate()
+                if (!manual || before == null) return@runMutation
+
+                val targetTop = before.top
+                val startedAt = androidx.compose.runtime.withFrameNanos { it }
+                var frameNanos = startedAt
+                while (frameNanos - startedAt <= (WorkingCardExpansionDurationMillis + 40L) * 1_000_000L) {
+                    val current = boundsProvider() ?: break
+                    val correction = calculateCardViewportCorrectionPx(current.top, targetTop)
+                    if (abs(correction) >= 0.25f) messageListState.scrollBy(correction)
+                    frameNanos = androidx.compose.runtime.withFrameNanos { it }
+                }
+
+                if (mutation == WorkingCardMutation.MANUAL_COLLAPSE) {
+                    repeat(2) { androidx.compose.runtime.withFrameNanos { } }
+                    val viewport = messageViewportBoundsState.value
+                    val collapsed = boundsProvider()
+                    if (viewport != null && collapsed != null && shouldCenterCollapsedCard(before.height, viewport.height)) {
+                        val centerCorrection = calculateCenteredCardCorrectionPx(
+                            cardTopPx = collapsed.top,
+                            cardBottomPx = collapsed.bottom,
+                            viewportTopPx = viewport.top,
+                            viewportBottomPx = viewport.bottom,
+                        )
+                        if (abs(centerCorrection) >= 1f) {
+                            messageListState.animateScrollBy(
+                                value = centerCorrection,
+                                animationSpec = tween(durationMillis = 180),
+                            )
+                        }
+                    }
+                }
+                detachedViewportAnchor = captureChatViewportAnchor(messageListState.layoutInfo)
             }
 
-            if (!followLatestState.value && messageListState.isScrollInProgress) {
+            if (manual && messageListState.isScrollInProgress) {
                 listScope.launch {
                     snapshotFlow { messageListState.isScrollInProgress }.first { !it }
-                    applyAnchoredMutation()
+                    runMutation()
                 }
             } else {
-                applyAnchoredMutation()
+                listScope.launch { runMutation() }
             }
+            Unit
         }
     }
     var searchFocusHandled by remember(conversation?.id, focusedMessageNodeId) { mutableStateOf(false) }
-    val userScrollConnection = remember(conversation?.id) {
+    val userScrollConnection = remember(conversation?.id, relockThresholdPx) {
         object : NestedScrollConnection {
+            private fun detachAfterRealMovement() {
+                if (followLatest) detachedMessages = loadedMessagesState.value
+                detachedViewportAnchor = null
+                manualCardViewportLock = false
+                followLatest = false
+            }
+
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (source == NestedScrollSource.UserInput && available.y != 0f) {
-                    // Freeze the actively growing message at the first user drag.
-                    // While detached, the rendered list is immutable, so generation
-                    // cannot shift the viewport by even one pixel.
-                    if (followLatest) detachedMessages = loadedMessagesState.value
-                    // The gesture is intentionally moving the viewport, so the
-                    // previous stationary anchor must not fight the user's drag.
-                    detachedViewportAnchor = null
-                    followLatest = false
+                    val alreadyAway = messageListState.firstVisibleItemIndex > 0 ||
+                        messageListState.firstVisibleItemScrollOffset > relockThresholdPx
+                    if (alreadyAway) detachAfterRealMovement()
+                }
+                return Offset.Zero
+            }
+
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                if (source == NestedScrollSource.UserInput && consumed.y != 0f) {
+                    val movedAway = messageListState.firstVisibleItemIndex > 0 ||
+                        messageListState.firstVisibleItemScrollOffset > relockThresholdPx
+                    if (movedAway) detachAfterRealMovement()
                 }
                 return Offset.Zero
             }
@@ -308,6 +406,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         followLatest = true
         detachedMessages = null
         detachedViewportAnchor = null
+        manualCardViewportLock = false
         messageListState.scrollToItem(0)
         topAppBarState.contentOffset = 0f
         topAppBarState.heightOffset = 0f
@@ -352,7 +451,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         }.collect { (scrolling, index, offset) ->
             val empty = messageListState.layoutInfo.totalItemsCount == 0
             val atTrueLatest = empty || (index == 0 && offset <= relockThresholdPx)
-            if (!scrolling && atTrueLatest) {
+            if (!scrolling && atTrueLatest && !manualCardViewportLock) {
                 // Re-lock only after the gesture/fling has actually settled at
                 // the real bottom, not merely inside the broad FAB threshold.
                 followLatest = true
@@ -540,7 +639,13 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     )
                 }
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().nestedScroll(userScrollConnection),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .nestedScroll(userScrollConnection)
+                        .onGloballyPositioned { coordinates ->
+                            val bounds = coordinates.boundsInRoot()
+                            if (messageViewportBounds != bounds) messageViewportBounds = bounds
+                        },
                     state = messageListState,
                     reverseLayout = true,
                     verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -565,7 +670,11 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                 reasoningVisibility = conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
                                 activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
                                 freezeLiveUpdates = true,
-                                preserveViewportDuringCardAnimation = preserveViewportDuringCardAnimation,
+                                workingCardViewport = WorkingCardViewportController(
+                                    viewportBounds = messageViewportBounds,
+                                    listScrolling = messageListState.isScrollInProgress,
+                                    applyMutation = preserveViewportDuringCardAnimation,
+                                ),
                             )
                         }
                     } else {
@@ -581,7 +690,11 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                     reasoningVisibility = conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
                                     activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
                                     freezeLiveUpdates = false,
-                                    preserveViewportDuringCardAnimation = preserveViewportDuringCardAnimation,
+                                    workingCardViewport = WorkingCardViewportController(
+                                    viewportBounds = messageViewportBounds,
+                                    listScrolling = messageListState.isScrollInProgress,
+                                    applyMutation = preserveViewportDuringCardAnimation,
+                                ),
                                 )
                             }
                         }
@@ -598,6 +711,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         followLatest = true
                         detachedMessages = null
                         detachedViewportAnchor = null
+                        manualCardViewportLock = false
                     },
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -715,7 +829,7 @@ private fun MessageCard(
     activeModel: ModelEntity?,
     modifier: Modifier = Modifier,
     freezeLiveUpdates: Boolean = false,
-    preserveViewportDuringCardAnimation: ((() -> Unit) -> Unit),
+    workingCardViewport: WorkingCardViewportController,
 ) {
     val liveAttachments by viewModel.run { containerAttachments(message.nodeId) }.collectAsStateWithLifecycle(initialValue = emptyList())
     val frozenAttachments = remember(message.nodeId, freezeLiveUpdates) {
@@ -798,7 +912,7 @@ private fun MessageCard(
                         animateStreaming = animateStreaming,
                         visibility = reasoningVisibility,
                         viewModel = viewModel,
-                        preserveViewportDuringCardAnimation = preserveViewportDuringCardAnimation,
+                        workingCardViewport = workingCardViewport,
                     )
                 } else {
                     LegacyWorkingBlock(
@@ -807,7 +921,7 @@ private fun MessageCard(
                         toolTraceJson = message.toolTraceJson,
                         working = working,
                         animateStreaming = animateStreaming,
-                        preserveViewportDuringCardAnimation = preserveViewportDuringCardAnimation,
+                        workingCardViewport = workingCardViewport,
                     )
                     if (displayContent.isNotBlank()) RichMessage(
                         operationScope = message.nodeId,
@@ -894,7 +1008,7 @@ private fun OrderedMessageTimeline(
     animateStreaming: Boolean,
     visibility: ReasoningVisibility,
     viewModel: ChatViewModel,
-    preserveViewportDuringCardAnimation: ((() -> Unit) -> Unit),
+    workingCardViewport: WorkingCardViewportController,
 ) {
     val orderedEvents = remember(events, attachments) {
         val explicitAttachmentIds = events.filter { it.kind == "file" }.map { it.output }.toSet()
@@ -927,7 +1041,7 @@ private fun OrderedMessageTimeline(
                     visibility = visibility,
                     usedSourceUrls = usedSourceUrls,
                     viewModel = viewModel,
-                    preserveViewportDuringCardAnimation = preserveViewportDuringCardAnimation,
+                    workingCardViewport = workingCardViewport,
                 )
             } else {
                 segment.events.forEach { event ->
@@ -972,7 +1086,7 @@ private fun TimelineWorkingBlock(
     @Suppress("UNUSED_PARAMETER") visibility: ReasoningVisibility,
     usedSourceUrls: Set<String>,
     viewModel: ChatViewModel,
-    preserveViewportDuringCardAnimation: ((() -> Unit) -> Unit),
+    workingCardViewport: WorkingCardViewportController,
 ) {
     if (events.isEmpty()) return
     // Expansion belongs to this working block, not to chat scroll position or the
@@ -981,17 +1095,34 @@ private fun TimelineWorkingBlock(
     // those state transitions.
     var expanded by rememberSaveable("working-expanded-$stateKey") { mutableStateOf(active) }
     var previousActive by rememberSaveable("working-active-$stateKey") { mutableStateOf(active) }
-    LaunchedEffect(active) {
-        if (previousActive != active) {
-            preserveViewportDuringCardAnimation { expanded = active }
+    var cardBounds by remember(stateKey) { mutableStateOf<Rect?>(null) }
+    var animateVisibility by remember(stateKey) { mutableStateOf(true) }
+    val cardVisible = workingCardViewport.isVisible(cardBounds)
+    LaunchedEffect(active, cardVisible, workingCardViewport.listScrolling) {
+        if (previousActive != active && (cardVisible || workingCardViewport.listScrolling)) {
+            animateVisibility = cardVisible && !workingCardViewport.listScrolling
+            workingCardViewport.applyMutation(
+                if (active) WorkingCardMutation.AUTO_EXPAND else WorkingCardMutation.AUTO_COLLAPSE,
+                { cardBounds },
+            ) { expanded = active }
             previousActive = active
+            if (!animateVisibility) {
+                androidx.compose.runtime.withFrameNanos { }
+                animateVisibility = true
+            }
         }
     }
     Surface(
-            onClick = { preserveViewportDuringCardAnimation { expanded = !expanded } },
+            onClick = {
+                animateVisibility = true
+                workingCardViewport.applyMutation(
+                    if (expanded) WorkingCardMutation.MANUAL_COLLAPSE else WorkingCardMutation.MANUAL_EXPAND,
+                    { cardBounds },
+                ) { expanded = !expanded }
+            },
             color = MaterialTheme.colorScheme.surfaceContainer,
             shape = MaterialTheme.shapes.medium,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().onGloballyPositioned { cardBounds = it.boundsInRoot() },
         ) {
             Column(Modifier.padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1004,7 +1135,11 @@ private fun TimelineWorkingBlock(
                     )
                     Text(if (expanded) "Collapse" else "Expand", style = MaterialTheme.typography.labelMedium)
                 }
-                AnimatedVisibility(expanded, enter = workingCardExpandIn(), exit = workingCardCollapseOut()) {
+                AnimatedVisibility(
+                    visible = expanded,
+                    enter = if (animateVisibility) workingCardExpandIn() else EnterTransition.None,
+                    exit = if (animateVisibility) workingCardCollapseOut() else ExitTransition.None,
+                ) {
                     Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         events.forEachIndexed { index, event ->
                             val activeEvent = animateStreaming && index == events.lastIndex
@@ -1060,7 +1195,7 @@ private fun LegacyWorkingBlock(
     toolTraceJson: String,
     working: Boolean,
     animateStreaming: Boolean,
-    preserveViewportDuringCardAnimation: ((() -> Unit) -> Unit),
+    workingCardViewport: WorkingCardViewportController,
 ) {
     val traces = remember(toolTraceJson) {
         runCatching { ChatMessageJson.decodeFromString<List<ToolTraceEvent>>(toolTraceJson) }.getOrDefault(emptyList())
@@ -1069,17 +1204,34 @@ private fun LegacyWorkingBlock(
     if (!hasContent) return
     var expanded by rememberSaveable("legacy-working-$messageKey") { mutableStateOf(working) }
     var previousActive by rememberSaveable("legacy-working-active-$messageKey") { mutableStateOf(working) }
-    LaunchedEffect(working) {
-        if (previousActive != working) {
-            preserveViewportDuringCardAnimation { expanded = working }
+    var cardBounds by remember(messageKey) { mutableStateOf<Rect?>(null) }
+    var animateVisibility by remember(messageKey) { mutableStateOf(true) }
+    val cardVisible = workingCardViewport.isVisible(cardBounds)
+    LaunchedEffect(working, cardVisible, workingCardViewport.listScrolling) {
+        if (previousActive != working && (cardVisible || workingCardViewport.listScrolling)) {
+            animateVisibility = cardVisible && !workingCardViewport.listScrolling
+            workingCardViewport.applyMutation(
+                if (working) WorkingCardMutation.AUTO_EXPAND else WorkingCardMutation.AUTO_COLLAPSE,
+                { cardBounds },
+            ) { expanded = working }
             previousActive = working
+            if (!animateVisibility) {
+                androidx.compose.runtime.withFrameNanos { }
+                animateVisibility = true
+            }
         }
     }
     Surface(
-        onClick = { preserveViewportDuringCardAnimation { expanded = !expanded } },
+        onClick = {
+            animateVisibility = true
+            workingCardViewport.applyMutation(
+                if (expanded) WorkingCardMutation.MANUAL_COLLAPSE else WorkingCardMutation.MANUAL_EXPAND,
+                { cardBounds },
+            ) { expanded = !expanded }
+        },
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = MaterialTheme.shapes.medium,
-        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp).onGloballyPositioned { cardBounds = it.boundsInRoot() },
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1088,7 +1240,11 @@ private fun LegacyWorkingBlock(
                 Text("Working", Modifier.padding(start = 8.dp).weight(1f), fontWeight = FontWeight.Medium)
                 Text(if (expanded) "Collapse" else "Expand", style = MaterialTheme.typography.labelMedium)
             }
-            AnimatedVisibility(expanded, enter = workingCardExpandIn(), exit = workingCardCollapseOut()) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = if (animateVisibility) workingCardExpandIn() else EnterTransition.None,
+                exit = if (animateVisibility) workingCardCollapseOut() else ExitTransition.None,
+            ) {
                 Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (text.isNotBlank()) StreamingPlainText(
                         text = text,

@@ -31,4 +31,17 @@ class ChatScrollMathTest {
         assertEquals(-18f, calculateViewportCorrectionDeltaPx(82, 100), 0f)
         assertEquals(0f, calculateViewportCorrectionDeltaPx(100, 100), 0f)
     }
+    @Test
+    fun cardPinningAndCenteringUseTheSameScrollDirection() {
+        assertEquals(18f, calculateCardViewportCorrectionPx(118f, 100f), 0f)
+        assertEquals(-12f, calculateCardViewportCorrectionPx(88f, 100f), 0f)
+        assertEquals(50f, calculateCenteredCardCorrectionPx(450f, 550f, 100f, 800f), 0f)
+    }
+
+    @Test
+    fun onlyLargeExpandedCardsAreCenteredAfterCollapse() {
+        assertTrue(shouldCenterCollapsedCard(550f, 900f))
+        assertTrue(!shouldCenterCollapsedCard(400f, 900f))
+    }
+
 }
