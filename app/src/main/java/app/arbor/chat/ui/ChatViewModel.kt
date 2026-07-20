@@ -437,7 +437,9 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
             container.repository.markInterrupted(active.nodeId, "Switched to another branch")
         }
         container.repository.activateBranch(message.nodeId)
-        notices.emit("Switched to saved branch")
+        focusedMessageNodeId.value = message.nodeId
+        focusedMessageIndex.value = container.repository.messageIndexFromLatest(message.conversationId, message.nodeId)
+        notices.emit("Switched branch")
     }
 
     fun retryMessage(message: MessageEntity) = launchAction {

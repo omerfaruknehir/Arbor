@@ -61,12 +61,13 @@ import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.ChevronLeft
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Schedule
-import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
@@ -193,6 +194,38 @@ private data class ChatViewportAnchor(
     val screenOffsetPx: Int,
 )
 
+internal data class MessageBranchKey(
+    val conversationId: String,
+    val parentNodeId: String?,
+    val role: MessageRole,
+)
+
+internal fun buildRevisionBranchGroups(
+    revisionHistory: List<MessageEntity>,
+): Map<MessageBranchKey, List<MessageEntity>> = revisionHistory
+    .asSequence()
+    .filter { it.role == MessageRole.USER || it.role == MessageRole.ASSISTANT }
+    .groupBy { MessageBranchKey(it.conversationId, it.parentNodeId, it.role) }
+    .mapValues { (_, messages) ->
+        messages.distinctBy(MessageEntity::nodeId)
+            .sortedWith(compareBy<MessageEntity> { it.createdAt }.thenBy { it.rowId })
+    }
+
+internal fun inlineBranchOptions(
+    activeMessage: MessageEntity,
+    revisionGroups: Map<MessageBranchKey, List<MessageEntity>>,
+): List<MessageEntity> {
+    if (activeMessage.role != MessageRole.USER && activeMessage.role != MessageRole.ASSISTANT) return emptyList()
+    val key = MessageBranchKey(activeMessage.conversationId, activeMessage.parentNodeId, activeMessage.role)
+    val revisions = revisionGroups[key].orEmpty()
+    if (revisions.isEmpty()) return emptyList()
+    return (revisions + activeMessage)
+        .distinctBy(MessageEntity::nodeId)
+        .sortedWith(compareBy<MessageEntity> { it.createdAt }.thenBy { it.rowId })
+        .takeIf { it.size > 1 }
+        .orEmpty()
+}
+
 private fun captureChatViewportAnchor(layoutInfo: LazyListLayoutInfo): ChatViewportAnchor? {
     val viewportStart = layoutInfo.viewportStartOffset
     val viewportEnd = layoutInfo.viewportEndOffset
@@ -262,11 +295,11 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val generating by viewModel.isGenerating.collectAsStateWithLifecycle()
     val revisionHistory by viewModel.revisionHistory.collectAsStateWithLifecycle()
     val contextSummary by viewModel.contextSummary.collectAsStateWithLifecycle()
+    val revisionBranchGroups = remember(revisionHistory) { buildRevisionBranchGroups(revisionHistory) }
     val paging = viewModel.messages.collectAsLazyPagingItems()
     val focusedMessageNodeId by viewModel.focusedMessageNodeId.collectAsState()
     var modelMenu by remember { mutableStateOf(false) }
     var chatMenu by remember { mutableStateOf(false) }
-    var showHistory by remember { mutableStateOf(false) }
     var showChatConfiguration by remember { mutableStateOf(false) }
     val messageListState = rememberLazyListState()
     val listScope = rememberCoroutineScope()
@@ -539,7 +572,10 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         if (!searchFocusHandled) {
             val index = paging.itemSnapshotList.items.indexOfFirst { it.nodeId == target }
             if (index >= 0) {
-                if (followLatest) detachedMessages = loadedMessagesState.value
+                // A branch switch can happen while the chat is detached from live
+                // paging. Refresh the frozen snapshot to the newly active path before
+                // scrolling, otherwise the old branch would remain rendered.
+                detachedMessages = loadedMessagesState.value
                 followLatest = false
                 messageListState.scrollToItem(index)
                 detachedViewportAnchor = captureChatViewportAnchor(messageListState.layoutInfo)
@@ -576,7 +612,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         DropdownMenu(expanded = chatMenu, onDismissRequest = { chatMenu = false }) {
                             DropdownMenuItem(text = { Text("Regenerate chat name") }, onClick = { viewModel.regenerateTitle(); chatMenu = false })
                             DropdownMenuItem(text = { Text("Chat configuration") }, leadingIcon = { Icon(Icons.Outlined.Tune, null) }, onClick = { showChatConfiguration = true; chatMenu = false })
-                            DropdownMenuItem(text = { Text("Conversation branches (${revisionHistory.size})") }, leadingIcon = { Icon(Icons.Outlined.History, null) }, onClick = { showHistory = true; chatMenu = false })
                         }
                     }
                 },
@@ -669,6 +704,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                 viewModel = viewModel,
                                 reasoningVisibility = conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
                                 activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
+                                branchOptions = inlineBranchOptions(message, revisionBranchGroups),
                                 freezeLiveUpdates = true,
                                 workingCardViewport = WorkingCardViewportController(
                                     viewportBounds = messageViewportBounds,
@@ -689,6 +725,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                     viewModel = viewModel,
                                     reasoningVisibility = conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
                                     activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
+                                    branchOptions = inlineBranchOptions(message, revisionBranchGroups),
                                     freezeLiveUpdates = false,
                                     workingCardViewport = WorkingCardViewportController(
                                     viewportBounds = messageViewportBounds,
@@ -739,40 +776,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 }
             }
 
-        }
-    }
-    if (showHistory) ModalBottomSheet(onDismissRequest = { showHistory = false }) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-            Text("Conversation branches", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Text("Superseded branches remain saved; they are not sent as active context.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 520.dp).padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(revisionHistory.size, key = { revisionHistory[it].nodeId }) { index ->
-                    val message = revisionHistory[index]
-                    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(12.dp)) {
-                            Text(
-                                when (message.role) {
-                                    MessageRole.USER -> "Edited user branch"
-                                    MessageRole.ASSISTANT -> "Regenerated response branch"
-                                    else -> "Saved branch"
-                                },
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            Text(message.content.ifBlank { "(empty response)" }, maxLines = 8, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-                            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
-                                AssistChip(
-                                    onClick = { viewModel.activateBranch(message); showHistory = false },
-                                    label = { Text("Switch to this branch") },
-                                    leadingIcon = { Icon(Icons.AutoMirrored.Outlined.AltRoute, null, Modifier.size(16.dp)) },
-                                )
-                            }
-                        }
-                    }
-                }
-                if (revisionHistory.isEmpty()) item { Text("No edited or retried branches yet.", Modifier.padding(12.dp)) }
-            }
-            Spacer(Modifier.size(20.dp))
         }
     }
     if (showChatConfiguration) {
@@ -827,6 +830,7 @@ private fun MessageCard(
     viewModel: ChatViewModel,
     reasoningVisibility: ReasoningVisibility,
     activeModel: ModelEntity?,
+    branchOptions: List<MessageEntity>,
     modifier: Modifier = Modifier,
     freezeLiveUpdates: Boolean = false,
     workingCardViewport: WorkingCardViewportController,
@@ -954,9 +958,19 @@ private fun MessageCard(
                             }
                             if (message.status !in setOf(MessageStatus.COMPLETE, MessageStatus.STREAMING)) append(" • ${message.status.name.lowercase()}")
                         },
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (branchOptions.size > 1) {
+                        InlineBranchNavigator(
+                            activeNodeId = message.nodeId,
+                            options = branchOptions,
+                            onActivate = viewModel::activateBranch,
+                        )
+                    }
                     IconButton(onClick = {
                         val label = if (user) "message" else "response"
                         context.getSystemService(android.content.ClipboardManager::class.java)
@@ -997,6 +1011,39 @@ private fun MessageCard(
             }
         },
     )
+}
+
+@Composable
+private fun InlineBranchNavigator(
+    activeNodeId: String,
+    options: List<MessageEntity>,
+    onActivate: (MessageEntity) -> Unit,
+) {
+    val activeIndex = options.indexOfFirst { it.nodeId == activeNodeId }.coerceAtLeast(0)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(0.dp),
+    ) {
+        IconButton(
+            onClick = { onActivate(options[activeIndex - 1]) },
+            enabled = activeIndex > 0,
+            modifier = Modifier.size(30.dp),
+        ) {
+            Icon(Icons.Outlined.ChevronLeft, "Previous branch", Modifier.size(18.dp))
+        }
+        Text(
+            "${activeIndex + 1} / ${options.size}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        IconButton(
+            onClick = { onActivate(options[activeIndex + 1]) },
+            enabled = activeIndex < options.lastIndex,
+            modifier = Modifier.size(30.dp),
+        ) {
+            Icon(Icons.Outlined.ChevronRight, "Next branch", Modifier.size(18.dp))
+        }
+    }
 }
 
 @Composable
