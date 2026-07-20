@@ -24,4 +24,11 @@ class ChatScrollMathTest {
         assertEquals(0f, calculateAutoFollowStepPx(10f, 0f, 4_800f), 0f)
         assertEquals(0f, calculateAutoFollowStepPx(10f, 1f / 60f, 0f), 0f)
     }
+
+    @Test
+    fun viewportCorrectionUsesDriftDirection() {
+        assertEquals(24f, calculateViewportCorrectionDeltaPx(124, 100), 0f)
+        assertEquals(-18f, calculateViewportCorrectionDeltaPx(82, 100), 0f)
+        assertEquals(0f, calculateViewportCorrectionDeltaPx(100, 100), 0f)
+    }
 }

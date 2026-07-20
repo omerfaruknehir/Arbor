@@ -784,11 +784,12 @@ private fun CodeBlock(
     }
 }
 
+private val CodeFenceRegex = Regex("""```([^\n`]*)\n([\s\S]*?)```""", RegexOption.MULTILINE)
+
 private fun parseBlocks(text: String): List<RichBlock> {
     val result = mutableListOf<RichBlock>()
     var cursor = 0
-    val fence = Regex("""```([^\n`]*)\n([\s\S]*?)```""", RegexOption.MULTILINE)
-    fence.findAll(text).forEach { match ->
+    CodeFenceRegex.findAll(text).forEach { match ->
         if (match.range.first > cursor) appendMarkdownBlocks(result, text.substring(cursor, match.range.first))
         result += RichBlock.Code(match.groupValues[1].trim(), match.groupValues[2].trimEnd())
         cursor = match.range.last + 1

@@ -8,13 +8,13 @@ class StreamingMotionTest {
     @Test fun largeAppendIsRevealedProgressively() {
         val target = "a".repeat(1_000)
         val first = nextStreamingTextFrame("", target)
-        assertEquals(192, first.length)
+        assertEquals(36, first.length)
         assertTrue(target.startsWith(first))
         assertTrue(first.length < target.length)
     }
 
-    @Test fun smallAppendCompletesInOneCommit() {
-        assertEquals("hello world", nextStreamingTextFrame("hello", "hello world"))
+    @Test fun smallAppendUsesTokenSizedMicroBatch() {
+        assertEquals("hello strea", nextStreamingTextFrame("hello", "hello streaming"))
     }
 
     @Test fun nonAppendCorrectionIsAppliedImmediately() {

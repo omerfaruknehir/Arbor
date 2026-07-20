@@ -99,11 +99,13 @@ internal fun nextStreamingTextFrame(rendered: String, target: String): String = 
     target.startsWith(rendered) -> {
         val backlog = target.length - rendered.length
         val step = when {
-            backlog > 768 -> 192
-            backlog > 256 -> 96
-            backlog > 96 -> 48
-            backlog > 32 -> 24
-            else -> backlog
+            backlog > 1_024 -> 48
+            backlog > 512 -> 36
+            backlog > 256 -> 28
+            backlog > 128 -> 20
+            backlog > 64 -> 14
+            backlog > 24 -> 10
+            else -> minOf(backlog, 6)
         }.coerceAtMost(backlog)
         target.take(rendered.length + step)
     }
@@ -111,11 +113,15 @@ internal fun nextStreamingTextFrame(rendered: String, target: String): String = 
 }
 
 /**
- * Frame-aligns streaming commits and smooths large provider chunks before
- * expensive Markdown parsing. Thirty visible updates per second are materially
- * smoother than the former 20 Hz timer, while still avoiding a full parse on
- * every display frame. Large chunks are revealed over several commits instead
- * of appearing as one jump.
+ * Frame-aligns streaming commits and smooths provider/database bursts before
+ * expensive Markdown parsing. The renderer stays at 30 visible updates per
+ * second, but reveals word/token-sized micro-batches instead of dumping tens or
+ * hundreds of characters at once. A bounded catch-up rate prevents an unusually
+ * fast provider from leaving the UI permanently behind.
+ *
+ * When the worker changes the message from STREAMING to COMPLETE, any remaining
+ * backlog is drained with the same cadence. This avoids the former final-frame
+ * jump without increasing Markdown parse frequency.
  */
 @Composable
 internal fun rememberBatchedStreamingText(
@@ -125,20 +131,23 @@ internal fun rememberBatchedStreamingText(
 ): String {
     val latestText by rememberUpdatedState(text)
     var renderedText by remember { mutableStateOf(text) }
+    var wasStreaming by remember { mutableStateOf(streaming) }
     LaunchedEffect(streaming, intervalNanos) {
-        if (!streaming) {
-            renderedText = latestText
-            return@LaunchedEffect
-        }
-
         var lastCommitNanos = 0L
-        while (isActive) {
+        if (streaming) wasStreaming = true
+
+        while (isActive && (streaming || (wasStreaming && renderedText != latestText))) {
             val frameNanos = withFrameNanos { it }
             if (lastCommitNanos != 0L && frameNanos - lastCommitNanos < intervalNanos) continue
             lastCommitNanos = frameNanos
 
             renderedText = nextStreamingTextFrame(renderedText, latestText)
         }
+
+        if (!streaming) {
+            renderedText = latestText
+            wasStreaming = false
+        }
     }
-    return if (streaming) renderedText else text
+    return if (streaming || wasStreaming) renderedText else text
 }

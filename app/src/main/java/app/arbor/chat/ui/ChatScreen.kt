@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -146,7 +147,6 @@ import app.arbor.chat.sandbox.UbuntuExecutionResult
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -181,6 +181,31 @@ internal fun calculateAutoFollowStepPx(
     return min(distancePx, min(easedStep, maxSpeedPxPerSecond * frameSeconds))
 }
 
+private data class ChatViewportAnchor(
+    val key: Any,
+    val screenOffsetPx: Int,
+)
+
+private fun captureChatViewportAnchor(layoutInfo: LazyListLayoutInfo): ChatViewportAnchor? {
+    val viewportStart = layoutInfo.viewportStartOffset
+    val viewportEnd = layoutInfo.viewportEndOffset
+    return layoutInfo.visibleItemsInfo
+        .asSequence()
+        .filter { it.offset + it.size > viewportStart && it.offset < viewportEnd }
+        .minByOrNull { abs(it.offset - viewportStart) }
+        ?.let { ChatViewportAnchor(it.key, it.offset) }
+}
+
+/**
+ * LazyListState.scrollBy uses scroll-position coordinates even with
+ * reverseLayout=true: a positive delta increases the list scroll offset and
+ * moves a positively drifted item back towards its captured screen position.
+ */
+internal fun calculateViewportCorrectionDeltaPx(
+    currentScreenOffsetPx: Int,
+    anchoredScreenOffsetPx: Int,
+): Float = (currentScreenOffsetPx - anchoredScreenOffsetPx).toFloat()
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
@@ -204,7 +229,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     var showChatConfiguration by remember { mutableStateOf(false) }
     val messageListState = rememberLazyListState()
     val listScope = rememberCoroutineScope()
-    var viewportAnchorJob by remember { mutableStateOf<Job?>(null) }
     val blurState = rememberArborBackdropBlurState()
     val density = LocalDensity.current
     val topAppBarState = rememberTopAppBarState()
@@ -221,51 +245,20 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     // tool/reasoning response was not the newest paging item: its card could
     // still grow, collapse, or insert Python output underneath the viewport.
     var detachedMessages by remember(conversation?.id) { mutableStateOf<List<MessageEntity>?>(null) }
+    var detachedViewportAnchor by remember(conversation?.id) { mutableStateOf<ChatViewportAnchor?>(null) }
     val loadedMessagesState = rememberUpdatedState(paging.itemSnapshotList.items.toList())
     val preserveViewportDuringCardAnimation: ((() -> Unit) -> Unit) = remember(messageListState, listScope) {
         { mutate ->
-            viewportAnchorJob?.cancel()
             val applyAnchoredMutation: () -> Unit = {
-                val layout = messageListState.layoutInfo
-                val viewportStart = layout.viewportStartOffset
-                val viewportEnd = layout.viewportEndOffset
-                val anchor = layout.visibleItemsInfo
-                    .asSequence()
-                    .filter { it.offset + it.size > viewportStart && it.offset < viewportEnd }
-                    .minByOrNull { kotlin.math.abs(it.offset - viewportStart) }
-                    ?.let { it.key to it.offset }
-
-                mutate()
-                if (!followLatestState.value && anchor != null) {
-                    viewportAnchorJob = listScope.launch {
-                        val (anchorKey, anchorOffset) = anchor
-                        val startedAt = androidx.compose.runtime.withFrameNanos { it }
-                        val durationNanos = (WorkingCardExpansionDurationMillis + 64L) * 1_000_000L
-                        var now = startedAt
-                        while (
-                            now - startedAt <= durationNanos &&
-                            !messageListState.isScrollInProgress &&
-                            !followLatestState.value
-                        ) {
-                            val current = messageListState.layoutInfo.visibleItemsInfo
-                                .firstOrNull { it.key == anchorKey }
-                                ?: break
-                            val driftPx = current.offset - anchorOffset
-                            if (kotlin.math.abs(driftPx) >= 1) {
-                                // reverseLayout=true: negative scroll cancels a
-                                // positive screen-coordinate drift. Anchoring by
-                                // key survives paging insertions; anchoring by
-                                // index did not.
-                                messageListState.scrollBy(-driftPx.toFloat())
-                            }
-                            now = androidx.compose.runtime.withFrameNanos { it }
-                        }
-                    }
+                if (!followLatestState.value) {
+                    detachedViewportAnchor = captureChatViewportAnchor(messageListState.layoutInfo)
+                        ?: detachedViewportAnchor
                 }
+                mutate()
             }
 
             if (!followLatestState.value && messageListState.isScrollInProgress) {
-                viewportAnchorJob = listScope.launch {
+                listScope.launch {
                     snapshotFlow { messageListState.isScrollInProgress }.first { !it }
                     applyAnchoredMutation()
                 }
@@ -283,6 +276,9 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     // While detached, the rendered list is immutable, so generation
                     // cannot shift the viewport by even one pixel.
                     if (followLatest) detachedMessages = loadedMessagesState.value
+                    // The gesture is intentionally moving the viewport, so the
+                    // previous stationary anchor must not fight the user's drag.
+                    detachedViewportAnchor = null
                     followLatest = false
                 }
                 return Offset.Zero
@@ -309,9 +305,9 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     LaunchedEffect(conversation?.id) {
         modelMenu = false
         chatMenu = false
-        viewportAnchorJob?.cancel()
         followLatest = true
         detachedMessages = null
+        detachedViewportAnchor = null
         messageListState.scrollToItem(0)
         topAppBarState.contentOffset = 0f
         topAppBarState.heightOffset = 0f
@@ -334,7 +330,15 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     val liveStatus = statusById[message.nodeId]
                     if (liveStatus != null && liveStatus != message.status) message.copy(status = liveStatus) else message
                 }
-                if (updated != frozen) detachedMessages = updated
+                if (updated != frozen) {
+                    // Status completion can immediately alter labels/icons and
+                    // then trigger a working-card collapse. Capture before the
+                    // status snapshot is replaced so even the first layout pass
+                    // is corrected, not only the subsequent animation frames.
+                    detachedViewportAnchor = captureChatViewportAnchor(messageListState.layoutInfo)
+                        ?: detachedViewportAnchor
+                    detachedMessages = updated
+                }
             }
     }
 
@@ -353,8 +357,41 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 // the real bottom, not merely inside the broad FAB threshold.
                 followLatest = true
                 detachedMessages = null
+                detachedViewportAnchor = null
+            } else if (!scrolling && !followLatest) {
+                // A completed drag/fling establishes the new stationary screen
+                // position which all later below-viewport layout changes preserve.
+                detachedViewportAnchor = captureChatViewportAnchor(messageListState.layoutInfo)
             }
         }
+    }
+
+    LaunchedEffect(conversation?.id, messageListState) {
+        snapshotFlow {
+            val anchor = detachedViewportAnchor
+            if (followLatest || anchor == null || messageListState.isScrollInProgress) {
+                null
+            } else {
+                messageListState.layoutInfo.visibleItemsInfo
+                    .firstOrNull { it.key == anchor.key }
+                    ?.let { current ->
+                        calculateViewportCorrectionDeltaPx(
+                            currentScreenOffsetPx = current.offset,
+                            anchoredScreenOffsetPx = anchor.screenOffsetPx,
+                        )
+                    }
+            }
+        }
+            .filterNotNull()
+            .collect { correctionPx ->
+                if (abs(correctionPx) >= 0.5f && !followLatest && !messageListState.isScrollInProgress) {
+                    // Correct every layout frame, not only the explicit click or
+                    // status mutation. This also catches Python/tool insertions,
+                    // paging remeasurements, and AnimatedVisibility intermediate
+                    // sizes which previously escaped the one-shot anchor logic.
+                    messageListState.scrollBy(correctionPx)
+                }
+            }
     }
 
     LaunchedEffect(conversation?.id, messageListState, relockThresholdPx) {
@@ -406,6 +443,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 if (followLatest) detachedMessages = loadedMessagesState.value
                 followLatest = false
                 messageListState.scrollToItem(index)
+                detachedViewportAnchor = captureChatViewportAnchor(messageListState.layoutInfo)
                 searchFocusHandled = true
             }
         }
@@ -559,6 +597,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     onClick = {
                         followLatest = true
                         detachedMessages = null
+                        detachedViewportAnchor = null
                     },
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,

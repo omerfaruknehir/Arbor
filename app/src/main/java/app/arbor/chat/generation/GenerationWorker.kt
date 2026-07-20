@@ -797,8 +797,12 @@ class GenerationWorker(
                 "state concrete limitations and missing evidence, and report an explicit final or blocked research-state update when Deep Research is active."
         private const val MAX_TOOL_OUTPUT_CHARS = 40_000
         private const val MAX_BACKGROUND_RETRIES = 5
-        private const val STREAM_FLUSH_CHARACTERS = 512
-        private const val STREAM_FLUSH_MS = 320L
+        // Persist often enough that the UI always has a short interpolation
+        // backlog, while still batching full Room/timeline updates. The previous
+        // 512-char / 320-ms limits made fast providers arrive as visibly large
+        // bursts even though the renderer attempted to smooth them afterwards.
+        private const val STREAM_FLUSH_CHARACTERS = 96
+        private const val STREAM_FLUSH_MS = 90L
         private const val NOTIFICATION_UPDATE_MS = 2_000L
     }
 }

@@ -1,3 +1,11 @@
+## 0.16.46
+
+- Keep a stable visible-message anchor throughout working-card collapse/expansion, streamed tool insertion, and Python-result insertion while detached from the bottom.
+- Stop viewport compensation immediately during user drag/fling, then establish a fresh anchor after scrolling settles.
+- Reduce persisted stream bursts from 512 characters/320 ms to 96 characters/90 ms and reveal them in adaptive token-sized micro-batches at the existing 30 Hz render cadence.
+- Drain the final streaming backlog at the same cadence instead of dumping it when generation completes.
+- Reuse the compiled code-fence matcher so smoother updates do not increase Markdown-regex setup work.
+
 ## 0.16.45
 
 - Stable detached-chat viewport across tool insertions and working-card height changes.
