@@ -105,6 +105,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -162,6 +163,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.conflate
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.min
@@ -186,7 +188,7 @@ internal fun calculateAutoFollowStepPx(
     maxSpeedPxPerSecond: Float,
 ): Float {
     if (distancePx <= 0f || frameSeconds <= 0f || maxSpeedPxPerSecond <= 0f) return 0f
-    val response = 1f - exp(-18f * frameSeconds)
+    val response = 1f - exp(-10f * frameSeconds)
     val easedStep = (distancePx * response).coerceAtLeast(min(0.75f, distancePx))
     return min(distancePx, min(easedStep, maxSpeedPxPerSecond * frameSeconds))
 }
@@ -277,14 +279,41 @@ private data class ChatBottomLayoutSnapshot(
 internal fun calculateVisibleChatViewportEndPx(viewportEndPx: Int, obscuredBottomPx: Int): Int =
     (viewportEndPx - obscuredBottomPx.coerceAtLeast(0)).coerceAtLeast(0)
 
-private suspend fun snapChatToBottom(state: androidx.compose.foundation.lazy.LazyListState, lastIndex: Int) {
+private const val ChatFollowMaxSpeedPxPerSecond = 1_350f
+
+private suspend fun snapChatToBottom(
+    state: androidx.compose.foundation.lazy.LazyListState,
+    lastIndex: Int,
+    obscuredBottomPx: Int,
+) {
     if (lastIndex < 0) return
     state.scrollToItem(lastIndex)
-    androidx.compose.runtime.withFrameNanos { }
+    withFrameNanos { }
     val layout = state.layoutInfo
     val last = layout.visibleItemsInfo.firstOrNull { it.index == lastIndex } ?: return
-    val overflow = last.offset + last.size - layout.viewportEndOffset
+    val visibleEnd = calculateVisibleChatViewportEndPx(layout.viewportEndOffset, obscuredBottomPx)
+    val overflow = last.offset + last.size - visibleEnd
     if (overflow > 0) state.scrollBy(overflow.toFloat())
+}
+
+private suspend fun easeChatFollowBy(
+    state: androidx.compose.foundation.lazy.LazyListState,
+    distancePx: Float,
+    shouldContinue: () -> Boolean,
+) {
+    var remaining = distancePx.coerceAtLeast(0f)
+    if (remaining < 0.75f) return
+    var previousFrame = withFrameNanos { it }
+    while (remaining >= 0.75f && shouldContinue()) {
+        val frame = withFrameNanos { it }
+        val seconds = ((frame - previousFrame).coerceAtLeast(1L) / 1_000_000_000f).coerceAtMost(0.05f)
+        previousFrame = frame
+        val step = calculateAutoFollowStepPx(remaining, seconds, ChatFollowMaxSpeedPxPerSecond)
+        if (step <= 0f) break
+        val consumed = state.scrollBy(step)
+        if (consumed <= 0.1f) break
+        remaining = (remaining - consumed).coerceAtLeast(0f)
+    }
 }
 
 internal fun calculateComposerChromeProgressFromBottom(
@@ -415,9 +444,12 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         topAppBarState.heightOffset = collapsedOffset
     }
 
-    LaunchedEffect(conversation?.id, paging.itemCount, initialPositioned) {
-        if (!initialPositioned && paging.itemCount > 0) {
-            snapChatToBottom(messageListState, paging.itemCount - 1)
+    LaunchedEffect(conversation?.id, paging.itemCount, initialPositioned, messageBottomInsetPx) {
+        // Do not lock the initial position until Scaffold has measured the live
+        // composer. Positioning with a zero inset is what briefly left the last
+        // response behind the input controls.
+        if (!initialPositioned && paging.itemCount > 0 && messageBottomInsetPx > 0) {
+            snapChatToBottom(messageListState, paging.itemCount - 1, messageBottomInsetPx)
             initialPositioned = true
         }
     }
@@ -443,6 +475,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             )
         }
             .distinctUntilChanged()
+            .conflate()
             .collect { snapshot ->
                 if (!initialPositioned || snapshot.totalItems == 0 || snapshot.scrollInProgress ||
                     snapshot.followMode != ChatFollowMode.FOLLOWING || snapshot.manualHold
@@ -450,10 +483,15 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
 
                 val lastIndex = snapshot.totalItems - 1
                 if (snapshot.lastVisibleIndex < lastIndex) {
-                    snapChatToBottom(messageListState, lastIndex)
+                    messageListState.animateScrollToItem(lastIndex)
+                    snapChatToBottom(messageListState, lastIndex, messageBottomInsetPx)
                 } else {
                     val overflow = snapshot.lastVisibleBottomPx - snapshot.visibleViewportEndPx
-                    if (overflow > 0) messageListState.scrollBy(overflow.toFloat())
+                    if (overflow > 0.75f) {
+                        easeChatFollowBy(messageListState, overflow.toFloat()) {
+                            followMode == ChatFollowMode.FOLLOWING && !manualFollowHold
+                        }
+                    }
                 }
             }
     }
@@ -633,7 +671,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     onClick = {
                         manualFollowHold = false
                         followMode = ChatFollowMode.FOLLOWING
-                        listScope.launch { snapChatToBottom(messageListState, paging.itemCount - 1) }
+                        listScope.launch { snapChatToBottom(messageListState, paging.itemCount - 1, messageBottomInsetPx) }
                     },
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,

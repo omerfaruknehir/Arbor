@@ -20,4 +20,14 @@ class StreamingMotionTest {
     @Test fun nonAppendCorrectionIsAppliedImmediately() {
         assertEquals("replacement", nextStreamingTextFrame("old text", "replacement"))
     }
+    @Test fun expensiveStreamingBlocksCanCatchUpInLargerBatches() {
+        val target = "x".repeat(2_000)
+        assertEquals(512, nextStreamingTextFrame("", target, maxStepChars = 512).length)
+    }
+
+    @Test fun finalBacklogStaysOnStreamingRenderPathUntilCaughtUp() {
+        assertTrue(isStreamingRenderActive(providerStreaming = false, renderedText = "partial", targetText = "partial tail"))
+        assertTrue(!isStreamingRenderActive(providerStreaming = false, renderedText = "done", targetText = "done"))
+    }
+
 }

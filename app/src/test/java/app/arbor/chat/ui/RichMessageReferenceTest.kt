@@ -150,4 +150,52 @@ Outro""",
         assertTrue(second.single().block is RichBlock.Table)
     }
 
+    @Test fun tableCandidateDetectionStartsAfterTheSeparatorArrives() {
+        assertFalse(containsMarkdownTableCandidate("| A | B |\n"))
+        assertTrue(containsMarkdownTableCandidate("| A | B |\n| --- | --- |"))
+    }
+
+    @Test fun everyStreamingTableUsesTheLightweightRenderer() {
+        assertTrue(shouldUseLightweightTableRenderer("| A | B |\n| --- | --- |\n| 1 | 2 |", streaming = true))
+        assertFalse(shouldUseLightweightTableRenderer("| A | B |\n| --- | --- |\n| 1 | 2 |", streaming = false))
+    }
+
+    @Test fun oversizedCompletedTablesAvoidMarkwonTableLayout() {
+        val rows = buildString {
+            append("| A | B |\n| --- | --- |\n")
+            repeat(CompletedTablePreviewMaxLines + 1) { append("| ").append(it).append(" | value |\n") }
+        }
+        assertTrue(shouldUseLightweightTableRenderer(rows, streaming = false))
+    }
+
+    @Test fun liveTablePreviewIsBoundedAndKeepsHeaderAndNewestRows() {
+        val table = buildString {
+            append("| Index | Value |\n| --- | --- |\n")
+            repeat(200) { append("| ").append(it).append(" | row-").append(it).append(" |\n") }
+        }
+        val preview = boundedTablePreviewText(table, maxChars = 1_000, maxLines = 12)
+        assertTrue(preview.startsWith("| Index | Value |\n| --- | --- |"))
+        assertTrue("hidden from the inline preview" in preview)
+        assertTrue("row-199" in preview)
+        assertTrue(preview.length <= 1_000)
+        assertTrue(preview.lines().size <= 12)
+    }
+
+    @Test fun tableDetectionIsBoundedButStillFindsANewTableAtTheTail() {
+        val source = "x".repeat(8_192) +
+            "\n| A | B |\n| --- | --- |"
+        assertTrue(containsMarkdownTableCandidate(source))
+    }
+
+    @Test fun oversizedPreviewDoesNotNeedToEnumerateEveryGeneratedRow() {
+        val huge = buildString {
+            append("| A | B |\n| --- | --- |\n")
+            repeat(20_000) { append("| ").append(it).append(" | value |\n") }
+        }
+        val preview = boundedTablePreviewText(huge, maxChars = 1_000, maxLines = 12)
+        assertTrue(preview.length <= 1_000)
+        assertTrue(preview.startsWith("| A | B |\n| --- | --- |"))
+        assertTrue("| 19999 | value |" in preview)
+    }
+
 }

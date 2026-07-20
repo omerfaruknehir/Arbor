@@ -1,13 +1,11 @@
 package app.arbor.chat.ui
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -36,13 +34,14 @@ fun CodeSourcePanel(
                 if (live) Text("Streaming…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            HighlightedCodeText(
-                language = language,
-                code = code,
-                modifier = Modifier.horizontalScroll(rememberScrollState()).padding(12.dp),
-                style = MaterialTheme.typography.bodySmall,
-                softWrap = false,
-            )
+            LowSensitivityHorizontalScroll(Modifier.padding(12.dp)) {
+                HighlightedCodeText(
+                    language = language,
+                    code = code,
+                    style = MaterialTheme.typography.bodySmall,
+                    softWrap = false,
+                )
+            }
         }
     }
 }

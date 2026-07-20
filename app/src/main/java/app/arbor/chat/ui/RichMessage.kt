@@ -6,6 +6,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Typeface
 import android.graphics.RectF
 import android.graphics.Color as AndroidColor
 import android.net.Uri
@@ -24,7 +25,6 @@ import android.view.textclassifier.TextClassifier
 import android.widget.TextView
 import android.util.TypedValue
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,7 +34,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
@@ -57,7 +56,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -95,6 +93,28 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.net.URLEncoder
 import kotlin.math.roundToInt
+
+private val MarkdownTableStreamHint = Regex(
+    """(?m)^\s*\|?.+\|.+\r?\n\s*\|?\s*:?-{3,}:?\s*\|""",
+)
+private const val MarkdownTableDetectionWindowChars = 8_192
+
+/**
+ * Table detection runs for every streamed database update, so it must stay
+ * bounded. Sampling both ends catches a table that starts after prose as soon
+ * as its separator reaches the live tail; RichMessage then latches the result.
+ */
+internal fun containsMarkdownTableCandidate(markdown: String): Boolean {
+    if (markdown.length <= MarkdownTableDetectionWindowChars * 2) {
+        return MarkdownTableStreamHint.containsMatchIn(markdown)
+    }
+    val sample = buildString(MarkdownTableDetectionWindowChars * 2 + 1) {
+        append(markdown, 0, MarkdownTableDetectionWindowChars)
+        append('\n')
+        append(markdown, markdown.length - MarkdownTableDetectionWindowChars, markdown.length)
+    }
+    return MarkdownTableStreamHint.containsMatchIn(sample)
+}
 
 internal sealed interface RichBlock {
     data class Markdown(val text: String) : RichBlock
@@ -169,15 +189,53 @@ fun RichMessage(
     val context = LocalContext.current
     val crashReporter = (context.applicationContext as? ArborApplication)?.container?.crashReporter
     val safeRendering by crashReporter?.renderSafeMode?.collectAsState() ?: remember { mutableStateOf(false) }
-    val renderedText = rememberBatchedStreamingText(text, streaming)
+    val tableCandidate = remember(text) { containsMarkdownTableCandidate(text) }
+    var tableLike by remember(operationScope) { mutableStateOf(tableCandidate) }
+    LaunchedEffect(tableCandidate) {
+        // Once a table appears, keep the safe path active even after its header
+        // scrolls out of the bounded detection window.
+        if (tableCandidate) tableLike = true
+    }
+    val useTableCadence = tableLike || tableCandidate
+    val renderedText = rememberBatchedStreamingText(
+        text = text,
+        streaming = streaming,
+        intervalNanos = if (useTableCadence) 120_000_000L else 33_000_000L,
+        maxStepChars = if (useTableCadence) 2_048 else 48,
+    )
+    // Completion can arrive while the frame-batched renderer still has a
+    // backlog. Keep the tail on the streaming/lightweight path until it is
+    // fully caught up, then perform one final Markdown/table render.
+    val renderStreaming = isStreamingRenderActive(streaming, renderedText, text)
+    val keepWholeMessageLightweight = useTableCadence && (
+        renderStreaming || isOversizedTablePreviewSource(renderedText)
+    )
+    if (keepWholeMessageLightweight) {
+        // Do not even invoke splitMarkdownTables/Markwon while rows are being
+        // appended. Those parsers copy and inspect the complete growing source
+        // and were the remaining cause of multi-second UI freezes.
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            StreamingFade(
+                transitionKey = "$operationScope:streaming-table-source",
+                enabled = renderStreaming,
+            ) {
+                LightweightTableText(markdown = renderedText, streaming = renderStreaming)
+            }
+            StreamingTokenPulse(visible = streaming, modifier = Modifier.padding(top = 2.dp))
+        }
+        return
+    }
+
     val incrementalParser = remember(operationScope) { IncrementalRichTextParser() }
-    val blocks = remember(renderedText, streaming) { incrementalParser.update(renderedText, streaming) }
+    val blocks = remember(renderedText, renderStreaming) {
+        incrementalParser.update(renderedText, renderStreaming)
+    }
     val markwon = remember(context.applicationContext) { ArborMarkwonCache.get(context.applicationContext) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         blocks.forEach { parsed ->
             key("$operationScope:${parsed.key}") {
                 val block = parsed.block
-                val live = streaming && parsed.liveTail
+                val live = renderStreaming && parsed.liveTail
                 when (block) {
                     is RichBlock.Markdown -> StreamingFade(
                         transitionKey = "$operationScope:${parsed.key}:markdown",
@@ -446,18 +504,32 @@ internal fun MarkdownBlock(
     val pillBackground = MaterialTheme.colorScheme.secondaryContainer.toArgbCompat()
     val pillForeground = MaterialTheme.colorScheme.onSecondaryContainer.toArgbCompat()
     val selectionColor = MaterialTheme.colorScheme.primary.copy(alpha = .32f).toArgbCompat()
-    val tableViewportDp = (LocalConfiguration.current.screenWidthDp - 48).coerceAtLeast(240)
-    val estimatedTableWidthDp = remember(markdown, tableViewportDp) {
-        estimateMarkdownTableWidthDp(markdown, tableViewportDp)
-    }
-    val streamingTableWidthDp by remember(key, tableViewportDp) {
-        mutableIntStateOf(estimatedTableWidthDp)
-    }
-    val tableWidth = (if (streaming) streamingTableWidthDp else estimatedTableWidthDp).dp
     var pendingReference by remember(key) { mutableStateOf<LinkReferencePreview?>(null) }
     val renderedMarkdown = remember(markdown) { prepareReferenceMarkdown(markdown) }
-    if (horizontallyScrollable) {
-        Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+    when {
+        horizontallyScrollable && shouldUseLightweightTableRenderer(markdown, streaming) -> {
+            LightweightTableText(markdown = markdown, streaming = streaming)
+        }
+        horizontallyScrollable -> {
+            val tableViewportDp = (LocalConfiguration.current.screenWidthDp - 48).coerceAtLeast(240)
+            val tableWidth = remember(markdown, tableViewportDp) {
+                estimateMarkdownTableWidthDp(markdown, tableViewportDp).dp
+            }
+            LowSensitivityHorizontalScroll(Modifier.fillMaxWidth()) {
+                MarkdownAndroidView(
+                    markwon = markwon,
+                    markdown = renderedMarkdown,
+                    textColor = color,
+                    linkColor = linkColor,
+                    pillBackground = pillBackground,
+                    pillForeground = pillForeground,
+                    selectionColor = selectionColor,
+                    onReference = { pendingReference = it },
+                    modifier = Modifier.width(tableWidth),
+                )
+            }
+        }
+        else -> {
             MarkdownAndroidView(
                 markwon = markwon,
                 markdown = renderedMarkdown,
@@ -467,26 +539,139 @@ internal fun MarkdownBlock(
                 pillForeground = pillForeground,
                 selectionColor = selectionColor,
                 onReference = { pendingReference = it },
-                modifier = Modifier.width(tableWidth),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
-    } else {
-        MarkdownAndroidView(
-            markwon = markwon,
-            markdown = renderedMarkdown,
-            textColor = color,
-            linkColor = linkColor,
-            pillBackground = pillBackground,
-            pillForeground = pillForeground,
-            selectionColor = selectionColor,
-            onReference = { pendingReference = it },
-            modifier = Modifier.fillMaxWidth(),
-        )
     }
 
     pendingReference?.let { reference ->
         AnchoredLinkPreview(reference = reference, onDismiss = { pendingReference = null })
     }
+}
+
+
+internal const val StreamingTablePreviewMaxChars = 12_000
+internal const val StreamingTablePreviewMaxLines = 90
+internal const val CompletedTablePreviewMaxChars = 36_000
+internal const val CompletedTablePreviewMaxLines = 220
+
+internal fun isOversizedTablePreviewSource(
+    markdown: String,
+    maxChars: Int = CompletedTablePreviewMaxChars,
+    maxLines: Int = CompletedTablePreviewMaxLines,
+): Boolean {
+    if (markdown.length > maxChars) return true
+    var lines = 1
+    for (char in markdown) {
+        if (char == '\n' && ++lines > maxLines) return true
+    }
+    return false
+}
+
+internal fun shouldUseLightweightTableRenderer(markdown: String, streaming: Boolean): Boolean =
+    streaming || isOversizedTablePreviewSource(markdown)
+
+/**
+ * Keeps table rendering bounded while a model is still appending rows. The
+ * complete source remains in the message and in Copy; this is only the inline
+ * preview used to keep Markwon's table span layout off the UI thread.
+ *
+ * This deliberately scans at most the retained preview budget rather than
+ * materialising every line of a potentially multi-megabyte generated table.
+ */
+internal fun boundedTablePreviewText(
+    markdown: String,
+    maxChars: Int,
+    maxLines: Int,
+): String {
+    require(maxChars > 0) { "maxChars must be positive" }
+    require(maxLines > 2) { "maxLines must be at least 3" }
+    if (!isOversizedTablePreviewSource(markdown, maxChars, maxLines)) return markdown
+
+    val marker = "… earlier table content hidden from the inline preview …"
+    val headLineLimit = 2
+    val headCharLimit = (maxChars / 4).coerceAtLeast(64)
+    var headEnd = 0
+    var headLines = 1
+    while (headEnd < markdown.length && headEnd < headCharLimit && headLines <= headLineLimit) {
+        val char = markdown[headEnd++]
+        if (char == '\n') {
+            headLines++
+            if (headLines > headLineLimit) break
+        }
+    }
+    // Prefer whole header lines, but remain bounded even for a pathological
+    // single-line cell that is itself larger than the preview budget.
+    val head = markdown.substring(0, headEnd.coerceAtMost(markdown.length)).trimEnd('\n')
+
+    val tailLineLimit = (maxLines - headLineLimit - 1).coerceAtLeast(1)
+    val tailCharBudget = (maxChars - head.length - marker.length - 2).coerceAtLeast(1)
+    var tailStart = markdown.length
+    var tailChars = 0
+    var tailLines = 1
+    while (tailStart > headEnd && tailChars < tailCharBudget && tailLines <= tailLineLimit) {
+        tailStart--
+        tailChars++
+        if (markdown[tailStart] == '\n') {
+            tailLines++
+            if (tailLines > tailLineLimit) {
+                tailStart++
+                break
+            }
+        }
+    }
+    // Do not begin with half a row when the character budget, rather than the
+    // line budget, was reached.
+    if (tailStart > headEnd && tailStart < markdown.length && markdown[tailStart] != '\n') {
+        val nextLine = markdown.indexOf('\n', tailStart)
+        tailStart = if (nextLine >= 0 && nextLine + 1 < markdown.length) nextLine + 1 else markdown.length
+    }
+    val tail = markdown.substring(tailStart).trimStart('\n')
+
+    return buildString(maxChars) {
+        append(head.take(maxChars))
+        if (isNotEmpty()) append('\n')
+        append(marker)
+        if (tail.isNotEmpty()) append('\n').append(tail)
+    }.take(maxChars)
+}
+
+@Composable
+private fun LightweightTableText(
+    markdown: String,
+    streaming: Boolean,
+) {
+    val maxChars = if (streaming) StreamingTablePreviewMaxChars else CompletedTablePreviewMaxChars
+    val maxLines = if (streaming) StreamingTablePreviewMaxLines else CompletedTablePreviewMaxLines
+    val renderedPreview = remember(markdown, maxChars, maxLines) {
+        boundedTablePreviewText(markdown, maxChars, maxLines)
+    }
+    val color = MaterialTheme.colorScheme.onSurface.toArgbCompat()
+    val selectionColor = MaterialTheme.colorScheme.primary.copy(alpha = .32f).toArgbCompat()
+    val textSizeSp = MaterialTheme.typography.bodySmall.fontSize.value
+    AndroidView(
+        factory = { context ->
+            ArborMarkdownTextView(context).apply {
+                setTextIsSelectable(true)
+                setTextClassifier(TextClassifier.NO_OP)
+                setBackgroundColor(AndroidColor.TRANSPARENT)
+                includeFontPadding = false
+                typeface = Typeface.MONOSPACE
+                setHorizontallyScrolling(false)
+                setLineSpacing(0f, 1.04f)
+            }
+        },
+        update = { view ->
+            view.setTextColor(color)
+            view.highlightColor = selectionColor
+            view.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
+            if (view.renderedSource != renderedPreview) {
+                view.setText(renderedPreview, TextView.BufferType.SPANNABLE)
+                view.renderedSource = renderedPreview
+            }
+        },
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable
@@ -839,7 +1024,7 @@ private fun CodeBlock(
                     copied = true
                 }) { Icon(if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, "Copy") }
             }
-            Box(Modifier.horizontalScroll(rememberScrollState()).padding(14.dp)) {
+            LowSensitivityHorizontalScroll(Modifier.padding(14.dp)) {
                 HighlightedCodeText(
                     language = language,
                     code = code,

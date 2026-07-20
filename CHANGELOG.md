@@ -1,3 +1,11 @@
+## 0.16.53
+
+- Fixed the apparent token-by-token line breaks by forcing every streaming fade/tail wrapper to inherit the full message width and propagate its constraints to the Android Markdown view.
+- Replaced live Markwon table layout with a bounded, throttled plain-text preview; small tables are rendered normally once complete, while oversized completed tables stay on the safe lightweight path.
+- Bypassed Markdown/table parsing entirely while a table is streaming, bounded detection and preview work, and increased catch-up batch size so generated tables cannot monopolize the UI thread.
+- Eased auto-follow with frame-paced bounded scrolling, and delayed initial bottom positioning until the composer obstruction is measured.
+- Raised horizontal gesture touch slop for tables, code and diagrams, and removed the aggressive full-screen drawer swipe so vertical chat/sidebar scrolling wins diagonal gestures.
+
 ## 0.16.52
 
 - Prevented alternating reasoning/text provider chunks from becoming one rendered Markdown block per token; fragments are concatenated exactly with no inserted whitespace.

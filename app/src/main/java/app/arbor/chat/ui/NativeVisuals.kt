@@ -2,7 +2,6 @@ package app.arbor.chat.ui
 
 import android.graphics.Paint
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.OpenInFull
@@ -230,7 +228,7 @@ private fun FlowCanvas(diagram: NativeDiagram, large: Boolean) {
     val primary = MaterialTheme.colorScheme.primary
     val surface = MaterialTheme.colorScheme.surfaceContainerHighest
     val text = MaterialTheme.colorScheme.onSurface
-    Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+    LowSensitivityHorizontalScroll(Modifier.fillMaxWidth()) {
         Canvas(Modifier.width(width.coerceAtLeast(320.dp)).height(height.coerceAtLeast(150.dp))) {
             val nw = with(density) { nodeW.toPx() }; val nh = with(density) { nodeH.toPx() }
             diagram.edges.forEach { edge ->
@@ -265,7 +263,7 @@ private fun SequenceCanvas(diagram: NativeDiagram, large: Boolean) {
     val surface = MaterialTheme.colorScheme.surfaceContainerHighest
     val text = MaterialTheme.colorScheme.onSurface
     val density = LocalDensity.current
-    Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+    LowSensitivityHorizontalScroll(Modifier.fillMaxWidth()) {
         Canvas(Modifier.width(width).height(height)) {
             val nw = with(density) { nodeW.toPx() }; val gp = with(density) { gap.toPx() }
             val centers = diagram.nodes.mapIndexed { index, node -> node.id to (10.dp.toPx() + nw / 2 + index * (nw + gp)) }.toMap()

@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -84,21 +85,32 @@ internal fun StreamingFade(
         }
     }
     Box(
-        modifier.graphicsLayer {
+        modifier = modifier.fillMaxWidth().graphicsLayer {
             this.alpha = alpha.value
             compositingStrategy = CompositingStrategy.ModulateAlpha
         },
+        propagateMinConstraints = true,
     ) {
         content()
     }
 }
 
 
-internal fun nextStreamingTextFrame(rendered: String, target: String): String = when {
+internal fun isStreamingRenderActive(
+    providerStreaming: Boolean,
+    renderedText: String,
+    targetText: String,
+): Boolean = providerStreaming || renderedText != targetText
+
+internal fun nextStreamingTextFrame(
+    rendered: String,
+    target: String,
+    maxStepChars: Int = 48,
+): String = when {
     target == rendered -> rendered
     target.startsWith(rendered) -> {
         val backlog = target.length - rendered.length
-        val step = when {
+        val normalStep = when {
             backlog > 1_024 -> 48
             backlog > 512 -> 36
             backlog > 256 -> 28
@@ -106,8 +118,9 @@ internal fun nextStreamingTextFrame(rendered: String, target: String): String = 
             backlog > 64 -> 14
             backlog > 24 -> 10
             else -> minOf(backlog, 6)
-        }.coerceAtMost(backlog)
-        target.take(rendered.length + step)
+        }
+        val step = if (maxStepChars <= 48) normalStep else minOf(backlog, maxStepChars)
+        target.take(rendered.length + step.coerceAtLeast(1))
     }
     else -> target
 }
@@ -128,11 +141,12 @@ internal fun rememberBatchedStreamingText(
     text: String,
     streaming: Boolean,
     intervalNanos: Long = 33_000_000L,
+    maxStepChars: Int = 48,
 ): String {
     val latestText by rememberUpdatedState(text)
     var renderedText by remember { mutableStateOf(text) }
     var wasStreaming by remember { mutableStateOf(streaming) }
-    LaunchedEffect(streaming, intervalNanos) {
+    LaunchedEffect(streaming, intervalNanos, maxStepChars) {
         var lastCommitNanos = 0L
         if (streaming) wasStreaming = true
 
@@ -141,7 +155,7 @@ internal fun rememberBatchedStreamingText(
             if (lastCommitNanos != 0L && frameNanos - lastCommitNanos < intervalNanos) continue
             lastCommitNanos = frameNanos
 
-            renderedText = nextStreamingTextFrame(renderedText, latestText)
+            renderedText = nextStreamingTextFrame(renderedText, latestText, maxStepChars)
         }
 
         if (!streaming) {

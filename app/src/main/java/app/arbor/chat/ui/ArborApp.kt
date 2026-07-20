@@ -1,5 +1,6 @@
 package app.arbor.chat.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -53,6 +54,10 @@ fun ArborApp(viewModel: ChatViewModel) {
         }
     }
 
+    BackHandler(enabled = drawerState.isOpen) {
+        scope.launch { drawerState.close() }
+    }
+
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 840.dp
         val screenContent: @Composable (Screen) -> Unit = { destination ->
@@ -104,6 +109,10 @@ fun ArborApp(viewModel: ChatViewModel) {
         } else {
             ModalNavigationDrawer(
                 drawerState = drawerState,
+                // Material's full-screen horizontal drag recognizer was winning
+                // diagonal vertical gestures in both the chat and drawer list.
+                // The menu button, scrim and Back remain available and reliable.
+                gesturesEnabled = false,
                 drawerContent = {
                     ModalDrawerSheet(drawerState = drawerState) {
                         ConversationSidebar(
