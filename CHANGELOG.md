@@ -1,3 +1,10 @@
+## 0.16.55
+
+- Prevented Markwon's table extension from receiving any actively growing table; live tables now use the bounded native aligned-grid renderer at the existing 250 ms cadence.
+- Added exception guards around both Markwon parse/render and the Android TextView span hand-off, so malformed or incomplete Markdown cannot terminate the app.
+- Kept renderer-failure fallbacks visually tabular instead of exposing raw pipe-delimited Markdown.
+- Added progressive partial-row regression coverage for streamed tables.
+
 ## 0.16.54
 
 - Fixed auto-scroll no longer following streamed output.

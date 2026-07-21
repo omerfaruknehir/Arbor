@@ -86,6 +86,7 @@ import io.noties.markwon.ext.latex.JLatexMathPlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.tasklist.TaskListPlugin
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -553,8 +554,16 @@ internal fun MarkdownBlock(
     var pendingReference by remember(key) { mutableStateOf<LinkReferencePreview?>(null) }
     val renderedMarkdown = remember(markdown) { prepareReferenceMarkdown(markdown) }
     when {
-        horizontallyScrollable && shouldUseLightweightTableRenderer(markdown, streaming) -> {
-            StreamingTablePreviewText(markdown = markdown, streaming = streaming)
+        // Never feed an actively growing table to Markwon. Its TablePlugin assumes
+        // the parser has already produced a complete alignment/cell matrix and can
+        // throw from TableRowSpan when a provider update ends mid-row. The bounded
+        // native grid is still a rendered table and is cheap enough to refresh at
+        // the 250 ms streaming cadence used by RichMessage.
+        horizontallyScrollable && streaming -> {
+            StreamingTablePreviewText(markdown = markdown, streaming = true)
+        }
+        horizontallyScrollable && shouldUseLightweightTableRenderer(markdown, streaming = false) -> {
+            StreamingTablePreviewText(markdown = markdown, streaming = false)
         }
         horizontallyScrollable -> {
             val tableViewportDp = (LocalConfiguration.current.screenWidthDp - 48).coerceAtLeast(240)
@@ -952,6 +961,32 @@ private data class ParsedMarkdownSource(
     val spanned: Spanned,
 )
 
+/**
+ * Last-resort text for a renderer failure. Tables remain visually tabular rather
+ * than degrading to pipe-delimited source; ordinary Markdown remains selectable.
+ */
+internal fun markdownRenderFallbackText(markdown: String): String =
+    if (containsMarkdownTableCandidate(markdown)) {
+        renderStreamingTableGrid(
+            markdown = markdown,
+            maxChars = CompletedTablePreviewMaxChars,
+            maxLines = CompletedTablePreviewMaxLines,
+        ).text
+    } else {
+        markdown
+    }
+
+private fun renderMarkdownSafely(markwon: Markwon, markdown: String): Spanned = try {
+    markwon.render(markwon.parse(markdown))
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (_: Exception) {
+    // Markwon's table extension can throw for a syntactically valid prefix that
+    // becomes structurally incomplete between provider chunks. Rendering must
+    // never be allowed to terminate the main Compose coroutine/app process.
+    SpannableString(markdownRenderFallbackText(markdown))
+}
+
 @Composable
 private fun MarkdownAndroidView(
     markwon: Markwon,
@@ -967,7 +1002,7 @@ private fun MarkdownAndroidView(
     var parsedMarkdown by remember(markwon) { mutableStateOf<ParsedMarkdownSource?>(null) }
     LaunchedEffect(markwon, markdown) {
         val spanned = withContext(Dispatchers.Default) {
-            markwon.render(markwon.parse(markdown))
+            renderMarkdownSafely(markwon, markdown)
         }
         parsedMarkdown = ParsedMarkdownSource(markdown, spanned)
     }
@@ -992,14 +1027,23 @@ private fun MarkdownAndroidView(
             val styleKey = (((textColor * 31) + linkColor) * 31 + pillBackground) * 31 + pillForeground
             val ready = parsedMarkdown
             if (ready != null && (view.renderedSource != ready.source || view.renderedStyleKey != styleKey)) {
-                markwon.setParsedMarkdown(view, ready.spanned)
-                installReferenceSpans(
-                    view = view,
-                    linkColor = linkColor,
-                    pillBackground = pillBackground,
-                    pillForeground = pillForeground,
-                    onClick = onReference,
-                )
+                try {
+                    markwon.setParsedMarkdown(view, ready.spanned)
+                    installReferenceSpans(
+                        view = view,
+                        linkColor = linkColor,
+                        pillBackground = pillBackground,
+                        pillForeground = pillForeground,
+                        onClick = onReference,
+                    )
+                } catch (_: Exception) {
+                    // Rendering can also fail while Android applies/measures spans,
+                    // so guard the UI hand-off as well as parse/render above.
+                    view.setText(
+                        markdownRenderFallbackText(ready.source),
+                        TextView.BufferType.SPANNABLE,
+                    )
+                }
                 view.renderedSource = ready.source
                 view.renderedStyleKey = styleKey
             }

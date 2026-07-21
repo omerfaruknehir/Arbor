@@ -155,9 +155,10 @@ Outro""",
         assertTrue(containsMarkdownTableCandidate("| A | B |\n| --- | --- |"))
     }
 
-    @Test fun ordinaryStreamingTablesKeepTheRealTableRenderer() {
+    @Test fun completedSmallTablesCanUseMarkwonButStreamingTablesUseTheSafeGrid() {
         val small = "| A | B |\n| --- | --- |\n| 1 | 2 |"
-        assertFalse(shouldUseLightweightTableRenderer(small, streaming = true))
+        // RichMessage routes every live table to StreamingTablePreviewText before
+        // consulting this size helper. Completed small tables can still use Markwon.
         assertFalse(shouldUseLightweightTableRenderer(small, streaming = false))
     }
 
@@ -228,6 +229,37 @@ Outro""",
         assertTrue("row-1999" in rendered.text)
         assertTrue("omitted" in rendered.text)
         assertTrue(rendered.displayedRows <= 14)
+    }
+
+    @Test fun rendererFailureFallbackPreservesOrdinaryMarkdownSource() {
+        val markdown = "**Arbor** keeps streaming."
+        assertEquals(markdown, markdownRenderFallbackText(markdown))
+    }
+
+    @Test fun rendererFailureFallbackKeepsTablesVisualInsteadOfRawMarkdown() {
+        val table = "| Name | Status |\n| --- | --- |\n| Arbor | Streaming"
+        val fallback = markdownRenderFallbackText(table)
+        assertTrue(fallback.startsWith("┌"))
+        assertTrue("│ Name" in fallback)
+        assertTrue("Arbor" in fallback)
+        assertFalse("| --- |" in fallback)
+    }
+
+    @Test fun everyProgressiveTableFragmentCanUseTheNativeGridWithoutMarkwon() {
+        val fragments = listOf(
+            "| Name | Status |\n| --- | --- |\n|",
+            "| Name | Status |\n| --- | --- |\n| Arbor",
+            "| Name | Status |\n| --- | --- |\n| Arbor |",
+            "| Name | Status |\n| --- | --- |\n| Arbor | Ready",
+            "| Name | Status |\n| --- | --- |\n| Arbor | Ready |",
+        )
+        fragments.forEach { source ->
+            val block = parseBlocks(source, streaming = true).single()
+            assertTrue(block is RichBlock.Table)
+            val rendered = renderStreamingTableGrid((block as RichBlock.Table).text)
+            assertTrue(rendered.text.startsWith("┌"))
+            assertFalse("| --- |" in rendered.text)
+        }
     }
 
 }
