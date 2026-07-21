@@ -187,11 +187,38 @@ internal fun calculateAutoFollowStepPx(
     maxSpeedPxPerSecond: Float,
 ): Float {
     if (distancePx <= 0f || frameSeconds <= 0f || maxSpeedPxPerSecond <= 0f) return 0f
-    // A critically damped catch-up curve: quick enough to stay attached to a
-    // fast response, but still proportional near the target so it does not snap.
-    val response = 1f - exp(-10f * frameSeconds)
-    val easedStep = (distancePx * response).coerceAtLeast(min(0.75f, distancePx))
+
+    // Distance-sensitive exponential response. Small corrections stay gentle,
+    // while a large streamed insertion receives a dramatically higher response
+    // rate instead of crawling at one constant velocity.
+    val distanceBoost = 1f - exp(-(distancePx / 180f).coerceAtLeast(0f))
+    val responseRatePerSecond = 14f + (110f * distanceBoost)
+    val response = 1f - exp(-responseRatePerSecond * frameSeconds)
+    val easedStep = (distancePx * response).coerceAtLeast(min(1f, distancePx))
     return min(distancePx, min(easedStep, maxSpeedPxPerSecond * frameSeconds))
+}
+
+internal fun calculateAutoFollowSeekSpeedPxPerSecond(
+    hiddenItemCount: Int,
+    elapsedSeconds: Float,
+    minSpeedPxPerSecond: Float,
+    maxSpeedPxPerSecond: Float,
+): Float {
+    if (
+        hiddenItemCount <= 0 || elapsedSeconds < 0f || minSpeedPxPerSecond <= 0f ||
+        maxSpeedPxPerSecond < minSpeedPxPerSecond
+    ) return 0f
+
+    // The off-screen phase cannot measure the exact pixel distance to the tail,
+    // so combine remaining-item distance with elapsed catch-up time. Both inputs
+    // use exponential curves and are then smooth-stepped: the scroll accelerates
+    // hard when far behind, but transitions continuously into the measured-tail
+    // correction once the last item enters the viewport.
+    val itemFactor = 1f - exp(-0.65f * hiddenItemCount.toFloat())
+    val timeFactor = 1f - exp(-5f * elapsedSeconds)
+    val combined = 1f - ((1f - itemFactor) * (1f - timeFactor))
+    val shaped = combined * combined * (3f - (2f * combined))
+    return minSpeedPxPerSecond + ((maxSpeedPxPerSecond - minSpeedPxPerSecond) * shaped)
 }
 
 internal data class MessageBranchKey(
@@ -270,8 +297,9 @@ private data class WorkingCardViewportController(
 internal fun calculateVisibleChatViewportEndPx(viewportEndPx: Int, obscuredBottomPx: Int): Int =
     (viewportEndPx - obscuredBottomPx.coerceAtLeast(0)).coerceAtLeast(0)
 
-private const val ChatFollowMaxSpeedPxPerSecond = 2_800f
-private const val ChatFollowSeekSpeedPxPerSecond = 4_200f
+private const val ChatFollowMaxSpeedPxPerSecond = 48_000f
+private const val ChatFollowSeekMinSpeedPxPerSecond = 6_000f
+private const val ChatFollowSeekMaxSpeedPxPerSecond = 72_000f
 
 private suspend fun snapChatToBottom(
     state: androidx.compose.foundation.lazy.LazyListState,
@@ -458,6 +486,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
 
         var settleFramesRemaining = if (generating) Int.MAX_VALUE else 36
         var previousFrameNanos = withFrameNanos { it }
+        var offscreenSeekElapsedSeconds = 0f
         while (generating || settleFramesRemaining-- > 0) {
             currentCoroutineContext().ensureActive()
             val frameNanos = withFrameNanos { it }
@@ -477,16 +506,27 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             val lastVisible = layout.visibleItemsInfo.lastOrNull()
 
             if (lastVisible == null || lastVisible.index < lastIndex) {
-                // Never jump directly to the tail. Move at a capped velocity until
-                // it enters the viewport; this keeps large tool/table insertions
-                // smooth instead of producing a harsh animateScrollToItem seek.
+                // Accelerate non-linearly while the tail is still off-screen. The
+                // old constant-speed seek was visibly slow after large tables,
+                // file cards, or tool groups appeared in one batch.
                 if (messageListState.canScrollForward) {
-                    val step = ChatFollowSeekSpeedPxPerSecond * frameSeconds
+                    offscreenSeekElapsedSeconds =
+                        (offscreenSeekElapsedSeconds + frameSeconds).coerceAtMost(2f)
+                    val lastKnownIndex = lastVisible?.index ?: messageListState.firstVisibleItemIndex
+                    val hiddenItemCount = (lastIndex - lastKnownIndex).coerceAtLeast(1)
+                    val seekSpeed = calculateAutoFollowSeekSpeedPxPerSecond(
+                        hiddenItemCount = hiddenItemCount,
+                        elapsedSeconds = offscreenSeekElapsedSeconds,
+                        minSpeedPxPerSecond = ChatFollowSeekMinSpeedPxPerSecond,
+                        maxSpeedPxPerSecond = ChatFollowSeekMaxSpeedPxPerSecond,
+                    )
+                    val step = seekSpeed * frameSeconds
                     if (step > 0f) messageListState.scrollBy(step)
                 }
                 continue
             }
 
+            offscreenSeekElapsedSeconds = 0f
             val visibleEnd = calculateVisibleChatViewportEndPx(
                 viewportEndPx = layout.viewportEndOffset,
                 obscuredBottomPx = messageBottomInsetPx,

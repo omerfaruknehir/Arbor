@@ -7,15 +7,16 @@ import org.junit.Test
 class ChatScrollMathTest {
     @Test
     fun autoFollowStepIsPositiveBoundedAndMonotonic() {
-        val small = calculateAutoFollowStepPx(8f, 1f / 60f, 4_800f)
-        val medium = calculateAutoFollowStepPx(80f, 1f / 60f, 4_800f)
-        val large = calculateAutoFollowStepPx(800f, 1f / 60f, 4_800f)
+        val small = calculateAutoFollowStepPx(8f, 1f / 60f, 48_000f)
+        val medium = calculateAutoFollowStepPx(80f, 1f / 60f, 48_000f)
+        val large = calculateAutoFollowStepPx(800f, 1f / 60f, 48_000f)
         assertTrue(small > 0f)
         assertTrue(medium > small)
         assertTrue(large >= medium)
         assertTrue(small <= 8f)
         assertTrue(medium <= 80f)
-        assertTrue(large <= 80f + .001f) // speed cap: 4800 / 60
+        assertTrue(large <= 800f + .001f) // speed cap: 48000 / 60
+        assertTrue(large > medium * 6f) // distance response is intentionally non-linear
     }
 
     @Test
@@ -23,6 +24,42 @@ class ChatScrollMathTest {
         assertEquals(0f, calculateAutoFollowStepPx(0f, 1f / 60f, 4_800f), 0f)
         assertEquals(0f, calculateAutoFollowStepPx(10f, 0f, 4_800f), 0f)
         assertEquals(0f, calculateAutoFollowStepPx(10f, 1f / 60f, 0f), 0f)
+    }
+
+
+    @Test
+    fun offscreenSeekAcceleratesNonLinearlyWithDistanceAndTime() {
+        val nearInitial = calculateAutoFollowSeekSpeedPxPerSecond(
+            hiddenItemCount = 1,
+            elapsedSeconds = 0f,
+            minSpeedPxPerSecond = 6_000f,
+            maxSpeedPxPerSecond = 72_000f,
+        )
+        val farInitial = calculateAutoFollowSeekSpeedPxPerSecond(
+            hiddenItemCount = 8,
+            elapsedSeconds = 0f,
+            minSpeedPxPerSecond = 6_000f,
+            maxSpeedPxPerSecond = 72_000f,
+        )
+        val nearAfterCatchUp = calculateAutoFollowSeekSpeedPxPerSecond(
+            hiddenItemCount = 1,
+            elapsedSeconds = 0.25f,
+            minSpeedPxPerSecond = 6_000f,
+            maxSpeedPxPerSecond = 72_000f,
+        )
+
+        assertTrue(nearInitial > 6_000f)
+        assertTrue(farInitial > nearInitial)
+        assertTrue(nearAfterCatchUp > nearInitial)
+        assertTrue(farInitial <= 72_000f)
+        assertTrue(nearAfterCatchUp <= 72_000f)
+    }
+
+    @Test
+    fun offscreenSeekRejectsInvalidInputs() {
+        assertEquals(0f, calculateAutoFollowSeekSpeedPxPerSecond(0, 0f, 6_000f, 72_000f), 0f)
+        assertEquals(0f, calculateAutoFollowSeekSpeedPxPerSecond(1, -1f, 6_000f, 72_000f), 0f)
+        assertEquals(0f, calculateAutoFollowSeekSpeedPxPerSecond(1, 0f, 72_000f, 6_000f), 0f)
     }
 
     @Test

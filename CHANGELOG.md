@@ -1,3 +1,9 @@
+# Arbor 0.16.57
+
+- Replaced constant-velocity off-screen auto-follow with distance- and time-sensitive exponential acceleration.
+- Raised the measured-tail correction ceiling from 2,800 px/s to 48,000 px/s and the off-screen seek ceiling to 72,000 px/s.
+- Kept small final corrections gentle while allowing large table, tool, and file-card insertions to catch up almost immediately.
+
 # Arbor 0.16.56
 
 - Fixed live rich-message updates being stuck on the first captured streaming snapshot; tables and all following content now appear without reopening the chat.
