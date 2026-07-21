@@ -150,6 +150,26 @@ Outro""",
         assertTrue(second.single().block is RichBlock.Table)
     }
 
+    @Test fun incrementalParserPromotesLateTableSyntaxAndKeepsFollowingMarkdown() {
+        val parser = IncrementalRichTextParser()
+        val headerOnly = parser.update(
+            "Intro\n\n| Element | Purpose |\n",
+            streaming = true,
+        )
+        assertTrue(headerOnly.last().block is RichBlock.Markdown)
+
+        val completed = parser.update(
+            "Intro\n\n| Element | Purpose |\n| --- | --- |\n| Header | Labels columns |\n\nBelow the table is still streaming.",
+            streaming = true,
+        )
+        assertTrue(completed.any { it.block is RichBlock.Table })
+        assertTrue(
+            completed.any { block ->
+                block.block is RichBlock.Markdown && "Below the table" in block.block.text
+            },
+        )
+    }
+
     @Test fun tableCandidateDetectionStartsAfterTheSeparatorArrives() {
         assertFalse(containsMarkdownTableCandidate("| A | B |\n"))
         assertTrue(containsMarkdownTableCandidate("| A | B |\n| --- | --- |"))

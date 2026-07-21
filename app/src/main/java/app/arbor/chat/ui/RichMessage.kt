@@ -58,6 +58,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
@@ -261,14 +262,21 @@ fun RichMessage(
 
     val incrementalParser = remember(operationScope) { IncrementalRichTextParser() }
     var blocks by remember(operationScope) { mutableStateOf<List<StableRichBlock>>(emptyList()) }
+    // LaunchedEffect itself is intentionally keyed only by the message scope so
+    // one serial parser survives the entire response. The values consumed by
+    // snapshotFlow must be State objects, though: closing over the plain String
+    // returned by rememberBatchedStreamingText captures the first composition
+    // forever. That bug left the table header and every later token invisible
+    // until the chat was reopened.
+    val latestRenderedText = rememberUpdatedState(renderedText)
+    val latestRenderStreaming = rememberUpdatedState(renderStreaming)
     LaunchedEffect(operationScope) {
-        snapshotFlow { renderedText to renderStreaming }
+        snapshotFlow { latestRenderedText.value to latestRenderStreaming.value }
             .conflate()
             .collect { (source, active) ->
-                // Parsing a growing table or long Markdown tail on the UI thread
-                // was the freeze. Keep one serial parser on Dispatchers.Default;
-                // conflate intermediate token snapshots rather than building a
-                // backlog the renderer can never display.
+                // Keep parsing serial and off the UI thread. Conflation drops
+                // obsolete token snapshots while guaranteeing that the newest
+                // table state and any Markdown after it are eventually applied.
                 blocks = withContext(Dispatchers.Default) {
                     incrementalParser.update(source, active)
                 }

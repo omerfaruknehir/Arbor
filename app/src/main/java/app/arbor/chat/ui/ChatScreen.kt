@@ -187,7 +187,9 @@ internal fun calculateAutoFollowStepPx(
     maxSpeedPxPerSecond: Float,
 ): Float {
     if (distancePx <= 0f || frameSeconds <= 0f || maxSpeedPxPerSecond <= 0f) return 0f
-    val response = 1f - exp(-6f * frameSeconds)
+    // A critically damped catch-up curve: quick enough to stay attached to a
+    // fast response, but still proportional near the target so it does not snap.
+    val response = 1f - exp(-10f * frameSeconds)
     val easedStep = (distancePx * response).coerceAtLeast(min(0.75f, distancePx))
     return min(distancePx, min(easedStep, maxSpeedPxPerSecond * frameSeconds))
 }
@@ -268,8 +270,8 @@ private data class WorkingCardViewportController(
 internal fun calculateVisibleChatViewportEndPx(viewportEndPx: Int, obscuredBottomPx: Int): Int =
     (viewportEndPx - obscuredBottomPx.coerceAtLeast(0)).coerceAtLeast(0)
 
-private const val ChatFollowMaxSpeedPxPerSecond = 900f
-private const val ChatFollowSeekSpeedPxPerSecond = 1_100f
+private const val ChatFollowMaxSpeedPxPerSecond = 2_800f
+private const val ChatFollowSeekSpeedPxPerSecond = 4_200f
 
 private suspend fun snapChatToBottom(
     state: androidx.compose.foundation.lazy.LazyListState,
