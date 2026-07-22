@@ -81,6 +81,77 @@ class ChatScrollMathTest {
         assertTrue(!shouldCenterCollapsedCard(400f, 900f))
     }
 
+
+    @Test
+    fun workingCardViewportAnchorMatchesInteractionAndCardPosition() {
+        assertEquals(
+            WorkingCardViewportAnchor.TOP,
+            chooseWorkingCardViewportAnchor(
+                manual = true,
+                followingLatest = true,
+                cardTopPx = 900f,
+                cardBottomPx = 1_200f,
+                viewportTopPx = 100f,
+                viewportBottomPx = 800f,
+            ),
+        )
+        assertEquals(
+            WorkingCardViewportAnchor.LATEST,
+            chooseWorkingCardViewportAnchor(
+                manual = false,
+                followingLatest = true,
+                cardTopPx = 200f,
+                cardBottomPx = 600f,
+                viewportTopPx = 100f,
+                viewportBottomPx = 800f,
+            ),
+        )
+        assertEquals(
+            WorkingCardViewportAnchor.BOTTOM,
+            chooseWorkingCardViewportAnchor(
+                manual = false,
+                followingLatest = false,
+                cardTopPx = -300f,
+                cardBottomPx = 80f,
+                viewportTopPx = 100f,
+                viewportBottomPx = 800f,
+            ),
+        )
+        assertEquals(
+            WorkingCardViewportAnchor.BOTTOM,
+            chooseWorkingCardViewportAnchor(
+                manual = false,
+                followingLatest = false,
+                cardTopPx = 50f,
+                cardBottomPx = 350f,
+                viewportTopPx = 100f,
+                viewportBottomPx = 800f,
+            ),
+        )
+        assertEquals(
+            WorkingCardViewportAnchor.TOP,
+            chooseWorkingCardViewportAnchor(
+                manual = false,
+                followingLatest = false,
+                cardTopPx = 250f,
+                cardBottomPx = 600f,
+                viewportTopPx = 100f,
+                viewportBottomPx = 800f,
+            ),
+        )
+        assertEquals(
+            WorkingCardViewportAnchor.NONE,
+            chooseWorkingCardViewportAnchor(
+                manual = false,
+                followingLatest = false,
+                cardTopPx = 850f,
+                cardBottomPx = 1_100f,
+                viewportTopPx = 100f,
+                viewportBottomPx = 800f,
+            ),
+        )
+    }
+
     @Test
     fun descendingPagingIsMappedToChronologicalUiOrder() {
         assertEquals(4, chronologicalSourceIndex(0, 5))
