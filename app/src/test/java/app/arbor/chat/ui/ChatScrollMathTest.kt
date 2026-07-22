@@ -96,4 +96,13 @@ class ChatScrollMathTest {
         assertEquals(1_000, calculateVisibleChatViewportEndPx(viewportEndPx = 1_000, obscuredBottomPx = -10))
     }
 
+    @Test
+    fun streamingAnchorRestoresOnlyUnexpectedUpwardRegression() {
+        assertTrue(shouldRestoreStreamingAnchor(previousItemIndex = 40, currentItemIndex = 0, userDragging = false))
+        assertTrue(shouldRestoreStreamingAnchor(previousItemIndex = 40, currentItemIndex = 38, userDragging = false))
+        assertTrue(!shouldRestoreStreamingAnchor(previousItemIndex = 40, currentItemIndex = 39, userDragging = false))
+        assertTrue(!shouldRestoreStreamingAnchor(previousItemIndex = 40, currentItemIndex = 0, userDragging = true))
+        assertTrue(!shouldRestoreStreamingAnchor(previousItemIndex = 40, currentItemIndex = 45, userDragging = false))
+    }
+
 }

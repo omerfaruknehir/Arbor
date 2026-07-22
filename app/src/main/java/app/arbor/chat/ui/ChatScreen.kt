@@ -261,6 +261,23 @@ internal fun chronologicalUiIndex(sourceIndex: Int, itemCount: Int): Int =
 
 private enum class ChatFollowMode { FOLLOWING, DETACHED }
 
+private data class StreamingScrollAnchor(
+    val messageNodeId: String,
+    val itemIndex: Int,
+    val scrollOffsetPx: Int,
+)
+
+private class StreamingScrollAnchorTracker {
+    var anchor: StreamingScrollAnchor? = null
+    var missingAnchorFrames: Int = 0
+}
+
+internal fun shouldRestoreStreamingAnchor(
+    previousItemIndex: Int,
+    currentItemIndex: Int,
+    userDragging: Boolean,
+): Boolean = !userDragging && currentItemIndex < previousItemIndex - 1
+
 internal fun calculateViewportCorrectionDeltaPx(
     currentScreenOffsetPx: Int,
     anchoredScreenOffsetPx: Int,
@@ -367,6 +384,8 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     var messageBottomInsetPx by remember(conversation?.id) { mutableStateOf(0) }
     val messageViewportBoundsState = rememberUpdatedState(messageViewportBounds)
     var searchFocusHandled by remember(conversation?.id, focusedMessageNodeId) { mutableStateOf(false) }
+    val streamingAnchorTracker = remember(conversation?.id) { StreamingScrollAnchorTracker() }
+    val stableMessageKeysByUiIndex = remember(conversation?.id) { mutableMapOf<Int, String>() }
 
     val beginManualCardInteraction = remember(conversation?.id) {
         {
@@ -437,6 +456,9 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         followMode = ChatFollowMode.FOLLOWING
         manualFollowHold = false
         initialPositioned = false
+        streamingAnchorTracker.anchor = null
+        streamingAnchorTracker.missingAnchorFrames = 0
+        stableMessageKeysByUiIndex.clear()
         topAppBarState.contentOffset = 0f
         topAppBarState.heightOffset = 0f
 
@@ -464,6 +486,8 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         if (generating && initialPositioned) {
             manualFollowHold = false
             followMode = ChatFollowMode.FOLLOWING
+            streamingAnchorTracker.anchor = null
+            streamingAnchorTracker.missingAnchorFrames = 0
         }
     }
 
@@ -502,7 +526,60 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             val layout = messageListState.layoutInfo
             val lastIndex = layout.totalItemsCount - 1
             if (lastIndex < 0) continue
+            val firstVisible = layout.visibleItemsInfo.firstOrNull()
             val lastVisible = layout.visibleItemsInfo.lastOrNull()
+
+            // Room invalidates the PagingSource whenever the streamed message is
+            // updated. In a narrow refresh window LazyColumn can temporarily lose
+            // its key anchor and report item 0, even though neither the user nor
+            // the follower requested an upward scroll. Preserve the last visible
+            // message key and immediately restore it before continuing downward.
+            val previousAnchor = streamingAnchorTracker.anchor
+            val currentFirstIndex = firstVisible?.index ?: messageListState.firstVisibleItemIndex
+            if (
+                generating &&
+                previousAnchor != null &&
+                shouldRestoreStreamingAnchor(
+                    previousItemIndex = previousAnchor.itemIndex,
+                    currentItemIndex = currentFirstIndex,
+                    userDragging = userDraggingMessageList,
+                )
+            ) {
+                val currentItems = paging.itemSnapshotList.items
+                val sourceIndex = currentItems.indexOfFirst { it.nodeId == previousAnchor.messageNodeId }
+                if (sourceIndex >= 0) {
+                    val targetUiIndex = chronologicalUiIndex(sourceIndex, currentItems.size)
+                    if (targetUiIndex in 0 until layout.totalItemsCount) {
+                        messageListState.scrollToItem(
+                            targetUiIndex,
+                            previousAnchor.scrollOffsetPx.coerceAtLeast(0),
+                        )
+                        streamingAnchorTracker.missingAnchorFrames = 0
+                        withFrameNanos { }
+                        continue
+                    }
+                } else {
+                    streamingAnchorTracker.missingAnchorFrames++
+                    if (streamingAnchorTracker.missingAnchorFrames > 20) {
+                        streamingAnchorTracker.anchor = null
+                        streamingAnchorTracker.missingAnchorFrames = 0
+                    }
+                }
+            }
+
+            val currentFirstKey = firstVisible?.key as? String
+            if (
+                currentFirstKey != null &&
+                !currentFirstKey.startsWith("loading-") &&
+                (previousAnchor == null || currentFirstIndex >= previousAnchor.itemIndex - 1)
+            ) {
+                streamingAnchorTracker.anchor = StreamingScrollAnchor(
+                    messageNodeId = currentFirstKey,
+                    itemIndex = currentFirstIndex,
+                    scrollOffsetPx = messageListState.firstVisibleItemScrollOffset,
+                )
+                streamingAnchorTracker.missingAnchorFrames = 0
+            }
 
             if (lastVisible == null || lastVisible.index < lastIndex) {
                 // Accelerate non-linearly while the tail is still off-screen. The
@@ -655,6 +732,15 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         LaunchedEffect(measuredMessageBottomInsetPx) {
             messageBottomInsetPx = measuredMessageBottomInsetPx
         }
+        val currentPagingSnapshot = paging.itemSnapshotList.items
+        currentPagingSnapshot.forEachIndexed { sourceIndex, message ->
+            stableMessageKeysByUiIndex[
+                chronologicalUiIndex(sourceIndex, currentPagingSnapshot.size)
+            ] = message.nodeId
+        }
+        if (!generating && currentPagingSnapshot.isNotEmpty()) {
+            stableMessageKeysByUiIndex.keys.removeAll { it !in currentPagingSnapshot.indices }
+        }
         Box(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxSize().arborBackdropSource(blurState)) {
                 if (paging.itemCount == 0 && recoverable.isEmpty()) {
@@ -686,7 +772,10 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         count = paging.itemCount,
                         key = { uiIndex ->
                             val sourceIndex = chronologicalSourceIndex(uiIndex, paging.itemCount)
-                            paging.peek(sourceIndex)?.nodeId ?: "loading-$uiIndex"
+                            paging.peek(sourceIndex)?.nodeId
+                                ?.also { stableMessageKeysByUiIndex[uiIndex] = it }
+                                ?: stableMessageKeysByUiIndex[uiIndex]
+                                ?: "loading-${conversation?.id.orEmpty()}-$uiIndex"
                         },
                         contentType = { uiIndex ->
                             val sourceIndex = chronologicalSourceIndex(uiIndex, paging.itemCount)

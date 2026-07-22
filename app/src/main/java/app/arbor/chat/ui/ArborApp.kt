@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -21,8 +23,67 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+
+internal fun shouldOpenDrawerFromEdgeSwipe(
+    startX: Float,
+    edgeWidthPx: Float,
+    totalDragX: Float,
+    totalDragY: Float,
+    triggerDistancePx: Float,
+): Boolean =
+    startX <= edgeWidthPx &&
+        totalDragX >= triggerDistancePx &&
+        totalDragX > abs(totalDragY) * 1.05f
+
+private fun Modifier.edgeSwipeToOpenDrawer(
+    enabled: Boolean,
+    edgeWidthPx: Float,
+    triggerDistancePx: Float,
+    onOpen: () -> Unit,
+): Modifier {
+    if (!enabled) return this
+    return pointerInput(edgeWidthPx, triggerDistancePx) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            if (down.position.x > edgeWidthPx) return@awaitEachGesture
+
+            val pointerId = down.id
+            var totalDragX = 0f
+            var totalDragY = 0f
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == pointerId } ?: break
+                if (!change.pressed) break
+
+                totalDragX += change.position.x - change.previousPosition.x
+                totalDragY += change.position.y - change.previousPosition.y
+
+                if (
+                    shouldOpenDrawerFromEdgeSwipe(
+                        startX = down.position.x,
+                        edgeWidthPx = edgeWidthPx,
+                        totalDragX = totalDragX,
+                        totalDragY = totalDragY,
+                        triggerDistancePx = triggerDistancePx,
+                    )
+                ) {
+                    change.consume()
+                    onOpen()
+                    break
+                }
+
+                // Give clearly vertical edge gestures back to the current list.
+                if (abs(totalDragY) > triggerDistancePx * 1.5f && abs(totalDragY) > abs(totalDragX)) break
+                if (totalDragX < -triggerDistancePx) break
+            }
+        }
+    }
+}
 
 @Composable
 fun ArborApp(viewModel: ChatViewModel) {
@@ -60,6 +121,9 @@ fun ArborApp(viewModel: ChatViewModel) {
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 840.dp
+        val density = LocalDensity.current
+        val drawerEdgeWidthPx = with(density) { 56.dp.toPx() }
+        val drawerOpenTriggerPx = with(density) { 10.dp.toPx() }
         val screenContent: @Composable (Screen) -> Unit = { destination ->
             when (destination) {
                 Screen.CHAT -> ChatScreen(viewModel, if (wide) null else openDrawer)
@@ -108,11 +172,17 @@ fun ArborApp(viewModel: ChatViewModel) {
             }
         } else {
             ModalNavigationDrawer(
+                modifier = Modifier.edgeSwipeToOpenDrawer(
+                    enabled = drawerState.isClosed,
+                    edgeWidthPx = drawerEdgeWidthPx,
+                    triggerDistancePx = drawerOpenTriggerPx,
+                    onOpen = openDrawer,
+                ),
                 drawerState = drawerState,
-                // Material's full-screen horizontal drag recognizer was winning
-                // diagonal vertical gestures in both the chat and drawer list.
-                // The menu button, scrim and Back remain available and reliable.
-                gesturesEnabled = false,
+                // Use Material's gesture only while the drawer is already open,
+                // so pull-to-close remains native. Opening is handled by a more
+                // sensitive edge-only recognizer that does not steal chat scrolls.
+                gesturesEnabled = drawerState.isOpen,
                 drawerContent = {
                     ModalDrawerSheet(drawerState = drawerState) {
                         ConversationSidebar(
