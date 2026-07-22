@@ -455,16 +455,15 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         }
     }
 
-    // A new immediate turn always reattaches follow mode. This is separate from
-    // the streaming loop because a user may have scrolled away before pressing
-    // Send; leaving the previous DETACHED state in place made auto-follow appear
-    // completely dead for the next response.
-    LaunchedEffect(generating, paging.itemCount, messageBottomInsetPx, initialPositioned) {
-        if (generating && initialPositioned && paging.itemCount > 0 && messageBottomInsetPx > 0) {
+    // Reattach follow mode when generation starts, but never hard-position the
+    // list here. paging.itemCount changes as tool/file/result cards are appended;
+    // snapping to lastIndex on each change briefly aligned that item at the top
+    // before the nonlinear follower moved back down. During generation, the
+    // frame-paced follower below is the sole owner of list movement.
+    LaunchedEffect(generating, initialPositioned) {
+        if (generating && initialPositioned) {
             manualFollowHold = false
             followMode = ChatFollowMode.FOLLOWING
-            withFrameNanos { }
-            snapChatToBottom(messageListState, paging.itemCount - 1, messageBottomInsetPx)
         }
     }
 

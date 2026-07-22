@@ -1,3 +1,9 @@
+# Arbor 0.16.58
+
+- Fixed random jumps to the top of a newly appended streaming item followed by a scroll back down.
+- Removed hard list positioning from the active-generation reattachment path.
+- Kept nonlinear auto-follow as the only streaming scroll controller.
+
 # Arbor 0.16.57
 
 - Replaced constant-velocity off-screen auto-follow with distance- and time-sensitive exponential acceleration.
