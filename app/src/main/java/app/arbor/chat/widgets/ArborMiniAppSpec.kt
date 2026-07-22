@@ -66,11 +66,11 @@ data class ArborMiniAppAction(
 
 object ArborMiniAppParser {
     private val json = Json { ignoreUnknownKeys = true }
-    private val componentTypes = setOf(
+    val supportedComponentTypes: Set<String> = setOf(
         "text", "metric", "input", "slider", "toggle", "choice", "buttons", "progress",
         "list", "table", "chart", "timer", "divider", "spacer",
     )
-    private val operations = setOf(
+    val supportedOperations: Set<String> = setOf(
         "set", "add", "multiply", "toggle", "append", "backspace", "evaluate", "navigate",
         "reset", "refresh", "submit", "timer_start", "timer_pause", "timer_reset",
     )
@@ -113,7 +113,7 @@ object ArborMiniAppParser {
 
     private fun parseComponent(component: JsonObject, fallbackId: String): ArborMiniAppComponent {
         val type = component.string("type").lowercase().ifBlank { "text" }
-        require(type in componentTypes) { "Unsupported mini-app component: $type" }
+        require(type in supportedComponentTypes) { "Unsupported mini-app component: $type" }
         val min = component.number("min", 0.0)
         val rawOptions = component.stringList("options")
         require(rawOptions.size <= 24) { "Mini-app choices support at most 24 options" }
@@ -165,7 +165,7 @@ object ArborMiniAppParser {
         require(raw.size <= 8) { "A mini-app control supports at most 8 actions" }
         return raw.map { action ->
             val operation = action.string("operation").lowercase()
-            require(operation in operations) { "Unsupported mini-app action: $operation" }
+            require(operation in supportedOperations) { "Unsupported mini-app action: $operation" }
             ArborMiniAppAction(
                 operation = operation,
                 target = action.safeId("target", "").takeIf { action.string("target").isNotBlank() }.orEmpty(),

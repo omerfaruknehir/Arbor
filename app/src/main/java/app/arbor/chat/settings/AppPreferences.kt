@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 enum class ColorPalette { ARBOR, SYSTEM, GRAPHITE }
 
-const val ARBOR_CORE_PROMPT_REVISION = "0.16.16"
+const val ARBOR_CORE_PROMPT_REVISION = "0.17.0"
 
 val DEFAULT_ARBOR_SYSTEM_PROMPT = """
 You are Arbor, a capable assistant running inside a native Android BYOK workspace.
@@ -95,6 +95,7 @@ class AppPreferences(context: Context) {
     private val _chromeBlurEnabled = MutableStateFlow(preferences.getBoolean(KEY_CHROME_BLUR_ENABLED, true))
     private val _chromeBlurStrength = MutableStateFlow(preferences.getFloat(KEY_CHROME_BLUR_STRENGTH, 0.7f).coerceIn(0f, 1f))
     private val _newChatDefaults = MutableStateFlow(readNewChatDefaults())
+    private val _generatedRepairMaxAttempts = MutableStateFlow(preferences.getInt(KEY_GENERATED_REPAIR_ATTEMPTS, 3).coerceIn(1, 5))
 
     val amoled: StateFlow<Boolean> = _amoled.asStateFlow()
     val palette: StateFlow<ColorPalette> = _palette.asStateFlow()
@@ -102,6 +103,7 @@ class AppPreferences(context: Context) {
     val chromeBlurEnabled: StateFlow<Boolean> = _chromeBlurEnabled.asStateFlow()
     val chromeBlurStrength: StateFlow<Float> = _chromeBlurStrength.asStateFlow()
     val newChatDefaults: StateFlow<NewChatDefaults> = _newChatDefaults.asStateFlow()
+    val generatedRepairMaxAttempts: StateFlow<Int> = _generatedRepairMaxAttempts.asStateFlow()
     val hasNewChatDefaults: Boolean get() = preferences.getBoolean(KEY_DEFAULTS_INITIALIZED, false)
 
     fun setAmoled(enabled: Boolean) {
@@ -128,6 +130,12 @@ class AppPreferences(context: Context) {
         val normalized = value.coerceIn(0f, 1f)
         _chromeBlurStrength.value = normalized
         preferences.edit { putFloat(KEY_CHROME_BLUR_STRENGTH, normalized) }
+    }
+
+    fun setGeneratedRepairMaxAttempts(value: Int) {
+        val normalized = value.coerceIn(1, 5)
+        _generatedRepairMaxAttempts.value = normalized
+        preferences.edit { putInt(KEY_GENERATED_REPAIR_ATTEMPTS, normalized) }
     }
 
     fun setNewChatDefaults(value: NewChatDefaults) {
@@ -210,5 +218,6 @@ class AppPreferences(context: Context) {
         const val KEY_DEFAULT_DEEP_RESEARCH = "new_chat_deep_research"
         const val KEY_DEFAULT_HYBRID_COUNTING = "new_chat_hybrid_counting"
         const val KEY_DEFAULTS_INITIALIZED = "new_chat_defaults_initialized"
+        const val KEY_GENERATED_REPAIR_ATTEMPTS = "generated_repair_max_attempts"
     }
 }

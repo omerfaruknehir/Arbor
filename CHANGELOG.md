@@ -1,3 +1,14 @@
+# Arbor 0.17.0
+
+- Make pull-to-open available from anywhere in the chat surface after a deliberate 6 dp horizontal movement, with tolerant accumulated-motion arbitration, a 30% settle threshold, and an 850 dp/s fling threshold. The starting touch location no longer gates the gesture, and crossing the movement threshold never triggers an independent open animation.
+- Restore chat chrome blur activation to the actual list scroll position instead of the independently collapsed header state, and add modest extra top and bottom chat gutters for more comfortable end-of-list scrolling.
+- Replace threshold-triggered drawer opening with one continuously finger-tracked offset, edge/vertical gesture arbitration, velocity-aware spring settling, interactive close, scrim tap, Back, and hamburger control.
+- Persist every agent Python/Linux script and attempt under its conversation workspace; add bounded `workspace_read`, atomic SHA-guarded `apply_patch`, and source-free `rerun_script` tools with compact failure diagnostics.
+- Add the authoritative generated-content capability registry and inject its compact contract into every model request, with relevant exact schemas/examples only for widget, chart, or diagram intent.
+- Validate completed generated blocks through recognition, syntax, schema, semantic, security/limits, and renderer preparation, then repair only an invalid block in place with a persisted one-to-five-attempt cycle.
+- Preserve the Room schema at version 13; no destructive migration or data reset is required.
+- Add deterministic regression coverage for drawer physics/arbitration, run revisions and atomic patches, capability consistency, repair retry/exhaustion/persistence, and ordered streaming content.
+
 # Arbor 0.16.60
 
 - Stabilize the chat viewport through every Working-card expansion and collapse instead of correcting only after a manual collapse.

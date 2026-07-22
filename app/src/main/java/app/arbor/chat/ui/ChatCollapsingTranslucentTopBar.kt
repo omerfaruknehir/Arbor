@@ -42,6 +42,7 @@ fun ChatCollapsingTranslucentTopBar(
     blurState: ArborBackdropBlurState,
     blurEnabled: Boolean = true,
     blurStrength: Float = 0.7f,
+    blurProgress: Float = scrollBehavior.state.collapsedFraction,
 ) {
     val collapse = scrollBehavior.state.collapsedFraction.coerceIn(0f, 1f)
     val travel = arborBlurProgress(collapse)
@@ -53,7 +54,7 @@ fun ChatCollapsingTranslucentTopBar(
             .arborBackdropBlur(
                 state = blurState,
                 enabled = blurEnabled,
-                progress = collapse,
+                progress = blurProgress,
                 strength = blurStrength,
                 tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
                 fadeDistance = 76.dp,

@@ -291,8 +291,13 @@ class GenerationWorker(
             val normalizedTool = request.type.lowercase()
             val presentation = toolCallPresentation(request.type, argumentsJson)
             val label = presentation.runningLabel
-            val input = (request.query ?: request.url ?: request.command ?: request.code ?: request.path).orEmpty().take(4_000)
-            val priorExecution = traces.lastOrNull { it.type.equals(request.type, ignoreCase = true) && it.input == input }
+            val input = (request.query ?: request.url ?: request.command ?: request.code ?: request.unifiedDiff ?: request.runId ?: request.path)
+                .orEmpty().take(4_000)
+            // rerun_script is the explicit, source-free replay operation. Other
+            // identical tool calls retain Arbor's side-effect replay guard.
+            val priorExecution = if (normalizedTool == "rerun_script") null else traces.lastOrNull {
+                it.type.equals(request.type, ignoreCase = true) && it.input == input
+            }
             if (priorExecution != null) {
                 val priorOutput = when (priorExecution.status) {
                     "complete", "error" -> priorExecution.output
@@ -325,8 +330,9 @@ class GenerationWorker(
                 kind = when (normalizedTool) {
                     "web_search", "search" -> "search"
                     "web_fetch", "fetch" -> "fetch"
-                    "ubuntu", "ubuntu_exec", "linux", "linux_exec", "shell" -> "ubuntu"
+                    "python", "python_exec", "ubuntu", "ubuntu_exec", "linux", "linux_exec", "shell" -> "script"
                     "send_file", "file_send" -> "file_send"
+                    "workspace_read", "apply_patch", "rerun_script" -> "script"
                     else -> "python"
                 },
                 label = label,
@@ -341,24 +347,24 @@ class GenerationWorker(
             persistTimeline()
             setForeground(notification(label, indeterminate = true))
             val returnedFiles = mutableListOf<Triple<String, String, Long>>()
-            val (initialToolOutput, toolError) = try {
+            val (initialToolOutput, toolError, semanticError) = try {
                 val outcome = container.agentTools.execute(conversationId, request)
                 outcome.files.forEach { relativePath ->
                     container.attachmentStore.importWorkspaceOutput(conversationId, assistantId, relativePath)?.let { attachment ->
                         returnedFiles += Triple(attachment.id, attachment.displayName, attachment.createdAt)
                     }
                 }
-                outcome.output.take(MAX_TOOL_OUTPUT_CHARS) to null
+                Triple(outcome.output.take(MAX_TOOL_OUTPUT_CHARS), null, outcome.isError)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
-                "Tool error: ${error.message ?: error::class.java.simpleName}" to error
+                Triple("Tool error: ${error.message ?: error::class.java.simpleName}", error, true)
             }
             val toolOutput = if (normalizedTool in setOf("send_file", "file_send") && returnedFiles.isEmpty() && toolError == null) {
                 "$initialToolOutput\nFile delivery failed: the file could not be imported into Arbor's attachment store."
             } else initialToolOutput
             traces[traces.lastIndex] = event.copy(
-                status = if (toolError == null) "complete" else "error",
+                status = if (toolError == null && !semanticError) "complete" else "error",
                 output = toolOutput,
                 finishedAt = System.currentTimeMillis(),
             )
@@ -366,7 +372,7 @@ class GenerationWorker(
             val completedAt = traces.last().finishedAt
             val timelineIndex = timeline.indexOfLast { it.id == event.id }
             if (timelineIndex >= 0) timeline[timelineIndex] = timelineEvent.copy(
-                status = if (toolError == null) "complete" else "error",
+                status = if (toolError == null && !semanticError) "complete" else "error",
                 output = toolOutput,
                 finishedAt = completedAt,
             )
@@ -384,7 +390,7 @@ class GenerationWorker(
             }
             if (returnedFiles.isNotEmpty()) timelineDirty = true
             persistTimeline()
-            return ToolExecution(toolOutput, toolError != null, replayed = false)
+            return ToolExecution(toolOutput, toolError != null || semanticError, replayed = false)
         }
 
         suspend fun rejectPreparedToolCall(call: NativeToolCall, reason: String) {

@@ -82,6 +82,10 @@ import app.arbor.chat.sandbox.UbuntuExecutionResult
 import app.arbor.chat.sandbox.UbuntuPackageInstallResult
 import app.arbor.chat.widgets.ProgrammableWidgetBlock
 import app.arbor.chat.ArborApplication
+import app.arbor.chat.generated.GeneratedBlockRepairState
+import app.arbor.chat.generated.GeneratedBlockType
+import app.arbor.chat.generated.GeneratedContentCapabilityRegistry
+import app.arbor.chat.generated.GeneratedValidationError
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.latex.JLatexMathPlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
@@ -179,7 +183,7 @@ internal class IncrementalRichTextParser {
 }
 
 @Composable
-fun RichMessage(
+internal fun RichMessage(
     operationScope: String,
     text: String,
     streaming: Boolean = false,
@@ -191,6 +195,17 @@ fun RichMessage(
     onInstallUbuntuPackages: suspend (String, String, PackagePlan) -> UbuntuPackageInstallResult,
     onWidgetSubmit: (String) -> Unit,
     onReviewWidgetSecurity: suspend (String) -> String,
+    onRepairGeneratedBlock: suspend (
+        String,
+        String,
+        GeneratedBlockType,
+        String,
+        List<GeneratedValidationError>,
+        Boolean,
+        (GeneratedBlockRepairState) -> Unit,
+    ) -> GeneratedBlockRepairState,
+    onAcceptGeneratedEdit: suspend (GeneratedBlockRepairState, String) -> GeneratedBlockRepairState,
+    workingCardViewport: WorkingCardViewportController,
 ) {
     val context = LocalContext.current
     val crashReporter = (context.applicationContext as? ArborApplication)?.container?.crashReporter
@@ -323,10 +338,33 @@ fun RichMessage(
                         if (!block.complete) {
                             CodeBlock(block.language, block.code, onRunPython, onRunUbuntu, executable = false)
                         } else when (block.language.lowercase()) {
-                            "mermaid", "graph", "diagram", "dot", "graphviz" -> if (safeRendering) SafeGeneratedBlock("Diagram", block.code) { crashReporter?.setRenderSafeMode(false) } else NativeDiagramBlock(block.code)
-                            "chart", "arbor-chart", "bar-chart", "barchart", "line-chart", "pie-chart" -> if (safeRendering) SafeGeneratedBlock("Chart", block.code) { crashReporter?.setRenderSafeMode(false) } else NativeChartBlock(block.code)
-                            "arbor-ui", "ui", "arbor-form" -> ProgrammableWidgetBlock(block.code, onWidgetSubmit, onReviewWidgetSecurity, allowHomePinning = false)
-                            "arbor-widget", "widget" -> ProgrammableWidgetBlock(block.code, onWidgetSubmit, onReviewWidgetSecurity, allowHomePinning = true)
+                            "mermaid", "graph", "diagram", "dot", "graphviz",
+                            "chart", "arbor-chart", "bar-chart", "barchart", "line-chart", "pie-chart",
+                            "arbor-ui", "ui", "arbor-form", "arbor-widget", "widget" -> {
+                                val capability = checkNotNull(GeneratedContentCapabilityRegistry.capability(block.language))
+                                val preparationErrors = remember(block.code, capability.type) {
+                                    generatedPreparationErrors(capability.type, block.code)
+                                }
+                                RepairableGeneratedContent(
+                                    blockId = operationKey,
+                                    messageId = operationScope.substringBefore(':'),
+                                    type = capability.type,
+                                    source = block.code,
+                                    preparationErrors = preparationErrors,
+                                    repair = { blockId, messageId, type, source, errors, newCycle, progress ->
+                                        onRepairGeneratedBlock(blockId, messageId, type, source, errors, newCycle, progress)
+                                    },
+                                    acceptEdit = onAcceptGeneratedEdit,
+                                    workingCardViewport = workingCardViewport,
+                                ) { repaired ->
+                                    when (capability.type) {
+                                        GeneratedBlockType.DIAGRAM -> if (safeRendering) SafeGeneratedBlock("Diagram", repaired) { crashReporter?.setRenderSafeMode(false) } else NativeDiagramBlock(repaired)
+                                        GeneratedBlockType.CHART -> if (safeRendering) SafeGeneratedBlock("Chart", repaired) { crashReporter?.setRenderSafeMode(false) } else NativeChartBlock(repaired)
+                                        GeneratedBlockType.CHAT_UI -> ProgrammableWidgetBlock(repaired, onWidgetSubmit, onReviewWidgetSecurity, allowHomePinning = false)
+                                        GeneratedBlockType.HOME_WIDGET -> ProgrammableWidgetBlock(repaired, onWidgetSubmit, onReviewWidgetSecurity, allowHomePinning = true)
+                                    }
+                                }
+                            }
                             "python-requirements", "requirements", "pip" -> PackageRequestBlock(
                                 operationKey = operationKey,
                                 title = "Python package request",
@@ -369,6 +407,20 @@ fun RichMessage(
         StreamingTokenPulse(visible = streaming, modifier = Modifier.padding(top = 2.dp))
     }
 }
+
+internal fun generatedPreparationErrors(type: GeneratedBlockType, source: String): List<GeneratedValidationError> =
+    try {
+        when (type) {
+            GeneratedBlockType.DIAGRAM -> if (NativeDiagramParser.parse(source).nodes.isEmpty()) {
+                listOf(GeneratedValidationError("renderer_preparation", "/", "Diagram renderer found no supported nodes"))
+            } else emptyList()
+            // Widget and chart renderer inputs are fully prepared by their authoritative parsers.
+            GeneratedBlockType.CHAT_UI, GeneratedBlockType.HOME_WIDGET, GeneratedBlockType.CHART -> emptyList()
+        }
+    } catch (error: Throwable) {
+        if (error is CancellationException) throw error
+        listOf(GeneratedValidationError("renderer_preparation", "/", (error.message ?: error::class.java.simpleName).take(500)))
+    }
 
 @Composable
 private fun SafeGeneratedBlock(label: String, source: String, retry: () -> Unit) {

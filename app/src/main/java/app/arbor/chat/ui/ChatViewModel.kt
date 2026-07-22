@@ -42,7 +42,14 @@ import app.arbor.chat.sandbox.LinuxDistribution
 import app.arbor.chat.sandbox.UbuntuExecutionResult
 import app.arbor.chat.sandbox.UbuntuPackageInstallResult
 import app.arbor.chat.sandbox.UbuntuRuntimeStatus
+import app.arbor.chat.sandbox.ScriptRunMetadata
+import app.arbor.chat.sandbox.ScriptRunResult
+import app.arbor.chat.sandbox.WorkspaceReadResult
+import app.arbor.chat.agent.AgentToolRequest
 import app.arbor.chat.settings.NewChatDefaults
+import app.arbor.chat.generated.GeneratedBlockRepairState
+import app.arbor.chat.generated.GeneratedBlockType
+import app.arbor.chat.generated.GeneratedValidationError
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -86,6 +93,7 @@ data class LinuxRunState(
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModel(private val container: AppContainer, savedStateHandle: SavedStateHandle) : ViewModel() {
+    private val toolResultJson = Json { ignoreUnknownKeys = true }
     val conversations = container.repository.conversations.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val archivedConversations = container.repository.archivedConversations.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val projects = container.repository.projects.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -110,6 +118,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     val amoled: StateFlow<Boolean> = container.appPreferences.amoled
     val chromeBlurEnabled: StateFlow<Boolean> = container.appPreferences.chromeBlurEnabled
     val chromeBlurStrength: StateFlow<Float> = container.appPreferences.chromeBlurStrength
+    val generatedRepairMaxAttempts: StateFlow<Int> = container.appPreferences.generatedRepairMaxAttempts
     val palette = container.appPreferences.palette
     val themeMode = container.appPreferences.themeMode
     val newChatDefaults: StateFlow<NewChatDefaults> = container.appPreferences.newChatDefaults
@@ -588,6 +597,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     fun setThemeMode(value: app.arbor.chat.settings.ThemeMode) = container.appPreferences.setThemeMode(value)
     fun setChromeBlurEnabled(enabled: Boolean) = container.appPreferences.setChromeBlurEnabled(enabled)
     fun setChromeBlurStrength(value: Float) = container.appPreferences.setChromeBlurStrength(value)
+    fun setGeneratedRepairMaxAttempts(value: Int) = container.appPreferences.setGeneratedRepairMaxAttempts(value)
 
     fun clearContextSummary() = launchAction {
         val id = selectedConversationId.value
@@ -686,6 +696,48 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     suspend fun executeUbuntu(command: String, timeoutSeconds: Int = 180): UbuntuExecutionResult {
         val id = selectedConversationId.value ?: error("No conversation")
         return container.ubuntuRuntime.execute(id, command, timeoutSeconds)
+    }
+
+    suspend fun repairGeneratedBlock(
+        blockId: String,
+        messageId: String,
+        type: GeneratedBlockType,
+        source: String,
+        errors: List<GeneratedValidationError>,
+        newCycle: Boolean = false,
+        progress: (GeneratedBlockRepairState) -> Unit = {},
+    ): GeneratedBlockRepairState {
+        val conversationId = selectedConversationId.value ?: error("No conversation")
+        return container.generatedBlockRepairs.repair(
+            conversationId = conversationId,
+            messageId = messageId,
+            blockId = blockId,
+            type = type,
+            originalSource = source,
+            initialErrors = errors,
+            maxAttempts = generatedRepairMaxAttempts.value,
+            newCycle = newCycle,
+            progress = progress,
+        )
+    }
+
+    suspend fun acceptGeneratedBlockEdit(state: GeneratedBlockRepairState, source: String): GeneratedBlockRepairState =
+        container.generatedBlockRepairs.acceptManualEdit(state, source)
+
+    suspend fun rerunRecordedScript(runId: String, timeoutSeconds: Int? = null): ScriptRunResult {
+        val conversationId = selectedConversationId.value ?: error("No conversation")
+        val outcome = container.agentTools.execute(conversationId, AgentToolRequest("rerun_script", runId = runId, timeoutSeconds = timeoutSeconds))
+        return toolResultJson.decodeFromString(outcome.output)
+    }
+
+    suspend fun scriptRunMetadata(runId: String): ScriptRunMetadata {
+        val conversationId = selectedConversationId.value ?: error("No conversation")
+        return withContext(Dispatchers.IO) { container.runRecords.load(conversationId, runId) }
+    }
+
+    suspend fun readScriptSource(path: String): WorkspaceReadResult {
+        val conversationId = selectedConversationId.value ?: error("No conversation")
+        return withContext(Dispatchers.IO) { container.runRecords.readWorkspace(conversationId, path, 1, 500, 64_000) }
     }
 
     suspend fun reviewUbuntuPackages(packages: String): PackageReview {

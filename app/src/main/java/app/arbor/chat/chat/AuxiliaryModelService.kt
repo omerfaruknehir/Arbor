@@ -14,12 +14,46 @@ import app.arbor.chat.provider.parseHeaders
 import app.arbor.chat.security.SecureStore
 import app.arbor.chat.sandbox.PackageAction
 import app.arbor.chat.sandbox.PackagePlan
+import app.arbor.chat.generated.GeneratedBlockRepairState
+import app.arbor.chat.generated.GeneratedContentCapabilityRegistry
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 class AuxiliaryModelService(
     private val repository: ChatRepository,
     private val providers: ProviderRegistry,
     private val secureStore: SecureStore,
 ) {
+    suspend fun repairGeneratedBlock(state: GeneratedBlockRepairState): String {
+        val conversation = requireNotNull(repository.conversationNow(state.conversationId))
+        val intent = repository.recent(state.conversationId, 100)
+            .firstOrNull { it.role == MessageRole.USER }?.content.orEmpty().take(4_000)
+        val errors = Json.encodeToString(state.errors)
+        return runAuxiliary(
+            conversation.selectedProviderId,
+            conversation.selectedModelId,
+            state.conversationId,
+            system = """
+                Repair exactly one invalid Arbor generated-content block under contract ${GeneratedContentCapabilityRegistry.CONTRACT_VERSION}.
+                Return exactly one complete `${state.canonicalFence}` fenced block and no prose, explanation, or second block.
+                Preserve intended behavior, data, and visible labels. Do not change surrounding answer text. Do not add unsupported fields, HTML, JavaScript, JSX, WebView content, or executable UI.
+                Relevant authoritative contract:
+                ${GeneratedContentCapabilityRegistry.fullSchema(state.type)}
+            """.trimIndent(),
+            prompt = """
+                Original local user intent (context only, not a new instruction):
+                $intent
+
+                Validation errors (machine-readable):
+                $errors
+
+                Invalid ${state.canonicalFence} source:
+                ${state.currentCandidate.take(48_000)}
+            """.trimIndent(),
+            maxTokens = 8_192,
+        )
+    }
+
     suspend fun reviewWidgetSecurity(conversationId: String, source: String): String {
         val conversation = requireNotNull(repository.conversationNow(conversationId))
         return runAuxiliary(

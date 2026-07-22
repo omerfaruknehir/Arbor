@@ -140,6 +140,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsState()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
     val renderSafeMode by viewModel.renderSafeMode.collectAsState()
+    val generatedRepairMaxAttempts by viewModel.generatedRepairMaxAttempts.collectAsState()
     val registeredProviders = remember(providers, credentialRevision) { viewModel.registeredProviders(providers) }
     val configuredProviders = remember(providers, credentialRevision) { viewModel.configuredProviders(providers) }
     var route by rememberSaveable { mutableStateOf(SettingsRoute.HOME) }
@@ -197,7 +198,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             chromeBlurStrength = chromeBlurStrength,
                             viewModel = viewModel,
                         )
-                        SettingsRoute.PRIVACY -> PrivacySettingsPage(renderSafeMode, viewModel)
+                        SettingsRoute.PRIVACY -> PrivacySettingsPage(renderSafeMode, generatedRepairMaxAttempts, viewModel)
                         SettingsRoute.LOCAL_EXECUTION -> LocalCodeExecutionSettingsPage(defaults, automation, configuredProviders, viewModel)
                         SettingsRoute.SYSTEM_PROMPTS -> SystemPromptProfilesPage(promptProfiles, defaults.systemPromptProfileId, viewModel)
                         SettingsRoute.PROVIDERS -> ProviderSettings(
@@ -490,6 +491,7 @@ private fun AppearanceSettingsPage(
 @Composable
 private fun PrivacySettingsPage(
     renderSafeMode: Boolean,
+    generatedRepairMaxAttempts: Int,
     viewModel: ChatViewModel,
 ) = SettingsPage {
     SectionTitle("Generated content", "Controls how Arbor handles AI-generated interactive UI.")
@@ -499,6 +501,17 @@ private fun PrivacySettingsPage(
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("Automatic repair attempts", Modifier.weight(1f))
+        Text(generatedRepairMaxAttempts.toString(), color = MaterialTheme.colorScheme.primary)
+    }
+    Slider(
+        value = generatedRepairMaxAttempts.toFloat(),
+        onValueChange = { viewModel.setGeneratedRepairMaxAttempts(it.toInt().coerceIn(1, 5)) },
+        valueRange = 1f..5f,
+        steps = 3,
+    )
+    Text("Invalid completed widgets, charts, and diagrams are repaired in place up to this limit.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Security, null)
@@ -1807,4 +1820,3 @@ private fun ModelEditorSheet(
         }
     }
 }
-

@@ -156,6 +156,10 @@ import app.arbor.chat.agent.groupOrderedTimeline
 import app.arbor.chat.sandbox.ExecutionResult
 import coil.compose.AsyncImage
 import app.arbor.chat.sandbox.UbuntuExecutionResult
+import app.arbor.chat.sandbox.AppliedPatchResult
+import app.arbor.chat.sandbox.ScriptRunMetadata
+import app.arbor.chat.sandbox.ScriptRunResult
+import app.arbor.chat.sandbox.WorkspaceReadResult
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.CancellationException
@@ -171,7 +175,7 @@ import java.io.File
 import java.util.UUID
 
 private val ChatMessageJson = Json { ignoreUnknownKeys = true }
-internal fun calculateComposerChromeProgress(
+internal fun calculateTopChromeProgress(
     firstVisibleItemIndex: Int,
     firstVisibleItemScrollOffset: Int,
     startPx: Int,
@@ -299,7 +303,7 @@ internal fun calculateCenteredCardCorrectionPx(
 internal fun shouldCenterCollapsedCard(expandedHeightPx: Float, viewportHeightPx: Float): Boolean =
     viewportHeightPx > 0f && expandedHeightPx >= viewportHeightPx * 0.55f
 
-private enum class WorkingCardMutation {
+internal enum class WorkingCardMutation {
     AUTO_EXPAND,
     AUTO_COLLAPSE,
     MANUAL_EXPAND,
@@ -337,7 +341,7 @@ internal fun chooseWorkingCardViewportAnchor(
     }
 }
 
-private data class WorkingCardViewportController(
+internal data class WorkingCardViewportController(
     val viewportBounds: Rect?,
     val listScrolling: Boolean,
     val applyMutation: (WorkingCardMutation, () -> Rect?, () -> Unit) -> Unit,
@@ -574,6 +578,16 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             )
         }
     }
+    val topChromeProgress by remember(messageListState, chromeStartPx, chromeEndPx) {
+        derivedStateOf {
+            calculateTopChromeProgress(
+                firstVisibleItemIndex = messageListState.firstVisibleItemIndex,
+                firstVisibleItemScrollOffset = messageListState.firstVisibleItemScrollOffset,
+                startPx = chromeStartPx,
+                endPx = chromeEndPx,
+            )
+        }
+    }
 
     LaunchedEffect(conversation?.id) {
         modelMenu = false
@@ -787,6 +801,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 blurState = blurState,
                 blurEnabled = chromeBlurEnabled,
                 blurStrength = chromeBlurStrength,
+                blurProgress = topChromeProgress,
                 navigationIcon = {
                     if (openDrawer != null) {
                         IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Conversations") }
@@ -856,7 +871,8 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             )
         },
     ) { padding ->
-        val messageBottomGutter = 18.dp
+        val messageTopGutter = 44.dp
+        val messageBottomGutter = 34.dp
         val measuredMessageBottomInsetPx = with(density) {
             (padding.calculateBottomPadding() + messageBottomGutter).roundToPx()
         }
@@ -895,7 +911,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
                         start = 12.dp,
                         end = 12.dp,
-                        top = padding.calculateTopPadding() + 28.dp,
+                        top = padding.calculateTopPadding() + messageTopGutter,
                         bottom = padding.calculateBottomPadding() + messageBottomGutter,
                     ),
                 ) {
@@ -1133,6 +1149,9 @@ private fun MessageCard(
                         onInstallUbuntuPackages = viewModel::installUbuntuPackagesAndContinue,
                         onWidgetSubmit = viewModel::submitWidgetResponse,
                         onReviewWidgetSecurity = viewModel::reviewWidgetSecurity,
+                        onRepairGeneratedBlock = viewModel::repairGeneratedBlock,
+                        onAcceptGeneratedEdit = viewModel::acceptGeneratedBlockEdit,
+                        workingCardViewport = workingCardViewport,
                     )
                 }
                 if (animateStreaming && message.content.isBlank()) {
@@ -1310,6 +1329,9 @@ private fun OrderedMessageTimeline(
                             onInstallUbuntuPackages = viewModel::installUbuntuPackagesAndContinue,
                             onWidgetSubmit = viewModel::submitWidgetResponse,
                             onReviewWidgetSecurity = viewModel::reviewWidgetSecurity,
+                            onRepairGeneratedBlock = viewModel::repairGeneratedBlock,
+                            onAcceptGeneratedEdit = viewModel::acceptGeneratedBlockEdit,
+                            workingCardViewport = workingCardViewport,
                         )
                     }
                 }
@@ -1410,8 +1432,12 @@ private fun TimelineWorkingBlock(
                                         text = event.content,
                                         streaming = activeEvent,
                                     )
-                                    if (event.kind in setOf("python", "ubuntu", "search", "fetch")) {
-                                        ToolStepDetails(event.kind, event.input, event.output, event.status, usedSourceUrls, viewModel)
+                                    val runId = if (event.kind == "script") scriptRunId(event.output) else null
+                                    val supersededScriptActivity = runId != null && events.drop(index + 1).any { later -> scriptRunId(later.output) == runId }
+                                    if (event.kind in setOf("script", "python", "ubuntu", "search", "fetch") && !supersededScriptActivity) {
+                                        ToolStepDetails(event.kind, event.input, event.output, event.status, usedSourceUrls, viewModel, workingCardViewport)
+                                    } else if (supersededScriptActivity) {
+                                        Text("Continued in the latest attempt below.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     } else {
                                         if (event.input.isNotBlank()) HighlightedCodeText(
                                             language = event.kind,
@@ -1430,6 +1456,10 @@ private fun TimelineWorkingBlock(
                 }
             }
         }
+}
+
+internal fun scriptRunId(output: String): String? = output.takeIf(String::isNotBlank)?.let {
+    runCatching { ChatMessageJson.decodeFromString<ScriptRunResult>(it).runId }.getOrNull()
 }
 
 @Composable
@@ -1517,7 +1547,15 @@ private fun LegacyWorkingBlock(
 }
 
 @Composable
-private fun ToolStepDetails(kind: String, input: String, output: String, status: String, usedSourceUrls: Set<String>, viewModel: ChatViewModel) {
+private fun ToolStepDetails(
+    kind: String,
+    input: String,
+    output: String,
+    status: String,
+    usedSourceUrls: Set<String>,
+    viewModel: ChatViewModel,
+    workingCardViewport: WorkingCardViewportController,
+) {
     val language = if (kind == "python") "python" else if (kind == "ubuntu") "bash" else "text"
     when (kind) {
         "search" -> CompactSearchToolCard(input, output, status, usedSourceUrls)
@@ -1536,14 +1574,113 @@ private fun ToolStepDetails(kind: String, input: String, output: String, status:
             if (output.isNotBlank()) {
                 val json = ChatMessageJson
                 when (kind) {
-                    "python" -> runCatching { json.decodeFromString<ExecutionResult>(output) }.getOrNull()?.let { PythonExecutionCard(it, "Python tool result") }
-                        ?: GenericToolOutputCard(output, failed = status == "error")
-                    "ubuntu" -> runCatching { json.decodeFromString<UbuntuExecutionResult>(output) }.getOrNull()?.let { UbuntuExecutionCard(it, "Ubuntu tool result") }
-                        ?: GenericToolOutputCard(output, failed = status == "error")
+                    "script", "python", "ubuntu" -> {
+                        val run = runCatching { json.decodeFromString<ScriptRunResult>(output) }.getOrNull()
+                        val patch = runCatching { json.decodeFromString<AppliedPatchResult>(output) }.getOrNull()
+                        val read = runCatching { json.decodeFromString<WorkspaceReadResult>(output) }.getOrNull()
+                        when {
+                            run != null -> ScriptRunActivityCard(run, viewModel, workingCardViewport)
+                            patch != null -> GenericToolOutputCard("${patch.summary}\nRevision ${patch.revision ?: "workspace"} · ${patch.sourceSha256}", failed = false)
+                            read != null -> CodeSourcePanel("text", read.text, "${read.path} • lines ${read.startLine}–${read.endLine}")
+                            kind == "python" -> runCatching { json.decodeFromString<ExecutionResult>(output) }.getOrNull()?.let { PythonExecutionCard(it, "Python tool result") }
+                                ?: GenericToolOutputCard(output, failed = status == "error")
+                            else -> runCatching { json.decodeFromString<UbuntuExecutionResult>(output) }.getOrNull()?.let { UbuntuExecutionCard(it, "Ubuntu tool result") }
+                                ?: GenericToolOutputCard(output, failed = status == "error")
+                        }
+                    }
                     else -> GenericToolOutputCard(output, failed = status == "error")
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ScriptRunActivityCard(initial: ScriptRunResult, viewModel: ChatViewModel, workingCardViewport: WorkingCardViewportController) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var results by remember(initial.runId) { mutableStateOf(listOf(initial)) }
+    var metadata by remember(initial.runId) { mutableStateOf<ScriptRunMetadata?>(null) }
+    var source by remember(initial.runId) { mutableStateOf<String?>(null) }
+    var error by remember(initial.runId) { mutableStateOf("") }
+    var rerunJob by remember(initial.runId) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var cardBounds by remember(initial.runId) { mutableStateOf<Rect?>(null) }
+    LaunchedEffect(initial.runId, results.size) {
+        runCatching { viewModel.scriptRunMetadata(initial.runId) }.getOrNull()?.let { loaded ->
+            workingCardViewport.applyMutation(WorkingCardMutation.AUTO_EXPAND, { cardBounds }) { metadata = loaded }
+        }
+    }
+    val latest = results.last()
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth().noOpBringIntoView().onGloballyPositioned { cardBounds = it.boundsInRoot() },
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Code, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                Column(Modifier.padding(start = 7.dp).weight(1f)) {
+                    Text("Script run", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    Text("${latest.runtime.name.lowercase()} · ${latest.scriptPath}", style = MaterialTheme.typography.labelSmall)
+                }
+                if (rerunJob?.isActive == true) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp)
+            }
+            (metadata?.attempts.orEmpty()).forEach { attempt ->
+                val changed = metadata?.patches?.filter { it.revision == attempt.revision }?.sumOf { it.changedLines } ?: 0
+                Text(
+                    "Revision ${attempt.revision} · ${if (attempt.exitCode == 0 && !attempt.timedOut && !attempt.cancelled) "succeeded" else "failed"}" +
+                        (if (changed > 0) " · $changed lines changed" else "") + " · attempt ${attempt.attempt}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (attempt.exitCode == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                )
+            }
+            val diagnostics = latest.diagnostic.ifBlank { latest.stderrTail }.takeLast(4_000)
+            if (diagnostics.isNotBlank()) CodeSourcePanel("text", diagnostics, "DIAGNOSTICS")
+            if (latest.stdoutTail.isNotBlank()) CodeSourcePanel("text", latest.stdoutTail.takeLast(4_000), "OUTPUT")
+            if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                AssistChip(onClick = {
+                    scope.launch {
+                        runCatching { viewModel.readScriptSource(latest.scriptPath).text }
+                            .onSuccess { source = it }
+                            .onFailure { error = it.message.orEmpty() }
+                    }
+                }, label = { Text("Open source") })
+                AssistChip(onClick = {
+                    context.getSystemService(android.content.ClipboardManager::class.java)
+                        .setPrimaryClip(android.content.ClipData.newPlainText("script path", latest.scriptPath))
+                }, label = { Text("Copy path") })
+                AssistChip(onClick = {
+                    context.getSystemService(android.content.ClipboardManager::class.java)
+                        .setPrimaryClip(android.content.ClipData.newPlainText("script diagnostics", diagnostics))
+                }, label = { Text("Copy diagnostics") })
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Button(onClick = {
+                    error = ""
+                    rerunJob = scope.launch {
+                        runCatching { viewModel.rerunRecordedScript(initial.runId) }
+                            .onSuccess { completed ->
+                                workingCardViewport.applyMutation(WorkingCardMutation.AUTO_EXPAND, { cardBounds }) { results = results + completed }
+                            }
+                            .onFailure { failure ->
+                                if (failure !is CancellationException) workingCardViewport.applyMutation(WorkingCardMutation.AUTO_EXPAND, { cardBounds }) {
+                                    error = failure.message.orEmpty()
+                                }
+                            }
+                    }
+                }, enabled = rerunJob?.isActive != true) { Icon(Icons.Outlined.Refresh, null); Text("Rerun") }
+                if (rerunJob?.isActive == true) Button(onClick = { rerunJob?.cancel() }) { Icon(Icons.Filled.Stop, null); Text("Stop") }
+            }
+        }
+    }
+    source?.let { text ->
+        AlertDialog(
+            onDismissRequest = { source = null },
+            title = { Text(latest.scriptPath) },
+            text = { CodeSourcePanel(if (latest.runtime.name == "PYTHON") "python" else "bash", text, "BOUNDED WORKSPACE SOURCE") },
+            confirmButton = { Button(onClick = { source = null }) { Text("Close") } },
+        )
     }
 }
 

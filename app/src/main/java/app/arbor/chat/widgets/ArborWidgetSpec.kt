@@ -90,11 +90,11 @@ data class ArborWidgetAction(
 
 object ArborWidgetParser {
     private val json = Json { ignoreUnknownKeys = true }
-    private val supportedTypes = setOf(
+    val supportedTypes: Set<String> = setOf(
         "choice", "checklist", "slider", "form", "calculator", "converter", "counter", "rating", "progress",
         "live_data", "stock", "schedule", "prayer_times", "mini_app",
     )
-    private val supportedFields = setOf("number", "text", "slider", "toggle", "choice")
+    val supportedFields: Set<String> = setOf("number", "text", "slider", "toggle", "choice")
 
     fun parse(source: String): Result<ArborWidgetDefinition> = runCatching {
         require(source.length <= 48_000) { "Widget definition is too large" }

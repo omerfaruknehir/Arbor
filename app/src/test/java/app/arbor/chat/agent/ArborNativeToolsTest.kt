@@ -14,7 +14,10 @@ class ArborNativeToolsTest {
     fun exposesOnlyEnabledToolsAndValidSchemas() {
         val definitions = ArborNativeTools.definitions(conversation(web = true, python = false, linux = true))
 
-        assertEquals(listOf("web_search", "web_fetch", "linux_exec", "send_file"), definitions.map { it.name })
+        assertEquals(
+            listOf("web_search", "web_fetch", "workspace_read", "apply_patch", "rerun_script", "linux_exec", "send_file"),
+            definitions.map { it.name },
+        )
         definitions.forEach { definition ->
             val schema = Json.parseToJsonElement(definition.parametersJson).jsonObject
             assertEquals("object", schema["type"]?.toString()?.trim('"'))
@@ -33,6 +36,14 @@ class ArborNativeToolsTest {
         assertEquals("python", request.type)
         assertEquals("print(42)", request.code)
         assertEquals(30, request.timeoutSeconds)
+    }
+
+    @Test fun patchAndRerunCallsNeverRequireCompleteSource() {
+        val patch = ArborNativeTools.request(NativeToolCall("call-2", "apply_patch", """{"path":".arbor/runs/run-12345678/main.py","unifiedDiff":"@@ -1 +1 @@\\n-a\\n+b","expectedSha256":"${"a".repeat(64)}"}"""))
+        val rerun = ArborNativeTools.request(NativeToolCall("call-3", "rerun_script", """{"runId":"run-12345678"}"""))
+        assertEquals(null, patch.code)
+        assertEquals(null, rerun.code)
+        assertEquals("run-12345678", rerun.runId)
     }
 
     @Test(expected = IllegalStateException::class)

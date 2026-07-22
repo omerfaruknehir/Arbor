@@ -15,12 +15,12 @@ class BackdropBlurTest {
         assertEquals(0f, arborBlurProgress(0f), .0001f)
         assertEquals(1f, arborBlurProgress(1f), .0001f)
     }
-    @Test fun composerChromeWaitsUntilContentActuallyApproachesChrome() {
-        assertEquals(0f, calculateComposerChromeProgress(0, 0, 56, 176), .0001f)
-        assertEquals(0f, calculateComposerChromeProgress(0, 56, 56, 176), .0001f)
-        assertEquals(.5f, calculateComposerChromeProgress(0, 116, 56, 176), .0001f)
-        assertEquals(1f, calculateComposerChromeProgress(0, 176, 56, 176), .0001f)
-        assertEquals(1f, calculateComposerChromeProgress(1, 0, 56, 176), .0001f)
+    @Test fun topChromeBlurWaitsUntilChatContentActuallyScrollsUnderIt() {
+        assertEquals(0f, calculateTopChromeProgress(0, 0, 56, 176), .0001f)
+        assertEquals(0f, calculateTopChromeProgress(0, 56, 56, 176), .0001f)
+        assertEquals(.5f, calculateTopChromeProgress(0, 116, 56, 176), .0001f)
+        assertEquals(1f, calculateTopChromeProgress(0, 176, 56, 176), .0001f)
+        assertEquals(1f, calculateTopChromeProgress(1, 0, 56, 176), .0001f)
     }
 
 

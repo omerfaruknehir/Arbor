@@ -5,8 +5,11 @@ import app.arbor.chat.data.ConversationEntity
 import app.arbor.chat.chat.ChatRepository
 import app.arbor.chat.sandbox.PythonSandbox
 import app.arbor.chat.sandbox.UbuntuRuntime
+import app.arbor.chat.sandbox.RunRecordStore
+import app.arbor.chat.sandbox.ScriptRuntime
 import app.arbor.chat.files.AttachmentStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -33,6 +36,13 @@ data class AgentToolRequest(
     val path: String? = null,
     val caption: String? = null,
     val timeoutSeconds: Int? = null,
+    val startLine: Int? = null,
+    val endLine: Int? = null,
+    val maxBytes: Int? = null,
+    val unifiedDiff: String? = null,
+    val expectedSha256: String? = null,
+    val runId: String? = null,
+    val args: List<String> = emptyList(),
 )
 
 @Serializable
@@ -154,7 +164,11 @@ fun groupOrderedTimeline(events: List<MessageTimelineEvent>): List<TimelineRun> 
 }
 
 
-data class AgentToolOutcome(val output: String, val files: List<String> = emptyList())
+data class AgentToolOutcome(
+    val output: String,
+    val files: List<String> = emptyList(),
+    val isError: Boolean = false,
+)
 
 @Serializable
 private data class SentFileResult(val path: String, val name: String, val sizeBytes: Long, val caption: String)
@@ -163,6 +177,7 @@ class AgentTools(
     private val python: PythonSandbox,
     private val ubuntu: UbuntuRuntime,
     private val repository: ChatRepository,
+    val runRecords: RunRecordStore = RunRecordStore(ubuntu::workspace),
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -186,8 +201,14 @@ class AgentTools(
         "python", "python_exec" -> {
             check(conversation.agentPythonEnabled) { "Agent Python is disabled for this conversation." }
             val code = requireNotNull(request.code) { "Python code is missing" }
-            val result = ubuntu.executePython(conversation.id, code, (request.timeoutSeconds ?: DEFAULT_PYTHON_SECONDS).coerceIn(1, 600))
-            AgentToolOutcome(json.encodeToString(result))
+            val timeout = (request.timeoutSeconds ?: DEFAULT_PYTHON_SECONDS).coerceIn(1, 600)
+            var metadata = runRecords.create(
+                conversation.id, ScriptRuntime.PYTHON, code, "python", emptyList(), timeout,
+                mapOf("distribution" to ubuntu.distribution.value.displayName, "python" to ".arbor-venv", "executionMode" to "PRoot root"),
+            )
+            metadata = runRecords.markStarted(metadata, timeout, emptyList())
+            val result = executeStored(metadata, emptyList(), timeout)
+            AgentToolOutcome(json.encodeToString(result), isError = result.exitCode != 0 || result.timedOut || result.cancelled)
         }
         "ubuntu", "ubuntu_exec", "linux", "linux_exec", "shell" -> {
             check(conversation.agentUbuntuEnabled) { "Agent Linux tools are disabled for this conversation." }
@@ -196,10 +217,45 @@ class AgentTools(
             require(!PACKAGE_COMMAND.containsMatchIn(command)) {
                 "Package-manager commands require a visible ubuntu-packages request and approval."
             }
-            val result = ubuntu.execute(conversation.id, command, (request.timeoutSeconds ?: DEFAULT_LINUX_SECONDS).coerceIn(1, 900))
-            AgentToolOutcome(json.encodeToString(UbuntuToolResult(
-                result.stdout, result.stderr, result.exitCode, result.files, result.elapsedMs, result.timedOut,
+            val timeout = (request.timeoutSeconds ?: DEFAULT_LINUX_SECONDS).coerceIn(1, 900)
+            var metadata = runRecords.create(
+                conversation.id, ScriptRuntime.LINUX, command, "sh", emptyList(), timeout,
+                mapOf("distribution" to ubuntu.distribution.value.displayName, "executionMode" to "PRoot root"),
+            )
+            metadata = runRecords.markStarted(metadata, timeout, emptyList())
+            val result = executeStored(metadata, emptyList(), timeout)
+            AgentToolOutcome(json.encodeToString(result), isError = result.exitCode != 0 || result.timedOut)
+        }
+        "workspace_read" -> {
+            check(conversation.agentPythonEnabled || conversation.agentUbuntuEnabled) { "Workspace tools are disabled for this conversation." }
+            AgentToolOutcome(json.encodeToString(runRecords.readWorkspace(
+                conversation.id,
+                requireNotNull(request.path) { "Workspace path is missing" },
+                request.startLine,
+                request.endLine,
+                request.maxBytes,
             )))
+        }
+        "apply_patch" -> {
+            check(conversation.agentPythonEnabled || conversation.agentUbuntuEnabled) { "Workspace tools are disabled for this conversation." }
+            AgentToolOutcome(json.encodeToString(runRecords.applyPatch(
+                conversation.id,
+                requireNotNull(request.path) { "Workspace path is missing" },
+                requireNotNull(request.unifiedDiff) { "unifiedDiff is missing" },
+                requireNotNull(request.expectedSha256) { "expectedSha256 is missing" },
+            )))
+        }
+        "rerun_script" -> {
+            check(conversation.agentPythonEnabled || conversation.agentUbuntuEnabled) { "Workspace tools are disabled for this conversation." }
+            var metadata = runRecords.load(conversation.id, requireNotNull(request.runId) { "runId is missing" })
+            if (metadata.runtime == ScriptRuntime.PYTHON) check(conversation.agentPythonEnabled) { "Agent Python is disabled for this conversation." }
+            if (metadata.runtime == ScriptRuntime.LINUX) check(conversation.agentUbuntuEnabled) { "Agent Linux tools are disabled for this conversation." }
+            val maximum = if (metadata.runtime == ScriptRuntime.PYTHON) 600 else 900
+            val timeout = (request.timeoutSeconds ?: metadata.timeoutSeconds).coerceIn(1, maximum)
+            val args = request.args.ifEmpty { metadata.originalArgs }
+            metadata = runRecords.markStarted(metadata, timeout, args)
+            val result = executeStored(metadata, args, timeout)
+            AgentToolOutcome(json.encodeToString(result), isError = result.exitCode != 0 || result.timedOut || result.cancelled)
         }
         "send_file", "file_send" -> {
             val relative = requireNotNull(request.path) { "File path is missing" }.trim().removePrefix("/workspace/")
@@ -216,6 +272,34 @@ class AgentTools(
             )
         }
         else -> error("Unknown Arbor tool: ${request.type}")
+        }
+    }
+
+    private suspend fun executeStored(
+        metadata: app.arbor.chat.sandbox.ScriptRunMetadata,
+        args: List<String>,
+        timeout: Int,
+    ): app.arbor.chat.sandbox.ScriptRunResult {
+        val started = System.currentTimeMillis()
+        return try {
+            val raw = if (metadata.runtime == ScriptRuntime.PYTHON) {
+                ubuntu.executePythonFile(metadata.conversationId, metadata.scriptPath, args, timeout)
+            } else {
+                ubuntu.executeShellFile(metadata.conversationId, metadata.scriptPath, args, timeout)
+            }
+            runRecords.finish(metadata, raw.stdout, raw.stderr, raw.exitCode, raw.timedOut, false, raw.elapsedMs, raw.files)
+        } catch (cancelled: CancellationException) {
+            runRecords.finish(
+                metadata = metadata,
+                stdout = "",
+                stderr = "Execution cancelled; the process tree was terminated.",
+                exitCode = 130,
+                timedOut = false,
+                cancelled = true,
+                elapsedMs = System.currentTimeMillis() - started,
+                changedFiles = emptyList(),
+            )
+            throw cancelled
         }
     }
 

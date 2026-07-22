@@ -1,4 +1,20 @@
-# Arbor native mini-app schema
+# Arbor generated-content contract
+
+Contract family: `arbor-generated-content/1` (the runtime appends a deterministic schema-shape fingerprint so the exposed version changes with the contract)  
+Validator: `1.0.0`
+
+`GeneratedContentCapabilityRegistry` in application code is authoritative. Model prompt summaries, validation, exact examples, fence aliases, limits, component/action sets, and repair schema excerpts are derived from that registry. This file explains the same contract for humans; consistency tests require all registry examples to validate and every mini-app component exposed by the renderer to be registered by the parser.
+
+Supported native generated fences:
+
+- `arbor-ui` (`ui`, `arbor-form` aliases): native chat-only declarative interaction.
+- `arbor-widget` (`widget` alias): Home eligibility requires `"surface":"home"` or `"surface":"both"` and explicit pinning review.
+- `arbor-chart` (`chart`, `bar-chart`, `barchart`, `line-chart`, `pie-chart` aliases): JSON with `type` (`bar`, `line`, `area`, `scatter`, `pie`, or `donut`), optional `title`, and one to eight series of at most 80 finite labelled points.
+- `mermaid` (`graph`, `diagram`, `dot`, `graphviz` aliases): bounded native flowchart, sequence, and basic DOT text only.
+
+Ordinary Markdown tables and code fences are not generated mini-apps. Arbor never accepts HTML, JavaScript, JSX, WebViews, downloaded bytecode, or arbitrary executable generated UI as a fallback.
+
+# Native mini-app schema
 
 Arbor has two deliberately separate interactive surfaces:
 

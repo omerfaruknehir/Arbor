@@ -49,6 +49,11 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlin.math.roundToInt
 
+internal val renderedMiniAppComponentTypes: Set<String> = setOf(
+    "text", "metric", "input", "slider", "toggle", "choice", "buttons", "progress",
+    "list", "table", "chart", "timer", "divider", "spacer",
+)
+
 @Composable
 internal fun MiniAppWidgetBlock(
     definition: ArborWidgetDefinition,

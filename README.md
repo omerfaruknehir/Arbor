@@ -2,9 +2,14 @@
 
 Arbor is a fully native Android BYOK chat client built with Kotlin, Jetpack Compose, and Material 3. It has no WebView, hosted account, telemetry, ads, or application backend. API keys and chat data stay on the device; requests go directly to the endpoints configured by the user.
 
-This repository is version `0.15.0`, an installable and deliberately honest foundation for a larger agent client.
+This repository is version `0.17.0`, an installable and deliberately honest foundation for a larger agent client.
 
 ## Included
+
+- A real finger-tracked left drawer: the sheet, scrim, and lightweight content translation share one clamped offset while dragging, reverse immediately with the finger, and settle with positional and velocity thresholds.
+- Durable `.arbor/runs` records for every model Python/Linux call, with bounded line reads, atomic SHA-256-guarded unified patches, source revisions, and source-free reruns in one Working activity.
+- An authoritative `GeneratedContentCapabilityRegistry` used by model prompts and validation for `arbor-ui`, `arbor-widget`, `arbor-chart`, and the native Mermaid/DOT subset.
+- Bounded in-place AI repair for invalid completed generated blocks. Repairs preserve surrounding prose and timeline order, persist across navigation/recreation, and default to three attempts (configurable from one to five).
 
 - Concurrent streaming conversations backed by WorkManager foreground jobs, with stop, queue, steer, interrupted-response recovery, and notification controls.
 - Typed transactional message creation, Android 14+ foreground-service declarations, visible action errors, and crash-loop recovery which pauses generated renderers without deleting chats or app data.

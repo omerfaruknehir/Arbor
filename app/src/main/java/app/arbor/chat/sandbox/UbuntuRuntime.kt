@@ -229,6 +229,39 @@ class UbuntuRuntime(
         )
     }
 
+    /** Execute an already-persisted workspace script without copying its source. */
+    suspend fun executePythonFile(
+        conversationId: String,
+        relativePath: String,
+        args: List<String> = emptyList(),
+        timeoutSeconds: Int = 90,
+    ): UbuntuExecutionResult {
+        ensurePythonEnvironment(conversationId)
+        require(relativePath.matches(Regex("[A-Za-z0-9_./-]+")) && ".." !in relativePath.split('/')) { "Invalid Python script path" }
+        val argumentString = args.take(64).joinToString(" ") { shellQuote(it.take(1_000)) }
+        return execute(
+            conversationId,
+            "/workspace/.arbor-venv/bin/python ${shellQuote("/workspace/$relativePath")}" + if (argumentString.isBlank()) "" else " $argumentString",
+            timeoutSeconds.coerceIn(1, 600),
+        )
+    }
+
+    /** Execute an already-persisted POSIX shell body without duplicating it. */
+    suspend fun executeShellFile(
+        conversationId: String,
+        relativePath: String,
+        args: List<String> = emptyList(),
+        timeoutSeconds: Int = 180,
+    ): UbuntuExecutionResult {
+        require(relativePath.matches(Regex("[A-Za-z0-9_./-]+")) && ".." !in relativePath.split('/')) { "Invalid shell script path" }
+        val argumentString = args.take(64).joinToString(" ") { shellQuote(it.take(1_000)) }
+        return execute(
+            conversationId,
+            "/bin/sh ${shellQuote("/workspace/$relativePath")}" + if (argumentString.isBlank()) "" else " $argumentString",
+            timeoutSeconds.coerceIn(1, 900),
+        )
+    }
+
     suspend fun pythonEnvironment(conversationId: String): PythonEnvironmentInfo {
         ensurePythonEnvironment(conversationId)
         val code = """import json, sys, os, importlib.metadata as m
@@ -705,3 +738,5 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
         private const val KEY_DISTRIBUTION = "selected_distribution"
     }
 }
+
+private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"

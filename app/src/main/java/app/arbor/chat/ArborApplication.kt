@@ -15,9 +15,11 @@ import app.arbor.chat.provider.HybridTokenCounter
 import app.arbor.chat.sandbox.PythonSandbox
 import app.arbor.chat.sandbox.UbuntuRuntime
 import app.arbor.chat.sandbox.PackageApprovalService
+import app.arbor.chat.sandbox.RunRecordStore
 import app.arbor.chat.security.SecureStore
 import app.arbor.chat.security.CrashReporter
 import app.arbor.chat.settings.AppPreferences
+import app.arbor.chat.generated.GeneratedBlockRepairCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -60,7 +62,9 @@ class AppContainer(application: Application, val crashReporter: CrashReporter) {
     val ocrEngine = OcrEngine(application, database.attachmentDao())
     val pythonSandbox = PythonSandbox(application)
     val ubuntuRuntime = UbuntuRuntime(application, pythonSandbox)
+    val runRecords = RunRecordStore(pythonSandbox::workspace)
+    val generatedBlockRepairs = GeneratedBlockRepairCoordinator(pythonSandbox::workspace, auxiliaryModels::repairGeneratedBlock)
     val packageApprovals = PackageApprovalService(repository, auxiliaryModels)
-    val agentTools = AgentTools(pythonSandbox, ubuntuRuntime, repository)
+    val agentTools = AgentTools(pythonSandbox, ubuntuRuntime, repository, runRecords)
     val scheduler = GenerationScheduler(application, repository)
 }
