@@ -167,6 +167,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlin.math.abs
 import kotlin.math.exp
@@ -433,6 +434,30 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     var searchFocusHandled by remember(conversation?.id, focusedMessageNodeId) { mutableStateOf(false) }
     val streamingAnchorTracker = remember(conversation?.id) { StreamingScrollAnchorTracker() }
     val stableMessageKeysByUiIndex = remember(conversation?.id) { mutableMapOf<Int, String>() }
+    var pagingNodeIds by remember(conversation?.id) { mutableStateOf<List<String>>(emptyList()) }
+    val generatingState = rememberUpdatedState(generating)
+    val selectedActiveModel = remember(models, conversation?.selectedModelId) {
+        models.firstOrNull { it.modelId == conversation?.selectedModelId }
+    }
+
+    // Paging snapshots can contain hundreds of messages. Bookkeeping belongs to
+    // snapshot changes, not composition: doing this loop in Scaffold content made
+    // unrelated chrome or scroll-state recompositions O(loaded message count).
+    LaunchedEffect(paging, conversation?.id) {
+        snapshotFlow { paging.itemSnapshotList.items.map(MessageEntity::nodeId) }
+            .distinctUntilChanged()
+            .collect { nodeIds ->
+                pagingNodeIds = nodeIds
+                nodeIds.forEachIndexed { sourceIndex, nodeId ->
+                    stableMessageKeysByUiIndex[
+                        chronologicalUiIndex(sourceIndex, nodeIds.size)
+                    ] = nodeId
+                }
+                if (!generatingState.value && nodeIds.isNotEmpty()) {
+                    stableMessageKeysByUiIndex.keys.removeAll { it !in nodeIds.indices }
+                }
+            }
+    }
 
     val applyWorkingCardMutation = remember(messageListState, listScope, conversation?.id) {
         { mutation: WorkingCardMutation, boundsProvider: () -> Rect?, mutate: () -> Unit ->
@@ -773,7 +798,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             }
     }
 
-    LaunchedEffect(focusedMessageNodeId, paging.itemSnapshotList.items.map { it.nodeId }, searchFocusHandled) {
+    LaunchedEffect(focusedMessageNodeId, pagingNodeIds, searchFocusHandled) {
         val target = focusedMessageNodeId ?: return@LaunchedEffect
         if (!searchFocusHandled) {
             val sourceIndex = paging.itemSnapshotList.items.indexOfFirst { it.nodeId == target }
@@ -879,15 +904,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         LaunchedEffect(measuredMessageBottomInsetPx) {
             messageBottomInsetPx = measuredMessageBottomInsetPx
         }
-        val currentPagingSnapshot = paging.itemSnapshotList.items
-        currentPagingSnapshot.forEachIndexed { sourceIndex, message ->
-            stableMessageKeysByUiIndex[
-                chronologicalUiIndex(sourceIndex, currentPagingSnapshot.size)
-            ] = message.nodeId
-        }
-        if (!generating && currentPagingSnapshot.isNotEmpty()) {
-            stableMessageKeysByUiIndex.keys.removeAll { it !in currentPagingSnapshot.indices }
-        }
         Box(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxSize().arborBackdropSource(blurState)) {
                 if (paging.itemCount == 0 && recoverable.isEmpty()) {
@@ -931,17 +947,27 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     ) { uiIndex ->
                         val sourceIndex = chronologicalSourceIndex(uiIndex, paging.itemCount)
                         paging[sourceIndex]?.let { message ->
+                            val branchOptions = remember(message.nodeId, revisionBranchGroups) {
+                                inlineBranchOptions(message, revisionBranchGroups)
+                            }
+                            val viewportController = remember(
+                                messageViewportBounds,
+                                messageListState.isScrollInProgress,
+                                applyWorkingCardMutation,
+                            ) {
+                                WorkingCardViewportController(
+                                    viewportBounds = messageViewportBounds,
+                                    listScrolling = messageListState.isScrollInProgress,
+                                    applyMutation = applyWorkingCardMutation,
+                                )
+                            }
                             MessageCard(
                                 message = message,
                                 viewModel = viewModel,
                                 reasoningVisibility = conversation?.reasoningVisibility ?: ReasoningVisibility.SHOW_WHILE_WORKING,
-                                activeModel = models.firstOrNull { it.modelId == conversation?.selectedModelId },
-                                branchOptions = inlineBranchOptions(message, revisionBranchGroups),
-                                workingCardViewport = WorkingCardViewportController(
-                                    viewportBounds = messageViewportBounds,
-                                    listScrolling = messageListState.isScrollInProgress,
-                                    applyMutation = applyWorkingCardMutation,
-                                ),
+                                activeModel = selectedActiveModel,
+                                branchOptions = branchOptions,
+                                workingCardViewport = viewportController,
                             )
                         }
                     }
@@ -1923,7 +1949,7 @@ private fun Composer(
                     strength = chromeBlurStrength,
                     tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.46f),
                     edge = ArborBlurEdge.BOTTOM,
-                    fadeDistance = 112.dp,
+                    fadeDistance = 144.dp,
                 ),
         ) {
             Column(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp)) {

@@ -928,11 +928,17 @@ private fun StreamingTablePreviewText(
                     setPadding(10, 8, 10, 8)
                 }
             },
+            onReset = { it.resetForReuse() },
+            onRelease = { it.resetForReuse() },
             update = { view ->
-                view.setTextColor(color)
-                view.setBackgroundColor(background)
-                view.highlightColor = selectionColor
-                view.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
+                val appearanceKey = (((color * 31) + background) * 31 + selectionColor) * 31 + textSizeSp.toBits()
+                if (view.appliedStyleKey != appearanceKey) {
+                    view.setTextColor(color)
+                    view.setBackgroundColor(background)
+                    view.highlightColor = selectionColor
+                    view.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
+                    view.appliedStyleKey = appearanceKey
+                }
                 if (view.renderedSource != rendered.text) {
                     view.setText(rendered.text, TextView.BufferType.SPANNABLE)
                     view.renderedSource = rendered.text
@@ -969,10 +975,16 @@ private fun LightweightTableText(
                 setLineSpacing(0f, 1.04f)
             }
         },
+        onReset = { it.resetForReuse() },
+        onRelease = { it.resetForReuse() },
         update = { view ->
-            view.setTextColor(color)
-            view.highlightColor = selectionColor
-            view.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
+            val appearanceKey = ((color * 31) + selectionColor) * 31 + textSizeSp.toBits()
+            if (view.appliedStyleKey != appearanceKey) {
+                view.setTextColor(color)
+                view.highlightColor = selectionColor
+                view.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
+                view.appliedStyleKey = appearanceKey
+            }
             if (view.renderedSource != renderedPreview) {
                 view.setText(renderedPreview, TextView.BufferType.SPANNABLE)
                 view.renderedSource = renderedPreview
@@ -1003,10 +1015,16 @@ internal fun StreamingPlainText(
                 setLineSpacing(0f, 1.08f)
             }
         },
+        onReset = { it.resetForReuse() },
+        onRelease = { it.resetForReuse() },
         update = { view ->
-            view.setTextColor(color)
-            view.highlightColor = selectionColor
-            view.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
+            val appearanceKey = ((color * 31) + selectionColor) * 31 + textSizeSp.toBits()
+            if (view.appliedStyleKey != appearanceKey) {
+                view.setTextColor(color)
+                view.highlightColor = selectionColor
+                view.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
+                view.appliedStyleKey = appearanceKey
+            }
             if (view.renderedSource != renderedText) {
                 view.setText(renderedText, TextView.BufferType.SPANNABLE)
                 view.renderedSource = renderedText
@@ -1079,12 +1097,17 @@ private fun MarkdownAndroidView(
                 setLineSpacing(0f, 1.08f)
             }
         },
+        onReset = { it.resetForReuse() },
+        onRelease = { it.resetForReuse() },
         update = { view ->
-            view.setTextColor(textColor)
-            view.setLinkTextColor(linkColor)
-            view.highlightColor = selectionColor
-            view.setHorizontallyScrolling(false)
-            val styleKey = (((textColor * 31) + linkColor) * 31 + pillBackground) * 31 + pillForeground
+            val styleKey = ((((textColor * 31) + linkColor) * 31 + pillBackground) * 31 + pillForeground) * 31 + selectionColor
+            if (view.appliedStyleKey != styleKey) {
+                view.setTextColor(textColor)
+                view.setLinkTextColor(linkColor)
+                view.highlightColor = selectionColor
+                view.setHorizontallyScrolling(false)
+                view.appliedStyleKey = styleKey
+            }
             val ready = parsedMarkdown
             if (ready != null && (view.renderedSource != ready.source || view.renderedStyleKey != styleKey)) {
                 try {
@@ -1116,7 +1139,15 @@ private fun MarkdownAndroidView(
 private class ArborMarkdownTextView(context: Context) : TextView(context) {
     var renderedSource: String = ""
     var renderedStyleKey: Int = 0
+    var appliedStyleKey: Int = 0
     val selectableLinkMovementMethod = SelectableLinkMovementMethod()
+
+    fun resetForReuse() {
+        text = null
+        renderedSource = ""
+        renderedStyleKey = 0
+        appliedStyleKey = 0
+    }
 }
 
 private class SelectableLinkMovementMethod : ArrowKeyMovementMethod() {

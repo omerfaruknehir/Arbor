@@ -1,3 +1,12 @@
+# Arbor 0.17.2
+
+- Reuse native Markdown and table TextViews while LazyColumn recycles message slots, avoiding repeated Android view allocation and span/editor setup during fast scrolling.
+- Move paging-key bookkeeping out of chat composition and perform it only when the Paging snapshot actually changes.
+- Keep selected-model and branch metadata stable per visible message instead of rebuilding it during unrelated chat recompositions.
+- Replace the two-pass axis-aligned blur with one stable single-pass rotated Poisson kernel, eliminating cross/grid artifacts while reducing texture fetches and render-effect allocation churn.
+- Increase the maximum gradual blur radius from 24 dp to 36 dp and widen the chat chrome fade for a stronger result.
+- Preserve application IDs, Room schema/data, settings, conversations, provider credentials, workspaces, and debug signing compatibility.
+
 # Arbor 0.17.1
 
 - Give code blocks, tables, diagrams, and other horizontal chat surfaces gesture priority over the left drawer.

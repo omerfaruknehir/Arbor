@@ -22,6 +22,12 @@ class BackdropBlurTest {
         assertEquals(1f, calculateTopChromeProgress(0, 176, 56, 176), .0001f)
         assertEquals(1f, calculateTopChromeProgress(1, 0, 56, 176), .0001f)
     }
-
+    @Test fun radiusQuantizationSuppressesSubPixelStateChurn() {
+        assertEquals(0f, quantizeBlurRadiusDp(-2f), 0f)
+        assertEquals(0f, quantizeBlurRadiusDp(.12f), 0f)
+        assertEquals(.25f, quantizeBlurRadiusDp(.13f), 0f)
+        assertEquals(18.5f, quantizeBlurRadiusDp(18.49f), 0f)
+    }
 
 }
+
