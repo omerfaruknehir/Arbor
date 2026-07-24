@@ -1,7 +1,9 @@
 package app.arbor.chat.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NavigationBackTest {
@@ -12,6 +14,19 @@ class NavigationBackTest {
         assertEquals(Screen.SETTINGS, backDestination(Screen.TERMINAL))
     }
     @Test fun chatIsTheActivityRoot() { assertNull(backDestination(Screen.CHAT)) }
+
+    @Test fun drawerSwipeIsOnlyEnabledAtTheChatRoot() {
+        assertTrue(drawerSwipeEnabled(Screen.CHAT))
+        assertFalse(drawerSwipeEnabled(Screen.SEARCH))
+        assertFalse(drawerSwipeEnabled(Screen.SETTINGS))
+        assertFalse(drawerSwipeEnabled(Screen.SANDBOX))
+        assertFalse(drawerSwipeEnabled(Screen.TERMINAL))
+    }
+
+    @Test fun pageBackTakesOverAsSoonAsTheDrawerIsNoLongerVisible() {
+        assertFalse(pageBackEnabled(drawerVisible = true))
+        assertTrue(pageBackEnabled(drawerVisible = false))
+    }
 
     @Test fun screenDepthMatchesNavigationHierarchy() {
         assertEquals(0, screenDepth(Screen.CHAT))

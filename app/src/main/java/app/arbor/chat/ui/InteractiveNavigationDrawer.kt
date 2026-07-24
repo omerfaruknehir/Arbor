@@ -108,6 +108,7 @@ internal fun rememberInteractiveDrawerState(): InteractiveDrawerState {
 internal fun InteractiveNavigationDrawer(
     state: InteractiveDrawerState,
     modifier: Modifier = Modifier,
+    gesturesEnabled: Boolean = true,
     onGenuinelyOpening: () -> Unit = {},
     drawerContent: @Composable (Modifier) -> Unit,
     content: @Composable () -> Unit,
@@ -124,70 +125,74 @@ internal fun InteractiveNavigationDrawer(
         val drawerWidthPx = with(density) { drawerWidth.toPx() }
         LaunchedEffect(drawerWidthPx) { state.updateWidth(drawerWidthPx) }
 
+        val gestureModifier = if (gesturesEnabled) {
+            Modifier.pointerInput(
+                state,
+                drawerWidthPx,
+                activationPx,
+                velocityThresholdPx,
+                drawerOriginInRoot,
+            ) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val startOffset = state.offsetPx
+                    if (
+                        startOffset <= .5f &&
+                        horizontalPriority.owns(down.position + drawerOriginInRoot)
+                    ) {
+                        return@awaitEachGesture
+                    }
+                    val velocity = VelocityTracker().apply { addPosition(down.uptimeMillis, down.position) }
+                    var totalX = 0f
+                    var totalY = 0f
+                    var tracking = false
+                    var openingNotified = false
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        val delta = change.position - change.previousPosition
+                        totalX += delta.x
+                        totalY += delta.y
+                        velocity.addPosition(change.uptimeMillis, change.position)
+
+                        if (!tracking) {
+                            val intent = if (startOffset <= .5f && totalX <= -activationPx) {
+                                DrawerGestureIntent.REJECTED
+                            } else DrawerPhysics.gestureIntent(totalX, totalY, activationPx)
+                            when (intent) {
+                                DrawerGestureIntent.TRACK_DRAWER -> {
+                                    state.stop()
+                                    tracking = true
+                                }
+                                DrawerGestureIntent.PASS_TO_CONTENT, DrawerGestureIntent.REJECTED -> break
+                                DrawerGestureIntent.UNDECIDED -> Unit
+                            }
+                        }
+                        if (tracking) {
+                            if (!openingNotified && startOffset <= .5f && totalX > 0f) {
+                                openingNotified = true
+                                focusManager.clearFocus()
+                                onGenuinelyOpening()
+                            }
+                            change.consume()
+                            state.dragTo(startOffset, totalX)
+                        }
+                        if (!change.pressed) {
+                            if (tracking) state.settle(velocity.calculateVelocity().x, velocityThresholdPx)
+                            break
+                        }
+                    }
+                }
+            }
+        } else Modifier
+
         Box(
             Modifier
                 .fillMaxSize()
                 .onGloballyPositioned { coordinates ->
                     drawerOriginInRoot = coordinates.boundsInRoot().topLeft
                 }
-                .pointerInput(
-                    state,
-                    drawerWidthPx,
-                    activationPx,
-                    velocityThresholdPx,
-                    drawerOriginInRoot,
-                ) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        val startOffset = state.offsetPx
-                        if (
-                            startOffset <= .5f &&
-                            horizontalPriority.owns(down.position + drawerOriginInRoot)
-                        ) {
-                            return@awaitEachGesture
-                        }
-                        val velocity = VelocityTracker().apply { addPosition(down.uptimeMillis, down.position) }
-                        var totalX = 0f
-                        var totalY = 0f
-                        var tracking = false
-                        var openingNotified = false
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            val delta = change.position - change.previousPosition
-                            totalX += delta.x
-                            totalY += delta.y
-                            velocity.addPosition(change.uptimeMillis, change.position)
-
-                            if (!tracking) {
-                                val intent = if (startOffset <= .5f && totalX <= -activationPx) {
-                                    DrawerGestureIntent.REJECTED
-                                } else DrawerPhysics.gestureIntent(totalX, totalY, activationPx)
-                                when (intent) {
-                                    DrawerGestureIntent.TRACK_DRAWER -> {
-                                        state.stop()
-                                        tracking = true
-                                    }
-                                    DrawerGestureIntent.PASS_TO_CONTENT, DrawerGestureIntent.REJECTED -> break
-                                    DrawerGestureIntent.UNDECIDED -> Unit
-                                }
-                            }
-                            if (tracking) {
-                                if (!openingNotified && startOffset <= .5f && totalX > 0f) {
-                                    openingNotified = true
-                                    focusManager.clearFocus()
-                                    onGenuinelyOpening()
-                                }
-                                change.consume()
-                                state.dragTo(startOffset, totalX)
-                            }
-                            if (!change.pressed) {
-                                if (tracking) state.settle(velocity.calculateVelocity().x, velocityThresholdPx)
-                                break
-                            }
-                        }
-                    }
-                },
+                .then(gestureModifier),
         ) {
             // Lightweight layers read the one drag offset. Chat list state is never touched.
             Box(

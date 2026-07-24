@@ -67,7 +67,10 @@ fun ArborApp(viewModel: ChatViewModel) {
                 backTarget = backDestination(screen),
                 onBack = { viewModel.screen.value = it },
                 depth = ::screenDepth,
-                backEnabled = drawerState.isClosed,
+                // Once a closing drawer is no longer visible, page Back must immediately
+                // take ownership. Waiting for its spring job to finish creates a gap where
+                // Android can fall through to Activity exit.
+                backEnabled = pageBackEnabled(drawerState.isVisible),
                 keepAlive = { it == Screen.CHAT },
                 modifier = Modifier.fillMaxSize(),
                 label = "ArborPageNavigation",
@@ -103,6 +106,10 @@ fun ArborApp(viewModel: ChatViewModel) {
             InteractiveNavigationDrawer(
                 state = drawerState,
                 modifier = Modifier.fillMaxSize(),
+                // The left-edge system gesture and pull-to-open have the same direction.
+                // Secondary pages reserve both edges for Back; their menu button still
+                // opens this same drawer state.
+                gesturesEnabled = drawerSwipeEnabled(screen),
                 drawerContent = { drawerModifier ->
                     ModalDrawerSheet(modifier = drawerModifier) {
                         ConversationSidebar(
@@ -146,3 +153,7 @@ internal fun screenDepth(screen: Screen): Int = when (screen) {
     Screen.SEARCH, Screen.SETTINGS -> 1
     Screen.SANDBOX, Screen.TERMINAL -> 2
 }
+
+internal fun drawerSwipeEnabled(screen: Screen): Boolean = screen == Screen.CHAT
+
+internal fun pageBackEnabled(drawerVisible: Boolean): Boolean = !drawerVisible

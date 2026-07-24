@@ -1,3 +1,10 @@
+# Arbor 0.17.3
+
+- Reserve both Android system-gesture edges for Back on Settings, Search, Sandbox, and Terminal; pull-to-open remains available on Chat.
+- Keep the drawer button functional on every secondary page without installing the conflicting full-screen drawer drag recognizer.
+- Hand Back ownership to page navigation as soon as a closing drawer is visually gone, eliminating the animation-end gap that could fall through to Activity exit.
+- Preserve application IDs, Room schema/data, settings, conversations, provider credentials, workspaces, and debug signing compatibility.
+
 # Arbor 0.17.2
 
 - Reuse native Markdown and table TextViews while LazyColumn recycles message slots, avoiding repeated Android view allocation and span/editor setup during fast scrolling.
