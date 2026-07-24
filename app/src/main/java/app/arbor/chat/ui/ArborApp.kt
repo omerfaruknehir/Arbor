@@ -68,6 +68,7 @@ fun ArborApp(viewModel: ChatViewModel) {
                 onBack = { viewModel.screen.value = it },
                 depth = ::screenDepth,
                 backEnabled = drawerState.isClosed,
+                keepAlive = { it == Screen.CHAT },
                 modifier = Modifier.fillMaxSize(),
                 label = "ArborPageNavigation",
                 content = screenContent,

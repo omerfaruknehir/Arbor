@@ -1,3 +1,11 @@
+# Arbor 0.17.1
+
+- Give code blocks, tables, diagrams, and other horizontal chat surfaces gesture priority over the left drawer.
+- Keep Chat composed while Settings and other global pages are open, preserving its exact viewport and state for instant Back navigation.
+- Remove expensive per-frame transition clipping, shadow, and scaling; shorten ordinary page settling.
+- Cut gradual-blur texture sampling from seventeen to nine fetches per axis with bilinear-paired Gaussian taps.
+- Preserve application IDs, Room schema/data, settings, conversations, provider credentials, workspaces, and debug signing compatibility.
+
 # Arbor 0.17.0
 
 - Make pull-to-open available from anywhere in the chat surface after a deliberate 6 dp horizontal movement, with tolerant accumulated-motion arbitration, a 30% settle threshold, and an 850 dp/s fling threshold. The starting touch location no longer gates the gesture, and crossing the movement threshold never triggers an independent open animation.

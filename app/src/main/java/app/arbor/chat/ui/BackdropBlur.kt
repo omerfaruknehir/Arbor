@@ -216,13 +216,7 @@ private const val DEFAULT_MAX_RADIUS_DP = 24f
 private const val DEFAULT_TOP_FADE_DP = 64f
 private const val DEFAULT_BOTTOM_FADE_DP = 152f
 
-/**
- * Dense seventeen-tap separable Gaussian kernel.
- *
- * The old high-radius nine-tap kernel left large gaps between samples, which
- * appeared as a grid on high-density displays. These taps cover the requested
- * radius uniformly and rely on bilinear texture filtering between samples.
- */
+/** Bilinear-paired Gaussian taps cut the per-axis texture fetches from 17 to 9. */
 private val EDGE_BLUR_SHADER = """
     uniform shader content;
     uniform float2 uBlur;
@@ -237,25 +231,16 @@ private val EDGE_BLUR_SHADER = """
         float bottomMix = saturate(1.0 - (bottomEdge - coord.y) / max(uFade.y, 1.0));
         float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
         if (radius < 0.35) return content.eval(coord);
-
         float2 sampleStep = uDirection * (radius / 8.0);
         half4 accum = half4(content.eval(coord)) * 0.103152619;
-        accum += half4(content.eval(coord + sampleStep * 1.0)) * 0.099978946;
-        accum += half4(content.eval(coord - sampleStep * 1.0)) * 0.099978946;
-        accum += half4(content.eval(coord + sampleStep * 2.0)) * 0.091031867;
-        accum += half4(content.eval(coord - sampleStep * 2.0)) * 0.091031867;
-        accum += half4(content.eval(coord + sampleStep * 3.0)) * 0.077863682;
-        accum += half4(content.eval(coord - sampleStep * 3.0)) * 0.077863682;
-        accum += half4(content.eval(coord + sampleStep * 4.0)) * 0.062565226;
-        accum += half4(content.eval(coord - sampleStep * 4.0)) * 0.062565226;
-        accum += half4(content.eval(coord + sampleStep * 5.0)) * 0.047226710;
-        accum += half4(content.eval(coord - sampleStep * 5.0)) * 0.047226710;
-        accum += half4(content.eval(coord + sampleStep * 6.0)) * 0.033488752;
-        accum += half4(content.eval(coord - sampleStep * 6.0)) * 0.033488752;
-        accum += half4(content.eval(coord + sampleStep * 7.0)) * 0.022308318;
-        accum += half4(content.eval(coord - sampleStep * 7.0)) * 0.022308318;
-        accum += half4(content.eval(coord + sampleStep * 8.0)) * 0.013960189;
-        accum += half4(content.eval(coord - sampleStep * 8.0)) * 0.013960189;
+        accum += half4(content.eval(coord + sampleStep * 1.476579653)) * 0.191010813;
+        accum += half4(content.eval(coord - sampleStep * 1.476579653)) * 0.191010813;
+        accum += half4(content.eval(coord + sampleStep * 3.445529534)) * 0.140428908;
+        accum += half4(content.eval(coord - sampleStep * 3.445529534)) * 0.140428908;
+        accum += half4(content.eval(coord + sampleStep * 5.414898846)) * 0.080715462;
+        accum += half4(content.eval(coord - sampleStep * 5.414898846)) * 0.080715462;
+        accum += half4(content.eval(coord + sampleStep * 7.384912150)) * 0.036268507;
+        accum += half4(content.eval(coord - sampleStep * 7.384912150)) * 0.036268507;
         return accum;
     }
 """.trimIndent()
