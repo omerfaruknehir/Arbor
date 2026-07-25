@@ -1,3 +1,11 @@
+# Arbor 0.17.12
+
+- Preserve the 0.17.8 three-axis glass-blur character while increasing real samples from 9 to 15 per pass.
+- Keep the proven top blur range as the canonical top panel geometry.
+- Measure the actual composer panel height and use it as the canonical bottom blur geometry instead of assuming a fixed 208 dp region.
+- Paint tint overlays in the scrolling source coordinate space so blur and tint share identical ranges and rounded masks.
+- Preserve live Python/shell output, Running states, deferred popup dismissal, Room data, workspaces, and signing compatibility.
+
 # Arbor 0.17.10
 
 - Native Gaussian glass blur with a shared blur/tint panel mask.

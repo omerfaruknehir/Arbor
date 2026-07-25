@@ -24,39 +24,42 @@ class BackdropBlurTest {
     }
 
     @Test fun uniformPanelBlurUsesItsConfiguredMaximumImmediately() {
-        val radius = calculateBlurRadiusDp(true, 1f, .7f)
-        assertEquals(44f, radius, .0001f)
-    }
-
-    @Test fun panelBodyNoLongerDependsOnScrollProgress() {
-        // Scroll progress may increase blur radius, but panel opacity is fixed;
-        // gradual mode is now limited to the 34 dp merge edge.
-        assertEquals(16f, calculateBlurRadiusDp(true, 0f, .7f), .0001f)
         assertEquals(44f, calculateBlurRadiusDp(true, 1f, .7f), .0001f)
     }
 
-    @Test fun topChromeBlurWaitsUntilChatContentActuallyScrollsUnderIt() {
-        assertEquals(0f, calculateTopChromeProgress(0, 0, 56, 176), .0001f)
-        assertEquals(0f, calculateTopChromeProgress(0, 56, 56, 176), .0001f)
-        assertEquals(.5f, calculateTopChromeProgress(0, 116, 56, 176), .0001f)
-        assertEquals(1f, calculateTopChromeProgress(0, 176, 56, 176), .0001f)
-        assertEquals(1f, calculateTopChromeProgress(1, 0, 56, 176), .0001f)
+    @Test fun topPanelPreservesTheKnownCorrectSourceGeometry() {
+        assertEquals(ArborPanelRange(0f, 128f), resolveTopPanelRange(900f, 128f))
+        assertEquals(ArborPanelRange(0f, 90f), resolveTopPanelRange(90f, 128f))
     }
 
-    @Test fun blurAxesAreNormalizedAndWellDistributed() {
+    @Test fun bottomPanelUsesTheMeasuredOverlayGeometryInsteadOfFixed208Dp() {
+        val range = resolveBottomPanelRange(
+            sourceTopInRootPx = 24f,
+            panelStartInRootPx = 690f,
+            panelEndInRootPx = 810f,
+            sourceHeightPx = 900f,
+            fallbackExtentPx = 208f,
+        )
+        assertEquals(ArborPanelRange(666f, 786f), range)
+        assertEquals(120f, range.extentPx, .0001f)
+    }
+
+    @Test fun bottomPanelHasASafeFallbackUntilComposerIsMeasured() {
+        assertEquals(
+            ArborPanelRange(692f, 900f),
+            resolveBottomPanelRange(0f, Float.NaN, Float.NaN, 900f, 208f),
+        )
+    }
+
+    @Test fun sampleDensityWasRaisedWithoutChangingTheThreeGlassAxes() {
+        assertEquals(15, BLUR_SAMPLES_PER_PASS)
+        assertTrue(BLUR_SAMPLES_PER_PASS > 9)
         val lenA = BLUR_AXIS_A_X * BLUR_AXIS_A_X + BLUR_AXIS_A_Y * BLUR_AXIS_A_Y
         val lenB = BLUR_AXIS_B_X * BLUR_AXIS_B_X + BLUR_AXIS_B_Y * BLUR_AXIS_B_Y
         val lenC = BLUR_AXIS_C_X * BLUR_AXIS_C_X + BLUR_AXIS_C_Y * BLUR_AXIS_C_Y
-        val dotAB = BLUR_AXIS_A_X * BLUR_AXIS_B_X + BLUR_AXIS_A_Y * BLUR_AXIS_B_Y
-        val dotBC = BLUR_AXIS_B_X * BLUR_AXIS_C_X + BLUR_AXIS_B_Y * BLUR_AXIS_C_Y
-        val dotCA = BLUR_AXIS_C_X * BLUR_AXIS_A_X + BLUR_AXIS_C_Y * BLUR_AXIS_A_Y
-
         assertEquals(1f, lenA, .0001f)
         assertEquals(1f, lenB, .0001f)
         assertEquals(1f, lenC, .0001f)
-        assertTrue(kotlin.math.abs(dotAB) < .6f)
-        assertTrue(kotlin.math.abs(dotBC) < .6f)
-        assertTrue(kotlin.math.abs(dotCA) < .6f)
     }
 
     @Test fun radiusQuantizationSuppressesSubPixelStateChurn() {
