@@ -139,6 +139,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsState()
     val chromeGradualEnabled by viewModel.chromeGradualEnabled.collectAsState()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
+    val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsState()
     val renderSafeMode by viewModel.renderSafeMode.collectAsState()
     val generatedRepairMaxAttempts by viewModel.generatedRepairMaxAttempts.collectAsState()
     val registeredProviders = remember(providers, credentialRevision) { viewModel.registeredProviders(providers) }
@@ -167,6 +168,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     blurEnabled = chromeBlurEnabled,
                     gradualEnabled = chromeGradualEnabled,
                     blurStrength = chromeBlurStrength,
+                    overlayOpacity = chromeOverlayOpacity,
                     navigationIcon = {
                         IconButton(onClick = {
                             if (currentRoute != SettingsRoute.HOME) route = SettingsRoute.HOME
@@ -198,6 +200,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             chromeBlurEnabled = chromeBlurEnabled,
                             chromeGradualEnabled = chromeGradualEnabled,
                             chromeBlurStrength = chromeBlurStrength,
+                            chromeOverlayOpacity = chromeOverlayOpacity,
                             viewModel = viewModel,
                         )
                         SettingsRoute.PRIVACY -> PrivacySettingsPage(renderSafeMode, generatedRepairMaxAttempts, viewModel)
@@ -415,6 +418,7 @@ private fun AppearanceSettingsPage(
     chromeBlurEnabled: Boolean,
     chromeGradualEnabled: Boolean,
     chromeBlurStrength: Float,
+    chromeOverlayOpacity: Float,
     viewModel: ChatViewModel,
 ) = SettingsPage {
     val appName = stringResource(R.string.app_name)
@@ -478,6 +482,15 @@ private fun AppearanceSettingsPage(
             valueRange = 0f..1f,
         )
     }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("Overlay opacity", modifier = Modifier.weight(1f))
+        Text("${(chromeOverlayOpacity * 100).toInt()}%", color = MaterialTheme.colorScheme.primary)
+    }
+    Slider(
+        value = chromeOverlayOpacity,
+        onValueChange = viewModel::setChromeOverlayOpacity,
+        valueRange = 0f..1f,
+    )
     val panelMode = when {
         chromeBlurEnabled && chromeGradualEnabled -> "Gradual blur: frosted content and tint fade softly into the page."
         chromeBlurEnabled -> "Panel blur: a uniformly frosted Mica-style panel with a defined edge."

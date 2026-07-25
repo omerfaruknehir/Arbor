@@ -397,6 +397,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsStateWithLifecycle()
     val chromeGradualEnabled by viewModel.chromeGradualEnabled.collectAsStateWithLifecycle()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsStateWithLifecycle()
+    val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsStateWithLifecycle()
     val models by viewModel.models.collectAsStateWithLifecycle()
     val allProviders by viewModel.providers.collectAsStateWithLifecycle()
     val credentialRevision by viewModel.credentialRevision.collectAsStateWithLifecycle()
@@ -828,6 +829,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 blurEnabled = chromeBlurEnabled,
                 gradualEnabled = chromeGradualEnabled,
                 blurStrength = chromeBlurStrength,
+                overlayOpacity = chromeOverlayOpacity,
                 blurProgress = topChromeProgress,
                 navigationIcon = {
                     if (openDrawer != null) {
@@ -1919,6 +1921,7 @@ private fun Composer(
     val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsStateWithLifecycle()
     val chromeGradualEnabled by viewModel.chromeGradualEnabled.collectAsStateWithLifecycle()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsStateWithLifecycle()
+    val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsStateWithLifecycle()
     val draft by viewModel.draft.collectAsState()
     val staged by viewModel.stagedAttachments.collectAsState()
     val importing by viewModel.importing.collectAsState()
@@ -1963,6 +1966,7 @@ private fun Composer(
                     gradual = chromeGradualEnabled,
                     progress = chromeProgress,
                     strength = chromeBlurStrength,
+                    overlayOpacity = chromeOverlayOpacity,
                     tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.46f),
                     edge = ArborBlurEdge.BOTTOM,
                     fadeDistance = 208.dp,

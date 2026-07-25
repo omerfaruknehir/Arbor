@@ -41,6 +41,7 @@ fun CollapsingTranslucentTopBar(
     blurEnabled: Boolean = true,
     gradualEnabled: Boolean = true,
     blurStrength: Float = 0.7f,
+    overlayOpacity: Float = 1f,
     blurArea: Dp = 128.dp,
 ) {
     val collapse = scrollBehavior.state.collapsedFraction.coerceIn(0f, 1f)
@@ -56,6 +57,7 @@ fun CollapsingTranslucentTopBar(
                 gradual = gradualEnabled,
                 progress = collapse,
                 strength = blurStrength,
+                overlayOpacity = overlayOpacity,
                 tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
                 fadeDistance = blurArea,
                 overlayDistance = blurArea,

@@ -64,6 +64,7 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel) {
     val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsState()
     val chromeGradualEnabled by viewModel.chromeGradualEnabled.collectAsState()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
+    val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsState()
     val status by viewModel.ubuntuStatus.collectAsState()
     val selectedDistribution by viewModel.linuxDistribution.collectAsState()
     val scope = rememberCoroutineScope()
@@ -101,6 +102,7 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel) {
                 blurEnabled = chromeBlurEnabled,
                 gradualEnabled = chromeGradualEnabled,
                 blurStrength = chromeBlurStrength,
+                overlayOpacity = chromeOverlayOpacity,
                 navigationIcon = {
                     IconButton(onClick = { viewModel.screen.value = Screen.SETTINGS }) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to Settings")

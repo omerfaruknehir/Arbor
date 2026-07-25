@@ -43,6 +43,7 @@ fun ChatCollapsingTranslucentTopBar(
     blurEnabled: Boolean = true,
     gradualEnabled: Boolean = true,
     blurStrength: Float = 0.7f,
+    overlayOpacity: Float = 1f,
     blurProgress: Float = scrollBehavior.state.collapsedFraction,
 ) {
     val collapse = scrollBehavior.state.collapsedFraction.coerceIn(0f, 1f)
@@ -58,6 +59,7 @@ fun ChatCollapsingTranslucentTopBar(
                 gradual = gradualEnabled,
                 progress = blurProgress,
                 strength = blurStrength,
+                overlayOpacity = overlayOpacity,
                 tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
                 fadeDistance = 128.dp,
                 overlayDistance = 128.dp,

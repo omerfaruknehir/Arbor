@@ -95,6 +95,7 @@ class AppPreferences(context: Context) {
     private val _chromeBlurEnabled = MutableStateFlow(preferences.getBoolean(KEY_CHROME_BLUR_ENABLED, true))
     private val _chromeGradualEnabled = MutableStateFlow(preferences.getBoolean(KEY_CHROME_GRADUAL_ENABLED, true))
     private val _chromeBlurStrength = MutableStateFlow(preferences.getFloat(KEY_CHROME_BLUR_STRENGTH, 0.7f).coerceIn(0f, 1f))
+    private val _chromeOverlayOpacity = MutableStateFlow(preferences.getFloat(KEY_CHROME_OVERLAY_OPACITY, 1f).coerceIn(0f, 1f))
     private val _newChatDefaults = MutableStateFlow(readNewChatDefaults())
     private val _generatedRepairMaxAttempts = MutableStateFlow(preferences.getInt(KEY_GENERATED_REPAIR_ATTEMPTS, 3).coerceIn(1, 5))
 
@@ -104,6 +105,7 @@ class AppPreferences(context: Context) {
     val chromeBlurEnabled: StateFlow<Boolean> = _chromeBlurEnabled.asStateFlow()
     val chromeGradualEnabled: StateFlow<Boolean> = _chromeGradualEnabled.asStateFlow()
     val chromeBlurStrength: StateFlow<Float> = _chromeBlurStrength.asStateFlow()
+    val chromeOverlayOpacity: StateFlow<Float> = _chromeOverlayOpacity.asStateFlow()
     val newChatDefaults: StateFlow<NewChatDefaults> = _newChatDefaults.asStateFlow()
     val generatedRepairMaxAttempts: StateFlow<Int> = _generatedRepairMaxAttempts.asStateFlow()
     val hasNewChatDefaults: Boolean get() = preferences.getBoolean(KEY_DEFAULTS_INITIALIZED, false)
@@ -137,6 +139,12 @@ class AppPreferences(context: Context) {
         val normalized = value.coerceIn(0f, 1f)
         _chromeBlurStrength.value = normalized
         preferences.edit { putFloat(KEY_CHROME_BLUR_STRENGTH, normalized) }
+    }
+
+    fun setChromeOverlayOpacity(value: Float) {
+        val normalized = value.coerceIn(0f, 1f)
+        _chromeOverlayOpacity.value = normalized
+        preferences.edit { putFloat(KEY_CHROME_OVERLAY_OPACITY, normalized) }
     }
 
     fun setGeneratedRepairMaxAttempts(value: Int) {
@@ -209,6 +217,7 @@ class AppPreferences(context: Context) {
         const val KEY_CHROME_BLUR_ENABLED = "chrome_blur_enabled"
         const val KEY_CHROME_GRADUAL_ENABLED = "chrome_gradual_enabled"
         const val KEY_CHROME_BLUR_STRENGTH = "chrome_blur_strength"
+        const val KEY_CHROME_OVERLAY_OPACITY = "chrome_overlay_opacity"
         const val KEY_DEFAULT_PROVIDER = "new_chat_provider"
         const val KEY_DEFAULT_MODEL = "new_chat_model"
         const val KEY_DEFAULT_PAIRS = "new_chat_context_pairs"

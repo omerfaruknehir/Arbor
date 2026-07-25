@@ -52,14 +52,27 @@ class BackdropBlurTest {
     }
 
     @Test fun sampleDensityWasRaisedWithoutChangingTheThreeGlassAxes() {
-        assertEquals(15, BLUR_SAMPLES_PER_PASS)
-        assertTrue(BLUR_SAMPLES_PER_PASS > 9)
+        assertEquals(21, BLUR_SAMPLES_PER_PASS)
+        assertTrue(BLUR_SAMPLES_PER_PASS > 15)
         val lenA = BLUR_AXIS_A_X * BLUR_AXIS_A_X + BLUR_AXIS_A_Y * BLUR_AXIS_A_Y
         val lenB = BLUR_AXIS_B_X * BLUR_AXIS_B_X + BLUR_AXIS_B_Y * BLUR_AXIS_B_Y
         val lenC = BLUR_AXIS_C_X * BLUR_AXIS_C_X + BLUR_AXIS_C_Y * BLUR_AXIS_C_Y
         assertEquals(1f, lenA, .0001f)
         assertEquals(1f, lenB, .0001f)
         assertEquals(1f, lenC, .0001f)
+    }
+
+    @Test fun overlayOpacityIsClampedAndPreservesRgb() {
+        val tint = androidx.compose.ui.graphics.Color(0.2f, 0.4f, 0.6f, 0.5f)
+        val hidden = applyOverlayOpacity(tint, -1f)
+        val half = applyOverlayOpacity(tint, 0.5f)
+        val full = applyOverlayOpacity(tint, 2f)
+        assertEquals(0f, hidden.alpha, .0001f)
+        assertEquals(0.25f, half.alpha, .002f)
+        assertEquals(0.5f, full.alpha, .002f)
+        assertEquals(tint.red, half.red, .0001f)
+        assertEquals(tint.green, half.green, .0001f)
+        assertEquals(tint.blue, half.blue, .0001f)
     }
 
     @Test fun radiusQuantizationSuppressesSubPixelStateChurn() {

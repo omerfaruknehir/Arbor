@@ -366,6 +366,7 @@ fun Modifier.arborBackdropBlur(
     gradual: Boolean = true,
     progress: Float,
     strength: Float,
+    overlayOpacity: Float = 1f,
     tint: Color,
     edge: ArborBlurEdge = ArborBlurEdge.TOP,
     maxRadius: Dp = DEFAULT_MAX_RADIUS_DP.dp,
@@ -389,7 +390,7 @@ fun Modifier.arborBackdropBlur(
             gradual = gradual,
             cornerRadiusDp = cornerRadius.value,
             mergeDp = mergeDistance.value,
-            tint = tint,
+            tint = applyOverlayOpacity(tint, overlayOpacity),
         )
     }
     DisposableEffect(state, edge) { onDispose { state.clear(edge) } }
@@ -401,6 +402,9 @@ fun Modifier.arborBackdropBlur(
         state.updateBottomPanel(bounds.top, bounds.bottom, overlayExtentPx)
     }
 }
+
+internal fun applyOverlayOpacity(tint: Color, opacity: Float): Color =
+    tint.copy(alpha = tint.alpha * opacity.coerceIn(0f, 1f))
 
 internal fun quantizeBlurRadiusDp(radiusDp: Float): Float =
     ((radiusDp.coerceAtLeast(0f) / BLUR_RADIUS_STEP_DP).roundToInt() * BLUR_RADIUS_STEP_DP)
@@ -415,7 +419,7 @@ private const val DEFAULT_MERGE_DISTANCE_DP = 34f
 private const val DEFAULT_TOP_FADE_DP = 128f
 private const val DEFAULT_BOTTOM_FADE_DP = 208f
 
-internal const val BLUR_SAMPLES_PER_PASS = 15
+internal const val BLUR_SAMPLES_PER_PASS = 21
 
 internal const val BLUR_AXIS_A_X = 0.9238795f
 internal const val BLUR_AXIS_A_Y = 0.3826834f
@@ -424,7 +428,7 @@ internal const val BLUR_AXIS_B_Y = 0.9914449f
 internal const val BLUR_AXIS_C_X = -0.7933533f
 internal const val BLUR_AXIS_C_Y = 0.6087614f
 
-/** Fifteen real Gaussian samples per pass, up from nine in 0.17.8. */
+/** Twenty-one real Gaussian samples per pass, preserving the 0.17.8 three-axis glass character. */
 private val EDGE_BLUR_SHADER = """
     uniform shader content;
     uniform float2 uBlur;
@@ -491,22 +495,28 @@ private val EDGE_BLUR_SHADER = """
         float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
         if (radius < 0.35) return content.eval(coord);
 
-        float2 sampleStep = uDirection * (radius / 7.5);
-        half4 accum = half4(content.eval(coord)) * 0.117695797;
-        accum += half4(content.eval(coord + sampleStep * 1.0)) * 0.112988605;
-        accum += half4(content.eval(coord - sampleStep * 1.0)) * 0.112988605;
-        accum += half4(content.eval(coord + sampleStep * 2.0)) * 0.099966786;
-        accum += half4(content.eval(coord - sampleStep * 2.0)) * 0.099966786;
-        accum += half4(content.eval(coord + sampleStep * 3.0)) * 0.081512498;
-        accum += half4(content.eval(coord - sampleStep * 3.0)) * 0.081512498;
-        accum += half4(content.eval(coord + sampleStep * 4.0)) * 0.061254792;
-        accum += half4(content.eval(coord - sampleStep * 4.0)) * 0.061254792;
-        accum += half4(content.eval(coord + sampleStep * 5.0)) * 0.042423190;
-        accum += half4(content.eval(coord - sampleStep * 5.0)) * 0.042423190;
-        accum += half4(content.eval(coord + sampleStep * 6.0)) * 0.027077836;
-        accum += half4(content.eval(coord - sampleStep * 6.0)) * 0.027077836;
-        accum += half4(content.eval(coord + sampleStep * 7.0)) * 0.015928394;
-        accum += half4(content.eval(coord - sampleStep * 7.0)) * 0.015928394;
+        float2 sampleStep = uDirection * (radius / 10.5);
+        half4 accum = half4(content.eval(coord)) * 0.090405884;
+        accum += half4(content.eval(coord + sampleStep * 1.0)) * 0.088200974;
+        accum += half4(content.eval(coord - sampleStep * 1.0)) * 0.088200974;
+        accum += half4(content.eval(coord + sampleStep * 2.0)) * 0.081903680;
+        accum += half4(content.eval(coord - sampleStep * 2.0)) * 0.081903680;
+        accum += half4(content.eval(coord + sampleStep * 3.0)) * 0.072391373;
+        accum += half4(content.eval(coord - sampleStep * 3.0)) * 0.072391373;
+        accum += half4(content.eval(coord + sampleStep * 4.0)) * 0.060900880;
+        accum += half4(content.eval(coord - sampleStep * 4.0)) * 0.060900880;
+        accum += half4(content.eval(coord + sampleStep * 5.0)) * 0.048765613;
+        accum += half4(content.eval(coord - sampleStep * 5.0)) * 0.048765613;
+        accum += half4(content.eval(coord + sampleStep * 6.0)) * 0.037166970;
+        accum += half4(content.eval(coord - sampleStep * 6.0)) * 0.037166970;
+        accum += half4(content.eval(coord + sampleStep * 7.0)) * 0.026962117;
+        accum += half4(content.eval(coord - sampleStep * 7.0)) * 0.026962117;
+        accum += half4(content.eval(coord + sampleStep * 8.0)) * 0.018616764;
+        accum += half4(content.eval(coord - sampleStep * 8.0)) * 0.018616764;
+        accum += half4(content.eval(coord + sampleStep * 9.0)) * 0.012235106;
+        accum += half4(content.eval(coord - sampleStep * 9.0)) * 0.012235106;
+        accum += half4(content.eval(coord + sampleStep * 10.0)) * 0.007653580;
+        accum += half4(content.eval(coord - sampleStep * 10.0)) * 0.007653580;
         return accum;
     }
 """.trimIndent()
