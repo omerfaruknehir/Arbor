@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 enum class ArborBlurEdge { TOP, BOTTOM }
@@ -201,12 +202,7 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         setFloatUniform("uPanelEnd", topRange.endPx, bottomRange.endPx)
         setFloatUniform("uCorner", state.topCornerRadiusDp * density, state.bottomCornerRadiusDp * density)
         setFloatUniform("uMerge", state.topMergeDp * density, state.bottomMergeDp * density)
-        setFloatUniform(
-            "uSampleThreshold",
-            DEFAULT_MAX_RADIUS_DP * density * BLUR_DENSITY_THRESHOLD_LOW,
-            DEFAULT_MAX_RADIUS_DP * density * BLUR_DENSITY_THRESHOLD_MEDIUM,
-            DEFAULT_MAX_RADIUS_DP * density * BLUR_DENSITY_THRESHOLD_HIGH,
-        )
+        setFloatUniform("uMaxBlurRadius", DEFAULT_MAX_RADIUS_DP * density)
         setFloatUniform("uDirection", directionX, directionY)
     }
 
@@ -410,20 +406,32 @@ private const val MAXIMUM_MERGE_DISTANCE_DP = 68f
 private const val DEFAULT_TOP_FADE_DP = 128f
 private const val DEFAULT_BOTTOM_FADE_DP = 208f
 
-internal const val BLUR_SAMPLES_PER_PASS = 21
-internal const val BLUR_MAX_SAMPLES_PER_PASS = 51
-internal const val BLUR_DENSITY_THRESHOLD_LOW = 0.40f
-internal const val BLUR_DENSITY_THRESHOLD_MEDIUM = 0.60f
-internal const val BLUR_DENSITY_THRESHOLD_HIGH = 0.80f
+internal const val BLUR_BASE_MAX_PAIRS = 25
+internal const val BLUR_EXTRA_CORE_PAIRS = 4
+internal const val BLUR_EXTRA_EDGE_PAIRS = 7
+internal const val BLUR_SAMPLES_PER_PASS = 31
+internal const val BLUR_MAX_SAMPLES_PER_PASS = 73
+private const val BLUR_CORE_DENSITY_FULL_STRENGTH = 0.40f
+private const val BLUR_EDGE_DENSITY_START_STRENGTH = 0.30f
+
+internal fun blurPairBudget(strength: Float): Float {
+    val normalized = strength.coerceIn(0f, 1f)
+    val basePairs = BLUR_BASE_MAX_PAIRS * normalized
+    val corePairs = BLUR_EXTRA_CORE_PAIRS *
+        arborBlurProgress(normalized / BLUR_CORE_DENSITY_FULL_STRENGTH)
+    val edgePairs = BLUR_EXTRA_EDGE_PAIRS * arborBlurProgress(
+        (normalized - BLUR_EDGE_DENSITY_START_STRENGTH) /
+            (1f - BLUR_EDGE_DENSITY_START_STRENGTH),
+    )
+    return basePairs + corePairs + edgePairs
+}
+
+internal fun blurEffectiveSamplesPerPass(strength: Float): Float =
+    1f + 2f * blurPairBudget(strength)
 
 internal fun blurSamplesPerPass(strength: Float): Int {
-    val normalized = strength.coerceIn(0f, 1f)
-    return when {
-        normalized <= BLUR_DENSITY_THRESHOLD_LOW -> 21
-        normalized <= BLUR_DENSITY_THRESHOLD_MEDIUM -> 31
-        normalized <= BLUR_DENSITY_THRESHOLD_HIGH -> 41
-        else -> BLUR_MAX_SAMPLES_PER_PASS
-    }
+    if (strength <= 0f) return 1
+    return 1 + 2 * ceil(blurPairBudget(strength).toDouble()).toInt()
 }
 
 internal const val BLUR_AXIS_A_X = 0.9238795f
@@ -433,21 +441,33 @@ internal const val BLUR_AXIS_B_Y = 0.9914449f
 internal const val BLUR_AXIS_C_X = -0.7933533f
 internal const val BLUR_AXIS_C_Y = 0.6087614f
 
-/** Adaptive Gaussian density keeps sample spacing nearly constant above 40% blur. */
+/**
+ * Continuous glass-kernel density.
+ *
+ * The base lattice follows the user's 2N% -> N+1 effective-sample rule. Four
+ * extra core pairs preserve central density, while seven progressively enabled
+ * midpoint pairs fill the outer 26% of the kernel. Pair activation is
+ * fractional, so moving the slider never swaps abruptly between whole kernels.
+ */
 private val EDGE_BLUR_SHADER = """
     uniform shader content;
     uniform float2 uBlur;
+    uniform float uMaxBlurRadius;
     uniform float2 uSize;
     uniform float2 uPanelStart;
     uniform float2 uPanelEnd;
     uniform float2 uCorner;
     uniform float2 uMerge;
-    uniform float3 uSampleThreshold;
     uniform float2 uDirection;
 
     float smoother(float value) {
         float x = saturate(value);
         return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
+    }
+
+    float gaussianWeight(float normalizedDistance) {
+        float scaled = normalizedDistance / 0.45;
+        return exp(-0.5 * scaled * scaled);
     }
 
     float roundedTopPanelMask(float2 coord, float start, float end, float radius) {
@@ -482,164 +502,345 @@ private val EDGE_BLUR_SHADER = """
         return 1.0;
     }
 
-    half4 blur21(float2 coord, float2 sampleStep) {
-        half4 accum = half4(content.eval(coord)) * 0.090405884;
-        accum += half4(content.eval(coord + sampleStep * 1.0)) * 0.088200974;
-        accum += half4(content.eval(coord - sampleStep * 1.0)) * 0.088200974;
-        accum += half4(content.eval(coord + sampleStep * 2.0)) * 0.081903680;
-        accum += half4(content.eval(coord - sampleStep * 2.0)) * 0.081903680;
-        accum += half4(content.eval(coord + sampleStep * 3.0)) * 0.072391373;
-        accum += half4(content.eval(coord - sampleStep * 3.0)) * 0.072391373;
-        accum += half4(content.eval(coord + sampleStep * 4.0)) * 0.060900880;
-        accum += half4(content.eval(coord - sampleStep * 4.0)) * 0.060900880;
-        accum += half4(content.eval(coord + sampleStep * 5.0)) * 0.048765613;
-        accum += half4(content.eval(coord - sampleStep * 5.0)) * 0.048765613;
-        accum += half4(content.eval(coord + sampleStep * 6.0)) * 0.037166970;
-        accum += half4(content.eval(coord - sampleStep * 6.0)) * 0.037166970;
-        accum += half4(content.eval(coord + sampleStep * 7.0)) * 0.026962117;
-        accum += half4(content.eval(coord - sampleStep * 7.0)) * 0.026962117;
-        accum += half4(content.eval(coord + sampleStep * 8.0)) * 0.018616764;
-        accum += half4(content.eval(coord - sampleStep * 8.0)) * 0.018616764;
-        accum += half4(content.eval(coord + sampleStep * 9.0)) * 0.012235106;
-        accum += half4(content.eval(coord - sampleStep * 9.0)) * 0.012235106;
-        accum += half4(content.eval(coord + sampleStep * 10.0)) * 0.007653580;
-        accum += half4(content.eval(coord - sampleStep * 10.0)) * 0.007653580;
-        return accum;
-    }
+    half4 adaptiveGlassBlur(float2 coord, float radius) {
+        float safeMaxRadius = max(uMaxBlurRadius, 0.001);
+        float strength = saturate(radius / safeMaxRadius);
+        float basePairBudget = 25.0 * strength;
+        float corePairBudget = 4.0 * smoother(strength / 0.40);
+        float edgePairBudget = 7.0 * smoother((strength - 0.30) / 0.70);
+        float baseStep = safeMaxRadius / 25.0;
 
-    half4 blur31(float2 coord, float2 sampleStep) {
-        half4 accum = half4(content.eval(coord)) * 0.060403601;
-        accum += half4(content.eval(coord + sampleStep * 1.0)) * 0.059744360;
-        accum += half4(content.eval(coord - sampleStep * 1.0)) * 0.059744360;
-        accum += half4(content.eval(coord + sampleStep * 2.0)) * 0.057809492;
-        accum += half4(content.eval(coord - sampleStep * 2.0)) * 0.057809492;
-        accum += half4(content.eval(coord + sampleStep * 3.0)) * 0.054722956;
-        accum += half4(content.eval(coord - sampleStep * 3.0)) * 0.054722956;
-        accum += half4(content.eval(coord + sampleStep * 4.0)) * 0.050676675;
-        accum += half4(content.eval(coord - sampleStep * 4.0)) * 0.050676675;
-        accum += half4(content.eval(coord + sampleStep * 5.0)) * 0.045910796;
-        accum += half4(content.eval(coord - sampleStep * 5.0)) * 0.045910796;
-        accum += half4(content.eval(coord + sampleStep * 6.0)) * 0.040690189;
-        accum += half4(content.eval(coord - sampleStep * 6.0)) * 0.040690189;
-        accum += half4(content.eval(coord + sampleStep * 7.0)) * 0.035280338;
-        accum += half4(content.eval(coord - sampleStep * 7.0)) * 0.035280338;
-        accum += half4(content.eval(coord + sampleStep * 8.0)) * 0.029925674;
-        accum += half4(content.eval(coord - sampleStep * 8.0)) * 0.029925674;
-        accum += half4(content.eval(coord + sampleStep * 9.0)) * 0.024832663;
-        accum += half4(content.eval(coord - sampleStep * 9.0)) * 0.024832663;
-        accum += half4(content.eval(coord + sampleStep * 10.0)) * 0.020159085;
-        accum += half4(content.eval(coord - sampleStep * 10.0)) * 0.020159085;
-        accum += half4(content.eval(coord + sampleStep * 11.0)) * 0.016009821;
-        accum += half4(content.eval(coord - sampleStep * 11.0)) * 0.016009821;
-        accum += half4(content.eval(coord + sampleStep * 12.0)) * 0.012438566;
-        accum += half4(content.eval(coord - sampleStep * 12.0)) * 0.012438566;
-        accum += half4(content.eval(coord + sampleStep * 13.0)) * 0.009454146;
-        accum += half4(content.eval(coord - sampleStep * 13.0)) * 0.009454146;
-        accum += half4(content.eval(coord + sampleStep * 14.0)) * 0.007029792;
-        accum += half4(content.eval(coord - sampleStep * 14.0)) * 0.007029792;
-        accum += half4(content.eval(coord + sampleStep * 15.0)) * 0.005113647;
-        accum += half4(content.eval(coord - sampleStep * 15.0)) * 0.005113647;
-        return accum;
-    }
+        half4 accum = half4(content.eval(coord));
+        float weightSum = 1.0;
 
-    half4 blur41(float2 coord, float2 sampleStep) {
-        half4 accum = half4(content.eval(coord)) * 0.045355122;
-        accum += half4(content.eval(coord + sampleStep * 1.0)) * 0.045076015;
-        accum += half4(content.eval(coord - sampleStep * 1.0)) * 0.045076015;
-        accum += half4(content.eval(coord + sampleStep * 2.0)) * 0.044248955;
-        accum += half4(content.eval(coord - sampleStep * 2.0)) * 0.044248955;
-        accum += half4(content.eval(coord + sampleStep * 3.0)) * 0.042904107;
-        accum += half4(content.eval(coord - sampleStep * 3.0)) * 0.042904107;
-        accum += half4(content.eval(coord + sampleStep * 4.0)) * 0.041089708;
-        accum += half4(content.eval(coord - sampleStep * 4.0)) * 0.041089708;
-        accum += half4(content.eval(coord + sampleStep * 5.0)) * 0.038869199;
-        accum += half4(content.eval(coord - sampleStep * 5.0)) * 0.038869199;
-        accum += half4(content.eval(coord + sampleStep * 6.0)) * 0.036317543;
-        accum += half4(content.eval(coord - sampleStep * 6.0)) * 0.036317543;
-        accum += half4(content.eval(coord + sampleStep * 7.0)) * 0.033517040;
-        accum += half4(content.eval(coord - sampleStep * 7.0)) * 0.033517040;
-        accum += half4(content.eval(coord + sampleStep * 8.0)) * 0.030552954;
-        accum += half4(content.eval(coord - sampleStep * 8.0)) * 0.030552954;
-        accum += half4(content.eval(coord + sampleStep * 9.0)) * 0.027509272;
-        accum += half4(content.eval(coord - sampleStep * 9.0)) * 0.027509272;
-        accum += half4(content.eval(coord + sampleStep * 10.0)) * 0.024464893;
-        accum += half4(content.eval(coord - sampleStep * 10.0)) * 0.024464893;
-        accum += half4(content.eval(coord + sampleStep * 11.0)) * 0.021490469;
-        accum += half4(content.eval(coord - sampleStep * 11.0)) * 0.021490469;
-        accum += half4(content.eval(coord + sampleStep * 12.0)) * 0.018646048;
-        accum += half4(content.eval(coord - sampleStep * 12.0)) * 0.018646048;
-        accum += half4(content.eval(coord + sampleStep * 13.0)) * 0.015979605;
-        accum += half4(content.eval(coord - sampleStep * 13.0)) * 0.015979605;
-        accum += half4(content.eval(coord + sampleStep * 14.0)) * 0.013526444;
-        accum += half4(content.eval(coord - sampleStep * 14.0)) * 0.013526444;
-        accum += half4(content.eval(coord + sampleStep * 15.0)) * 0.011309400;
-        accum += half4(content.eval(coord - sampleStep * 15.0)) * 0.011309400;
-        accum += half4(content.eval(coord + sampleStep * 16.0)) * 0.009339719;
-        accum += half4(content.eval(coord - sampleStep * 16.0)) * 0.009339719;
-        accum += half4(content.eval(coord + sampleStep * 17.0)) * 0.007618447;
-        accum += half4(content.eval(coord - sampleStep * 17.0)) * 0.007618447;
-        accum += half4(content.eval(coord + sampleStep * 18.0)) * 0.006138148;
-        accum += half4(content.eval(coord - sampleStep * 18.0)) * 0.006138148;
-        accum += half4(content.eval(coord + sampleStep * 19.0)) * 0.004884799;
-        accum += half4(content.eval(coord - sampleStep * 19.0)) * 0.004884799;
-        accum += half4(content.eval(coord + sampleStep * 20.0)) * 0.003839673;
-        accum += half4(content.eval(coord - sampleStep * 20.0)) * 0.003839673;
-        return accum;
-    }
+        float baseActivation1 = saturate(basePairBudget - 0.0);
+        if (baseActivation1 > 0.0001) {
+            float baseOffset1 = min(radius, baseStep * 1.0);
+            float baseWeight1 = gaussianWeight(baseOffset1 / radius) * baseActivation1;
+            float2 baseDelta1 = uDirection * baseOffset1;
+            accum += half4(content.eval(coord + baseDelta1)) * baseWeight1;
+            accum += half4(content.eval(coord - baseDelta1)) * baseWeight1;
+            weightSum += 2.0 * baseWeight1;
+        }
+        float baseActivation2 = saturate(basePairBudget - 1.0);
+        if (baseActivation2 > 0.0001) {
+            float baseOffset2 = min(radius, baseStep * 2.0);
+            float baseWeight2 = gaussianWeight(baseOffset2 / radius) * baseActivation2;
+            float2 baseDelta2 = uDirection * baseOffset2;
+            accum += half4(content.eval(coord + baseDelta2)) * baseWeight2;
+            accum += half4(content.eval(coord - baseDelta2)) * baseWeight2;
+            weightSum += 2.0 * baseWeight2;
+        }
+        float baseActivation3 = saturate(basePairBudget - 2.0);
+        if (baseActivation3 > 0.0001) {
+            float baseOffset3 = min(radius, baseStep * 3.0);
+            float baseWeight3 = gaussianWeight(baseOffset3 / radius) * baseActivation3;
+            float2 baseDelta3 = uDirection * baseOffset3;
+            accum += half4(content.eval(coord + baseDelta3)) * baseWeight3;
+            accum += half4(content.eval(coord - baseDelta3)) * baseWeight3;
+            weightSum += 2.0 * baseWeight3;
+        }
+        float baseActivation4 = saturate(basePairBudget - 3.0);
+        if (baseActivation4 > 0.0001) {
+            float baseOffset4 = min(radius, baseStep * 4.0);
+            float baseWeight4 = gaussianWeight(baseOffset4 / radius) * baseActivation4;
+            float2 baseDelta4 = uDirection * baseOffset4;
+            accum += half4(content.eval(coord + baseDelta4)) * baseWeight4;
+            accum += half4(content.eval(coord - baseDelta4)) * baseWeight4;
+            weightSum += 2.0 * baseWeight4;
+        }
+        float baseActivation5 = saturate(basePairBudget - 4.0);
+        if (baseActivation5 > 0.0001) {
+            float baseOffset5 = min(radius, baseStep * 5.0);
+            float baseWeight5 = gaussianWeight(baseOffset5 / radius) * baseActivation5;
+            float2 baseDelta5 = uDirection * baseOffset5;
+            accum += half4(content.eval(coord + baseDelta5)) * baseWeight5;
+            accum += half4(content.eval(coord - baseDelta5)) * baseWeight5;
+            weightSum += 2.0 * baseWeight5;
+        }
+        float baseActivation6 = saturate(basePairBudget - 5.0);
+        if (baseActivation6 > 0.0001) {
+            float baseOffset6 = min(radius, baseStep * 6.0);
+            float baseWeight6 = gaussianWeight(baseOffset6 / radius) * baseActivation6;
+            float2 baseDelta6 = uDirection * baseOffset6;
+            accum += half4(content.eval(coord + baseDelta6)) * baseWeight6;
+            accum += half4(content.eval(coord - baseDelta6)) * baseWeight6;
+            weightSum += 2.0 * baseWeight6;
+        }
+        float baseActivation7 = saturate(basePairBudget - 6.0);
+        if (baseActivation7 > 0.0001) {
+            float baseOffset7 = min(radius, baseStep * 7.0);
+            float baseWeight7 = gaussianWeight(baseOffset7 / radius) * baseActivation7;
+            float2 baseDelta7 = uDirection * baseOffset7;
+            accum += half4(content.eval(coord + baseDelta7)) * baseWeight7;
+            accum += half4(content.eval(coord - baseDelta7)) * baseWeight7;
+            weightSum += 2.0 * baseWeight7;
+        }
+        float baseActivation8 = saturate(basePairBudget - 7.0);
+        if (baseActivation8 > 0.0001) {
+            float baseOffset8 = min(radius, baseStep * 8.0);
+            float baseWeight8 = gaussianWeight(baseOffset8 / radius) * baseActivation8;
+            float2 baseDelta8 = uDirection * baseOffset8;
+            accum += half4(content.eval(coord + baseDelta8)) * baseWeight8;
+            accum += half4(content.eval(coord - baseDelta8)) * baseWeight8;
+            weightSum += 2.0 * baseWeight8;
+        }
+        float baseActivation9 = saturate(basePairBudget - 8.0);
+        if (baseActivation9 > 0.0001) {
+            float baseOffset9 = min(radius, baseStep * 9.0);
+            float baseWeight9 = gaussianWeight(baseOffset9 / radius) * baseActivation9;
+            float2 baseDelta9 = uDirection * baseOffset9;
+            accum += half4(content.eval(coord + baseDelta9)) * baseWeight9;
+            accum += half4(content.eval(coord - baseDelta9)) * baseWeight9;
+            weightSum += 2.0 * baseWeight9;
+        }
+        float baseActivation10 = saturate(basePairBudget - 9.0);
+        if (baseActivation10 > 0.0001) {
+            float baseOffset10 = min(radius, baseStep * 10.0);
+            float baseWeight10 = gaussianWeight(baseOffset10 / radius) * baseActivation10;
+            float2 baseDelta10 = uDirection * baseOffset10;
+            accum += half4(content.eval(coord + baseDelta10)) * baseWeight10;
+            accum += half4(content.eval(coord - baseDelta10)) * baseWeight10;
+            weightSum += 2.0 * baseWeight10;
+        }
+        float baseActivation11 = saturate(basePairBudget - 10.0);
+        if (baseActivation11 > 0.0001) {
+            float baseOffset11 = min(radius, baseStep * 11.0);
+            float baseWeight11 = gaussianWeight(baseOffset11 / radius) * baseActivation11;
+            float2 baseDelta11 = uDirection * baseOffset11;
+            accum += half4(content.eval(coord + baseDelta11)) * baseWeight11;
+            accum += half4(content.eval(coord - baseDelta11)) * baseWeight11;
+            weightSum += 2.0 * baseWeight11;
+        }
+        float baseActivation12 = saturate(basePairBudget - 11.0);
+        if (baseActivation12 > 0.0001) {
+            float baseOffset12 = min(radius, baseStep * 12.0);
+            float baseWeight12 = gaussianWeight(baseOffset12 / radius) * baseActivation12;
+            float2 baseDelta12 = uDirection * baseOffset12;
+            accum += half4(content.eval(coord + baseDelta12)) * baseWeight12;
+            accum += half4(content.eval(coord - baseDelta12)) * baseWeight12;
+            weightSum += 2.0 * baseWeight12;
+        }
+        float baseActivation13 = saturate(basePairBudget - 12.0);
+        if (baseActivation13 > 0.0001) {
+            float baseOffset13 = min(radius, baseStep * 13.0);
+            float baseWeight13 = gaussianWeight(baseOffset13 / radius) * baseActivation13;
+            float2 baseDelta13 = uDirection * baseOffset13;
+            accum += half4(content.eval(coord + baseDelta13)) * baseWeight13;
+            accum += half4(content.eval(coord - baseDelta13)) * baseWeight13;
+            weightSum += 2.0 * baseWeight13;
+        }
+        float baseActivation14 = saturate(basePairBudget - 13.0);
+        if (baseActivation14 > 0.0001) {
+            float baseOffset14 = min(radius, baseStep * 14.0);
+            float baseWeight14 = gaussianWeight(baseOffset14 / radius) * baseActivation14;
+            float2 baseDelta14 = uDirection * baseOffset14;
+            accum += half4(content.eval(coord + baseDelta14)) * baseWeight14;
+            accum += half4(content.eval(coord - baseDelta14)) * baseWeight14;
+            weightSum += 2.0 * baseWeight14;
+        }
+        float baseActivation15 = saturate(basePairBudget - 14.0);
+        if (baseActivation15 > 0.0001) {
+            float baseOffset15 = min(radius, baseStep * 15.0);
+            float baseWeight15 = gaussianWeight(baseOffset15 / radius) * baseActivation15;
+            float2 baseDelta15 = uDirection * baseOffset15;
+            accum += half4(content.eval(coord + baseDelta15)) * baseWeight15;
+            accum += half4(content.eval(coord - baseDelta15)) * baseWeight15;
+            weightSum += 2.0 * baseWeight15;
+        }
+        float baseActivation16 = saturate(basePairBudget - 15.0);
+        if (baseActivation16 > 0.0001) {
+            float baseOffset16 = min(radius, baseStep * 16.0);
+            float baseWeight16 = gaussianWeight(baseOffset16 / radius) * baseActivation16;
+            float2 baseDelta16 = uDirection * baseOffset16;
+            accum += half4(content.eval(coord + baseDelta16)) * baseWeight16;
+            accum += half4(content.eval(coord - baseDelta16)) * baseWeight16;
+            weightSum += 2.0 * baseWeight16;
+        }
+        float baseActivation17 = saturate(basePairBudget - 16.0);
+        if (baseActivation17 > 0.0001) {
+            float baseOffset17 = min(radius, baseStep * 17.0);
+            float baseWeight17 = gaussianWeight(baseOffset17 / radius) * baseActivation17;
+            float2 baseDelta17 = uDirection * baseOffset17;
+            accum += half4(content.eval(coord + baseDelta17)) * baseWeight17;
+            accum += half4(content.eval(coord - baseDelta17)) * baseWeight17;
+            weightSum += 2.0 * baseWeight17;
+        }
+        float baseActivation18 = saturate(basePairBudget - 17.0);
+        if (baseActivation18 > 0.0001) {
+            float baseOffset18 = min(radius, baseStep * 18.0);
+            float baseWeight18 = gaussianWeight(baseOffset18 / radius) * baseActivation18;
+            float2 baseDelta18 = uDirection * baseOffset18;
+            accum += half4(content.eval(coord + baseDelta18)) * baseWeight18;
+            accum += half4(content.eval(coord - baseDelta18)) * baseWeight18;
+            weightSum += 2.0 * baseWeight18;
+        }
+        float baseActivation19 = saturate(basePairBudget - 18.0);
+        if (baseActivation19 > 0.0001) {
+            float baseOffset19 = min(radius, baseStep * 19.0);
+            float baseWeight19 = gaussianWeight(baseOffset19 / radius) * baseActivation19;
+            float2 baseDelta19 = uDirection * baseOffset19;
+            accum += half4(content.eval(coord + baseDelta19)) * baseWeight19;
+            accum += half4(content.eval(coord - baseDelta19)) * baseWeight19;
+            weightSum += 2.0 * baseWeight19;
+        }
+        float baseActivation20 = saturate(basePairBudget - 19.0);
+        if (baseActivation20 > 0.0001) {
+            float baseOffset20 = min(radius, baseStep * 20.0);
+            float baseWeight20 = gaussianWeight(baseOffset20 / radius) * baseActivation20;
+            float2 baseDelta20 = uDirection * baseOffset20;
+            accum += half4(content.eval(coord + baseDelta20)) * baseWeight20;
+            accum += half4(content.eval(coord - baseDelta20)) * baseWeight20;
+            weightSum += 2.0 * baseWeight20;
+        }
+        float baseActivation21 = saturate(basePairBudget - 20.0);
+        if (baseActivation21 > 0.0001) {
+            float baseOffset21 = min(radius, baseStep * 21.0);
+            float baseWeight21 = gaussianWeight(baseOffset21 / radius) * baseActivation21;
+            float2 baseDelta21 = uDirection * baseOffset21;
+            accum += half4(content.eval(coord + baseDelta21)) * baseWeight21;
+            accum += half4(content.eval(coord - baseDelta21)) * baseWeight21;
+            weightSum += 2.0 * baseWeight21;
+        }
+        float baseActivation22 = saturate(basePairBudget - 21.0);
+        if (baseActivation22 > 0.0001) {
+            float baseOffset22 = min(radius, baseStep * 22.0);
+            float baseWeight22 = gaussianWeight(baseOffset22 / radius) * baseActivation22;
+            float2 baseDelta22 = uDirection * baseOffset22;
+            accum += half4(content.eval(coord + baseDelta22)) * baseWeight22;
+            accum += half4(content.eval(coord - baseDelta22)) * baseWeight22;
+            weightSum += 2.0 * baseWeight22;
+        }
+        float baseActivation23 = saturate(basePairBudget - 22.0);
+        if (baseActivation23 > 0.0001) {
+            float baseOffset23 = min(radius, baseStep * 23.0);
+            float baseWeight23 = gaussianWeight(baseOffset23 / radius) * baseActivation23;
+            float2 baseDelta23 = uDirection * baseOffset23;
+            accum += half4(content.eval(coord + baseDelta23)) * baseWeight23;
+            accum += half4(content.eval(coord - baseDelta23)) * baseWeight23;
+            weightSum += 2.0 * baseWeight23;
+        }
+        float baseActivation24 = saturate(basePairBudget - 23.0);
+        if (baseActivation24 > 0.0001) {
+            float baseOffset24 = min(radius, baseStep * 24.0);
+            float baseWeight24 = gaussianWeight(baseOffset24 / radius) * baseActivation24;
+            float2 baseDelta24 = uDirection * baseOffset24;
+            accum += half4(content.eval(coord + baseDelta24)) * baseWeight24;
+            accum += half4(content.eval(coord - baseDelta24)) * baseWeight24;
+            weightSum += 2.0 * baseWeight24;
+        }
+        float baseActivation25 = saturate(basePairBudget - 24.0);
+        if (baseActivation25 > 0.0001) {
+            float baseOffset25 = min(radius, baseStep * 25.0);
+            float baseWeight25 = gaussianWeight(baseOffset25 / radius) * baseActivation25;
+            float2 baseDelta25 = uDirection * baseOffset25;
+            accum += half4(content.eval(coord + baseDelta25)) * baseWeight25;
+            accum += half4(content.eval(coord - baseDelta25)) * baseWeight25;
+            weightSum += 2.0 * baseWeight25;
+        }
 
-    half4 blur51(float2 coord, float2 sampleStep) {
-        half4 accum = half4(content.eval(coord)) * 0.036309917;
-        accum += half4(content.eval(coord + sampleStep * 1.0)) * 0.036166754;
-        accum += half4(content.eval(coord - sampleStep * 1.0)) * 0.036166754;
-        accum += half4(content.eval(coord + sampleStep * 2.0)) * 0.035740641;
-        accum += half4(content.eval(coord - sampleStep * 2.0)) * 0.035740641;
-        accum += half4(content.eval(coord + sampleStep * 3.0)) * 0.035041580;
-        accum += half4(content.eval(coord - sampleStep * 3.0)) * 0.035041580;
-        accum += half4(content.eval(coord + sampleStep * 4.0)) * 0.034085805;
-        accum += half4(content.eval(coord - sampleStep * 4.0)) * 0.034085805;
-        accum += half4(content.eval(coord + sampleStep * 5.0)) * 0.032895158;
-        accum += half4(content.eval(coord - sampleStep * 5.0)) * 0.032895158;
-        accum += half4(content.eval(coord + sampleStep * 6.0)) * 0.031496256;
-        accum += half4(content.eval(coord - sampleStep * 6.0)) * 0.031496256;
-        accum += half4(content.eval(coord + sampleStep * 7.0)) * 0.029919506;
-        accum += half4(content.eval(coord - sampleStep * 7.0)) * 0.029919506;
-        accum += half4(content.eval(coord + sampleStep * 8.0)) * 0.028198010;
-        accum += half4(content.eval(coord - sampleStep * 8.0)) * 0.028198010;
-        accum += half4(content.eval(coord + sampleStep * 9.0)) * 0.026366411;
-        accum += half4(content.eval(coord - sampleStep * 9.0)) * 0.026366411;
-        accum += half4(content.eval(coord + sampleStep * 10.0)) * 0.024459757;
-        accum += half4(content.eval(coord - sampleStep * 10.0)) * 0.024459757;
-        accum += half4(content.eval(coord + sampleStep * 11.0)) * 0.022512399;
-        accum += half4(content.eval(coord - sampleStep * 11.0)) * 0.022512399;
-        accum += half4(content.eval(coord + sampleStep * 12.0)) * 0.020557010;
-        accum += half4(content.eval(coord - sampleStep * 12.0)) * 0.020557010;
-        accum += half4(content.eval(coord + sampleStep * 13.0)) * 0.018623730;
-        accum += half4(content.eval(coord - sampleStep * 13.0)) * 0.018623730;
-        accum += half4(content.eval(coord + sampleStep * 14.0)) * 0.016739479;
-        accum += half4(content.eval(coord - sampleStep * 14.0)) * 0.016739479;
-        accum += half4(content.eval(coord + sampleStep * 15.0)) * 0.014927453;
-        accum += half4(content.eval(coord - sampleStep * 15.0)) * 0.014927453;
-        accum += half4(content.eval(coord + sampleStep * 16.0)) * 0.013206814;
-        accum += half4(content.eval(coord - sampleStep * 16.0)) * 0.013206814;
-        accum += half4(content.eval(coord + sampleStep * 17.0)) * 0.011592548;
-        accum += half4(content.eval(coord - sampleStep * 17.0)) * 0.011592548;
-        accum += half4(content.eval(coord + sampleStep * 18.0)) * 0.010095511;
-        accum += half4(content.eval(coord - sampleStep * 18.0)) * 0.010095511;
-        accum += half4(content.eval(coord + sampleStep * 19.0)) * 0.008722606;
-        accum += half4(content.eval(coord - sampleStep * 19.0)) * 0.008722606;
-        accum += half4(content.eval(coord + sampleStep * 20.0)) * 0.007477092;
-        accum += half4(content.eval(coord - sampleStep * 20.0)) * 0.007477092;
-        accum += half4(content.eval(coord + sampleStep * 21.0)) * 0.006358984;
-        accum += half4(content.eval(coord - sampleStep * 21.0)) * 0.006358984;
-        accum += half4(content.eval(coord + sampleStep * 22.0)) * 0.005365514;
-        accum += half4(content.eval(coord - sampleStep * 22.0)) * 0.005365514;
-        accum += half4(content.eval(coord + sampleStep * 23.0)) * 0.004491624;
-        accum += half4(content.eval(coord - sampleStep * 23.0)) * 0.004491624;
-        accum += half4(content.eval(coord + sampleStep * 24.0)) * 0.003730474;
-        accum += half4(content.eval(coord - sampleStep * 24.0)) * 0.003730474;
-        accum += half4(content.eval(coord + sampleStep * 25.0)) * 0.003073925;
-        accum += half4(content.eval(coord - sampleStep * 25.0)) * 0.003073925;
-        return accum;
+        float coreActivation1 = saturate(corePairBudget - 0.0);
+        if (coreActivation1 > 0.0001) {
+            float coreOffset1 = radius * 0.50;
+            float coreWeight1 = gaussianWeight(0.50) * coreActivation1 * 0.85;
+            float2 coreDelta1 = uDirection * coreOffset1;
+            accum += half4(content.eval(coord + coreDelta1)) * coreWeight1;
+            accum += half4(content.eval(coord - coreDelta1)) * coreWeight1;
+            weightSum += 2.0 * coreWeight1;
+        }
+        float coreActivation2 = saturate(corePairBudget - 1.0);
+        if (coreActivation2 > 0.0001) {
+            float coreOffset2 = radius * 0.30;
+            float coreWeight2 = gaussianWeight(0.30) * coreActivation2 * 0.85;
+            float2 coreDelta2 = uDirection * coreOffset2;
+            accum += half4(content.eval(coord + coreDelta2)) * coreWeight2;
+            accum += half4(content.eval(coord - coreDelta2)) * coreWeight2;
+            weightSum += 2.0 * coreWeight2;
+        }
+        float coreActivation3 = saturate(corePairBudget - 2.0);
+        if (coreActivation3 > 0.0001) {
+            float coreOffset3 = radius * 0.70;
+            float coreWeight3 = gaussianWeight(0.70) * coreActivation3 * 0.85;
+            float2 coreDelta3 = uDirection * coreOffset3;
+            accum += half4(content.eval(coord + coreDelta3)) * coreWeight3;
+            accum += half4(content.eval(coord - coreDelta3)) * coreWeight3;
+            weightSum += 2.0 * coreWeight3;
+        }
+        float coreActivation4 = saturate(corePairBudget - 3.0);
+        if (coreActivation4 > 0.0001) {
+            float coreOffset4 = radius * 0.18;
+            float coreWeight4 = gaussianWeight(0.18) * coreActivation4 * 0.85;
+            float2 coreDelta4 = uDirection * coreOffset4;
+            accum += half4(content.eval(coord + coreDelta4)) * coreWeight4;
+            accum += half4(content.eval(coord - coreDelta4)) * coreWeight4;
+            weightSum += 2.0 * coreWeight4;
+        }
+
+        float edgeActivation1 = saturate(edgePairBudget - 0.0);
+        if (edgeActivation1 > 0.0001) {
+            float edgeOffset1 = radius * 0.98;
+            float edgeWeight1 = gaussianWeight(0.98) * edgeActivation1 * 1.15;
+            float2 edgeDelta1 = uDirection * edgeOffset1;
+            accum += half4(content.eval(coord + edgeDelta1)) * edgeWeight1;
+            accum += half4(content.eval(coord - edgeDelta1)) * edgeWeight1;
+            weightSum += 2.0 * edgeWeight1;
+        }
+        float edgeActivation2 = saturate(edgePairBudget - 1.0);
+        if (edgeActivation2 > 0.0001) {
+            float edgeOffset2 = radius * 0.94;
+            float edgeWeight2 = gaussianWeight(0.94) * edgeActivation2 * 1.15;
+            float2 edgeDelta2 = uDirection * edgeOffset2;
+            accum += half4(content.eval(coord + edgeDelta2)) * edgeWeight2;
+            accum += half4(content.eval(coord - edgeDelta2)) * edgeWeight2;
+            weightSum += 2.0 * edgeWeight2;
+        }
+        float edgeActivation3 = saturate(edgePairBudget - 2.0);
+        if (edgeActivation3 > 0.0001) {
+            float edgeOffset3 = radius * 0.90;
+            float edgeWeight3 = gaussianWeight(0.90) * edgeActivation3 * 1.15;
+            float2 edgeDelta3 = uDirection * edgeOffset3;
+            accum += half4(content.eval(coord + edgeDelta3)) * edgeWeight3;
+            accum += half4(content.eval(coord - edgeDelta3)) * edgeWeight3;
+            weightSum += 2.0 * edgeWeight3;
+        }
+        float edgeActivation4 = saturate(edgePairBudget - 3.0);
+        if (edgeActivation4 > 0.0001) {
+            float edgeOffset4 = radius * 0.86;
+            float edgeWeight4 = gaussianWeight(0.86) * edgeActivation4 * 1.15;
+            float2 edgeDelta4 = uDirection * edgeOffset4;
+            accum += half4(content.eval(coord + edgeDelta4)) * edgeWeight4;
+            accum += half4(content.eval(coord - edgeDelta4)) * edgeWeight4;
+            weightSum += 2.0 * edgeWeight4;
+        }
+        float edgeActivation5 = saturate(edgePairBudget - 4.0);
+        if (edgeActivation5 > 0.0001) {
+            float edgeOffset5 = radius * 0.82;
+            float edgeWeight5 = gaussianWeight(0.82) * edgeActivation5 * 1.15;
+            float2 edgeDelta5 = uDirection * edgeOffset5;
+            accum += half4(content.eval(coord + edgeDelta5)) * edgeWeight5;
+            accum += half4(content.eval(coord - edgeDelta5)) * edgeWeight5;
+            weightSum += 2.0 * edgeWeight5;
+        }
+        float edgeActivation6 = saturate(edgePairBudget - 5.0);
+        if (edgeActivation6 > 0.0001) {
+            float edgeOffset6 = radius * 0.78;
+            float edgeWeight6 = gaussianWeight(0.78) * edgeActivation6 * 1.15;
+            float2 edgeDelta6 = uDirection * edgeOffset6;
+            accum += half4(content.eval(coord + edgeDelta6)) * edgeWeight6;
+            accum += half4(content.eval(coord - edgeDelta6)) * edgeWeight6;
+            weightSum += 2.0 * edgeWeight6;
+        }
+        float edgeActivation7 = saturate(edgePairBudget - 6.0);
+        if (edgeActivation7 > 0.0001) {
+            float edgeOffset7 = radius * 0.74;
+            float edgeWeight7 = gaussianWeight(0.74) * edgeActivation7 * 1.15;
+            float2 edgeDelta7 = uDirection * edgeOffset7;
+            accum += half4(content.eval(coord + edgeDelta7)) * edgeWeight7;
+            accum += half4(content.eval(coord - edgeDelta7)) * edgeWeight7;
+            weightSum += 2.0 * edgeWeight7;
+        }
+
+        return accum / weightSum;
     }
 
     half4 main(float2 coord) {
@@ -659,16 +860,6 @@ private val EDGE_BLUR_SHADER = """
 
         float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
         if (radius < 0.35) return content.eval(coord);
-
-        if (radius <= uSampleThreshold.x) {
-            return blur21(coord, uDirection * (radius / 10.5));
-        }
-        if (radius <= uSampleThreshold.y) {
-            return blur31(coord, uDirection * (radius / 15.5));
-        }
-        if (radius <= uSampleThreshold.z) {
-            return blur41(coord, uDirection * (radius / 20.5));
-        }
-        return blur51(coord, uDirection * (radius / 25.5));
+        return adaptiveGlassBlur(coord, radius);
     }
 """.trimIndent()

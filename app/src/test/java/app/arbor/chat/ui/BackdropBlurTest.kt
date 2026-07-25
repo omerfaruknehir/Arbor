@@ -55,17 +55,26 @@ class BackdropBlurTest {
         )
     }
 
-    @Test fun sampleDensityScalesAboveFortyPercentWithoutChangingTheThreeGlassAxes() {
-        assertEquals(21, BLUR_SAMPLES_PER_PASS)
-        assertEquals(21, blurSamplesPerPass(0f))
-        assertEquals(21, blurSamplesPerPass(.40f))
-        assertEquals(31, blurSamplesPerPass(.41f))
-        assertEquals(31, blurSamplesPerPass(.60f))
-        assertEquals(41, blurSamplesPerPass(.61f))
-        assertEquals(41, blurSamplesPerPass(.80f))
-        assertEquals(51, blurSamplesPerPass(.81f))
+    @Test fun sampleDensityGrowsContinuouslyAndAddsDedicatedEdgeCoverage() {
+        assertEquals(31, BLUR_SAMPLES_PER_PASS)
+        assertEquals(1, blurSamplesPerPass(0f))
+        assertEquals(15, blurSamplesPerPass(.20f))
+        assertEquals(31, blurSamplesPerPass(.40f))
+        assertEquals(37, blurSamplesPerPass(.50f))
+        assertEquals(45, blurSamplesPerPass(.60f))
+        assertEquals(61, blurSamplesPerPass(.80f))
+        assertEquals(73, blurSamplesPerPass(1f))
         assertEquals(BLUR_MAX_SAMPLES_PER_PASS, blurSamplesPerPass(1f))
-        assertTrue(BLUR_MAX_SAMPLES_PER_PASS > BLUR_SAMPLES_PER_PASS)
+
+        val everyTwoPercent = (0..50).map { blurSamplesPerPass(it / 50f) }
+        everyTwoPercent.zipWithNext().forEach { (previous, next) ->
+            assertTrue(next >= previous)
+            assertTrue(next - previous <= 2)
+        }
+        assertTrue(blurEffectiveSamplesPerPass(.40f) > 21f)
+        assertEquals(73f, blurEffectiveSamplesPerPass(1f), .0001f)
+        assertEquals(7, BLUR_EXTRA_EDGE_PAIRS)
+
         val lenA = BLUR_AXIS_A_X * BLUR_AXIS_A_X + BLUR_AXIS_A_Y * BLUR_AXIS_A_Y
         val lenB = BLUR_AXIS_B_X * BLUR_AXIS_B_X + BLUR_AXIS_B_Y * BLUR_AXIS_B_Y
         val lenC = BLUR_AXIS_C_X * BLUR_AXIS_C_X + BLUR_AXIS_C_Y * BLUR_AXIS_C_Y
