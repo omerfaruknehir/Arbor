@@ -57,8 +57,8 @@ fun ChatCollapsingTranslucentTopBar(
                 progress = blurProgress,
                 strength = blurStrength,
                 tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
-                fadeDistance = 96.dp,
-                overlayDistance = 96.dp,
+                fadeDistance = 128.dp,
+                overlayDistance = 128.dp,
             ),
     ) {
         LargeTopAppBar(

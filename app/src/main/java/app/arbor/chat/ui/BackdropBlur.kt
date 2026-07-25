@@ -34,7 +34,7 @@ enum class ArborBlurEdge { TOP, BOTTOM }
  * Older Arbor builds captured the screen into a GraphicsLayer and replayed
  * cropped copies behind app chrome. Compose renders those layers lazily, so the
  * replay could be blank or one frame stale. This state instead lets the body
- * itself receive a two-pass rotated AGSL edge blur.
+ * itself receive a three-pass multi-axis AGSL edge blur.
  */
 @Stable
 class ArborBackdropBlurState internal constructor() {
@@ -110,15 +110,23 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         ?: contentHeightPx
 
     /*
-     * Use the same two-pass RuntimeShader chain that rendered correctly before
-     * 0.17.2. The axes are still orthogonal, so the result is an isotropic
-     * Gaussian, but they are rotated away from the screen's pixel rows and
-     * columns to avoid the old horizontal/vertical grid pattern.
+     * Two rotated passes still leave visible line structure because each pass is
+     * fundamentally one-dimensional. Move to three evenly spaced, non-axis-
+     * aligned passes so no single sample line dominates. This looks closer to a
+     * soft mica/frosted surface than a rotated grid.
      *
      * Radius values are quantized by ArborBackdropBlurState, limiting effect
      * reconstruction while the header moves without relying on mutable shader
      * uniforms after RenderEffect creation (which was unreliable on-device).
      */
+    fun buildShader(directionX: Float, directionY: Float) = RuntimeShader(EDGE_BLUR_SHADER).apply {
+        setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
+        setFloatUniform("uFade", topFadePx, bottomFadePx)
+        setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
+        setFloatUniform("uBottomEdge", bottomEdgePx)
+        setFloatUniform("uDirection", directionX, directionY)
+    }
+
     val firstShader = remember(
         topRadiusPx,
         bottomRadiusPx,
@@ -126,15 +134,7 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         bottomFadePx,
         contentHeightPx,
         bottomEdgePx,
-    ) {
-        RuntimeShader(EDGE_BLUR_SHADER).apply {
-            setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
-            setFloatUniform("uFade", topFadePx, bottomFadePx)
-            setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
-            setFloatUniform("uBottomEdge", bottomEdgePx)
-            setFloatUniform("uDirection", BLUR_AXIS_A_X, BLUR_AXIS_A_Y)
-        }
-    }
+    ) { buildShader(BLUR_AXIS_A_X, BLUR_AXIS_A_Y) }
     val secondShader = remember(
         topRadiusPx,
         bottomRadiusPx,
@@ -142,19 +142,20 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         bottomFadePx,
         contentHeightPx,
         bottomEdgePx,
-    ) {
-        RuntimeShader(EDGE_BLUR_SHADER).apply {
-            setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
-            setFloatUniform("uFade", topFadePx, bottomFadePx)
-            setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
-            setFloatUniform("uBottomEdge", bottomEdgePx)
-            setFloatUniform("uDirection", BLUR_AXIS_B_X, BLUR_AXIS_B_Y)
-        }
-    }
-    val composeEffect = remember(firstShader, secondShader) {
+    ) { buildShader(BLUR_AXIS_B_X, BLUR_AXIS_B_Y) }
+    val thirdShader = remember(
+        topRadiusPx,
+        bottomRadiusPx,
+        topFadePx,
+        bottomFadePx,
+        contentHeightPx,
+        bottomEdgePx,
+    ) { buildShader(BLUR_AXIS_C_X, BLUR_AXIS_C_Y) }
+    val composeEffect = remember(firstShader, secondShader, thirdShader) {
         val first = RenderEffect.createRuntimeShaderEffect(firstShader, "content")
         val second = RenderEffect.createRuntimeShaderEffect(secondShader, "content")
-        RenderEffect.createChainEffect(second, first).asComposeRenderEffect()
+        val third = RenderEffect.createRuntimeShaderEffect(thirdShader, "content")
+        RenderEffect.createChainEffect(third, RenderEffect.createChainEffect(second, first)).asComposeRenderEffect()
     }
 
     measured.graphicsLayer { renderEffect = composeEffect }
@@ -162,7 +163,27 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
 
 internal fun arborBlurProgress(progress: Float): Float {
     val p = progress.coerceIn(0f, 1f)
-    return p * p * (3f - 2f * p)
+    // Quintic smootherstep: gentler acceleration and settling than smoothstep.
+    return p * p * p * (p * (p * 6f - 15f) + 10f)
+}
+
+internal fun calculateBlurRadiusDp(
+    enabled: Boolean,
+    progress: Float,
+    strength: Float,
+    maxRadiusDp: Float = DEFAULT_MAX_RADIUS_DP,
+    minimumRadiusDp: Float = DEFAULT_MIN_RADIUS_DP,
+): Float {
+    if (!enabled) return 0f
+    val maximum = maxRadiusDp.coerceAtLeast(0f)
+    val minimum = minimumRadiusDp.coerceIn(0f, maximum)
+    val configuredMaximum = minimum + (maximum - minimum) * strength.coerceIn(0f, 1f)
+    return minimum + (configuredMaximum - minimum) * arborBlurProgress(progress)
+}
+
+internal fun calculateBlurOverlayAmount(enabled: Boolean, progress: Float): Float {
+    if (!enabled) return 1f
+    return MIN_OVERLAY_AMOUNT + (1f - MIN_OVERLAY_AMOUNT) * arborBlurProgress(progress)
 }
 
 /** Registers one chrome edge and paints a directional, gradually fading tint. */
@@ -177,12 +198,12 @@ fun Modifier.arborBackdropBlur(
     fadeDistance: Dp = if (edge == ArborBlurEdge.TOP) DEFAULT_TOP_FADE_DP.dp else DEFAULT_BOTTOM_FADE_DP.dp,
     overlayDistance: Dp = fadeDistance,
 ): Modifier = composed {
-    val easedProgress = arborBlurProgress(progress)
-    val radiusDp = if (enabled) {
-        maxRadius.value * strength.coerceIn(0f, 1f) * easedProgress
-    } else {
-        0f
-    }
+    val radiusDp = calculateBlurRadiusDp(
+        enabled = enabled,
+        progress = progress,
+        strength = strength,
+        maxRadiusDp = maxRadius.value,
+    )
 
     SideEffect { state.update(edge, radiusDp, fadeDistance.value) }
     DisposableEffect(state, edge) { onDispose { state.clear(edge) } }
@@ -198,10 +219,10 @@ fun Modifier.arborBackdropBlur(
     val overlayDistancePx = with(LocalDensity.current) { overlayDistance.toPx() }
 
     anchored.drawWithContent {
-        val overlayProgress = if (enabled) easedProgress else 1f
-        val peak = tint.copy(alpha = tint.alpha * overlayProgress)
-        val middle = tint.copy(alpha = tint.alpha * overlayProgress * 0.58f)
-        val feather = tint.copy(alpha = tint.alpha * overlayProgress * 0.12f)
+        val overlayProgress = calculateBlurOverlayAmount(enabled, progress)
+        val peak = tint.copy(alpha = (tint.alpha * overlayProgress * 1.10f).coerceIn(0f, 1f))
+        val middle = tint.copy(alpha = (tint.alpha * overlayProgress * 0.78f).coerceIn(0f, 1f))
+        val feather = tint.copy(alpha = (tint.alpha * overlayProgress * 0.22f).coerceIn(0f, 1f))
         val extent = overlayDistancePx.coerceIn(1f, size.height.coerceAtLeast(1f))
         when (edge) {
             ArborBlurEdge.TOP -> {
@@ -245,17 +266,23 @@ internal fun quantizeBlurRadiusDp(radiusDp: Float): Float =
 
 private const val BLUR_RADIUS_STEP_DP = 0.25f
 private const val MIN_VISIBLE_RADIUS_PX = 0.35f
-private const val DEFAULT_MAX_RADIUS_DP = 36f
-private const val DEFAULT_TOP_FADE_DP = 88f
-private const val DEFAULT_BOTTOM_FADE_DP = 152f
+private const val DEFAULT_MAX_RADIUS_DP = 56f
+private const val DEFAULT_MIN_RADIUS_DP = 16f
+private const val MIN_OVERLAY_AMOUNT = 0.48f
+private const val DEFAULT_TOP_FADE_DP = 128f
+private const val DEFAULT_BOTTOM_FADE_DP = 208f
 
-// Two normalized, orthogonal axes rotated 22.5 degrees from the screen axes.
+// Three normalized directions spaced 60 degrees apart and rotated off the
+// screen axes. This avoids a dominant line structure and gives a more mica-like
+// frosted blur when the passes are chained.
 internal const val BLUR_AXIS_A_X = 0.9238795f
 internal const val BLUR_AXIS_A_Y = 0.3826834f
-internal const val BLUR_AXIS_B_X = -0.3826834f
-internal const val BLUR_AXIS_B_Y = 0.9238795f
+internal const val BLUR_AXIS_B_X = 0.1305262f
+internal const val BLUR_AXIS_B_Y = 0.9914449f
+internal const val BLUR_AXIS_C_X = -0.7933533f
+internal const val BLUR_AXIS_C_Y = 0.6087614f
 
-/** Bilinear-paired Gaussian taps: nine samples per rotated axis. */
+/** Bilinear-paired Gaussian taps: nine samples per pass across three directions. */
 private val EDGE_BLUR_SHADER = """
     uniform shader content;
     uniform float2 uBlur;
@@ -264,10 +291,15 @@ private val EDGE_BLUR_SHADER = """
     uniform float uBottomEdge;
     uniform float2 uDirection;
 
+    float smoother(float value) {
+        float x = saturate(value);
+        return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
+    }
+
     half4 main(float2 coord) {
-        float topMix = saturate(1.0 - coord.y / max(uFade.x, 1.0));
+        float topMix = 1.0 - smoother(coord.y / max(uFade.x, 1.0));
         float bottomEdge = clamp(uBottomEdge, 0.0, uHeight);
-        float bottomMix = saturate(1.0 - (bottomEdge - coord.y) / max(uFade.y, 1.0));
+        float bottomMix = 1.0 - smoother((bottomEdge - coord.y) / max(uFade.y, 1.0));
         float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
         if (radius < 0.35) return content.eval(coord);
 

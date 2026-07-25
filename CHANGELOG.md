@@ -1,3 +1,18 @@
+# Arbor 0.17.6
+
+- Keep gradual chrome blur active whenever the feature is enabled, with a 16 dp minimum radius before any chat scrolling occurs.
+- Map the strength control from the minimum radius to the 56 dp maximum instead of allowing enabled blur to collapse to zero.
+- Use quintic smootherstep for scroll-driven blur growth and for the shader's spatial edge falloff, producing gentler acceleration and less visible transition boundaries.
+- Start the Mica-style tint overlay at 48% and ramp it on the same curve as the blur instead of appearing only after scrolling.
+- Widen the top fade to 128 dp and the composer fade to 208 dp for a more gradual blur and overlay transition.
+- Preserve the 0.17.5 three-direction blur, gesture fixes, chat scrolling optimizations, Room data, settings, workspaces, and signing compatibility.
+
+# Arbor 0.17.5
+
+- Replace the remaining two-line blur structure with three non-axis-aligned passes distributed around the image plane.
+- Increase the maximum blur radius to 56 dp and strengthen the translucent surface tint for a more Mica-like result.
+- Preserve the 0.17.4 device-working RuntimeShader/RenderEffect architecture and all prior navigation and scrolling fixes.
+
 # Arbor 0.17.4
 
 - Restore the proven two-pass AGSL backdrop blur after the 0.17.2 single-pass Poisson shader rendered as an unblurred pass-through on real devices.

@@ -40,7 +40,7 @@ fun CollapsingTranslucentTopBar(
     blurState: ArborBackdropBlurState,
     blurEnabled: Boolean = true,
     blurStrength: Float = 0.7f,
-    blurArea: Dp = 88.dp,
+    blurArea: Dp = 128.dp,
 ) {
     val collapse = scrollBehavior.state.collapsedFraction.coerceIn(0f, 1f)
     val travel = arborBlurProgress(collapse)

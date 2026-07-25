@@ -1949,7 +1949,7 @@ private fun Composer(
                     strength = chromeBlurStrength,
                     tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.46f),
                     edge = ArborBlurEdge.BOTTOM,
-                    fadeDistance = 144.dp,
+                    fadeDistance = 208.dp,
                 ),
         ) {
             Column(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp)) {
