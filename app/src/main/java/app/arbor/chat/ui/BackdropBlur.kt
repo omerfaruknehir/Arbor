@@ -67,8 +67,6 @@ class ArborBackdropBlurState internal constructor() {
     internal var bottomRadiusDp by mutableFloatStateOf(0f)
     internal var topFadeDp by mutableFloatStateOf(DEFAULT_TOP_FADE_DP)
     internal var bottomFadeDp by mutableFloatStateOf(DEFAULT_BOTTOM_FADE_DP)
-    internal var topGradual by mutableStateOf(true)
-    internal var bottomGradual by mutableStateOf(true)
     internal var topCornerRadiusDp by mutableFloatStateOf(DEFAULT_PANEL_CORNER_RADIUS_DP)
     internal var bottomCornerRadiusDp by mutableFloatStateOf(DEFAULT_PANEL_CORNER_RADIUS_DP)
     internal var topMergeDp by mutableFloatStateOf(DEFAULT_MERGE_DISTANCE_DP)
@@ -83,7 +81,6 @@ class ArborBackdropBlurState internal constructor() {
         edge: ArborBlurEdge,
         radiusDp: Float,
         fadeDp: Float,
-        gradual: Boolean,
         cornerRadiusDp: Float,
         mergeDp: Float,
         tint: Color,
@@ -91,12 +88,11 @@ class ArborBackdropBlurState internal constructor() {
         val radius = quantizeBlurRadiusDp(radiusDp)
         val fade = fadeDp.coerceAtLeast(1f)
         val corner = cornerRadiusDp.coerceAtLeast(0f)
-        val merge = mergeDp.coerceIn(1f, fade)
+        val merge = mergeDp.coerceIn(0f, fade)
         when (edge) {
             ArborBlurEdge.TOP -> {
                 if (topRadiusDp != radius) topRadiusDp = radius
                 if (topFadeDp != fade) topFadeDp = fade
-                if (topGradual != gradual) topGradual = gradual
                 if (topCornerRadiusDp != corner) topCornerRadiusDp = corner
                 if (topMergeDp != merge) topMergeDp = merge
                 if (topTint != tint) topTint = tint
@@ -104,7 +100,6 @@ class ArborBackdropBlurState internal constructor() {
             ArborBlurEdge.BOTTOM -> {
                 if (bottomRadiusDp != radius) bottomRadiusDp = radius
                 if (bottomFadeDp != fade) bottomFadeDp = fade
-                if (bottomGradual != gradual) bottomGradual = gradual
                 if (bottomCornerRadiusDp != corner) bottomCornerRadiusDp = corner
                 if (bottomMergeDp != merge) bottomMergeDp = merge
                 if (bottomTint != tint) bottomTint = tint
@@ -184,7 +179,6 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
             range = topRange,
             edge = ArborBlurEdge.TOP,
             tint = state.topTint,
-            gradual = state.topGradual,
             cornerRadiusPx = state.topCornerRadiusDp * density,
             mergeDistancePx = state.topMergeDp * density,
         )
@@ -192,7 +186,6 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
             range = bottomRange,
             edge = ArborBlurEdge.BOTTOM,
             tint = state.bottomTint,
-            gradual = state.bottomGradual,
             cornerRadiusPx = state.bottomCornerRadiusDp * density,
             mergeDistancePx = state.bottomMergeDp * density,
         )
@@ -206,7 +199,6 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         setFloatUniform("uSize", contentWidthPx.coerceAtLeast(1f), contentHeightPx.coerceAtLeast(1f))
         setFloatUniform("uPanelStart", topRange.startPx, bottomRange.startPx)
         setFloatUniform("uPanelEnd", topRange.endPx, bottomRange.endPx)
-        setFloatUniform("uGradual", if (state.topGradual) 1f else 0f, if (state.bottomGradual) 1f else 0f)
         setFloatUniform("uCorner", state.topCornerRadiusDp * density, state.bottomCornerRadiusDp * density)
         setFloatUniform("uMerge", state.topMergeDp * density, state.bottomMergeDp * density)
         setFloatUniform("uDirection", directionX, directionY)
@@ -214,19 +206,19 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
 
     val firstShader = remember(
         topRadiusPx, bottomRadiusPx, contentWidthPx, contentHeightPx,
-        topRange, bottomRange, state.topGradual, state.bottomGradual,
+        topRange, bottomRange,
         state.topCornerRadiusDp, state.bottomCornerRadiusDp,
         state.topMergeDp, state.bottomMergeDp,
     ) { buildShader(BLUR_AXIS_A_X, BLUR_AXIS_A_Y) }
     val secondShader = remember(
         topRadiusPx, bottomRadiusPx, contentWidthPx, contentHeightPx,
-        topRange, bottomRange, state.topGradual, state.bottomGradual,
+        topRange, bottomRange,
         state.topCornerRadiusDp, state.bottomCornerRadiusDp,
         state.topMergeDp, state.bottomMergeDp,
     ) { buildShader(BLUR_AXIS_B_X, BLUR_AXIS_B_Y) }
     val thirdShader = remember(
         topRadiusPx, bottomRadiusPx, contentWidthPx, contentHeightPx,
-        topRange, bottomRange, state.topGradual, state.bottomGradual,
+        topRange, bottomRange,
         state.topCornerRadiusDp, state.bottomCornerRadiusDp,
         state.topMergeDp, state.bottomMergeDp,
     ) { buildShader(BLUR_AXIS_C_X, BLUR_AXIS_C_Y) }
@@ -246,18 +238,17 @@ private fun DrawScope.drawArborPanelOverlay(
     range: ArborPanelRange,
     edge: ArborBlurEdge,
     tint: Color,
-    gradual: Boolean,
     cornerRadiusPx: Float,
     mergeDistancePx: Float,
 ) {
     if (tint.alpha <= 0f || range.extentPx <= 0f) return
-    val panelColor = tint.copy(alpha = (tint.alpha * PANEL_OPACITY_BOOST).coerceIn(0f, 1f))
+    val panelColor = tint
     val start = range.startPx.coerceIn(0f, size.height)
     val end = range.endPx.coerceIn(start, size.height)
     val extent = end - start
     if (extent <= 0f) return
     val radius = cornerRadiusPx.coerceIn(0f, minOf(size.width / 2f, extent / 2f))
-    val merge = if (gradual) mergeDistancePx.coerceIn(1f, extent) else 0f
+    val merge = if (mergeDistancePx >= 0.5f) mergeDistancePx.coerceIn(0.5f, extent) else 0f
 
     val panelPath = Path().apply {
         when (edge) {
@@ -346,26 +337,20 @@ internal fun arborBlurProgress(progress: Float): Float {
 }
 
 internal fun calculateBlurRadiusDp(
-    enabled: Boolean,
-    progress: Float,
     strength: Float,
     maxRadiusDp: Float = DEFAULT_MAX_RADIUS_DP,
-    minimumRadiusDp: Float = DEFAULT_MIN_RADIUS_DP,
-): Float {
-    if (!enabled) return 0f
-    val maximum = maxRadiusDp.coerceAtLeast(0f)
-    val minimum = minimumRadiusDp.coerceIn(0f, maximum)
-    val configuredMaximum = minimum + (maximum - minimum) * strength.coerceIn(0f, 1f)
-    return minimum + (configuredMaximum - minimum) * arborBlurProgress(progress)
-}
+): Float = maxRadiusDp.coerceAtLeast(0f) * strength.coerceIn(0f, 1f)
+
+internal fun calculateMergeDistanceDp(
+    edgeSoftness: Float,
+    maximumMergeDp: Float = MAXIMUM_MERGE_DISTANCE_DP,
+): Float = maximumMergeDp.coerceAtLeast(0f) * edgeSoftness.coerceIn(0f, 1f)
 
 /** Registers a chrome panel. Blur and tint are rendered together by the source. */
 fun Modifier.arborBackdropBlur(
     state: ArborBackdropBlurState,
-    enabled: Boolean,
-    gradual: Boolean = true,
-    progress: Float,
     strength: Float,
+    edgeSoftness: Float,
     overlayOpacity: Float = 1f,
     tint: Color,
     edge: ArborBlurEdge = ArborBlurEdge.TOP,
@@ -373,13 +358,15 @@ fun Modifier.arborBackdropBlur(
     fadeDistance: Dp = if (edge == ArborBlurEdge.TOP) DEFAULT_TOP_FADE_DP.dp else DEFAULT_BOTTOM_FADE_DP.dp,
     overlayDistance: Dp = fadeDistance,
     cornerRadius: Dp = DEFAULT_PANEL_CORNER_RADIUS_DP.dp,
-    mergeDistance: Dp = DEFAULT_MERGE_DISTANCE_DP.dp,
+    maximumMergeDistance: Dp = MAXIMUM_MERGE_DISTANCE_DP.dp,
 ): Modifier = composed {
     val radiusDp = calculateBlurRadiusDp(
-        enabled = enabled,
-        progress = if (gradual) progress else 1f,
         strength = strength,
         maxRadiusDp = maxRadius.value,
+    )
+    val mergeDp = calculateMergeDistanceDp(
+        edgeSoftness = edgeSoftness,
+        maximumMergeDp = maximumMergeDistance.value,
     )
 
     SideEffect {
@@ -387,9 +374,8 @@ fun Modifier.arborBackdropBlur(
             edge = edge,
             radiusDp = radiusDp,
             fadeDp = overlayDistance.value,
-            gradual = gradual,
             cornerRadiusDp = cornerRadius.value,
-            mergeDp = mergeDistance.value,
+            mergeDp = mergeDp,
             tint = applyOverlayOpacity(tint, overlayOpacity),
         )
     }
@@ -404,7 +390,7 @@ fun Modifier.arborBackdropBlur(
 }
 
 internal fun applyOverlayOpacity(tint: Color, opacity: Float): Color =
-    tint.copy(alpha = tint.alpha * opacity.coerceIn(0f, 1f))
+    tint.copy(alpha = opacity.coerceIn(0f, 1f))
 
 internal fun quantizeBlurRadiusDp(radiusDp: Float): Float =
     ((radiusDp.coerceAtLeast(0f) / BLUR_RADIUS_STEP_DP).roundToInt() * BLUR_RADIUS_STEP_DP)
@@ -412,10 +398,9 @@ internal fun quantizeBlurRadiusDp(radiusDp: Float): Float =
 private const val BLUR_RADIUS_STEP_DP = 0.25f
 private const val MIN_VISIBLE_RADIUS_PX = 0.35f
 private const val DEFAULT_MAX_RADIUS_DP = 56f
-private const val DEFAULT_MIN_RADIUS_DP = 16f
-private const val PANEL_OPACITY_BOOST = 1.30f
 private const val DEFAULT_PANEL_CORNER_RADIUS_DP = 28f
 private const val DEFAULT_MERGE_DISTANCE_DP = 34f
+private const val MAXIMUM_MERGE_DISTANCE_DP = 68f
 private const val DEFAULT_TOP_FADE_DP = 128f
 private const val DEFAULT_BOTTOM_FADE_DP = 208f
 
@@ -435,7 +420,6 @@ private val EDGE_BLUR_SHADER = """
     uniform float2 uSize;
     uniform float2 uPanelStart;
     uniform float2 uPanelEnd;
-    uniform float2 uGradual;
     uniform float2 uCorner;
     uniform float2 uMerge;
     uniform float2 uDirection;
@@ -483,14 +467,14 @@ private val EDGE_BLUR_SHADER = """
         float topMask = roundedTopPanelMask(coord, topStart, topEnd, uCorner.x);
         float topMerge = max(uMerge.x, 1.0);
         float topFeather = smoother((topEnd - coord.y) / topMerge);
-        float topMix = topMask * mix(1.0, topFeather, uGradual.x);
+        float topMix = topMask * (uMerge.x >= 0.5 ? topFeather : 1.0);
 
         float bottomStart = uPanelStart.y;
         float bottomEnd = uPanelEnd.y;
         float bottomMask = roundedBottomPanelMask(coord, bottomStart, bottomEnd, uCorner.y);
         float bottomMerge = max(uMerge.y, 1.0);
         float bottomFeather = smoother((coord.y - bottomStart) / bottomMerge);
-        float bottomMix = bottomMask * mix(1.0, bottomFeather, uGradual.y);
+        float bottomMix = bottomMask * (uMerge.y >= 0.5 ? bottomFeather : 1.0);
 
         float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
         if (radius < 0.35) return content.eval(coord);

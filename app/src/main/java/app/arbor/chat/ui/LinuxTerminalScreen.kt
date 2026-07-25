@@ -61,9 +61,8 @@ private data class TerminalEntry(
 @Composable
 fun LinuxTerminalScreen(viewModel: ChatViewModel) {
     val appName = stringResource(R.string.app_name)
-    val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsState()
-    val chromeGradualEnabled by viewModel.chromeGradualEnabled.collectAsState()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
+    val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsState()
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsState()
     val status by viewModel.ubuntuStatus.collectAsState()
     val selectedDistribution by viewModel.linuxDistribution.collectAsState()
@@ -99,9 +98,8 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel) {
                 title = "Linux terminal",
                 scrollBehavior = scrollBehavior,
                 blurState = blurState,
-                blurEnabled = chromeBlurEnabled,
-                gradualEnabled = chromeGradualEnabled,
                 blurStrength = chromeBlurStrength,
+                edgeSoftness = chromeEdgeSoftness,
                 overlayOpacity = chromeOverlayOpacity,
                 navigationIcon = {
                     IconButton(onClick = { viewModel.screen.value = Screen.SETTINGS }) {

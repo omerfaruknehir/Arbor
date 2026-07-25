@@ -32,9 +32,8 @@ import androidx.compose.ui.unit.dp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
-    val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsState()
-    val chromeGradualEnabled by viewModel.chromeGradualEnabled.collectAsState()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
+    val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsState()
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsState()
     val query by viewModel.searchQuery.collectAsState()
     val results by viewModel.searchResults.collectAsState()
@@ -49,9 +48,8 @@ fun SearchScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 title = "Search history",
                 scrollBehavior = scrollBehavior,
                 blurState = blurState,
-                blurEnabled = chromeBlurEnabled,
-                gradualEnabled = chromeGradualEnabled,
                 blurStrength = chromeBlurStrength,
+                edgeSoftness = chromeEdgeSoftness,
                 overlayOpacity = chromeOverlayOpacity,
                 navigationIcon = {
                     IconButton(onClick = { openDrawer?.invoke() ?: run { viewModel.screen.value = Screen.CHAT } }) {

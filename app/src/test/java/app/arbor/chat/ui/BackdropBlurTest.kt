@@ -17,14 +17,18 @@ class BackdropBlurTest {
         assertEquals(1f, arborBlurProgress(1f), .0001f)
     }
 
-    @Test fun enabledGradualBlurHasANonZeroBaselineBeforeScrolling() {
-        assertEquals(16f, calculateBlurRadiusDp(true, 0f, .7f), .0001f)
-        assertEquals(44f, calculateBlurRadiusDp(true, 1f, .7f), .0001f)
-        assertEquals(0f, calculateBlurRadiusDp(false, 1f, 1f), .0001f)
+    @Test fun blurSliderHasExactEndpointsAndLinearSemantics() {
+        assertEquals(0f, calculateBlurRadiusDp(0f), .0001f)
+        assertEquals(28f, calculateBlurRadiusDp(.5f), .0001f)
+        assertEquals(56f, calculateBlurRadiusDp(1f), .0001f)
+        assertEquals(0f, calculateBlurRadiusDp(-1f), .0001f)
+        assertEquals(56f, calculateBlurRadiusDp(2f), .0001f)
     }
 
-    @Test fun uniformPanelBlurUsesItsConfiguredMaximumImmediately() {
-        assertEquals(44f, calculateBlurRadiusDp(true, 1f, .7f), .0001f)
+    @Test fun edgeSoftnessHasExactHardAndSoftEndpoints() {
+        assertEquals(0f, calculateMergeDistanceDp(0f), .0001f)
+        assertEquals(34f, calculateMergeDistanceDp(.5f), .0001f)
+        assertEquals(68f, calculateMergeDistanceDp(1f), .0001f)
     }
 
     @Test fun topPanelPreservesTheKnownCorrectSourceGeometry() {
@@ -68,8 +72,8 @@ class BackdropBlurTest {
         val half = applyOverlayOpacity(tint, 0.5f)
         val full = applyOverlayOpacity(tint, 2f)
         assertEquals(0f, hidden.alpha, .0001f)
-        assertEquals(0.25f, half.alpha, .002f)
-        assertEquals(0.5f, full.alpha, .002f)
+        assertEquals(0.5f, half.alpha, .002f)
+        assertEquals(1f, full.alpha, .002f)
         assertEquals(tint.red, half.red, .0001f)
         assertEquals(tint.green, half.green, .0001f)
         assertEquals(tint.blue, half.blue, .0001f)

@@ -92,9 +92,8 @@ class AppPreferences(context: Context) {
     private val _amoled = MutableStateFlow(preferences.getBoolean(KEY_AMOLED, false))
     private val _palette = MutableStateFlow(enumValue(KEY_PALETTE, ColorPalette.ARBOR))
     private val _themeMode = MutableStateFlow(enumValue(KEY_THEME_MODE, ThemeMode.SYSTEM))
-    private val _chromeBlurEnabled = MutableStateFlow(preferences.getBoolean(KEY_CHROME_BLUR_ENABLED, true))
-    private val _chromeGradualEnabled = MutableStateFlow(preferences.getBoolean(KEY_CHROME_GRADUAL_ENABLED, true))
-    private val _chromeBlurStrength = MutableStateFlow(preferences.getFloat(KEY_CHROME_BLUR_STRENGTH, 0.7f).coerceIn(0f, 1f))
+    private val _chromeBlurStrength = MutableStateFlow(readChromeBlurStrength())
+    private val _chromeEdgeSoftness = MutableStateFlow(readChromeEdgeSoftness())
     private val _chromeOverlayOpacity = MutableStateFlow(preferences.getFloat(KEY_CHROME_OVERLAY_OPACITY, 1f).coerceIn(0f, 1f))
     private val _newChatDefaults = MutableStateFlow(readNewChatDefaults())
     private val _generatedRepairMaxAttempts = MutableStateFlow(preferences.getInt(KEY_GENERATED_REPAIR_ATTEMPTS, 3).coerceIn(1, 5))
@@ -102,13 +101,35 @@ class AppPreferences(context: Context) {
     val amoled: StateFlow<Boolean> = _amoled.asStateFlow()
     val palette: StateFlow<ColorPalette> = _palette.asStateFlow()
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
-    val chromeBlurEnabled: StateFlow<Boolean> = _chromeBlurEnabled.asStateFlow()
-    val chromeGradualEnabled: StateFlow<Boolean> = _chromeGradualEnabled.asStateFlow()
     val chromeBlurStrength: StateFlow<Float> = _chromeBlurStrength.asStateFlow()
+    val chromeEdgeSoftness: StateFlow<Float> = _chromeEdgeSoftness.asStateFlow()
     val chromeOverlayOpacity: StateFlow<Float> = _chromeOverlayOpacity.asStateFlow()
     val newChatDefaults: StateFlow<NewChatDefaults> = _newChatDefaults.asStateFlow()
     val generatedRepairMaxAttempts: StateFlow<Int> = _generatedRepairMaxAttempts.asStateFlow()
     val hasNewChatDefaults: Boolean get() = preferences.getBoolean(KEY_DEFAULTS_INITIALIZED, false)
+
+    private fun readChromeBlurStrength(): Float {
+        val saved = preferences.getFloat(KEY_CHROME_BLUR_STRENGTH, 0.7f).coerceIn(0f, 1f)
+        if (!preferences.contains(KEY_CHROME_BLUR_ENABLED)) return saved
+        val migrated = if (preferences.getBoolean(KEY_CHROME_BLUR_ENABLED, true)) saved else 0f
+        preferences.edit {
+            remove(KEY_CHROME_BLUR_ENABLED)
+            putFloat(KEY_CHROME_BLUR_STRENGTH, migrated)
+        }
+        return migrated
+    }
+
+    private fun readChromeEdgeSoftness(): Float {
+        if (preferences.contains(KEY_CHROME_EDGE_SOFTNESS)) {
+            return preferences.getFloat(KEY_CHROME_EDGE_SOFTNESS, DEFAULT_CHROME_EDGE_SOFTNESS).coerceIn(0f, 1f)
+        }
+        val migrated = if (preferences.getBoolean(KEY_CHROME_GRADUAL_ENABLED, true)) DEFAULT_CHROME_EDGE_SOFTNESS else 0f
+        preferences.edit {
+            remove(KEY_CHROME_GRADUAL_ENABLED)
+            putFloat(KEY_CHROME_EDGE_SOFTNESS, migrated)
+        }
+        return migrated
+    }
 
     fun setAmoled(enabled: Boolean) {
         _amoled.value = enabled
@@ -125,20 +146,17 @@ class AppPreferences(context: Context) {
         preferences.edit { putString(KEY_THEME_MODE, value.name) }
     }
 
-    fun setChromeBlurEnabled(enabled: Boolean) {
-        _chromeBlurEnabled.value = enabled
-        preferences.edit { putBoolean(KEY_CHROME_BLUR_ENABLED, enabled) }
-    }
-
-    fun setChromeGradualEnabled(enabled: Boolean) {
-        _chromeGradualEnabled.value = enabled
-        preferences.edit { putBoolean(KEY_CHROME_GRADUAL_ENABLED, enabled) }
-    }
 
     fun setChromeBlurStrength(value: Float) {
         val normalized = value.coerceIn(0f, 1f)
         _chromeBlurStrength.value = normalized
         preferences.edit { putFloat(KEY_CHROME_BLUR_STRENGTH, normalized) }
+    }
+
+    fun setChromeEdgeSoftness(value: Float) {
+        val normalized = value.coerceIn(0f, 1f)
+        _chromeEdgeSoftness.value = normalized
+        preferences.edit { putFloat(KEY_CHROME_EDGE_SOFTNESS, normalized) }
     }
 
     fun setChromeOverlayOpacity(value: Float) {
@@ -214,10 +232,12 @@ class AppPreferences(context: Context) {
         const val KEY_AMOLED = "amoled_black"
         const val KEY_PALETTE = "color_palette"
         const val KEY_THEME_MODE = "theme_mode"
-        const val KEY_CHROME_BLUR_ENABLED = "chrome_blur_enabled"
-        const val KEY_CHROME_GRADUAL_ENABLED = "chrome_gradual_enabled"
+        const val KEY_CHROME_BLUR_ENABLED = "chrome_blur_enabled" // legacy migration only
+        const val KEY_CHROME_GRADUAL_ENABLED = "chrome_gradual_enabled" // legacy migration only
         const val KEY_CHROME_BLUR_STRENGTH = "chrome_blur_strength"
+        const val KEY_CHROME_EDGE_SOFTNESS = "chrome_edge_softness"
         const val KEY_CHROME_OVERLAY_OPACITY = "chrome_overlay_opacity"
+        const val DEFAULT_CHROME_EDGE_SOFTNESS = 0.5f
         const val KEY_DEFAULT_PROVIDER = "new_chat_provider"
         const val KEY_DEFAULT_MODEL = "new_chat_model"
         const val KEY_DEFAULT_PAIRS = "new_chat_context_pairs"

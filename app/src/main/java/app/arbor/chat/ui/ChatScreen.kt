@@ -394,9 +394,8 @@ internal fun calculateComposerChromeProgressFromBottom(
 @Composable
 fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val conversation by viewModel.conversation.collectAsStateWithLifecycle()
-    val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsStateWithLifecycle()
-    val chromeGradualEnabled by viewModel.chromeGradualEnabled.collectAsStateWithLifecycle()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsStateWithLifecycle()
+    val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsStateWithLifecycle()
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsStateWithLifecycle()
     val models by viewModel.models.collectAsStateWithLifecycle()
     val allProviders by viewModel.providers.collectAsStateWithLifecycle()
@@ -594,25 +593,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val isAtLatest by remember(messageListState) {
         derivedStateOf {
             messageListState.layoutInfo.totalItemsCount == 0 || !messageListState.canScrollForward
-        }
-    }
-    val composerChromeProgress by remember(messageListState, chromeStartPx, chromeEndPx) {
-        derivedStateOf {
-            calculateComposerChromeProgressFromBottom(
-                layoutInfo = messageListState.layoutInfo,
-                startPx = chromeStartPx,
-                endPx = chromeEndPx,
-            )
-        }
-    }
-    val topChromeProgress by remember(messageListState, chromeStartPx, chromeEndPx) {
-        derivedStateOf {
-            calculateTopChromeProgress(
-                firstVisibleItemIndex = messageListState.firstVisibleItemIndex,
-                firstVisibleItemScrollOffset = messageListState.firstVisibleItemScrollOffset,
-                startPx = chromeStartPx,
-                endPx = chromeEndPx,
-            )
         }
     }
 
@@ -826,11 +806,9 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 title = conversation?.title ?: stringResource(R.string.app_name),
                 scrollBehavior = topAppBarScrollBehavior,
                 blurState = blurState,
-                blurEnabled = chromeBlurEnabled,
-                gradualEnabled = chromeGradualEnabled,
                 blurStrength = chromeBlurStrength,
+                edgeSoftness = chromeEdgeSoftness,
                 overlayOpacity = chromeOverlayOpacity,
-                blurProgress = topChromeProgress,
                 navigationIcon = {
                     if (openDrawer != null) {
                         IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Conversations") }
@@ -891,7 +869,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     it.providerId == conversation?.selectedProviderId && it.modelId == conversation?.selectedModelId
                 },
                 generating = generating,
-                chromeProgress = composerChromeProgress,
                 blurState = blurState,
                 onImmediateSend = {
                     manualFollowHold = false
@@ -1913,14 +1890,12 @@ private fun Composer(
     provider: ProviderEntity?,
     model: ModelEntity?,
     generating: Boolean,
-    chromeProgress: Float,
     blurState: ArborBackdropBlurState,
     onImmediateSend: () -> Unit,
 ) {
     val conversation by viewModel.conversation.collectAsStateWithLifecycle()
-    val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsStateWithLifecycle()
-    val chromeGradualEnabled by viewModel.chromeGradualEnabled.collectAsStateWithLifecycle()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsStateWithLifecycle()
+    val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsStateWithLifecycle()
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsStateWithLifecycle()
     val draft by viewModel.draft.collectAsState()
     val staged by viewModel.stagedAttachments.collectAsState()
@@ -1962,10 +1937,8 @@ private fun Composer(
                 .fillMaxWidth()
                 .arborBackdropBlur(
                     state = blurState,
-                    enabled = chromeBlurEnabled,
-                    gradual = chromeGradualEnabled,
-                    progress = chromeProgress,
                     strength = chromeBlurStrength,
+                    edgeSoftness = chromeEdgeSoftness,
                     overlayOpacity = chromeOverlayOpacity,
                     tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.46f),
                     edge = ArborBlurEdge.BOTTOM,

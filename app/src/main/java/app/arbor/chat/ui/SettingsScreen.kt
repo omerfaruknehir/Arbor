@@ -136,9 +136,8 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val amoled by viewModel.amoled.collectAsState()
     val palette by viewModel.palette.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
-    val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsState()
-    val chromeGradualEnabled by viewModel.chromeGradualEnabled.collectAsState()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
+    val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsState()
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsState()
     val renderSafeMode by viewModel.renderSafeMode.collectAsState()
     val generatedRepairMaxAttempts by viewModel.generatedRepairMaxAttempts.collectAsState()
@@ -165,9 +164,8 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     title = currentRoute.title,
                     scrollBehavior = scrollBehavior,
                     blurState = blurState,
-                    blurEnabled = chromeBlurEnabled,
-                    gradualEnabled = chromeGradualEnabled,
                     blurStrength = chromeBlurStrength,
+                    edgeSoftness = chromeEdgeSoftness,
                     overlayOpacity = chromeOverlayOpacity,
                     navigationIcon = {
                         IconButton(onClick = {
@@ -197,9 +195,8 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             themeMode = themeMode,
                             amoled = amoled,
                             palette = palette,
-                            chromeBlurEnabled = chromeBlurEnabled,
-                            chromeGradualEnabled = chromeGradualEnabled,
                             chromeBlurStrength = chromeBlurStrength,
+                            chromeEdgeSoftness = chromeEdgeSoftness,
                             chromeOverlayOpacity = chromeOverlayOpacity,
                             viewModel = viewModel,
                         )
@@ -415,9 +412,8 @@ private fun AppearanceSettingsPage(
     themeMode: ThemeMode,
     amoled: Boolean,
     palette: ColorPalette,
-    chromeBlurEnabled: Boolean,
-    chromeGradualEnabled: Boolean,
     chromeBlurStrength: Float,
+    chromeEdgeSoftness: Float,
     chromeOverlayOpacity: Float,
     viewModel: ChatViewModel,
 ) = SettingsPage {
@@ -468,20 +464,35 @@ private fun AppearanceSettingsPage(
     Text("AMOLED black only changes dark mode surfaces.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
     HorizontalDivider()
-    SectionTitle("Interface panels", "Choose blur and gradual fading independently for app bars and the message composer.")
-    SettingsSwitch("Blur", chromeBlurEnabled, viewModel::setChromeBlurEnabled)
-    SettingsSwitch("Gradual", chromeGradualEnabled, viewModel::setChromeGradualEnabled)
-    if (chromeBlurEnabled) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Blur strength", modifier = Modifier.weight(1f))
-            Text("${(chromeBlurStrength * 100).toInt()}%", color = MaterialTheme.colorScheme.primary)
-        }
-        Slider(
-            value = chromeBlurStrength,
-            onValueChange = viewModel::setChromeBlurStrength,
-            valueRange = 0f..1f,
-        )
+    SectionTitle("Interface panels", "Use exact sliders for blur, edge softness, and tint opacity.")
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("Blur amount", modifier = Modifier.weight(1f))
+        Text("${(chromeBlurStrength * 100).toInt()}%", color = MaterialTheme.colorScheme.primary)
     }
+    Slider(
+        value = chromeBlurStrength,
+        onValueChange = viewModel::setChromeBlurStrength,
+        valueRange = 0f..1f,
+    )
+    Text(
+        "0% disables blur exactly; 100% uses the full 56 dp blur radius.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("Edge softness", modifier = Modifier.weight(1f))
+        Text("${(chromeEdgeSoftness * 100).toInt()}%", color = MaterialTheme.colorScheme.primary)
+    }
+    Slider(
+        value = chromeEdgeSoftness,
+        onValueChange = viewModel::setChromeEdgeSoftness,
+        valueRange = 0f..1f,
+    )
+    Text(
+        "0% is a hard panel edge; 100% uses a 68 dp gradual merge.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text("Overlay opacity", modifier = Modifier.weight(1f))
         Text("${(chromeOverlayOpacity * 100).toInt()}%", color = MaterialTheme.colorScheme.primary)
@@ -491,14 +502,8 @@ private fun AppearanceSettingsPage(
         onValueChange = viewModel::setChromeOverlayOpacity,
         valueRange = 0f..1f,
     )
-    val panelMode = when {
-        chromeBlurEnabled && chromeGradualEnabled -> "Gradual blur: frosted content and tint fade softly into the page."
-        chromeBlurEnabled -> "Panel blur: a uniformly frosted Mica-style panel with a defined edge."
-        chromeGradualEnabled -> "Gradual panel: translucent tint fades into content without backdrop blur."
-        else -> "Normal panel: stable translucent app-bar and composer panels."
-    }
     Text(
-        panelMode,
+        "0% removes the tint; 100% is fully opaque.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

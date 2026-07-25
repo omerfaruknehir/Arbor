@@ -1,3 +1,9 @@
+## 0.17.14
+
+- Replaced Blur and Gradual toggles with exact blur-amount and edge-softness sliders.
+- Blur 0% now means no blur; overlay opacity 100% now means fully opaque.
+- APK-only release workflow by default.
+
 # Arbor 0.17.12
 
 - Preserve the 0.17.8 three-axis glass-blur character while increasing real samples from 9 to 15 per pass.

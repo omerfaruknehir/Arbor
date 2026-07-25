@@ -119,9 +119,8 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     val focusedMessageNodeId = savedStateHandle.getMutableStateFlow<String?>("focused_message_node", null)
     private val focusedMessageIndex = savedStateHandle.getMutableStateFlow<Int?>("focused_message_index", null)
     val amoled: StateFlow<Boolean> = container.appPreferences.amoled
-    val chromeBlurEnabled: StateFlow<Boolean> = container.appPreferences.chromeBlurEnabled
-    val chromeGradualEnabled: StateFlow<Boolean> = container.appPreferences.chromeGradualEnabled
     val chromeBlurStrength: StateFlow<Float> = container.appPreferences.chromeBlurStrength
+    val chromeEdgeSoftness: StateFlow<Float> = container.appPreferences.chromeEdgeSoftness
     val chromeOverlayOpacity: StateFlow<Float> = container.appPreferences.chromeOverlayOpacity
     val generatedRepairMaxAttempts: StateFlow<Int> = container.appPreferences.generatedRepairMaxAttempts
     val palette = container.appPreferences.palette
@@ -604,9 +603,8 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     fun setAmoled(enabled: Boolean) = container.appPreferences.setAmoled(enabled)
     fun setPalette(value: app.arbor.chat.settings.ColorPalette) = container.appPreferences.setPalette(value)
     fun setThemeMode(value: app.arbor.chat.settings.ThemeMode) = container.appPreferences.setThemeMode(value)
-    fun setChromeBlurEnabled(enabled: Boolean) = container.appPreferences.setChromeBlurEnabled(enabled)
-    fun setChromeGradualEnabled(enabled: Boolean) = container.appPreferences.setChromeGradualEnabled(enabled)
     fun setChromeBlurStrength(value: Float) = container.appPreferences.setChromeBlurStrength(value)
+    fun setChromeEdgeSoftness(value: Float) = container.appPreferences.setChromeEdgeSoftness(value)
     fun setChromeOverlayOpacity(value: Float) = container.appPreferences.setChromeOverlayOpacity(value)
     fun setGeneratedRepairMaxAttempts(value: Int) = container.appPreferences.setGeneratedRepairMaxAttempts(value)
 
