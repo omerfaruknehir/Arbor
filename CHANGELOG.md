@@ -1,4 +1,4 @@
-# Arbor 0.17.7
+# Arbor 0.17.8
 
 - Add independent Blur and Gradual switches, yielding four panel modes: gradual blur, panel blur, gradual panel, and normal panel.
 - Keep the existing 16 dp minimum blur in gradual mode and use the configured blur maximum immediately in uniform panel-blur mode.

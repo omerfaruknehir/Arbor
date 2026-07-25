@@ -28,18 +28,11 @@ class BackdropBlurTest {
         assertEquals(44f, radius, .0001f)
     }
 
-    @Test fun gradualPanelOverlayStartsVisibleAndRampsSmoothly() {
-        val rest = calculatePanelOverlayAmount(true, 0f)
-        val middle = calculatePanelOverlayAmount(true, .5f)
-        val scrolled = calculatePanelOverlayAmount(true, 1f)
-        assertTrue(rest > 0f)
-        assertTrue(middle > rest)
-        assertEquals(1f, scrolled, .0001f)
-    }
-
-    @Test fun normalPanelOverlayIsFullyPresentWithoutScroll() {
-        assertEquals(1f, calculatePanelOverlayAmount(false, 0f), .0001f)
-        assertEquals(1f, calculatePanelOverlayAmount(false, 1f), .0001f)
+    @Test fun panelBodyNoLongerDependsOnScrollProgress() {
+        // Scroll progress may increase blur radius, but panel opacity is fixed;
+        // gradual mode is now limited to the 34 dp merge edge.
+        assertEquals(16f, calculateBlurRadiusDp(true, 0f, .7f), .0001f)
+        assertEquals(44f, calculateBlurRadiusDp(true, 1f, .7f), .0001f)
     }
 
     @Test fun topChromeBlurWaitsUntilChatContentActuallyScrollsUnderIt() {
