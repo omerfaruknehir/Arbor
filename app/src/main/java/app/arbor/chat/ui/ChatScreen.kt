@@ -73,7 +73,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
@@ -395,6 +394,7 @@ internal fun calculateComposerChromeProgressFromBottom(
 fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val conversation by viewModel.conversation.collectAsStateWithLifecycle()
     val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsStateWithLifecycle()
+    val chromeGradualEnabled by viewModel.chromeGradualEnabled.collectAsStateWithLifecycle()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsStateWithLifecycle()
     val models by viewModel.models.collectAsStateWithLifecycle()
     val allProviders by viewModel.providers.collectAsStateWithLifecycle()
@@ -825,6 +825,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 scrollBehavior = topAppBarScrollBehavior,
                 blurState = blurState,
                 blurEnabled = chromeBlurEnabled,
+                gradualEnabled = chromeGradualEnabled,
                 blurStrength = chromeBlurStrength,
                 blurProgress = topChromeProgress,
                 navigationIcon = {
@@ -838,7 +839,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     if (pending.isNotEmpty()) Badge { Text(pending.size.toString()) }
                     Box {
                         IconButton(onClick = { chatMenu = true }) { Icon(Icons.Outlined.MoreVert, "Chat actions") }
-                        DropdownMenu(expanded = chatMenu, onDismissRequest = { chatMenu = false }) {
+                        ArborDropdownMenu(expanded = chatMenu, onDismissRequest = { chatMenu = false }) {
                             DropdownMenuItem(text = { Text("Regenerate chat name") }, onClick = { viewModel.regenerateTitle(); chatMenu = false })
                             DropdownMenuItem(text = { Text("Chat configuration") }, leadingIcon = { Icon(Icons.Outlined.Tune, null) }, onClick = { showChatConfiguration = true; chatMenu = false })
                         }
@@ -866,7 +867,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                 )
                             }
                         }
-                        DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
+                        ArborDropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
                             usableProviders.forEach { provider ->
                                 ProviderModelMenuRows(provider, viewModel, conversation?.selectedProviderId, conversation?.selectedModelId) { providerId, modelId ->
                                     viewModel.selectModel(providerId, modelId)
@@ -1754,7 +1755,7 @@ private fun CompactSearchToolCard(query: String, output: String, status: String,
                                 label = { Text(host.ifBlank { result.title }, maxLines = 1) },
                                 leadingIcon = { Icon(Icons.Outlined.TravelExplore, null, Modifier.size(15.dp)) },
                             )
-                            DropdownMenu(
+                            ArborDropdownMenu(
                                 expanded = selectedUrl == result.url,
                                 onDismissRequest = { selectedUrl = null },
                                 modifier = Modifier.width(330.dp),
@@ -1809,7 +1810,7 @@ private fun CompactFetchToolCard(url: String, output: String, status: String) {
                 }
             }
         }
-        DropdownMenu(
+        ArborDropdownMenu(
             expanded = show,
             onDismissRequest = { show = false },
             modifier = Modifier.width(330.dp),
@@ -1903,6 +1904,7 @@ private fun Composer(
 ) {
     val conversation by viewModel.conversation.collectAsStateWithLifecycle()
     val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsStateWithLifecycle()
+    val chromeGradualEnabled by viewModel.chromeGradualEnabled.collectAsStateWithLifecycle()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsStateWithLifecycle()
     val draft by viewModel.draft.collectAsState()
     val staged by viewModel.stagedAttachments.collectAsState()
@@ -1945,6 +1947,7 @@ private fun Composer(
                 .arborBackdropBlur(
                     state = blurState,
                     enabled = chromeBlurEnabled,
+                    gradual = chromeGradualEnabled,
                     progress = chromeProgress,
                     strength = chromeBlurStrength,
                     tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.46f),
@@ -2294,7 +2297,7 @@ private fun ThinkingComposerChip(
                 Icon(Icons.Outlined.ExpandLess, "Choose thinking level", Modifier.size(19.dp))
             }
         }
-        DropdownMenu(
+        ArborDropdownMenu(
             expanded = menu,
             onDismissRequest = { menu = false },
             modifier = Modifier.width(304.dp),
@@ -2398,7 +2401,7 @@ private fun SearchComposerChip(
                 Icon(Icons.Outlined.ExpandLess, "Choose search mode", Modifier.size(19.dp))
             }
         }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+        ArborDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(
                 text = { Text("Search off") },
                 onClick = { onSelection(false, false); menu = false },

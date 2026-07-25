@@ -62,6 +62,7 @@ private data class TerminalEntry(
 fun LinuxTerminalScreen(viewModel: ChatViewModel) {
     val appName = stringResource(R.string.app_name)
     val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsState()
+    val chromeGradualEnabled by viewModel.chromeGradualEnabled.collectAsState()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
     val status by viewModel.ubuntuStatus.collectAsState()
     val selectedDistribution by viewModel.linuxDistribution.collectAsState()
@@ -98,6 +99,7 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel) {
                 scrollBehavior = scrollBehavior,
                 blurState = blurState,
                 blurEnabled = chromeBlurEnabled,
+                gradualEnabled = chromeGradualEnabled,
                 blurStrength = chromeBlurStrength,
                 navigationIcon = {
                     IconButton(onClick = { viewModel.screen.value = Screen.SETTINGS }) {

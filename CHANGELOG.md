@@ -1,3 +1,11 @@
+# Arbor 0.17.7
+
+- Add independent Blur and Gradual switches, yielding four panel modes: gradual blur, panel blur, gradual panel, and normal panel.
+- Keep the existing 16 dp minimum blur in gradual mode and use the configured blur maximum immediately in uniform panel-blur mode.
+- Improve gradual panel tint falloff with a longer low-alpha feather before the transparent edge.
+- Defer dropdown-menu and anchored link-popup outside dismissal until pointer release so Android edge Back gestures are not interrupted on touch-down.
+- Preserve 0.17.6 scrolling, navigation, data, workspace, and signing behavior.
+
 # Arbor 0.17.6
 
 - Keep gradual chrome blur active whenever the feature is enabled, with a 16 dp minimum radius before any chat scrolling occurs.

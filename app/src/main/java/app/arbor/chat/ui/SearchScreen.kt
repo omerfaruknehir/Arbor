@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun SearchScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsState()
+    val chromeGradualEnabled by viewModel.chromeGradualEnabled.collectAsState()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
     val query by viewModel.searchQuery.collectAsState()
     val results by viewModel.searchResults.collectAsState()
@@ -48,6 +49,7 @@ fun SearchScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 scrollBehavior = scrollBehavior,
                 blurState = blurState,
                 blurEnabled = chromeBlurEnabled,
+                gradualEnabled = chromeGradualEnabled,
                 blurStrength = chromeBlurStrength,
                 navigationIcon = {
                     IconButton(onClick = { openDrawer?.invoke() ?: run { viewModel.screen.value = Screen.CHAT } }) {

@@ -47,7 +47,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -138,6 +137,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val palette by viewModel.palette.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
     val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsState()
+    val chromeGradualEnabled by viewModel.chromeGradualEnabled.collectAsState()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
     val renderSafeMode by viewModel.renderSafeMode.collectAsState()
     val generatedRepairMaxAttempts by viewModel.generatedRepairMaxAttempts.collectAsState()
@@ -165,6 +165,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     scrollBehavior = scrollBehavior,
                     blurState = blurState,
                     blurEnabled = chromeBlurEnabled,
+                    gradualEnabled = chromeGradualEnabled,
                     blurStrength = chromeBlurStrength,
                     navigationIcon = {
                         IconButton(onClick = {
@@ -195,6 +196,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             amoled = amoled,
                             palette = palette,
                             chromeBlurEnabled = chromeBlurEnabled,
+                            chromeGradualEnabled = chromeGradualEnabled,
                             chromeBlurStrength = chromeBlurStrength,
                             viewModel = viewModel,
                         )
@@ -411,6 +413,7 @@ private fun AppearanceSettingsPage(
     amoled: Boolean,
     palette: ColorPalette,
     chromeBlurEnabled: Boolean,
+    chromeGradualEnabled: Boolean,
     chromeBlurStrength: Float,
     viewModel: ChatViewModel,
 ) = SettingsPage {
@@ -461,8 +464,9 @@ private fun AppearanceSettingsPage(
     Text("AMOLED black only changes dark mode surfaces.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
     HorizontalDivider()
-    SectionTitle("Interface blur", "Use a gradual blur behind app bars and the message composer as content moves underneath them.")
-    SettingsSwitch("Gradual blur", chromeBlurEnabled, viewModel::setChromeBlurEnabled)
+    SectionTitle("Interface panels", "Choose blur and gradual fading independently for app bars and the message composer.")
+    SettingsSwitch("Blur", chromeBlurEnabled, viewModel::setChromeBlurEnabled)
+    SettingsSwitch("Gradual", chromeGradualEnabled, viewModel::setChromeGradualEnabled)
     if (chromeBlurEnabled) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Blur strength", modifier = Modifier.weight(1f))
@@ -473,18 +477,18 @@ private fun AppearanceSettingsPage(
             onValueChange = viewModel::setChromeBlurStrength,
             valueRange = 0f..1f,
         )
-        Text(
-            "Blur radius and overlay tint now increase smoothly with scroll, and the tint fades toward the content edge.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    } else {
-        Text(
-            "Disabled bars use an opaque surface for readability.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
+    val panelMode = when {
+        chromeBlurEnabled && chromeGradualEnabled -> "Gradual blur: frosted content and tint fade softly into the page."
+        chromeBlurEnabled -> "Panel blur: a uniformly frosted Mica-style panel with a defined edge."
+        chromeGradualEnabled -> "Gradual panel: translucent tint fades into content without backdrop blur."
+        else -> "Normal panel: stable translucent app-bar and composer panels."
+    }
+    Text(
+        panelMode,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
     Spacer(Modifier.padding(bottom = 24.dp))
 }
 
@@ -821,7 +825,7 @@ private fun ThinkingDefaultsControl(
             )
             Box {
                 IconButton(onClick = { menu = true }, enabled = supported) { Icon(Icons.Outlined.ExpandMore, "Thinking effort") }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                ArborDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     options.filter { it.enabled }.forEach { option ->
                         DropdownMenuItem(
                             text = { Text(option.label) },
@@ -859,7 +863,7 @@ private fun ProviderModelSelector(
             OutlinedButton(onClick = { providerMenu = true }, modifier = Modifier.fillMaxWidth()) {
                 Text(provider?.displayName ?: "Choose provider", maxLines = 1)
             }
-            DropdownMenu(expanded = providerMenu, onDismissRequest = { providerMenu = false }) {
+            ArborDropdownMenu(expanded = providerMenu, onDismissRequest = { providerMenu = false }) {
                 providers.forEach { candidate ->
                     DropdownMenuItem(
                         text = { Text(candidate.displayName) },
@@ -878,7 +882,7 @@ private fun ProviderModelSelector(
             OutlinedButton(onClick = { modelMenu = true }, enabled = models.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
                 Text(models.firstOrNull { it.modelId == modelId }?.displayName ?: modelId.ifBlank { "Choose model" }, maxLines = 1)
             }
-            DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
+            ArborDropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
                 models.forEach { model ->
                     DropdownMenuItem(
                         text = { Text(model.displayName) },
@@ -1258,7 +1262,7 @@ private fun AddProviderDialog(
                     OutlinedButton(onClick = { templateMenu = true }, modifier = Modifier.fillMaxWidth()) {
                         Text(templates.firstOrNull { it.id == templateId }?.let { "Preset: ${it.displayName}" } ?: "Preset: Custom", Modifier.weight(1f))
                     }
-                    DropdownMenu(expanded = templateMenu, onDismissRequest = { templateMenu = false }) {
+                    ArborDropdownMenu(expanded = templateMenu, onDismissRequest = { templateMenu = false }) {
                         DropdownMenuItem(text = { Text("Custom provider") }, onClick = {
                             templateId = null
                             name = ""
@@ -1286,7 +1290,7 @@ private fun AddProviderDialog(
                     OutlinedButton(onClick = { typeMenu = true }, modifier = Modifier.fillMaxWidth()) {
                         Text("Protocol: ${providerKindLabel(kind)}", Modifier.weight(1f))
                     }
-                    DropdownMenu(expanded = typeMenu, onDismissRequest = { typeMenu = false }) {
+                    ArborDropdownMenu(expanded = typeMenu, onDismissRequest = { typeMenu = false }) {
                         ProviderKind.entries.forEach { option ->
                             DropdownMenuItem(
                                 text = { Text(providerKindLabel(option)) },
@@ -1481,7 +1485,7 @@ private fun AutomationPolicyEditor(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box {
                         AssistChip(onClick = { providerMenu = true }, label = { Text(effectiveProvider?.displayName ?: "Choose provider") })
-                        DropdownMenu(expanded = providerMenu, onDismissRequest = { providerMenu = false }) {
+                        ArborDropdownMenu(expanded = providerMenu, onDismissRequest = { providerMenu = false }) {
                             providers.forEach { provider ->
                                 DropdownMenuItem(
                                     text = { Text(provider.displayName) },
@@ -1499,7 +1503,7 @@ private fun AutomationPolicyEditor(
                             label = { Text(effectiveModel?.displayName ?: "Choose model", maxLines = 1) },
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
+                        ArborDropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
                             models.forEach { model ->
                                 DropdownMenuItem(
                                     text = { Text(model.displayName) },
@@ -1566,7 +1570,7 @@ private fun PackageApprovalEditor(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box {
                         AssistChip(onClick = { providerMenu = true }, label = { Text(effectiveProvider?.displayName ?: "Choose provider") })
-                        DropdownMenu(expanded = providerMenu, onDismissRequest = { providerMenu = false }) {
+                        ArborDropdownMenu(expanded = providerMenu, onDismissRequest = { providerMenu = false }) {
                             providers.forEach { provider ->
                                 DropdownMenuItem(
                                     text = { Text(provider.displayName) },
@@ -1580,7 +1584,7 @@ private fun PackageApprovalEditor(
                     }
                     Box(Modifier.weight(1f)) {
                         AssistChip(onClick = { modelMenu = true }, label = { Text(effectiveModel?.displayName ?: "Choose model", maxLines = 1) }, modifier = Modifier.fillMaxWidth())
-                        DropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
+                        ArborDropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
                             models.forEach { model ->
                                 DropdownMenuItem(
                                     text = { Text(model.displayName) },

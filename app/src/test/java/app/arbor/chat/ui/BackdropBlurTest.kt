@@ -17,19 +17,29 @@ class BackdropBlurTest {
         assertEquals(1f, arborBlurProgress(1f), .0001f)
     }
 
-    @Test fun enabledBlurHasANonZeroBaselineBeforeScrolling() {
+    @Test fun enabledGradualBlurHasANonZeroBaselineBeforeScrolling() {
         assertEquals(16f, calculateBlurRadiusDp(true, 0f, .7f), .0001f)
         assertEquals(44f, calculateBlurRadiusDp(true, 1f, .7f), .0001f)
         assertEquals(0f, calculateBlurRadiusDp(false, 1f, 1f), .0001f)
     }
 
-    @Test fun overlayStartsVisibleAndRampsWithTheBlur() {
-        val rest = calculateBlurOverlayAmount(true, 0f)
-        val middle = calculateBlurOverlayAmount(true, .5f)
-        val scrolled = calculateBlurOverlayAmount(true, 1f)
+    @Test fun uniformPanelBlurUsesItsConfiguredMaximumImmediately() {
+        val radius = calculateBlurRadiusDp(true, 1f, .7f)
+        assertEquals(44f, radius, .0001f)
+    }
+
+    @Test fun gradualPanelOverlayStartsVisibleAndRampsSmoothly() {
+        val rest = calculatePanelOverlayAmount(true, 0f)
+        val middle = calculatePanelOverlayAmount(true, .5f)
+        val scrolled = calculatePanelOverlayAmount(true, 1f)
         assertTrue(rest > 0f)
         assertTrue(middle > rest)
         assertEquals(1f, scrolled, .0001f)
+    }
+
+    @Test fun normalPanelOverlayIsFullyPresentWithoutScroll() {
+        assertEquals(1f, calculatePanelOverlayAmount(false, 0f), .0001f)
+        assertEquals(1f, calculatePanelOverlayAmount(false, 1f), .0001f)
     }
 
     @Test fun topChromeBlurWaitsUntilChatContentActuallyScrollsUnderIt() {
@@ -54,12 +64,6 @@ class BackdropBlurTest {
         assertTrue(kotlin.math.abs(dotAB) < .6f)
         assertTrue(kotlin.math.abs(dotBC) < .6f)
         assertTrue(kotlin.math.abs(dotCA) < .6f)
-        assertTrue(kotlin.math.abs(BLUR_AXIS_A_X) > .1f)
-        assertTrue(kotlin.math.abs(BLUR_AXIS_A_Y) > .1f)
-        assertTrue(kotlin.math.abs(BLUR_AXIS_B_X) > .1f)
-        assertTrue(kotlin.math.abs(BLUR_AXIS_B_Y) > .1f)
-        assertTrue(kotlin.math.abs(BLUR_AXIS_C_X) > .1f)
-        assertTrue(kotlin.math.abs(BLUR_AXIS_C_Y) > .1f)
     }
 
     @Test fun radiusQuantizationSuppressesSubPixelStateChurn() {

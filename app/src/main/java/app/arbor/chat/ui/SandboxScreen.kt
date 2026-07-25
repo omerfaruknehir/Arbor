@@ -68,6 +68,7 @@ import kotlinx.coroutines.delay
 fun SandboxScreen(viewModel: ChatViewModel) {
     val appName = stringResource(R.string.app_name)
     val chromeBlurEnabled by viewModel.chromeBlurEnabled.collectAsState()
+    val chromeGradualEnabled by viewModel.chromeGradualEnabled.collectAsState()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
     var code by remember {
         mutableStateOf(
@@ -154,6 +155,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                 scrollBehavior = scrollBehavior,
                 blurState = blurState,
                 blurEnabled = chromeBlurEnabled,
+                gradualEnabled = chromeGradualEnabled,
                 blurStrength = chromeBlurStrength,
                 navigationIcon = {
                     IconButton(onClick = { viewModel.screen.value = Screen.SETTINGS }) {

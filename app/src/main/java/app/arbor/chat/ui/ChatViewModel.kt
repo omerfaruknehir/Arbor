@@ -117,6 +117,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     private val focusedMessageIndex = savedStateHandle.getMutableStateFlow<Int?>("focused_message_index", null)
     val amoled: StateFlow<Boolean> = container.appPreferences.amoled
     val chromeBlurEnabled: StateFlow<Boolean> = container.appPreferences.chromeBlurEnabled
+    val chromeGradualEnabled: StateFlow<Boolean> = container.appPreferences.chromeGradualEnabled
     val chromeBlurStrength: StateFlow<Float> = container.appPreferences.chromeBlurStrength
     val generatedRepairMaxAttempts: StateFlow<Int> = container.appPreferences.generatedRepairMaxAttempts
     val palette = container.appPreferences.palette
@@ -596,6 +597,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     fun setPalette(value: app.arbor.chat.settings.ColorPalette) = container.appPreferences.setPalette(value)
     fun setThemeMode(value: app.arbor.chat.settings.ThemeMode) = container.appPreferences.setThemeMode(value)
     fun setChromeBlurEnabled(enabled: Boolean) = container.appPreferences.setChromeBlurEnabled(enabled)
+    fun setChromeGradualEnabled(enabled: Boolean) = container.appPreferences.setChromeGradualEnabled(enabled)
     fun setChromeBlurStrength(value: Float) = container.appPreferences.setChromeBlurStrength(value)
     fun setGeneratedRepairMaxAttempts(value: Int) = container.appPreferences.setGeneratedRepairMaxAttempts(value)
 

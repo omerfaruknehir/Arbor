@@ -93,6 +93,7 @@ class AppPreferences(context: Context) {
     private val _palette = MutableStateFlow(enumValue(KEY_PALETTE, ColorPalette.ARBOR))
     private val _themeMode = MutableStateFlow(enumValue(KEY_THEME_MODE, ThemeMode.SYSTEM))
     private val _chromeBlurEnabled = MutableStateFlow(preferences.getBoolean(KEY_CHROME_BLUR_ENABLED, true))
+    private val _chromeGradualEnabled = MutableStateFlow(preferences.getBoolean(KEY_CHROME_GRADUAL_ENABLED, true))
     private val _chromeBlurStrength = MutableStateFlow(preferences.getFloat(KEY_CHROME_BLUR_STRENGTH, 0.7f).coerceIn(0f, 1f))
     private val _newChatDefaults = MutableStateFlow(readNewChatDefaults())
     private val _generatedRepairMaxAttempts = MutableStateFlow(preferences.getInt(KEY_GENERATED_REPAIR_ATTEMPTS, 3).coerceIn(1, 5))
@@ -101,6 +102,7 @@ class AppPreferences(context: Context) {
     val palette: StateFlow<ColorPalette> = _palette.asStateFlow()
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
     val chromeBlurEnabled: StateFlow<Boolean> = _chromeBlurEnabled.asStateFlow()
+    val chromeGradualEnabled: StateFlow<Boolean> = _chromeGradualEnabled.asStateFlow()
     val chromeBlurStrength: StateFlow<Float> = _chromeBlurStrength.asStateFlow()
     val newChatDefaults: StateFlow<NewChatDefaults> = _newChatDefaults.asStateFlow()
     val generatedRepairMaxAttempts: StateFlow<Int> = _generatedRepairMaxAttempts.asStateFlow()
@@ -124,6 +126,11 @@ class AppPreferences(context: Context) {
     fun setChromeBlurEnabled(enabled: Boolean) {
         _chromeBlurEnabled.value = enabled
         preferences.edit { putBoolean(KEY_CHROME_BLUR_ENABLED, enabled) }
+    }
+
+    fun setChromeGradualEnabled(enabled: Boolean) {
+        _chromeGradualEnabled.value = enabled
+        preferences.edit { putBoolean(KEY_CHROME_GRADUAL_ENABLED, enabled) }
     }
 
     fun setChromeBlurStrength(value: Float) {
@@ -200,6 +207,7 @@ class AppPreferences(context: Context) {
         const val KEY_PALETTE = "color_palette"
         const val KEY_THEME_MODE = "theme_mode"
         const val KEY_CHROME_BLUR_ENABLED = "chrome_blur_enabled"
+        const val KEY_CHROME_GRADUAL_ENABLED = "chrome_gradual_enabled"
         const val KEY_CHROME_BLUR_STRENGTH = "chrome_blur_strength"
         const val KEY_DEFAULT_PROVIDER = "new_chat_provider"
         const val KEY_DEFAULT_MODEL = "new_chat_model"

@@ -15,7 +15,6 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -117,7 +116,7 @@ fun ChatConfigurationSheet(
                 OutlinedButton(onClick = { promptMenu = true }, modifier = Modifier.fillMaxWidth()) {
                     Text(activePrompt?.let { "${it.name} · ${it.mode.name.lowercase()}" } ?: "$appName core prompt only", Modifier.weight(1f))
                 }
-                DropdownMenu(expanded = promptMenu, onDismissRequest = { promptMenu = false }) {
+                ArborDropdownMenu(expanded = promptMenu, onDismissRequest = { promptMenu = false }) {
                     DropdownMenuItem(
                         text = { Text("$appName core prompt only") },
                         onClick = { viewModel.selectSystemPromptProfileForCurrent(null); promptMenu = false },

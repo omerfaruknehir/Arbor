@@ -41,6 +41,7 @@ fun ChatCollapsingTranslucentTopBar(
     modelSelector: @Composable () -> Unit,
     blurState: ArborBackdropBlurState,
     blurEnabled: Boolean = true,
+    gradualEnabled: Boolean = true,
     blurStrength: Float = 0.7f,
     blurProgress: Float = scrollBehavior.state.collapsedFraction,
 ) {
@@ -54,6 +55,7 @@ fun ChatCollapsingTranslucentTopBar(
             .arborBackdropBlur(
                 state = blurState,
                 enabled = blurEnabled,
+                gradual = gradualEnabled,
                 progress = blurProgress,
                 strength = blurStrength,
                 tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),

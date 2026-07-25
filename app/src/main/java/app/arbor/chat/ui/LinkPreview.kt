@@ -74,10 +74,15 @@ internal fun AnchoredLinkPreview(
     onDismiss: () -> Unit,
 ) {
     val anchor = reference.anchorBoundsInWindow ?: IntRect(0, 0, 1, 1)
+    ReleaseDismissOutsideLayer(visible = true, onDismissRequest = onDismiss)
     Popup(
         popupPositionProvider = SpanPopupPositionProvider(anchor),
-        onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = true),
+        onDismissRequest = {},
+        properties = PopupProperties(
+            focusable = false,
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
+        ),
     ) {
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainerHigh,

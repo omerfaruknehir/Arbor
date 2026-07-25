@@ -2,7 +2,7 @@
 
 Arbor is a fully native Android BYOK chat client built with Kotlin, Jetpack Compose, and Material 3. It has no WebView, hosted account, telemetry, ads, or application backend. API keys and chat data stay on the device; requests go directly to the endpoints configured by the user.
 
-This repository is version `0.17.6`, an installable and deliberately honest foundation for a larger agent client.
+This repository is version `0.17.7`, an installable and deliberately honest foundation for a larger agent client.
 
 ## Included
 

@@ -9,6 +9,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlin.math.abs
@@ -42,20 +43,24 @@ class ArborBackdropBlurState internal constructor() {
     internal var bottomRadiusDp by mutableFloatStateOf(0f)
     internal var topFadeDp by mutableFloatStateOf(DEFAULT_TOP_FADE_DP)
     internal var bottomFadeDp by mutableFloatStateOf(DEFAULT_BOTTOM_FADE_DP)
+    internal var topGradual by mutableStateOf(true)
+    internal var bottomGradual by mutableStateOf(true)
     internal var sourceTopInRootPx by mutableFloatStateOf(0f)
     internal var bottomEdgeInRootPx by mutableFloatStateOf(Float.NaN)
 
-    internal fun update(edge: ArborBlurEdge, radiusDp: Float, fadeDp: Float) {
+    internal fun update(edge: ArborBlurEdge, radiusDp: Float, fadeDp: Float, gradual: Boolean) {
         val radius = quantizeBlurRadiusDp(radiusDp)
         val fade = fadeDp.coerceAtLeast(1f)
         when (edge) {
             ArborBlurEdge.TOP -> {
                 if (topRadiusDp != radius) topRadiusDp = radius
                 if (topFadeDp != fade) topFadeDp = fade
+                if (topGradual != gradual) topGradual = gradual
             }
             ArborBlurEdge.BOTTOM -> {
                 if (bottomRadiusDp != radius) bottomRadiusDp = radius
                 if (bottomFadeDp != fade) bottomFadeDp = fade
+                if (bottomGradual != gradual) bottomGradual = gradual
             }
         }
     }
@@ -124,6 +129,7 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         setFloatUniform("uFade", topFadePx, bottomFadePx)
         setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
         setFloatUniform("uBottomEdge", bottomEdgePx)
+        setFloatUniform("uGradual", if (state.topGradual) 1f else 0f, if (state.bottomGradual) 1f else 0f)
         setFloatUniform("uDirection", directionX, directionY)
     }
 
@@ -134,6 +140,8 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         bottomFadePx,
         contentHeightPx,
         bottomEdgePx,
+        state.topGradual,
+        state.bottomGradual,
     ) { buildShader(BLUR_AXIS_A_X, BLUR_AXIS_A_Y) }
     val secondShader = remember(
         topRadiusPx,
@@ -142,6 +150,8 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         bottomFadePx,
         contentHeightPx,
         bottomEdgePx,
+        state.topGradual,
+        state.bottomGradual,
     ) { buildShader(BLUR_AXIS_B_X, BLUR_AXIS_B_Y) }
     val thirdShader = remember(
         topRadiusPx,
@@ -150,6 +160,8 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         bottomFadePx,
         contentHeightPx,
         bottomEdgePx,
+        state.topGradual,
+        state.bottomGradual,
     ) { buildShader(BLUR_AXIS_C_X, BLUR_AXIS_C_Y) }
     val composeEffect = remember(firstShader, secondShader, thirdShader) {
         val first = RenderEffect.createRuntimeShaderEffect(firstShader, "content")
@@ -181,8 +193,8 @@ internal fun calculateBlurRadiusDp(
     return minimum + (configuredMaximum - minimum) * arborBlurProgress(progress)
 }
 
-internal fun calculateBlurOverlayAmount(enabled: Boolean, progress: Float): Float {
-    if (!enabled) return 1f
+internal fun calculatePanelOverlayAmount(gradual: Boolean, progress: Float): Float {
+    if (!gradual) return 1f
     return MIN_OVERLAY_AMOUNT + (1f - MIN_OVERLAY_AMOUNT) * arborBlurProgress(progress)
 }
 
@@ -190,6 +202,7 @@ internal fun calculateBlurOverlayAmount(enabled: Boolean, progress: Float): Floa
 fun Modifier.arborBackdropBlur(
     state: ArborBackdropBlurState,
     enabled: Boolean,
+    gradual: Boolean = true,
     progress: Float,
     strength: Float,
     tint: Color,
@@ -200,12 +213,12 @@ fun Modifier.arborBackdropBlur(
 ): Modifier = composed {
     val radiusDp = calculateBlurRadiusDp(
         enabled = enabled,
-        progress = progress,
+        progress = if (gradual) progress else 1f,
         strength = strength,
         maxRadiusDp = maxRadius.value,
     )
 
-    SideEffect { state.update(edge, radiusDp, fadeDistance.value) }
+    SideEffect { state.update(edge, radiusDp, fadeDistance.value, gradual) }
     DisposableEffect(state, edge) { onDispose { state.clear(edge) } }
 
     val anchored = if (edge == ArborBlurEdge.BOTTOM) {
@@ -219,42 +232,56 @@ fun Modifier.arborBackdropBlur(
     val overlayDistancePx = with(LocalDensity.current) { overlayDistance.toPx() }
 
     anchored.drawWithContent {
-        val overlayProgress = calculateBlurOverlayAmount(enabled, progress)
+        val overlayProgress = calculatePanelOverlayAmount(gradual, progress)
         val peak = tint.copy(alpha = (tint.alpha * overlayProgress * 1.10f).coerceIn(0f, 1f))
         val middle = tint.copy(alpha = (tint.alpha * overlayProgress * 0.78f).coerceIn(0f, 1f))
         val feather = tint.copy(alpha = (tint.alpha * overlayProgress * 0.22f).coerceIn(0f, 1f))
         val extent = overlayDistancePx.coerceIn(1f, size.height.coerceAtLeast(1f))
         when (edge) {
             ArborBlurEdge.TOP -> {
-                val brush = Brush.verticalGradient(
-                    colorStops = arrayOf(
-                        0f to peak,
-                        0.30f to middle,
-                        0.62f to feather,
-                        1f to Color.Transparent,
-                    ),
-                    startY = 0f,
-                    endY = extent,
-                )
-                drawRect(brush = brush, size = androidx.compose.ui.geometry.Size(size.width, extent))
+                if (gradual) {
+                    val brush = Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0f to peak,
+                            0.22f to middle,
+                            0.54f to feather,
+                            0.82f to tint.copy(alpha = tint.alpha * overlayProgress * 0.05f),
+                            1f to Color.Transparent,
+                        ),
+                        startY = 0f,
+                        endY = extent,
+                    )
+                    drawRect(brush = brush, size = androidx.compose.ui.geometry.Size(size.width, extent))
+                } else {
+                    drawRect(color = peak, size = androidx.compose.ui.geometry.Size(size.width, extent))
+                }
             }
             ArborBlurEdge.BOTTOM -> {
                 val startY = (size.height - extent).coerceAtLeast(0f)
-                val brush = Brush.verticalGradient(
-                    colorStops = arrayOf(
-                        0f to Color.Transparent,
-                        0.38f to feather,
-                        0.70f to middle,
-                        1f to peak,
-                    ),
-                    startY = startY,
-                    endY = size.height,
-                )
-                drawRect(
-                    brush = brush,
-                    topLeft = androidx.compose.ui.geometry.Offset(0f, startY),
-                    size = androidx.compose.ui.geometry.Size(size.width, extent),
-                )
+                if (gradual) {
+                    val brush = Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0f to Color.Transparent,
+                            0.18f to tint.copy(alpha = tint.alpha * overlayProgress * 0.05f),
+                            0.46f to feather,
+                            0.78f to middle,
+                            1f to peak,
+                        ),
+                        startY = startY,
+                        endY = size.height,
+                    )
+                    drawRect(
+                        brush = brush,
+                        topLeft = androidx.compose.ui.geometry.Offset(0f, startY),
+                        size = androidx.compose.ui.geometry.Size(size.width, extent),
+                    )
+                } else {
+                    drawRect(
+                        color = peak,
+                        topLeft = androidx.compose.ui.geometry.Offset(0f, startY),
+                        size = androidx.compose.ui.geometry.Size(size.width, extent),
+                    )
+                }
             }
         }
         drawContent()
@@ -289,6 +316,7 @@ private val EDGE_BLUR_SHADER = """
     uniform float2 uFade;
     uniform float uHeight;
     uniform float uBottomEdge;
+    uniform float2 uGradual;
     uniform float2 uDirection;
 
     float smoother(float value) {
@@ -297,9 +325,13 @@ private val EDGE_BLUR_SHADER = """
     }
 
     half4 main(float2 coord) {
-        float topMix = 1.0 - smoother(coord.y / max(uFade.x, 1.0));
+        float gradualTop = 1.0 - smoother(coord.y / max(uFade.x, 1.0));
+        float panelTop = 1.0 - step(uFade.x, coord.y);
+        float topMix = mix(panelTop, gradualTop, uGradual.x);
         float bottomEdge = clamp(uBottomEdge, 0.0, uHeight);
-        float bottomMix = 1.0 - smoother((bottomEdge - coord.y) / max(uFade.y, 1.0));
+        float gradualBottom = 1.0 - smoother((bottomEdge - coord.y) / max(uFade.y, 1.0));
+        float panelBottom = step(bottomEdge - uFade.y, coord.y) * (1.0 - step(bottomEdge, coord.y));
+        float bottomMix = mix(panelBottom, gradualBottom, uGradual.y);
         float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
         if (radius < 0.35) return content.eval(coord);
 

@@ -39,6 +39,7 @@ fun CollapsingTranslucentTopBar(
     actions: @Composable RowScope.() -> Unit = {},
     blurState: ArborBackdropBlurState,
     blurEnabled: Boolean = true,
+    gradualEnabled: Boolean = true,
     blurStrength: Float = 0.7f,
     blurArea: Dp = 128.dp,
 ) {
@@ -52,6 +53,7 @@ fun CollapsingTranslucentTopBar(
             .arborBackdropBlur(
                 state = blurState,
                 enabled = blurEnabled,
+                gradual = gradualEnabled,
                 progress = collapse,
                 strength = blurStrength,
                 tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
