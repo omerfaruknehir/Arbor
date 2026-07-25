@@ -55,9 +55,17 @@ class BackdropBlurTest {
         )
     }
 
-    @Test fun sampleDensityWasRaisedWithoutChangingTheThreeGlassAxes() {
+    @Test fun sampleDensityScalesAboveFortyPercentWithoutChangingTheThreeGlassAxes() {
         assertEquals(21, BLUR_SAMPLES_PER_PASS)
-        assertTrue(BLUR_SAMPLES_PER_PASS > 15)
+        assertEquals(21, blurSamplesPerPass(0f))
+        assertEquals(21, blurSamplesPerPass(.40f))
+        assertEquals(31, blurSamplesPerPass(.41f))
+        assertEquals(31, blurSamplesPerPass(.60f))
+        assertEquals(41, blurSamplesPerPass(.61f))
+        assertEquals(41, blurSamplesPerPass(.80f))
+        assertEquals(51, blurSamplesPerPass(.81f))
+        assertEquals(BLUR_MAX_SAMPLES_PER_PASS, blurSamplesPerPass(1f))
+        assertTrue(BLUR_MAX_SAMPLES_PER_PASS > BLUR_SAMPLES_PER_PASS)
         val lenA = BLUR_AXIS_A_X * BLUR_AXIS_A_X + BLUR_AXIS_A_Y * BLUR_AXIS_A_Y
         val lenB = BLUR_AXIS_B_X * BLUR_AXIS_B_X + BLUR_AXIS_B_Y * BLUR_AXIS_B_Y
         val lenC = BLUR_AXIS_C_X * BLUR_AXIS_C_X + BLUR_AXIS_C_Y * BLUR_AXIS_C_Y

@@ -201,6 +201,12 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         setFloatUniform("uPanelEnd", topRange.endPx, bottomRange.endPx)
         setFloatUniform("uCorner", state.topCornerRadiusDp * density, state.bottomCornerRadiusDp * density)
         setFloatUniform("uMerge", state.topMergeDp * density, state.bottomMergeDp * density)
+        setFloatUniform(
+            "uSampleThreshold",
+            DEFAULT_MAX_RADIUS_DP * density * BLUR_DENSITY_THRESHOLD_LOW,
+            DEFAULT_MAX_RADIUS_DP * density * BLUR_DENSITY_THRESHOLD_MEDIUM,
+            DEFAULT_MAX_RADIUS_DP * density * BLUR_DENSITY_THRESHOLD_HIGH,
+        )
         setFloatUniform("uDirection", directionX, directionY)
     }
 
@@ -405,6 +411,20 @@ private const val DEFAULT_TOP_FADE_DP = 128f
 private const val DEFAULT_BOTTOM_FADE_DP = 208f
 
 internal const val BLUR_SAMPLES_PER_PASS = 21
+internal const val BLUR_MAX_SAMPLES_PER_PASS = 51
+internal const val BLUR_DENSITY_THRESHOLD_LOW = 0.40f
+internal const val BLUR_DENSITY_THRESHOLD_MEDIUM = 0.60f
+internal const val BLUR_DENSITY_THRESHOLD_HIGH = 0.80f
+
+internal fun blurSamplesPerPass(strength: Float): Int {
+    val normalized = strength.coerceIn(0f, 1f)
+    return when {
+        normalized <= BLUR_DENSITY_THRESHOLD_LOW -> 21
+        normalized <= BLUR_DENSITY_THRESHOLD_MEDIUM -> 31
+        normalized <= BLUR_DENSITY_THRESHOLD_HIGH -> 41
+        else -> BLUR_MAX_SAMPLES_PER_PASS
+    }
+}
 
 internal const val BLUR_AXIS_A_X = 0.9238795f
 internal const val BLUR_AXIS_A_Y = 0.3826834f
@@ -413,7 +433,7 @@ internal const val BLUR_AXIS_B_Y = 0.9914449f
 internal const val BLUR_AXIS_C_X = -0.7933533f
 internal const val BLUR_AXIS_C_Y = 0.6087614f
 
-/** Twenty-one real Gaussian samples per pass, preserving the 0.17.8 three-axis glass character. */
+/** Adaptive Gaussian density keeps sample spacing nearly constant above 40% blur. */
 private val EDGE_BLUR_SHADER = """
     uniform shader content;
     uniform float2 uBlur;
@@ -422,6 +442,7 @@ private val EDGE_BLUR_SHADER = """
     uniform float2 uPanelEnd;
     uniform float2 uCorner;
     uniform float2 uMerge;
+    uniform float3 uSampleThreshold;
     uniform float2 uDirection;
 
     float smoother(float value) {
@@ -461,25 +482,7 @@ private val EDGE_BLUR_SHADER = """
         return 1.0;
     }
 
-    half4 main(float2 coord) {
-        float topStart = uPanelStart.x;
-        float topEnd = uPanelEnd.x;
-        float topMask = roundedTopPanelMask(coord, topStart, topEnd, uCorner.x);
-        float topMerge = max(uMerge.x, 1.0);
-        float topFeather = smoother((topEnd - coord.y) / topMerge);
-        float topMix = topMask * (uMerge.x >= 0.5 ? topFeather : 1.0);
-
-        float bottomStart = uPanelStart.y;
-        float bottomEnd = uPanelEnd.y;
-        float bottomMask = roundedBottomPanelMask(coord, bottomStart, bottomEnd, uCorner.y);
-        float bottomMerge = max(uMerge.y, 1.0);
-        float bottomFeather = smoother((coord.y - bottomStart) / bottomMerge);
-        float bottomMix = bottomMask * (uMerge.y >= 0.5 ? bottomFeather : 1.0);
-
-        float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
-        if (radius < 0.35) return content.eval(coord);
-
-        float2 sampleStep = uDirection * (radius / 10.5);
+    half4 blur21(float2 coord, float2 sampleStep) {
         half4 accum = half4(content.eval(coord)) * 0.090405884;
         accum += half4(content.eval(coord + sampleStep * 1.0)) * 0.088200974;
         accum += half4(content.eval(coord - sampleStep * 1.0)) * 0.088200974;
@@ -502,5 +505,170 @@ private val EDGE_BLUR_SHADER = """
         accum += half4(content.eval(coord + sampleStep * 10.0)) * 0.007653580;
         accum += half4(content.eval(coord - sampleStep * 10.0)) * 0.007653580;
         return accum;
+    }
+
+    half4 blur31(float2 coord, float2 sampleStep) {
+        half4 accum = half4(content.eval(coord)) * 0.060403601;
+        accum += half4(content.eval(coord + sampleStep * 1.0)) * 0.059744360;
+        accum += half4(content.eval(coord - sampleStep * 1.0)) * 0.059744360;
+        accum += half4(content.eval(coord + sampleStep * 2.0)) * 0.057809492;
+        accum += half4(content.eval(coord - sampleStep * 2.0)) * 0.057809492;
+        accum += half4(content.eval(coord + sampleStep * 3.0)) * 0.054722956;
+        accum += half4(content.eval(coord - sampleStep * 3.0)) * 0.054722956;
+        accum += half4(content.eval(coord + sampleStep * 4.0)) * 0.050676675;
+        accum += half4(content.eval(coord - sampleStep * 4.0)) * 0.050676675;
+        accum += half4(content.eval(coord + sampleStep * 5.0)) * 0.045910796;
+        accum += half4(content.eval(coord - sampleStep * 5.0)) * 0.045910796;
+        accum += half4(content.eval(coord + sampleStep * 6.0)) * 0.040690189;
+        accum += half4(content.eval(coord - sampleStep * 6.0)) * 0.040690189;
+        accum += half4(content.eval(coord + sampleStep * 7.0)) * 0.035280338;
+        accum += half4(content.eval(coord - sampleStep * 7.0)) * 0.035280338;
+        accum += half4(content.eval(coord + sampleStep * 8.0)) * 0.029925674;
+        accum += half4(content.eval(coord - sampleStep * 8.0)) * 0.029925674;
+        accum += half4(content.eval(coord + sampleStep * 9.0)) * 0.024832663;
+        accum += half4(content.eval(coord - sampleStep * 9.0)) * 0.024832663;
+        accum += half4(content.eval(coord + sampleStep * 10.0)) * 0.020159085;
+        accum += half4(content.eval(coord - sampleStep * 10.0)) * 0.020159085;
+        accum += half4(content.eval(coord + sampleStep * 11.0)) * 0.016009821;
+        accum += half4(content.eval(coord - sampleStep * 11.0)) * 0.016009821;
+        accum += half4(content.eval(coord + sampleStep * 12.0)) * 0.012438566;
+        accum += half4(content.eval(coord - sampleStep * 12.0)) * 0.012438566;
+        accum += half4(content.eval(coord + sampleStep * 13.0)) * 0.009454146;
+        accum += half4(content.eval(coord - sampleStep * 13.0)) * 0.009454146;
+        accum += half4(content.eval(coord + sampleStep * 14.0)) * 0.007029792;
+        accum += half4(content.eval(coord - sampleStep * 14.0)) * 0.007029792;
+        accum += half4(content.eval(coord + sampleStep * 15.0)) * 0.005113647;
+        accum += half4(content.eval(coord - sampleStep * 15.0)) * 0.005113647;
+        return accum;
+    }
+
+    half4 blur41(float2 coord, float2 sampleStep) {
+        half4 accum = half4(content.eval(coord)) * 0.045355122;
+        accum += half4(content.eval(coord + sampleStep * 1.0)) * 0.045076015;
+        accum += half4(content.eval(coord - sampleStep * 1.0)) * 0.045076015;
+        accum += half4(content.eval(coord + sampleStep * 2.0)) * 0.044248955;
+        accum += half4(content.eval(coord - sampleStep * 2.0)) * 0.044248955;
+        accum += half4(content.eval(coord + sampleStep * 3.0)) * 0.042904107;
+        accum += half4(content.eval(coord - sampleStep * 3.0)) * 0.042904107;
+        accum += half4(content.eval(coord + sampleStep * 4.0)) * 0.041089708;
+        accum += half4(content.eval(coord - sampleStep * 4.0)) * 0.041089708;
+        accum += half4(content.eval(coord + sampleStep * 5.0)) * 0.038869199;
+        accum += half4(content.eval(coord - sampleStep * 5.0)) * 0.038869199;
+        accum += half4(content.eval(coord + sampleStep * 6.0)) * 0.036317543;
+        accum += half4(content.eval(coord - sampleStep * 6.0)) * 0.036317543;
+        accum += half4(content.eval(coord + sampleStep * 7.0)) * 0.033517040;
+        accum += half4(content.eval(coord - sampleStep * 7.0)) * 0.033517040;
+        accum += half4(content.eval(coord + sampleStep * 8.0)) * 0.030552954;
+        accum += half4(content.eval(coord - sampleStep * 8.0)) * 0.030552954;
+        accum += half4(content.eval(coord + sampleStep * 9.0)) * 0.027509272;
+        accum += half4(content.eval(coord - sampleStep * 9.0)) * 0.027509272;
+        accum += half4(content.eval(coord + sampleStep * 10.0)) * 0.024464893;
+        accum += half4(content.eval(coord - sampleStep * 10.0)) * 0.024464893;
+        accum += half4(content.eval(coord + sampleStep * 11.0)) * 0.021490469;
+        accum += half4(content.eval(coord - sampleStep * 11.0)) * 0.021490469;
+        accum += half4(content.eval(coord + sampleStep * 12.0)) * 0.018646048;
+        accum += half4(content.eval(coord - sampleStep * 12.0)) * 0.018646048;
+        accum += half4(content.eval(coord + sampleStep * 13.0)) * 0.015979605;
+        accum += half4(content.eval(coord - sampleStep * 13.0)) * 0.015979605;
+        accum += half4(content.eval(coord + sampleStep * 14.0)) * 0.013526444;
+        accum += half4(content.eval(coord - sampleStep * 14.0)) * 0.013526444;
+        accum += half4(content.eval(coord + sampleStep * 15.0)) * 0.011309400;
+        accum += half4(content.eval(coord - sampleStep * 15.0)) * 0.011309400;
+        accum += half4(content.eval(coord + sampleStep * 16.0)) * 0.009339719;
+        accum += half4(content.eval(coord - sampleStep * 16.0)) * 0.009339719;
+        accum += half4(content.eval(coord + sampleStep * 17.0)) * 0.007618447;
+        accum += half4(content.eval(coord - sampleStep * 17.0)) * 0.007618447;
+        accum += half4(content.eval(coord + sampleStep * 18.0)) * 0.006138148;
+        accum += half4(content.eval(coord - sampleStep * 18.0)) * 0.006138148;
+        accum += half4(content.eval(coord + sampleStep * 19.0)) * 0.004884799;
+        accum += half4(content.eval(coord - sampleStep * 19.0)) * 0.004884799;
+        accum += half4(content.eval(coord + sampleStep * 20.0)) * 0.003839673;
+        accum += half4(content.eval(coord - sampleStep * 20.0)) * 0.003839673;
+        return accum;
+    }
+
+    half4 blur51(float2 coord, float2 sampleStep) {
+        half4 accum = half4(content.eval(coord)) * 0.036309917;
+        accum += half4(content.eval(coord + sampleStep * 1.0)) * 0.036166754;
+        accum += half4(content.eval(coord - sampleStep * 1.0)) * 0.036166754;
+        accum += half4(content.eval(coord + sampleStep * 2.0)) * 0.035740641;
+        accum += half4(content.eval(coord - sampleStep * 2.0)) * 0.035740641;
+        accum += half4(content.eval(coord + sampleStep * 3.0)) * 0.035041580;
+        accum += half4(content.eval(coord - sampleStep * 3.0)) * 0.035041580;
+        accum += half4(content.eval(coord + sampleStep * 4.0)) * 0.034085805;
+        accum += half4(content.eval(coord - sampleStep * 4.0)) * 0.034085805;
+        accum += half4(content.eval(coord + sampleStep * 5.0)) * 0.032895158;
+        accum += half4(content.eval(coord - sampleStep * 5.0)) * 0.032895158;
+        accum += half4(content.eval(coord + sampleStep * 6.0)) * 0.031496256;
+        accum += half4(content.eval(coord - sampleStep * 6.0)) * 0.031496256;
+        accum += half4(content.eval(coord + sampleStep * 7.0)) * 0.029919506;
+        accum += half4(content.eval(coord - sampleStep * 7.0)) * 0.029919506;
+        accum += half4(content.eval(coord + sampleStep * 8.0)) * 0.028198010;
+        accum += half4(content.eval(coord - sampleStep * 8.0)) * 0.028198010;
+        accum += half4(content.eval(coord + sampleStep * 9.0)) * 0.026366411;
+        accum += half4(content.eval(coord - sampleStep * 9.0)) * 0.026366411;
+        accum += half4(content.eval(coord + sampleStep * 10.0)) * 0.024459757;
+        accum += half4(content.eval(coord - sampleStep * 10.0)) * 0.024459757;
+        accum += half4(content.eval(coord + sampleStep * 11.0)) * 0.022512399;
+        accum += half4(content.eval(coord - sampleStep * 11.0)) * 0.022512399;
+        accum += half4(content.eval(coord + sampleStep * 12.0)) * 0.020557010;
+        accum += half4(content.eval(coord - sampleStep * 12.0)) * 0.020557010;
+        accum += half4(content.eval(coord + sampleStep * 13.0)) * 0.018623730;
+        accum += half4(content.eval(coord - sampleStep * 13.0)) * 0.018623730;
+        accum += half4(content.eval(coord + sampleStep * 14.0)) * 0.016739479;
+        accum += half4(content.eval(coord - sampleStep * 14.0)) * 0.016739479;
+        accum += half4(content.eval(coord + sampleStep * 15.0)) * 0.014927453;
+        accum += half4(content.eval(coord - sampleStep * 15.0)) * 0.014927453;
+        accum += half4(content.eval(coord + sampleStep * 16.0)) * 0.013206814;
+        accum += half4(content.eval(coord - sampleStep * 16.0)) * 0.013206814;
+        accum += half4(content.eval(coord + sampleStep * 17.0)) * 0.011592548;
+        accum += half4(content.eval(coord - sampleStep * 17.0)) * 0.011592548;
+        accum += half4(content.eval(coord + sampleStep * 18.0)) * 0.010095511;
+        accum += half4(content.eval(coord - sampleStep * 18.0)) * 0.010095511;
+        accum += half4(content.eval(coord + sampleStep * 19.0)) * 0.008722606;
+        accum += half4(content.eval(coord - sampleStep * 19.0)) * 0.008722606;
+        accum += half4(content.eval(coord + sampleStep * 20.0)) * 0.007477092;
+        accum += half4(content.eval(coord - sampleStep * 20.0)) * 0.007477092;
+        accum += half4(content.eval(coord + sampleStep * 21.0)) * 0.006358984;
+        accum += half4(content.eval(coord - sampleStep * 21.0)) * 0.006358984;
+        accum += half4(content.eval(coord + sampleStep * 22.0)) * 0.005365514;
+        accum += half4(content.eval(coord - sampleStep * 22.0)) * 0.005365514;
+        accum += half4(content.eval(coord + sampleStep * 23.0)) * 0.004491624;
+        accum += half4(content.eval(coord - sampleStep * 23.0)) * 0.004491624;
+        accum += half4(content.eval(coord + sampleStep * 24.0)) * 0.003730474;
+        accum += half4(content.eval(coord - sampleStep * 24.0)) * 0.003730474;
+        accum += half4(content.eval(coord + sampleStep * 25.0)) * 0.003073925;
+        accum += half4(content.eval(coord - sampleStep * 25.0)) * 0.003073925;
+        return accum;
+    }
+
+    half4 main(float2 coord) {
+        float topStart = uPanelStart.x;
+        float topEnd = uPanelEnd.x;
+        float topMask = roundedTopPanelMask(coord, topStart, topEnd, uCorner.x);
+        float topMerge = max(uMerge.x, 1.0);
+        float topFeather = smoother((topEnd - coord.y) / topMerge);
+        float topMix = topMask * (uMerge.x >= 0.5 ? topFeather : 1.0);
+
+        float bottomStart = uPanelStart.y;
+        float bottomEnd = uPanelEnd.y;
+        float bottomMask = roundedBottomPanelMask(coord, bottomStart, bottomEnd, uCorner.y);
+        float bottomMerge = max(uMerge.y, 1.0);
+        float bottomFeather = smoother((coord.y - bottomStart) / bottomMerge);
+        float bottomMix = bottomMask * (uMerge.y >= 0.5 ? bottomFeather : 1.0);
+
+        float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
+        if (radius < 0.35) return content.eval(coord);
+
+        if (radius <= uSampleThreshold.x) {
+            return blur21(coord, uDirection * (radius / 10.5));
+        }
+        if (radius <= uSampleThreshold.y) {
+            return blur31(coord, uDirection * (radius / 15.5));
+        }
+        if (radius <= uSampleThreshold.z) {
+            return blur41(coord, uDirection * (radius / 20.5));
+        }
+        return blur51(coord, uDirection * (radius / 25.5));
     }
 """.trimIndent()
