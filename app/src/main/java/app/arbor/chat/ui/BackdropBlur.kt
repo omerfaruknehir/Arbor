@@ -34,7 +34,7 @@ enum class ArborBlurEdge { TOP, BOTTOM }
  * Older Arbor builds captured the screen into a GraphicsLayer and replayed
  * cropped copies behind app chrome. Compose renders those layers lazily, so the
  * replay could be blank or one frame stale. This state instead lets the body
- * itself receive a single-pass AGSL edge blur.
+ * itself receive a two-pass rotated AGSL edge blur.
  */
 @Stable
 class ArborBackdropBlurState internal constructor() {
@@ -93,16 +93,13 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
     val bottomRadiusPx = state.bottomRadiusDp * density
     val active = topRadiusPx >= MIN_VISIBLE_RADIUS_PX || bottomRadiusPx >= MIN_VISIBLE_RADIUS_PX
 
-    var contentWidthPx by remember { mutableFloatStateOf(0f) }
     var contentHeightPx by remember { mutableFloatStateOf(0f) }
     val measured = this.onGloballyPositioned { coordinates ->
-        val nextWidth = coordinates.size.width.toFloat().coerceAtLeast(1f)
         val nextHeight = coordinates.size.height.toFloat().coerceAtLeast(1f)
-        if (contentWidthPx != nextWidth) contentWidthPx = nextWidth
         if (contentHeightPx != nextHeight) contentHeightPx = nextHeight
         state.updateSource(coordinates.boundsInRoot().top)
     }
-    if (!active || contentWidthPx <= 0f || contentHeightPx <= 0f) return@composed measured
+    if (!active || contentHeightPx <= 0f) return@composed measured
 
     val topFadePx = state.topFadeDp * density
     val bottomFadePx = state.bottomFadeDp * density
@@ -112,18 +109,52 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         ?.coerceIn(0f, contentHeightPx)
         ?: contentHeightPx
 
-    // Keep one shader/effect for the lifetime of the source layer. Earlier code
-    // recreated two RuntimeShaders and a chained RenderEffect whenever scroll
-    // progress changed, which produced allocation spikes directly on a fling.
-    val shader = remember { RuntimeShader(EDGE_BLUR_SHADER) }
-    val composeEffect = remember(shader) {
-        RenderEffect.createRuntimeShaderEffect(shader, "content").asComposeRenderEffect()
+    /*
+     * Use the same two-pass RuntimeShader chain that rendered correctly before
+     * 0.17.2. The axes are still orthogonal, so the result is an isotropic
+     * Gaussian, but they are rotated away from the screen's pixel rows and
+     * columns to avoid the old horizontal/vertical grid pattern.
+     *
+     * Radius values are quantized by ArborBackdropBlurState, limiting effect
+     * reconstruction while the header moves without relying on mutable shader
+     * uniforms after RenderEffect creation (which was unreliable on-device).
+     */
+    val firstShader = remember(
+        topRadiusPx,
+        bottomRadiusPx,
+        topFadePx,
+        bottomFadePx,
+        contentHeightPx,
+        bottomEdgePx,
+    ) {
+        RuntimeShader(EDGE_BLUR_SHADER).apply {
+            setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
+            setFloatUniform("uFade", topFadePx, bottomFadePx)
+            setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
+            setFloatUniform("uBottomEdge", bottomEdgePx)
+            setFloatUniform("uDirection", BLUR_AXIS_A_X, BLUR_AXIS_A_Y)
+        }
     }
-    SideEffect {
-        shader.setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
-        shader.setFloatUniform("uFade", topFadePx, bottomFadePx)
-        shader.setFloatUniform("uSize", contentWidthPx, contentHeightPx)
-        shader.setFloatUniform("uBottomEdge", bottomEdgePx)
+    val secondShader = remember(
+        topRadiusPx,
+        bottomRadiusPx,
+        topFadePx,
+        bottomFadePx,
+        contentHeightPx,
+        bottomEdgePx,
+    ) {
+        RuntimeShader(EDGE_BLUR_SHADER).apply {
+            setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
+            setFloatUniform("uFade", topFadePx, bottomFadePx)
+            setFloatUniform("uHeight", contentHeightPx.coerceAtLeast(1f))
+            setFloatUniform("uBottomEdge", bottomEdgePx)
+            setFloatUniform("uDirection", BLUR_AXIS_B_X, BLUR_AXIS_B_Y)
+        }
+    }
+    val composeEffect = remember(firstShader, secondShader) {
+        val first = RenderEffect.createRuntimeShaderEffect(firstShader, "content")
+        val second = RenderEffect.createRuntimeShaderEffect(secondShader, "content")
+        RenderEffect.createChainEffect(second, first).asComposeRenderEffect()
     }
 
     measured.graphicsLayer { renderEffect = composeEffect }
@@ -218,42 +249,38 @@ private const val DEFAULT_MAX_RADIUS_DP = 36f
 private const val DEFAULT_TOP_FADE_DP = 88f
 private const val DEFAULT_BOTTOM_FADE_DP = 152f
 
-/**
- * One rotated Poisson kernel replaces the former horizontal+vertical chain.
- * The irregular paired directions remove the visible cross/grid structure of a
- * separable blur, while 13 total samples are cheaper than the old 18 fetches.
- */
+// Two normalized, orthogonal axes rotated 22.5 degrees from the screen axes.
+internal const val BLUR_AXIS_A_X = 0.9238795f
+internal const val BLUR_AXIS_A_Y = 0.3826834f
+internal const val BLUR_AXIS_B_X = -0.3826834f
+internal const val BLUR_AXIS_B_Y = 0.9238795f
+
+/** Bilinear-paired Gaussian taps: nine samples per rotated axis. */
 private val EDGE_BLUR_SHADER = """
     uniform shader content;
     uniform float2 uBlur;
     uniform float2 uFade;
-    uniform float2 uSize;
+    uniform float uHeight;
     uniform float uBottomEdge;
+    uniform float2 uDirection;
 
     half4 main(float2 coord) {
         float topMix = saturate(1.0 - coord.y / max(uFade.x, 1.0));
-        float bottomEdge = clamp(uBottomEdge, 0.0, uSize.y);
+        float bottomEdge = clamp(uBottomEdge, 0.0, uHeight);
         float bottomMix = saturate(1.0 - (bottomEdge - coord.y) / max(uFade.y, 1.0));
         float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
         if (radius < 0.35) return content.eval(coord);
 
-        float2 lo = float2(0.5, 0.5);
-        float2 hi = max(uSize - lo, lo);
-        half4 accum = half4(content.eval(clamp(coord, lo, hi))) * 0.04;
-
-        float2 o1 = float2( 0.2391,  0.0731) * radius;
-        float2 o2 = float2( 0.0463,  0.3772) * radius;
-        float2 o3 = float2(-0.4457,  0.2678) * radius;
-        float2 o4 = float2( 0.5055,  0.4396) * radius;
-        float2 o5 = float2(-0.2397,  0.7842) * radius;
-        float2 o6 = float2(-0.9528,  0.1170) * radius;
-
-        accum += (half4(content.eval(clamp(coord + o1, lo, hi))) + half4(content.eval(clamp(coord - o1, lo, hi)))) * 0.10;
-        accum += (half4(content.eval(clamp(coord + o2, lo, hi))) + half4(content.eval(clamp(coord - o2, lo, hi)))) * 0.10;
-        accum += (half4(content.eval(clamp(coord + o3, lo, hi))) + half4(content.eval(clamp(coord - o3, lo, hi)))) * 0.09;
-        accum += (half4(content.eval(clamp(coord + o4, lo, hi))) + half4(content.eval(clamp(coord - o4, lo, hi)))) * 0.08;
-        accum += (half4(content.eval(clamp(coord + o5, lo, hi))) + half4(content.eval(clamp(coord - o5, lo, hi)))) * 0.06;
-        accum += (half4(content.eval(clamp(coord + o6, lo, hi))) + half4(content.eval(clamp(coord - o6, lo, hi)))) * 0.05;
+        float2 sampleStep = uDirection * (radius / 8.0);
+        half4 accum = half4(content.eval(coord)) * 0.103152619;
+        accum += half4(content.eval(coord + sampleStep * 1.476579653)) * 0.191010813;
+        accum += half4(content.eval(coord - sampleStep * 1.476579653)) * 0.191010813;
+        accum += half4(content.eval(coord + sampleStep * 3.445529534)) * 0.140428908;
+        accum += half4(content.eval(coord - sampleStep * 3.445529534)) * 0.140428908;
+        accum += half4(content.eval(coord + sampleStep * 5.414898846)) * 0.080715462;
+        accum += half4(content.eval(coord - sampleStep * 5.414898846)) * 0.080715462;
+        accum += half4(content.eval(coord + sampleStep * 7.384912150)) * 0.036268507;
+        accum += half4(content.eval(coord - sampleStep * 7.384912150)) * 0.036268507;
         return accum;
     }
 """.trimIndent()

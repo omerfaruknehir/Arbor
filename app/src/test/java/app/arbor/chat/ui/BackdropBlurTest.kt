@@ -22,6 +22,19 @@ class BackdropBlurTest {
         assertEquals(1f, calculateTopChromeProgress(0, 176, 56, 176), .0001f)
         assertEquals(1f, calculateTopChromeProgress(1, 0, 56, 176), .0001f)
     }
+    @Test fun rotatedBlurAxesAreNormalizedOrthogonalAndNotScreenAligned() {
+        val lenA = BLUR_AXIS_A_X * BLUR_AXIS_A_X + BLUR_AXIS_A_Y * BLUR_AXIS_A_Y
+        val lenB = BLUR_AXIS_B_X * BLUR_AXIS_B_X + BLUR_AXIS_B_Y * BLUR_AXIS_B_Y
+        val dot = BLUR_AXIS_A_X * BLUR_AXIS_B_X + BLUR_AXIS_A_Y * BLUR_AXIS_B_Y
+        assertEquals(1f, lenA, .00001f)
+        assertEquals(1f, lenB, .00001f)
+        assertEquals(0f, dot, .00001f)
+        assertTrue(kotlin.math.abs(BLUR_AXIS_A_X) > .1f)
+        assertTrue(kotlin.math.abs(BLUR_AXIS_A_Y) > .1f)
+        assertTrue(kotlin.math.abs(BLUR_AXIS_B_X) > .1f)
+        assertTrue(kotlin.math.abs(BLUR_AXIS_B_Y) > .1f)
+    }
+
     @Test fun radiusQuantizationSuppressesSubPixelStateChurn() {
         assertEquals(0f, quantizeBlurRadiusDp(-2f), 0f)
         assertEquals(0f, quantizeBlurRadiusDp(.12f), 0f)

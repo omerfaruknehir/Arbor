@@ -1,3 +1,10 @@
+# Arbor 0.17.4
+
+- Restore the proven two-pass AGSL backdrop blur after the 0.17.2 single-pass Poisson shader rendered as an unblurred pass-through on real devices.
+- Rotate the two orthogonal Gaussian passes by 22.5 degrees so the blur remains isotropic without the horizontal/vertical grid pattern of the old axis-aligned implementation.
+- Keep the stronger 36 dp maximum radius and widened chrome fades introduced in 0.17.2.
+- Preserve the 0.17.3 gesture ownership fixes, chat scrolling optimizations, application IDs, Room schema/data, settings, conversations, provider credentials, workspaces, and debug signing compatibility.
+
 # Arbor 0.17.3
 
 - Reserve both Android system-gesture edges for Back on Settings, Search, Sandbox, and Terminal; pull-to-open remains available on Chat.
