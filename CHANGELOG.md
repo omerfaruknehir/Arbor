@@ -1,3 +1,9 @@
+# Arbor 0.17.9
+
+- Replaced directional multi-pass blur with a 49-sample isotropic glass kernel to remove grids and streaks.
+- Aligned top overlay geometry to the proven top blur mask and bottom blur geometry to the proven composer overlay bounds.
+- Stream Python and Linux stdout/stderr while processes are running in chat cards, code blocks, and Tool workspaces.
+
 # Arbor 0.17.8
 
 - Add independent Blur and Gradual switches, yielding four panel modes: gradual blur, panel blur, gradual panel, and normal panel.

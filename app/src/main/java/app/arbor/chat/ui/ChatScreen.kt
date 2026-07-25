@@ -153,6 +153,7 @@ import app.arbor.chat.agent.MessageTimelineEvent
 import app.arbor.chat.agent.materializeTimelineContent
 import app.arbor.chat.agent.groupOrderedTimeline
 import app.arbor.chat.sandbox.ExecutionResult
+import app.arbor.chat.sandbox.ExecutionProgress
 import coil.compose.AsyncImage
 import app.arbor.chat.sandbox.UbuntuExecutionResult
 import app.arbor.chat.sandbox.AppliedPatchResult
@@ -1598,8 +1599,20 @@ private fun ToolStepDetails(
                 },
                 live = status == "preparing",
             )
-            if (output.isNotBlank()) {
-                val json = ChatMessageJson
+            val json = ChatMessageJson
+            if (status == "running" && kind in setOf("script", "python", "ubuntu")) {
+                val progress = output.takeIf(String::isNotBlank)
+                    ?.let { runCatching { json.decodeFromString<ExecutionProgress>(it) }.getOrNull() }
+                    ?: ExecutionProgress()
+                LiveExecutionCard(
+                    progress = progress,
+                    title = when (kind) {
+                        "python" -> "Python execution"
+                        "ubuntu" -> "Linux execution"
+                        else -> "Code execution"
+                    },
+                )
+            } else if (output.isNotBlank()) {
                 when (kind) {
                     "script", "python", "ubuntu" -> {
                         val run = runCatching { json.decodeFromString<ScriptRunResult>(output) }.getOrNull()

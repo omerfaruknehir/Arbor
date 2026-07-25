@@ -36,6 +36,7 @@ import app.arbor.chat.provider.ProviderCredentialPolicy
 import app.arbor.chat.provider.ProviderHttpException
 import app.arbor.chat.provider.ProviderProtocolException
 import app.arbor.chat.provider.StreamChunk
+import app.arbor.chat.sandbox.ExecutionProgress
 import app.arbor.chat.provider.parseHeaders
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -347,8 +348,26 @@ class GenerationWorker(
             persistTimeline()
             setForeground(notification(label, indeterminate = true))
             val returnedFiles = mutableListOf<Triple<String, String, Long>>()
+            var lastLivePersistAt = 0L
             val (initialToolOutput, toolError, semanticError) = try {
-                val outcome = container.agentTools.execute(conversationId, request)
+                val outcome = container.agentTools.execute(conversationId, request) { progress: ExecutionProgress ->
+                    val liveOutput = json.encodeToString(progress)
+                    val traceIndex = traces.indexOfLast { it.id == event.id }
+                    if (traceIndex >= 0) {
+                        traces[traceIndex] = traces[traceIndex].copy(output = liveOutput)
+                        tracesDirty = true
+                    }
+                    val liveTimelineIndex = timeline.indexOfLast { it.id == event.id }
+                    if (liveTimelineIndex >= 0) {
+                        timeline[liveTimelineIndex] = timeline[liveTimelineIndex].copy(output = liveOutput)
+                        timelineDirty = true
+                    }
+                    val now = System.currentTimeMillis()
+                    if (now - lastLivePersistAt >= LIVE_TOOL_OUTPUT_PERSIST_MS) {
+                        persistTimeline()
+                        lastLivePersistAt = now
+                    }
+                }
                 outcome.files.forEach { relativePath ->
                     container.attachmentStore.importWorkspaceOutput(conversationId, assistantId, relativePath)?.let { attachment ->
                         returnedFiles += Triple(attachment.id, attachment.displayName, attachment.createdAt)
@@ -925,6 +944,7 @@ class GenerationWorker(
     )
 
     companion object {
+        private const val LIVE_TOOL_OUTPUT_PERSIST_MS = 250L
         const val KEY_CONVERSATION_ID = "conversation_id"
         const val KEY_ASSISTANT_ID = "assistant_id"
         const val KEY_CONTINUATION = "continuation"

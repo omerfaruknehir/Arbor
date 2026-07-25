@@ -43,20 +43,28 @@ class BackdropBlurTest {
         assertEquals(1f, calculateTopChromeProgress(1, 0, 56, 176), .0001f)
     }
 
-    @Test fun blurAxesAreNormalizedAndWellDistributed() {
-        val lenA = BLUR_AXIS_A_X * BLUR_AXIS_A_X + BLUR_AXIS_A_Y * BLUR_AXIS_A_Y
-        val lenB = BLUR_AXIS_B_X * BLUR_AXIS_B_X + BLUR_AXIS_B_Y * BLUR_AXIS_B_Y
-        val lenC = BLUR_AXIS_C_X * BLUR_AXIS_C_X + BLUR_AXIS_C_Y * BLUR_AXIS_C_Y
-        val dotAB = BLUR_AXIS_A_X * BLUR_AXIS_B_X + BLUR_AXIS_A_Y * BLUR_AXIS_B_Y
-        val dotBC = BLUR_AXIS_B_X * BLUR_AXIS_C_X + BLUR_AXIS_B_Y * BLUR_AXIS_C_Y
-        val dotCA = BLUR_AXIS_C_X * BLUR_AXIS_A_X + BLUR_AXIS_C_Y * BLUR_AXIS_A_Y
+    @Test fun glassKernelIsIsotropicAndNormalized() {
+        assertEquals(49, GLASS_KERNEL_SAMPLE_COUNT)
+        assertEquals(1f, GLASS_KERNEL_WEIGHT_SUM, .0001f)
+    }
 
-        assertEquals(1f, lenA, .0001f)
-        assertEquals(1f, lenB, .0001f)
-        assertEquals(1f, lenC, .0001f)
-        assertTrue(kotlin.math.abs(dotAB) < .6f)
-        assertTrue(kotlin.math.abs(dotBC) < .6f)
-        assertTrue(kotlin.math.abs(dotCA) < .6f)
+    @Test fun topOverlayUsesTheSameRootGeometryAsTheTopBlurMask() {
+        assertEquals(0f to 128f, alignedTopBlurRange(128f, 900f))
+        assertEquals(24f to 152f, alignedTopOverlayRange(100f, 76f, 128f, 200f))
+    }
+
+    @Test fun bottomBlurUsesTheActualOverlayBoundsInsteadOfTheConfiguredMaximumHeight() {
+        assertEquals(
+            620f to 760f,
+            alignedBottomBlurRange(
+                sourceTopInRootPx = 40f,
+                panelStartInRootPx = 660f,
+                panelEndInRootPx = 800f,
+                fallbackEndInRootPx = Float.NaN,
+                fallbackExtentPx = 208f,
+                contentHeightPx = 900f,
+            ),
+        )
     }
 
     @Test fun radiusQuantizationSuppressesSubPixelStateChurn() {

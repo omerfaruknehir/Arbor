@@ -334,11 +334,14 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                 onClick = { viewModel.startPythonRun(code, timeoutSeconds.toIntOrNull()?.coerceIn(1, 600) ?: 90) },
                 enabled = code.isNotBlank() && !running,
             ) { Icon(Icons.Outlined.PlayArrow, null); Text(if (running) "Running…" else "Run", Modifier.padding(start = 8.dp)) }
-            if (running) Text(
-                "Running in the background • ${(clock - (pythonRun?.startedAt ?: clock)) / 1_000}s • you can browse other chats",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            if (running) {
+                Text(
+                    "Running in the background • ${(clock - (pythonRun?.startedAt ?: clock)) / 1_000}s • you can browse other chats",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                LiveExecutionCard(pythonRun?.progress ?: app.arbor.chat.sandbox.ExecutionProgress(), "Python execution")
+            }
             result?.let { output ->
                 PythonExecutionCard(output)
             }
@@ -402,11 +405,14 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                     onClick = { viewModel.startLinuxRun(ubuntuCommand, linuxTimeoutSeconds.toIntOrNull()?.coerceIn(1, 3_600) ?: 180) },
                     enabled = ubuntuCommand.isNotBlank() && !ubuntuRunning,
                 ) { Icon(Icons.Outlined.PlayArrow, null); Text(if (ubuntuRunning) "Running…" else "Run in ${ubuntuStatus.distribution.displayName}", Modifier.padding(start = 8.dp)) }
-                if (ubuntuRunning) Text(
-                    "Running in the background • ${(clock - (linuxRun?.startedAt ?: clock)) / 1_000}s • safe to leave this screen",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+                if (ubuntuRunning) {
+                    Text(
+                        "Running in the background • ${(clock - (linuxRun?.startedAt ?: clock)) / 1_000}s • safe to leave this screen",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    LiveExecutionCard(linuxRun?.progress ?: app.arbor.chat.sandbox.ExecutionProgress(), "Linux execution")
+                }
                 ubuntuResult?.let { output ->
                     UbuntuExecutionCard(output)
                 }

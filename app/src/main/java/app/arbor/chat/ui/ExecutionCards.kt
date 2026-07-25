@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -18,6 +20,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.arbor.chat.sandbox.ExecutionResult
+import app.arbor.chat.sandbox.ExecutionProgress
 import app.arbor.chat.sandbox.UbuntuExecutionResult
 
 @Composable
@@ -40,6 +43,52 @@ fun CodeSourcePanel(
                     code = code,
                     style = MaterialTheme.typography.bodySmall,
                     softWrap = false,
+                )
+            }
+        }
+    }
+}
+
+
+@Composable
+fun LiveExecutionCard(progress: ExecutionProgress, title: String = "Code execution") {
+    ExecutionFrame(title, "RUNNING", "${progress.elapsedMs} ms", failed = false) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+            Text("Process is running. Output updates as it is printed.", style = MaterialTheme.typography.bodySmall)
+        }
+        progress.stdoutTail.takeIf(String::isNotBlank)?.let { LiveOutputSection("STDOUT • LIVE", it) }
+        progress.stderrTail.takeIf(String::isNotBlank)?.let { LiveOutputSection("STDERR • LIVE", it, error = true) }
+        if (progress.stdoutTail.isBlank() && progress.stderrTail.isBlank()) {
+            OutputSection("OUTPUT", "Waiting for the process to print output…")
+        }
+    }
+}
+
+@Composable
+private fun LiveOutputSection(label: String, text: String, error: Boolean = false) {
+    Surface(
+        color = if (error) MaterialTheme.colorScheme.errorContainer.copy(alpha = .16f) else MaterialTheme.colorScheme.surfaceContainerLowest,
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column {
+            Text(
+                label,
+                Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            SelectionContainer(Modifier.padding(10.dp)) {
+                Text(
+                    text.takeLast(6_000),
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 14,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
             }
         }

@@ -57,6 +57,8 @@ class ArborBackdropBlurState internal constructor() {
     internal var bottomMergeDp by mutableFloatStateOf(DEFAULT_MERGE_DISTANCE_DP)
     internal var sourceTopInRootPx by mutableFloatStateOf(0f)
     internal var bottomEdgeInRootPx by mutableFloatStateOf(Float.NaN)
+    internal var bottomPanelStartInRootPx by mutableFloatStateOf(Float.NaN)
+    internal var bottomPanelEndInRootPx by mutableFloatStateOf(Float.NaN)
 
     internal fun update(
         edge: ArborBlurEdge,
@@ -98,12 +100,24 @@ class ArborBackdropBlurState internal constructor() {
         }
     }
 
+    internal fun updateBottomPanel(startInRootPx: Float, endInRootPx: Float) {
+        if (!bottomPanelStartInRootPx.isFinite() || abs(bottomPanelStartInRootPx - startInRootPx) >= 0.5f) {
+            bottomPanelStartInRootPx = startInRootPx
+        }
+        if (!bottomPanelEndInRootPx.isFinite() || abs(bottomPanelEndInRootPx - endInRootPx) >= 0.5f) {
+            bottomPanelEndInRootPx = endInRootPx
+        }
+        updateBottomEdge(endInRootPx)
+    }
+
     internal fun clear(edge: ArborBlurEdge) {
         when (edge) {
             ArborBlurEdge.TOP -> topRadiusDp = 0f
             ArborBlurEdge.BOTTOM -> {
                 bottomRadiusDp = 0f
                 bottomEdgeInRootPx = Float.NaN
+                bottomPanelStartInRootPx = Float.NaN
+                bottomPanelEndInRootPx = Float.NaN
             }
         }
     }
@@ -134,83 +148,42 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
 
     val topFadePx = state.topFadeDp * density
     val bottomFadePx = state.bottomFadeDp * density
-    val bottomEdgePx = state.bottomEdgeInRootPx
-        .takeIf { it.isFinite() }
-        ?.minus(state.sourceTopInRootPx)
-        ?.coerceIn(0f, contentHeightPx)
-        ?: contentHeightPx
+    val topRange = alignedTopBlurRange(topFadePx, contentHeightPx)
+    val bottomRange = alignedBottomBlurRange(
+        sourceTopInRootPx = state.sourceTopInRootPx,
+        panelStartInRootPx = state.bottomPanelStartInRootPx,
+        panelEndInRootPx = state.bottomPanelEndInRootPx,
+        fallbackEndInRootPx = state.bottomEdgeInRootPx,
+        fallbackExtentPx = bottomFadePx,
+        contentHeightPx = contentHeightPx,
+    )
 
-    /*
-     * Two rotated passes still leave visible line structure because each pass is
-     * fundamentally one-dimensional. Move to three evenly spaced, non-axis-
-     * aligned passes so no single sample line dominates. This looks closer to a
-     * soft mica/frosted surface than a rotated grid.
-     *
-     * Radius values are quantized by ArborBackdropBlurState, limiting effect
-     * reconstruction while the header moves without relying on mutable shader
-     * uniforms after RenderEffect creation (which was unreliable on-device).
-     */
-    fun buildShader(directionX: Float, directionY: Float) = RuntimeShader(EDGE_BLUR_SHADER).apply {
-        setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
-        setFloatUniform("uFade", topFadePx, bottomFadePx)
-        setFloatUniform("uSize", contentWidthPx.coerceAtLeast(1f), contentHeightPx.coerceAtLeast(1f))
-        setFloatUniform("uBottomEdge", bottomEdgePx)
-        setFloatUniform("uGradual", if (state.topGradual) 1f else 0f, if (state.bottomGradual) 1f else 0f)
-        setFloatUniform("uCorner", state.topCornerRadiusDp * density, state.bottomCornerRadiusDp * density)
-        setFloatUniform("uMerge", state.topMergeDp * density, state.bottomMergeDp * density)
-        setFloatUniform("uDirection", directionX, directionY)
+    val shader = remember(
+        topRadiusPx,
+        bottomRadiusPx,
+        contentWidthPx,
+        contentHeightPx,
+        topRange,
+        bottomRange,
+        state.topGradual,
+        state.bottomGradual,
+        state.topCornerRadiusDp,
+        state.bottomCornerRadiusDp,
+        state.topMergeDp,
+        state.bottomMergeDp,
+    ) {
+        RuntimeShader(EDGE_BLUR_SHADER).apply {
+            setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
+            setFloatUniform("uSize", contentWidthPx.coerceAtLeast(1f), contentHeightPx.coerceAtLeast(1f))
+            setFloatUniform("uTopRange", topRange.first, topRange.second)
+            setFloatUniform("uBottomRange", bottomRange.first, bottomRange.second)
+            setFloatUniform("uGradual", if (state.topGradual) 1f else 0f, if (state.bottomGradual) 1f else 0f)
+            setFloatUniform("uCorner", state.topCornerRadiusDp * density, state.bottomCornerRadiusDp * density)
+            setFloatUniform("uMerge", state.topMergeDp * density, state.bottomMergeDp * density)
+        }
     }
-
-    val firstShader = remember(
-        topRadiusPx,
-        bottomRadiusPx,
-        topFadePx,
-        bottomFadePx,
-        contentWidthPx,
-        contentHeightPx,
-        bottomEdgePx,
-        state.topGradual,
-        state.bottomGradual,
-        state.topCornerRadiusDp,
-        state.bottomCornerRadiusDp,
-        state.topMergeDp,
-        state.bottomMergeDp,
-    ) { buildShader(BLUR_AXIS_A_X, BLUR_AXIS_A_Y) }
-    val secondShader = remember(
-        topRadiusPx,
-        bottomRadiusPx,
-        topFadePx,
-        bottomFadePx,
-        contentWidthPx,
-        contentHeightPx,
-        bottomEdgePx,
-        state.topGradual,
-        state.bottomGradual,
-        state.topCornerRadiusDp,
-        state.bottomCornerRadiusDp,
-        state.topMergeDp,
-        state.bottomMergeDp,
-    ) { buildShader(BLUR_AXIS_B_X, BLUR_AXIS_B_Y) }
-    val thirdShader = remember(
-        topRadiusPx,
-        bottomRadiusPx,
-        topFadePx,
-        bottomFadePx,
-        contentWidthPx,
-        contentHeightPx,
-        bottomEdgePx,
-        state.topGradual,
-        state.bottomGradual,
-        state.topCornerRadiusDp,
-        state.bottomCornerRadiusDp,
-        state.topMergeDp,
-        state.bottomMergeDp,
-    ) { buildShader(BLUR_AXIS_C_X, BLUR_AXIS_C_Y) }
-    val composeEffect = remember(firstShader, secondShader, thirdShader) {
-        val first = RenderEffect.createRuntimeShaderEffect(firstShader, "content")
-        val second = RenderEffect.createRuntimeShaderEffect(secondShader, "content")
-        val third = RenderEffect.createRuntimeShaderEffect(thirdShader, "content")
-        RenderEffect.createChainEffect(third, RenderEffect.createChainEffect(second, first)).asComposeRenderEffect()
+    val composeEffect = remember(shader) {
+        RenderEffect.createRuntimeShaderEffect(shader, "content").asComposeRenderEffect()
     }
 
     measured.graphicsLayer { renderEffect = composeEffect }
@@ -270,22 +243,39 @@ fun Modifier.arborBackdropBlur(
     }
     DisposableEffect(state, edge) { onDispose { state.clear(edge) } }
 
-    val anchored = if (edge == ArborBlurEdge.BOTTOM) {
-        this.onGloballyPositioned { coordinates ->
-            state.updateBottomEdge(coordinates.boundsInRoot().bottom)
-        }
-    } else {
-        this
-    }
-
     val density = LocalDensity.current
     val overlayDistancePx = with(density) { overlayDistance.toPx() }
+    val fadeDistancePx = with(density) { fadeDistance.toPx() }
     val cornerRadiusPx = with(density) { cornerRadius.toPx() }
     val mergeDistancePx = with(density) { mergeDistance.toPx() }
+    var panelTopInRootPx by remember { mutableFloatStateOf(0f) }
 
-    anchored.drawWithContent {
+    val aligned = this.onGloballyPositioned { coordinates ->
+        val bounds = coordinates.boundsInRoot()
+        panelTopInRootPx = bounds.top
+        if (edge == ArborBlurEdge.BOTTOM) {
+            val actualExtent = overlayDistancePx.coerceIn(1f, coordinates.size.height.toFloat().coerceAtLeast(1f))
+            state.updateBottomPanel(bounds.bottom - actualExtent, bounds.bottom)
+        }
+    }
+
+    aligned.drawWithContent {
         val panelColor = tint.copy(alpha = (tint.alpha * PANEL_OPACITY_BOOST).coerceIn(0f, 1f))
-        val extent = overlayDistancePx.coerceIn(1f, size.height.coerceAtLeast(1f))
+        val range = when (edge) {
+            ArborBlurEdge.TOP -> alignedTopOverlayRange(
+                sourceTopInRootPx = state.sourceTopInRootPx,
+                panelTopInRootPx = panelTopInRootPx,
+                fadeDistancePx = fadeDistancePx,
+                panelHeightPx = size.height,
+            )
+            ArborBlurEdge.BOTTOM -> {
+                val extent = overlayDistancePx.coerceIn(1f, size.height.coerceAtLeast(1f))
+                (size.height - extent) to size.height
+            }
+        }
+        val panelStart = range.first
+        val panelEnd = range.second
+        val extent = (panelEnd - panelStart).coerceAtLeast(1f)
         val radius = cornerRadiusPx.coerceIn(0f, minOf(size.width / 2f, extent / 2f))
         val merge = if (gradual) mergeDistancePx.coerceIn(1f, extent) else 0f
 
@@ -294,38 +284,37 @@ fun Modifier.arborBackdropBlur(
                 ArborBlurEdge.TOP -> addRoundRect(
                     RoundRect(
                         left = 0f,
-                        top = 0f,
+                        top = panelStart,
                         right = size.width,
-                        bottom = extent,
+                        bottom = panelEnd,
                         topLeftCornerRadius = CornerRadius.Zero,
                         topRightCornerRadius = CornerRadius.Zero,
                         bottomRightCornerRadius = CornerRadius(radius, radius),
                         bottomLeftCornerRadius = CornerRadius(radius, radius),
                     ),
                 )
-                ArborBlurEdge.BOTTOM -> {
-                    val startY = (size.height - extent).coerceAtLeast(0f)
-                    addRoundRect(
-                        RoundRect(
-                            left = 0f,
-                            top = startY,
-                            right = size.width,
-                            bottom = size.height,
-                            topLeftCornerRadius = CornerRadius(radius, radius),
-                            topRightCornerRadius = CornerRadius(radius, radius),
-                            bottomRightCornerRadius = CornerRadius.Zero,
-                            bottomLeftCornerRadius = CornerRadius.Zero,
-                        ),
-                    )
-                }
+                ArborBlurEdge.BOTTOM -> addRoundRect(
+                    RoundRect(
+                        left = 0f,
+                        top = panelStart,
+                        right = size.width,
+                        bottom = panelEnd,
+                        topLeftCornerRadius = CornerRadius(radius, radius),
+                        topRightCornerRadius = CornerRadius(radius, radius),
+                        bottomRightCornerRadius = CornerRadius.Zero,
+                        bottomLeftCornerRadius = CornerRadius.Zero,
+                    ),
+                )
             }
         }
 
         clipPath(panelPath) {
             when (edge) {
                 ArborBlurEdge.TOP -> {
-                    val bodyEnd = (extent - merge).coerceAtLeast(0f)
-                    if (bodyEnd > 0f) drawRect(color = panelColor, size = Size(size.width, bodyEnd))
+                    val bodyEnd = (panelEnd - merge).coerceAtLeast(panelStart)
+                    if (bodyEnd > panelStart) {
+                        drawRect(color = panelColor, topLeft = Offset(0f, panelStart), size = Size(size.width, bodyEnd - panelStart))
+                    }
                     if (merge > 0f) {
                         drawRect(
                             brush = Brush.verticalGradient(
@@ -336,18 +325,17 @@ fun Modifier.arborBackdropBlur(
                                     1f to Color.Transparent,
                                 ),
                                 startY = bodyEnd,
-                                endY = extent,
+                                endY = panelEnd,
                             ),
                             topLeft = Offset(0f, bodyEnd),
-                            size = Size(size.width, merge),
+                            size = Size(size.width, panelEnd - bodyEnd),
                         )
                     } else {
-                        drawRect(color = panelColor, size = Size(size.width, extent))
+                        drawRect(color = panelColor, topLeft = Offset(0f, panelStart), size = Size(size.width, extent))
                     }
                 }
                 ArborBlurEdge.BOTTOM -> {
-                    val startY = (size.height - extent).coerceAtLeast(0f)
-                    val bodyStart = (startY + merge).coerceAtMost(size.height)
+                    val bodyStart = (panelStart + merge).coerceAtMost(panelEnd)
                     if (merge > 0f) {
                         drawRect(
                             brush = Brush.verticalGradient(
@@ -357,25 +345,56 @@ fun Modifier.arborBackdropBlur(
                                     0.48f to panelColor.copy(alpha = panelColor.alpha * 0.92f),
                                     1f to panelColor,
                                 ),
-                                startY = startY,
+                                startY = panelStart,
                                 endY = bodyStart,
                             ),
-                            topLeft = Offset(0f, startY),
-                            size = Size(size.width, merge),
+                            topLeft = Offset(0f, panelStart),
+                            size = Size(size.width, bodyStart - panelStart),
                         )
                     }
-                    if (bodyStart < size.height) {
-                        drawRect(
-                            color = panelColor,
-                            topLeft = Offset(0f, bodyStart),
-                            size = Size(size.width, size.height - bodyStart),
-                        )
+                    if (bodyStart < panelEnd) {
+                        drawRect(color = panelColor, topLeft = Offset(0f, bodyStart), size = Size(size.width, panelEnd - bodyStart))
                     }
                 }
             }
         }
         drawContent()
     }
+}
+
+
+internal fun alignedTopBlurRange(fadeDistancePx: Float, contentHeightPx: Float): Pair<Float, Float> =
+    0f to fadeDistancePx.coerceIn(1f, contentHeightPx.coerceAtLeast(1f))
+
+internal fun alignedTopOverlayRange(
+    sourceTopInRootPx: Float,
+    panelTopInRootPx: Float,
+    fadeDistancePx: Float,
+    panelHeightPx: Float,
+): Pair<Float, Float> {
+    val height = panelHeightPx.coerceAtLeast(1f)
+    val start = (sourceTopInRootPx - panelTopInRootPx).coerceIn(0f, height)
+    val end = (start + fadeDistancePx.coerceAtLeast(1f)).coerceIn(start, height)
+    return start to end
+}
+
+internal fun alignedBottomBlurRange(
+    sourceTopInRootPx: Float,
+    panelStartInRootPx: Float,
+    panelEndInRootPx: Float,
+    fallbackEndInRootPx: Float,
+    fallbackExtentPx: Float,
+    contentHeightPx: Float,
+): Pair<Float, Float> {
+    val height = contentHeightPx.coerceAtLeast(1f)
+    val endRoot = panelEndInRootPx.takeIf { it.isFinite() }
+        ?: fallbackEndInRootPx.takeIf { it.isFinite() }
+        ?: (sourceTopInRootPx + height)
+    val startRoot = panelStartInRootPx.takeIf { it.isFinite() }
+        ?: (endRoot - fallbackExtentPx.coerceAtLeast(1f))
+    val start = (startRoot - sourceTopInRootPx).coerceIn(0f, height)
+    val end = (endRoot - sourceTopInRootPx).coerceIn(start, height)
+    return start to end
 }
 
 internal fun quantizeBlurRadiusDp(radiusDp: Float): Float =
@@ -391,51 +410,48 @@ private const val DEFAULT_MERGE_DISTANCE_DP = 34f
 private const val DEFAULT_TOP_FADE_DP = 128f
 private const val DEFAULT_BOTTOM_FADE_DP = 208f
 
-// Three normalized directions spaced 60 degrees apart and rotated off the
-// screen axes. This avoids a dominant line structure and gives a more mica-like
-// frosted blur when the passes are chained.
-internal const val BLUR_AXIS_A_X = 0.9238795f
-internal const val BLUR_AXIS_A_Y = 0.3826834f
-internal const val BLUR_AXIS_B_X = 0.1305262f
-internal const val BLUR_AXIS_B_Y = 0.9914449f
-internal const val BLUR_AXIS_C_X = -0.7933533f
-internal const val BLUR_AXIS_C_Y = 0.6087614f
+internal const val GLASS_KERNEL_SAMPLE_COUNT = 49
+internal const val GLASS_KERNEL_WEIGHT_SUM = 1f
 
-/** Bilinear-paired Gaussian taps: nine samples per pass across three directions. */
+/**
+ * One-pass isotropic Gaussian disk kernel. Samples follow a low-discrepancy
+ * radial distribution rather than rows, columns, or a handful of directions,
+ * so the blur stays glassy without visible grids or streaks.
+ */
 private val EDGE_BLUR_SHADER = """
     uniform shader content;
     uniform float2 uBlur;
-    uniform float2 uFade;
     uniform float2 uSize;
-    uniform float uBottomEdge;
+    uniform float2 uTopRange;
+    uniform float2 uBottomRange;
     uniform float2 uGradual;
     uniform float2 uCorner;
     uniform float2 uMerge;
-    uniform float2 uDirection;
 
     float smoother(float value) {
         float x = saturate(value);
         return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
     }
 
-    float roundedTopPanelMask(float2 coord, float extent, float radius) {
-        if (coord.y < 0.0 || coord.y > extent) return 0.0;
+    float roundedTopPanelMask(float2 coord, float start, float end, float radius) {
+        if (coord.y < start || coord.y > end) return 0.0;
+        float extent = end - start;
         radius = clamp(radius, 0.0, min(uSize.x * 0.5, extent * 0.5));
-        if (radius < 0.5 || coord.y <= extent - radius) return 1.0;
+        if (radius < 0.5 || coord.y <= end - radius) return 1.0;
         if (coord.x < radius) {
-            float d = length(coord - float2(radius, extent - radius));
+            float d = length(coord - float2(radius, end - radius));
             return 1.0 - smoothstep(radius - 0.75, radius + 0.75, d);
         }
         if (coord.x > uSize.x - radius) {
-            float d = length(coord - float2(uSize.x - radius, extent - radius));
+            float d = length(coord - float2(uSize.x - radius, end - radius));
             return 1.0 - smoothstep(radius - 0.75, radius + 0.75, d);
         }
         return 1.0;
     }
 
-    float roundedBottomPanelMask(float2 coord, float start, float bottom, float radius) {
-        if (coord.y < start || coord.y > bottom) return 0.0;
-        float extent = bottom - start;
+    float roundedBottomPanelMask(float2 coord, float start, float end, float radius) {
+        if (coord.y < start || coord.y > end) return 0.0;
+        float extent = end - start;
         radius = clamp(radius, 0.0, min(uSize.x * 0.5, extent * 0.5));
         if (radius < 0.5 || coord.y >= start + radius) return 1.0;
         if (coord.x < radius) {
@@ -449,34 +465,89 @@ private val EDGE_BLUR_SHADER = """
         return 1.0;
     }
 
+    half4 sampleContent(float2 coord) {
+        return half4(content.eval(clamp(coord, float2(0.0), max(uSize - float2(1.0), float2(0.0)))));
+    }
+
     half4 main(float2 coord) {
-        float topExtent = max(uFade.x, 1.0);
-        float topMask = roundedTopPanelMask(coord, topExtent, uCorner.x);
+        half4 original = sampleContent(coord);
+
+        float topMask = roundedTopPanelMask(coord, uTopRange.x, uTopRange.y, uCorner.x);
         float topMerge = max(uMerge.x, 1.0);
-        float topFeather = smoother((topExtent - coord.y) / topMerge);
+        float topFeather = smoother((uTopRange.y - coord.y) / topMerge);
         float topMix = topMask * mix(1.0, topFeather, uGradual.x);
 
-        float bottomEdge = clamp(uBottomEdge, 0.0, uSize.y);
-        float bottomExtent = max(uFade.y, 1.0);
-        float bottomStart = bottomEdge - bottomExtent;
-        float bottomMask = roundedBottomPanelMask(coord, bottomStart, bottomEdge, uCorner.y);
+        float bottomMask = roundedBottomPanelMask(coord, uBottomRange.x, uBottomRange.y, uCorner.y);
         float bottomMerge = max(uMerge.y, 1.0);
-        float bottomFeather = smoother((coord.y - bottomStart) / bottomMerge);
+        float bottomFeather = smoother((coord.y - uBottomRange.x) / bottomMerge);
         float bottomMix = bottomMask * mix(1.0, bottomFeather, uGradual.y);
 
-        float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
-        if (radius < 0.35) return content.eval(coord);
+        float panelMix = max(topMix, bottomMix);
+        if (panelMix < 0.001) return original;
 
-        float2 sampleStep = uDirection * (radius / 8.0);
-        half4 accum = half4(content.eval(coord)) * 0.103152619;
-        accum += half4(content.eval(coord + sampleStep * 1.476579653)) * 0.191010813;
-        accum += half4(content.eval(coord - sampleStep * 1.476579653)) * 0.191010813;
-        accum += half4(content.eval(coord + sampleStep * 3.445529534)) * 0.140428908;
-        accum += half4(content.eval(coord - sampleStep * 3.445529534)) * 0.140428908;
-        accum += half4(content.eval(coord + sampleStep * 5.414898846)) * 0.080715462;
-        accum += half4(content.eval(coord - sampleStep * 5.414898846)) * 0.080715462;
-        accum += half4(content.eval(coord + sampleStep * 7.384912150)) * 0.036268507;
-        accum += half4(content.eval(coord - sampleStep * 7.384912150)) * 0.036268507;
-        return accum;
+        // Keep one stable kernel radius through the feather. The panel edge is
+        // blended by panelMix rather than by changing tap spacing, preventing
+        // bands and moving sample patterns at the merge line.
+        float radius = max(uBlur.x * step(0.001, topMask), uBlur.y * step(0.001, bottomMask));
+        if (radius < 0.35) return original;
+
+        half4 accum = sampleContent(coord) * 0.048563360;
+        accum += sampleContent(coord + float2(0.0951553, 0.0369072) * radius) * 0.047477871;
+        accum += sampleContent(coord + float2(-0.1647094, 0.0641936) * radius) * 0.045379139;
+        accum += sampleContent(coord + float2(0.1008130, -0.2047439) * radius) * 0.043373180;
+        accum += sampleContent(coord + float2(0.0756858, 0.2592071) * radius) * 0.041455893;
+        accum += sampleContent(coord + float2(-0.2618163, -0.1587521) * radius) * 0.039623359;
+        accum += sampleContent(coord + float2(0.3319838, -0.0661064) * radius) * 0.037871831;
+        accum += sampleContent(coord + float2(-0.2175755, 0.2967787) * radius) * 0.036197728;
+        accum += sampleContent(coord + float2(-0.0430074, -0.3929381) * radius) * 0.034597628;
+        accum += sampleContent(coord + float2(0.3163278, 0.2775249) * radius) * 0.033068260;
+        accum += sampleContent(coord + float2(-0.4447756, 0.0095550) * radius) * 0.031606496;
+        accum += sampleContent(coord + float2(0.3380076, -0.3232659) * radius) * 0.030209349;
+        accum += sampleContent(coord + float2(-0.0323101, 0.4884049) * radius) * 0.028873962;
+        accum += sampleContent(coord + float2(-0.3191192, -0.3982206) * radius) * 0.027597605;
+        accum += sampleContent(coord + float2(0.5240867, 0.0811364) * radius) * 0.026377669;
+        accum += sampleContent(coord + float2(-0.4573028, 0.3048893) * radius) * 0.025211659;
+        accum += sampleContent(coord + float2(0.1357016, -0.5518168) * radius) * 0.024097192;
+        accum += sampleContent(coord + float2(0.2813436, 0.5143888) * radius) * 0.023031989;
+        accum += sampleContent(coord + float2(-0.5714870, -0.1948999) * radius) * 0.022013874;
+        accum += sampleContent(coord + float2(0.5686316, -0.2491481) * radius) * 0.021040763;
+        accum += sampleContent(coord + float2(-0.2576885, 0.5829637) * radius) * 0.020110668;
+        accum += sampleContent(coord + float2(-0.2089345, -0.6192170) * radius) * 0.019221687;
+        accum += sampleContent(coord + float2(0.5861301, 0.3230606) * radius) * 0.018372004;
+        accum += sampleContent(coord + float2(-0.6653725, 0.1613363) * radius) * 0.017559880;
+        accum += sampleContent(coord + float2(0.3900326, -0.5809112) * radius) * 0.016783655;
+        accum += sampleContent(coord + float2(0.1070086, 0.7063751) * radius) * 0.016041743;
+        accum += sampleContent(coord + float2(-0.5672889, -0.4576388) * radius) * 0.015332627;
+        accum += sampleContent(coord + float2(0.7415580, -0.0466379) * radius) * 0.014654857;
+        accum += sampleContent(coord + float2(-0.5249309, 0.5453111) * radius) * 0.014007048;
+        accum += sampleContent(coord + float2(0.0190526, -0.7703162) * radius) * 0.013387874;
+        accum += sampleContent(coord + float2(0.5150981, 0.5909800) * radius) * 0.012796071;
+        accum += sampleContent(coord + float2(-0.7921122, -0.0893026) * radius) * 0.012230428;
+        accum += sampleContent(coord + float2(0.6548807, -0.4768451) * radius) * 0.011689789;
+        accum += sampleContent(coord + float2(-0.1633166, 0.8064806) * radius) * 0.011173048;
+        accum += sampleContent(coord + float2(-0.4308242, -0.7157564) * radius) * 0.010679150;
+        accum += sampleContent(coord + float2(0.8130326, 0.2402666) * radius) * 0.010207084;
+        accum += sampleContent(coord + float2(-0.7727644, 0.3773837) * radius) * 0.009755886;
+        accum += sampleContent(coord + float2(0.3192978, -0.8114589) * radius) * 0.009324633;
+        accum += sampleContent(coord + float2(0.3169469, 0.8251028) * radius) * 0.008912442;
+        accum += sampleContent(coord + float2(-0.8015338, -0.3995334) * radius) * 0.008518473;
+        accum += sampleContent(coord + float2(0.8720159, -0.2500097) * radius) * 0.008141919;
+        accum += sampleContent(coord + float2(-0.4800823, 0.7831162) * radius) * 0.007782010;
+        accum += sampleContent(coord + float2(-0.1771369, -0.9128011) * radius) * 0.007438011;
+        accum += sampleContent(coord + float2(0.7561524, 0.5600449) * radius) * 0.007109218;
+        accum += sampleContent(coord + float2(-0.9468143, 0.0989580) * radius) * 0.006794959;
+        accum += sampleContent(coord + float2(0.6385214, -0.7206759) * radius) * 0.006494591;
+        accum += sampleContent(coord + float2(0.0161624, 0.9734760) * radius) * 0.006207502;
+        accum += sampleContent(coord + float2(-0.6768082, -0.7146192) * radius) * 0.005933103;
+        accum += sampleContent(coord + float2(0.9922762, 0.0705067) * radius) * 0.005670833;
+
+        // A very small saturation/luminance lift gives the blur a glass surface
+        // character; the panel tint is composited separately with the exact same
+        // geometry.
+        half luminance = dot(accum.rgb, half3(0.2126, 0.7152, 0.0722));
+        half3 glassRgb = mix(half3(luminance), accum.rgb, half(1.045));
+        glassRgb = clamp(glassRgb * half(1.012) + half3(0.003), half3(0.0), half3(1.0));
+        half4 glass = half4(glassRgb, original.a);
+        return mix(original, glass, half(panelMix));
     }
 """.trimIndent()

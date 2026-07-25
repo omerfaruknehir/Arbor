@@ -7,6 +7,7 @@ import app.arbor.chat.sandbox.PythonSandbox
 import app.arbor.chat.sandbox.UbuntuRuntime
 import app.arbor.chat.sandbox.RunRecordStore
 import app.arbor.chat.sandbox.ScriptRuntime
+import app.arbor.chat.sandbox.ExecutionProgress
 import app.arbor.chat.files.AttachmentStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
@@ -186,7 +187,11 @@ class AgentTools(
 ) {
     private val json = Json { encodeDefaults = true }
 
-    suspend fun execute(conversationId: String, request: AgentToolRequest): AgentToolOutcome {
+    suspend fun execute(
+        conversationId: String,
+        request: AgentToolRequest,
+        onProgress: suspend (ExecutionProgress) -> Unit = {},
+    ): AgentToolOutcome {
         // Permissions are intentionally re-read immediately before every side effect.
         val conversation = requireNotNull(repository.conversationNow(conversationId)) { "Conversation no longer exists" }
         return when (request.type.lowercase()) {
@@ -207,7 +212,7 @@ class AgentTools(
                 mapOf("distribution" to ubuntu.distribution.value.displayName, "python" to ".arbor-venv", "executionMode" to "PRoot root"),
             )
             metadata = runRecords.markStarted(metadata, timeout, emptyList())
-            val result = executeStored(metadata, emptyList(), timeout)
+            val result = executeStored(metadata, emptyList(), timeout, onProgress)
             AgentToolOutcome(json.encodeToString(result), isError = result.exitCode != 0 || result.timedOut || result.cancelled)
         }
         "ubuntu", "ubuntu_exec", "linux", "linux_exec", "shell" -> {
@@ -223,7 +228,7 @@ class AgentTools(
                 mapOf("distribution" to ubuntu.distribution.value.displayName, "executionMode" to "PRoot root"),
             )
             metadata = runRecords.markStarted(metadata, timeout, emptyList())
-            val result = executeStored(metadata, emptyList(), timeout)
+            val result = executeStored(metadata, emptyList(), timeout, onProgress)
             AgentToolOutcome(json.encodeToString(result), isError = result.exitCode != 0 || result.timedOut)
         }
         "workspace_read" -> {
@@ -254,7 +259,7 @@ class AgentTools(
             val timeout = (request.timeoutSeconds ?: metadata.timeoutSeconds).coerceIn(1, maximum)
             val args = request.args.ifEmpty { metadata.originalArgs }
             metadata = runRecords.markStarted(metadata, timeout, args)
-            val result = executeStored(metadata, args, timeout)
+            val result = executeStored(metadata, args, timeout, onProgress)
             AgentToolOutcome(json.encodeToString(result), isError = result.exitCode != 0 || result.timedOut || result.cancelled)
         }
         "send_file", "file_send" -> {
@@ -279,13 +284,14 @@ class AgentTools(
         metadata: app.arbor.chat.sandbox.ScriptRunMetadata,
         args: List<String>,
         timeout: Int,
+        onProgress: suspend (ExecutionProgress) -> Unit,
     ): app.arbor.chat.sandbox.ScriptRunResult {
         val started = System.currentTimeMillis()
         return try {
             val raw = if (metadata.runtime == ScriptRuntime.PYTHON) {
-                ubuntu.executePythonFile(metadata.conversationId, metadata.scriptPath, args, timeout)
+                ubuntu.executePythonFile(metadata.conversationId, metadata.scriptPath, args, timeout, onProgress)
             } else {
-                ubuntu.executeShellFile(metadata.conversationId, metadata.scriptPath, args, timeout)
+                ubuntu.executeShellFile(metadata.conversationId, metadata.scriptPath, args, timeout, onProgress)
             }
             runRecords.finish(metadata, raw.stdout, raw.stderr, raw.exitCode, raw.timedOut, false, raw.elapsedMs, raw.files)
         } catch (cancelled: CancellationException) {

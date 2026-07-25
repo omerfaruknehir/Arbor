@@ -31,6 +31,7 @@ import app.arbor.chat.provider.ProviderCredentialPolicy
 import app.arbor.chat.provider.ProviderEndpointPolicy
 import app.arbor.chat.provider.parseHeaders
 import app.arbor.chat.sandbox.ExecutionResult
+import app.arbor.chat.sandbox.ExecutionProgress
 import app.arbor.chat.sandbox.PackageInstallResult
 import app.arbor.chat.sandbox.PythonEnvironmentInfo
 import app.arbor.chat.sandbox.PackageReview
@@ -77,6 +78,7 @@ data class PythonRunState(
     val code: String,
     val timeoutSeconds: Int,
     val running: Boolean = true,
+    val progress: ExecutionProgress = ExecutionProgress(),
     val result: ExecutionResult? = null,
     val error: String? = null,
 )
@@ -87,6 +89,7 @@ data class LinuxRunState(
     val distribution: LinuxDistribution,
     val timeoutSeconds: Int,
     val running: Boolean = true,
+    val progress: ExecutionProgress = ExecutionProgress(),
     val result: UbuntuExecutionResult? = null,
     val error: String? = null,
 )
@@ -147,7 +150,9 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         _pythonRun.value = PythonRunState(started, code, timeoutSeconds)
         pythonRunJob = viewModelScope.launch {
             try {
-                val result = container.ubuntuRuntime.executePython(conversationId, code, timeoutSeconds)
+                val result = container.ubuntuRuntime.executePython(conversationId, code, timeoutSeconds) { progress ->
+                    _pythonRun.value = _pythonRun.value?.copy(progress = progress)
+                }
                 _pythonRun.value = _pythonRun.value?.copy(running = false, result = result)
             } catch (cancelled: CancellationException) {
                 _pythonRun.value = _pythonRun.value?.copy(running = false, error = "Stopped by user")
@@ -172,7 +177,9 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         _linuxRun.value = LinuxRunState(started, command, container.ubuntuRuntime.distribution.value, timeoutSeconds)
         linuxRunJob = viewModelScope.launch {
             try {
-                val result = container.ubuntuRuntime.execute(conversationId, command, timeoutSeconds)
+                val result = container.ubuntuRuntime.execute(conversationId, command, timeoutSeconds) { progress ->
+                    _linuxRun.value = _linuxRun.value?.copy(progress = progress)
+                }
                 _linuxRun.value = _linuxRun.value?.copy(running = false, result = result)
             } catch (cancelled: CancellationException) {
                 _linuxRun.value = _linuxRun.value?.copy(running = false, error = "Stopped by user")
@@ -635,6 +642,11 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         return container.ubuntuRuntime.executePython(id, code, timeoutSeconds)
     }
 
+    suspend fun executePython(code: String, onProgress: suspend (ExecutionProgress) -> Unit): ExecutionResult {
+        val id = selectedConversationId.value ?: error("No conversation")
+        return container.ubuntuRuntime.executePython(id, code, 90, onProgress)
+    }
+
     suspend fun installPythonPackages(requirements: String, approvedPlan: PackagePlan? = null): PackageInstallResult {
         val id = selectedConversationId.value ?: error("No conversation")
         val restrictions = container.repository.automationSettingsNow().packageRestrictionsEnabled
@@ -698,6 +710,11 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     suspend fun executeUbuntu(command: String, timeoutSeconds: Int = 180): UbuntuExecutionResult {
         val id = selectedConversationId.value ?: error("No conversation")
         return container.ubuntuRuntime.execute(id, command, timeoutSeconds)
+    }
+
+    suspend fun executeUbuntu(command: String, onProgress: suspend (ExecutionProgress) -> Unit): UbuntuExecutionResult {
+        val id = selectedConversationId.value ?: error("No conversation")
+        return container.ubuntuRuntime.execute(id, command, 180, onProgress)
     }
 
     suspend fun repairGeneratedBlock(

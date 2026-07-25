@@ -69,6 +69,13 @@ data class UbuntuExecutionResult(
     val timedOut: Boolean = false,
 )
 
+@Serializable
+data class ExecutionProgress(
+    val stdoutTail: String = "",
+    val stderrTail: String = "",
+    val elapsedMs: Long = 0,
+)
+
 data class UbuntuPackageInstallResult(
     val success: Boolean,
     val stdout: String = "",
@@ -204,21 +211,35 @@ class UbuntuRuntime(
 
     fun workspace(conversationId: String): File = python.workspace(conversationId)
 
-    suspend fun execute(conversationId: String, command: String, timeoutSeconds: Int = 180): UbuntuExecutionResult =
-        processMutex.withLock {
+    suspend fun execute(
+        conversationId: String,
+        command: String,
+        timeoutSeconds: Int = 180,
+        onProgress: suspend (ExecutionProgress) -> Unit = {},
+    ): UbuntuExecutionResult = processMutex.withLock {
             val distro = distribution.value
             check(status.value.installed || rootfsMarker().isFile) { "Install ${distro.displayName} from Tool workspaces first." }
             require(command.isNotBlank()) { "Command is empty" }
-            executeInternal(command, python.workspace(conversationId), timeoutSeconds.coerceIn(1, 3_600))
+            executeInternal(command, python.workspace(conversationId), timeoutSeconds.coerceIn(1, 3_600), onProgress = onProgress)
         }
 
-    suspend fun executePython(conversationId: String, code: String, timeoutSeconds: Int = 90): ExecutionResult {
+    suspend fun executePython(
+        conversationId: String,
+        code: String,
+        timeoutSeconds: Int = 90,
+        onProgress: suspend (ExecutionProgress) -> Unit = {},
+    ): ExecutionResult {
         require(code.isNotBlank()) { "Python code is empty" }
         ensurePythonEnvironment(conversationId)
         val workspace = python.workspace(conversationId)
         val script = File(workspace, ".arbor-python-run.py")
         script.writeText(code)
-        val result = execute(conversationId, "/workspace/.arbor-venv/bin/python /workspace/.arbor-python-run.py", timeoutSeconds.coerceIn(1, 600))
+        val result = execute(
+            conversationId,
+            "/workspace/.arbor-venv/bin/python -u /workspace/.arbor-python-run.py",
+            timeoutSeconds.coerceIn(1, 600),
+            onProgress,
+        )
         return ExecutionResult(
             stdout = result.stdout,
             stderr = result.stderr,
@@ -235,14 +256,16 @@ class UbuntuRuntime(
         relativePath: String,
         args: List<String> = emptyList(),
         timeoutSeconds: Int = 90,
+        onProgress: suspend (ExecutionProgress) -> Unit = {},
     ): UbuntuExecutionResult {
         ensurePythonEnvironment(conversationId)
         require(relativePath.matches(Regex("[A-Za-z0-9_./-]+")) && ".." !in relativePath.split('/')) { "Invalid Python script path" }
         val argumentString = args.take(64).joinToString(" ") { shellQuote(it.take(1_000)) }
         return execute(
             conversationId,
-            "/workspace/.arbor-venv/bin/python ${shellQuote("/workspace/$relativePath")}" + if (argumentString.isBlank()) "" else " $argumentString",
+            "/workspace/.arbor-venv/bin/python -u ${shellQuote("/workspace/$relativePath")}" + if (argumentString.isBlank()) "" else " $argumentString",
             timeoutSeconds.coerceIn(1, 600),
+            onProgress,
         )
     }
 
@@ -252,6 +275,7 @@ class UbuntuRuntime(
         relativePath: String,
         args: List<String> = emptyList(),
         timeoutSeconds: Int = 180,
+        onProgress: suspend (ExecutionProgress) -> Unit = {},
     ): UbuntuExecutionResult {
         require(relativePath.matches(Regex("[A-Za-z0-9_./-]+")) && ".." !in relativePath.split('/')) { "Invalid shell script path" }
         val argumentString = args.take(64).joinToString(" ") { shellQuote(it.take(1_000)) }
@@ -259,6 +283,7 @@ class UbuntuRuntime(
             conversationId,
             "/bin/sh ${shellQuote("/workspace/$relativePath")}" + if (argumentString.isBlank()) "" else " $argumentString",
             timeoutSeconds.coerceIn(1, 900),
+            onProgress,
         )
     }
 
@@ -482,7 +507,13 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
         )
     }
 
-    private suspend fun executeInternal(command: String, workspace: File, timeoutSeconds: Int, allowBeforeMarker: Boolean = false): UbuntuExecutionResult = withContext(Dispatchers.IO) {
+    private suspend fun executeInternal(
+        command: String,
+        workspace: File,
+        timeoutSeconds: Int,
+        allowBeforeMarker: Boolean = false,
+        onProgress: suspend (ExecutionProgress) -> Unit = {},
+    ): UbuntuExecutionResult = withContext(Dispatchers.IO) {
         val distro = distribution.value
         if (!allowBeforeMarker) check(rootfsMarker().isFile) { "${distro.displayName} is not installed" }
         workspace.mkdirs()
@@ -531,10 +562,27 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
         )
         var complete = false
         var timedOut = false
+        var lastProgressSignature = ""
+        var lastProgressAt = 0L
+
+        suspend fun emitProgress(force: Boolean = false) {
+            val now = System.currentTimeMillis()
+            val stdoutSnapshot = synchronized(stdout) { stdout.toString().takeLast(LIVE_OUTPUT_TAIL_CHARS) }
+            val stderrSnapshot = synchronized(stderr) { stderr.toString().takeLast(LIVE_OUTPUT_TAIL_CHARS) }
+            val signature = "${stdoutSnapshot.length}:${stderrSnapshot.length}:${stdoutSnapshot.takeLast(64)}:${stderrSnapshot.takeLast(64)}"
+            if (force || signature != lastProgressSignature || now - lastProgressAt >= 1_000L) {
+                onProgress(ExecutionProgress(stdoutSnapshot, stderrSnapshot, now - started))
+                lastProgressSignature = signature
+                lastProgressAt = now
+            }
+        }
+
         try {
+            emitProgress(force = true)
             val deadline = started + timeoutSeconds * 1_000L
-            while (!process.waitFor(250, TimeUnit.MILLISECONDS)) {
+            while (!process.waitFor(PROGRESS_POLL_MS, TimeUnit.MILLISECONDS)) {
                 currentCoroutineContext().ensureActive()
+                emitProgress()
                 if (System.currentTimeMillis() >= deadline) {
                     timedOut = true
                     process.destroyForcibly()
@@ -552,14 +600,15 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
             runCatching { process.errorStream.close() }
             outThread.join(2_000)
             errThread.join(2_000)
+            emitProgress(force = true)
         }
         val after = fileState(workspace)
         val captureWarning = listOfNotNull(stdoutFailure.get(), stderrFailure.get())
             .distinctBy { it::class.java.name to it.message }
             .joinToString("\n") { "Output capture warning: ${it.message ?: it::class.java.simpleName}" }
         UbuntuExecutionResult(
-            stdout = stdout.toString(),
-            stderr = listOf(stderr.toString(), captureWarning).filter(String::isNotBlank).joinToString("\n"),
+            stdout = synchronized(stdout) { stdout.toString() },
+            stderr = listOf(synchronized(stderr) { stderr.toString() }, captureWarning).filter(String::isNotBlank).joinToString("\n"),
             exitCode = if (complete) process.exitValue() else -1,
             files = after.filter { (path, state) -> before[path] != state }.keys.take(500),
             elapsedMs = System.currentTimeMillis() - started,
@@ -708,10 +757,12 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
         try {
             input.bufferedReader().use { reader ->
                 val buffer = CharArray(8_192)
-                while (output.length < limit) {
-                    val count = reader.read(buffer, 0, minOf(buffer.size, limit - output.length))
+                while (true) {
+                    val remaining = synchronized(output) { limit - output.length }
+                    if (remaining <= 0) break
+                    val count = reader.read(buffer, 0, minOf(buffer.size, remaining))
                     if (count < 0) break
-                    output.append(buffer, 0, count)
+                    synchronized(output) { output.append(buffer, 0, count) }
                 }
             }
         } catch (error: Throwable) {
@@ -736,6 +787,8 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
         private const val APP_RUNTIME_VERSION = "0.11.0"
         private const val MIN_FREE_BYTES = 300L * 1024 * 1024
         private const val KEY_DISTRIBUTION = "selected_distribution"
+        private const val PROGRESS_POLL_MS = 250L
+        private const val LIVE_OUTPUT_TAIL_CHARS = 16_000
     }
 }
 

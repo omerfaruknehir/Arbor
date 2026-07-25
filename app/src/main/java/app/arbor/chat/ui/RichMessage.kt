@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.arbor.chat.sandbox.ExecutionResult
+import app.arbor.chat.sandbox.ExecutionProgress
 import app.arbor.chat.sandbox.PackageInstallResult
 import app.arbor.chat.sandbox.PackageAction
 import app.arbor.chat.sandbox.PackageApprovalState
@@ -187,8 +188,8 @@ internal fun RichMessage(
     operationScope: String,
     text: String,
     streaming: Boolean = false,
-    onRunPython: suspend (String) -> ExecutionResult,
-    onRunUbuntu: suspend (String) -> UbuntuExecutionResult,
+    onRunPython: suspend (String, suspend (ExecutionProgress) -> Unit) -> ExecutionResult,
+    onRunUbuntu: suspend (String, suspend (ExecutionProgress) -> Unit) -> UbuntuExecutionResult,
     onReviewPythonPackages: suspend (String, String) -> PackageReview,
     onInstallPackages: suspend (String, String, PackagePlan) -> PackageInstallResult,
     onReviewUbuntuPackages: suspend (String, String) -> PackageReview,
@@ -1374,14 +1375,15 @@ private class LinkPillSpan(
 private fun CodeBlock(
     language: String,
     code: String,
-    onRunPython: suspend (String) -> ExecutionResult,
-    onRunUbuntu: suspend (String) -> UbuntuExecutionResult,
+    onRunPython: suspend (String, suspend (ExecutionProgress) -> Unit) -> ExecutionResult,
+    onRunUbuntu: suspend (String, suspend (ExecutionProgress) -> Unit) -> UbuntuExecutionResult,
     executable: Boolean = true,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var copied by remember { mutableStateOf(false) }
     var running by remember { mutableStateOf(false) }
+    var liveProgress by remember { mutableStateOf<ExecutionProgress?>(null) }
     var result by remember { mutableStateOf<ExecutionResult?>(null) }
     var ubuntuResult by remember { mutableStateOf<UbuntuExecutionResult?>(null) }
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
@@ -1392,7 +1394,14 @@ private fun CodeBlock(
                     IconButton(onClick = {
                         scope.launch {
                             running = true
-                            result = runCatching { onRunPython(code) }.getOrElse { ExecutionResult(stderr = it.stackTraceToString()) }
+                            liveProgress = ExecutionProgress()
+                            result = null
+                            result = runCatching {
+                                onRunPython(code) { progress ->
+                                    withContext(Dispatchers.Main.immediate) { liveProgress = progress }
+                                }
+                            }.getOrElse { ExecutionResult(stderr = it.stackTraceToString()) }
+                            liveProgress = null
                             running = false
                         }
                     }, enabled = !running) { Icon(Icons.Outlined.PlayArrow, "Run in workspace") }
@@ -1401,7 +1410,14 @@ private fun CodeBlock(
                     IconButton(onClick = {
                         scope.launch {
                             running = true
-                            ubuntuResult = runCatching { onRunUbuntu(code) }.getOrElse { UbuntuExecutionResult(stderr = it.message.orEmpty()) }
+                            liveProgress = ExecutionProgress()
+                            ubuntuResult = null
+                            ubuntuResult = runCatching {
+                                onRunUbuntu(code) { progress ->
+                                    withContext(Dispatchers.Main.immediate) { liveProgress = progress }
+                                }
+                            }.getOrElse { UbuntuExecutionResult(stderr = it.message.orEmpty()) }
+                            liveProgress = null
                             running = false
                         }
                     }, enabled = !running) { Icon(Icons.Outlined.PlayArrow, "Run with Linux tools") }
@@ -1418,6 +1434,14 @@ private fun CodeBlock(
                     style = MaterialTheme.typography.bodyMedium,
                     softWrap = false,
                 )
+            }
+            AnimatedVisibility(running, enter = streamingFadeIn(), exit = streamingFadeOut()) {
+                Column(Modifier.padding(10.dp)) {
+                    LiveExecutionCard(
+                        progress = liveProgress ?: ExecutionProgress(),
+                        title = if (language.lowercase() in setOf("python", "py")) "Python execution" else "Linux execution",
+                    )
+                }
             }
             AnimatedVisibility(result != null, enter = streamingFadeIn(), exit = streamingFadeOut()) {
                 result?.let { output -> Column(Modifier.padding(10.dp)) { PythonExecutionCard(output) } }
