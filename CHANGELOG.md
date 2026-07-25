@@ -1,3 +1,8 @@
+# Arbor 0.17.10
+
+- Native Gaussian glass blur with a shared blur/tint panel mask.
+- Fixed top and bottom mask alignment.
+
 # Arbor 0.17.9
 
 - Replaced directional multi-pass blur with a 49-sample isotropic glass kernel to remove grids and streaks.
