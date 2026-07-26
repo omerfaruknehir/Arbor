@@ -1,3 +1,86 @@
+## 0.17.27: fixed-extent multi-resolution glass renderer
+
+### Why 0.17.26 looked wrong despite preserving the 0.17.18 shader hash
+
+A shader hash identifies only the shader source. It does **not** identify the complete rendered operation. The 0.17.18 shader was evaluated against full-screen, full-resolution inputs. In 0.17.26, the same shader text was evaluated in three successively cropped render regions. Each pass therefore saw different texture coordinates, clamp boundaries, available support pixels, and compositing geometry. The effective convolution changed even though the AGSL text and its hash did not.
+
+**Permanent warning:** shader identity does not guarantee visual identity when sampling geometry, source extent, edge behavior, scale, filtering, color space, or compositing order changes.
+
+### Final lightweight blur architecture
+
+- Record the underlying Compose subtree once per rendered frame into one shared source `GraphicsLayer`.
+- Replay that source once for the normal screen and once into each active panel capture. Top and bottom panels never call `drawContent()` independently.
+- Capture only the panel-local full-width source region plus one fixed support/overscan margin.
+- Keep that capture extent invariant through the entire panel pipeline. Every level maps to the same source interval at a different resolution.
+- Use a bounded two- or three-level dual-Kawase-style pyramid:
+  1. fixed-extent full-resolution capture,
+  2. 2× downsample levels with rotated nine-tap tent sampling,
+  3. controlled upsample levels,
+  4. full-resolution final composite.
+- Apply saturation, contrast, brightness, tint, edge highlight, gradual merge, edge softness, and rounded geometry in the final full-resolution composition.
+- Apply the visible panel clip only after the entire blur chain is complete.
+- Cache `RuntimeShader`, `RenderEffect`, `GraphicsLayer`, panel path, brush, and geometry objects with `remember`; scrolling only re-records/replays layers.
+- Bypass the blur chain when no panel has a valid non-zero blur plan.
+- Never select quality from scroll velocity, fling state, navigation state, FPS, or thermal state.
+
+### Pixel-work and layer-reuse rules
+
+1. Compose source traversals should remain approximately `1.0/frame` while blur is active.
+2. A panel capture must include the full support radius once; downstream passes must not shrink or re-crop it.
+3. Downsample/upsample levels may reduce pixel dimensions, but they must preserve the same logical source extent.
+4. The normal screen is a cheap replay of the shared source layer, not a second Compose traversal.
+5. Processed blur pixels count effect-output surfaces, not the normal source replay.
+6. Do not allocate shader strings, arrays, lists, paths, brushes, or large geometry objects in `drawWithContent`.
+7. Do not use a 50–73-tap full-resolution loop when a compact bilinear pyramid can provide smooth diffusion with far less bandwidth.
+8. Do not add full-screen offscreen blur surfaces for panel-local chrome.
+
+For representative 1080×2340 Galaxy S23+ geometry used by regression tests, the two active panel pyramids process less than 45% of the pixels required by three full-screen passes. This is a deterministic geometry comparison, not a device-FPS claim.
+
+### Performance-profiler interpretation
+
+The overlay now distinguishes:
+
+- **Display Hz:** active display refresh rate.
+- **Callback/s:** Choreographer callback rate; this is not proof of physical presentation.
+- **Render fps:** FrameMetrics-reported app window frames, bounded by Display Hz so it cannot claim 130 physically displayed frames on a 120 Hz panel.
+- **Present:** shown as unavailable when no trustworthy presented-frame source exists.
+- **FM avg / p95 / p99:** FrameMetrics total durations.
+- **GPU, input, animation, layout, draw, sync, command, swap:** measured stages where Android exposes them.
+- **srcTrav×:** Compose source traversals per blur frame.
+- **replay×:** graphics-layer replays per blur frame.
+- **cap/s:** individual panel capture updates per second.
+- **fx/s:** shader/effect rebuilds per second.
+- **MP/s:** total processed blur-effect pixels per second.
+- **levels D/U:** downsample and upsample levels actually executed.
+- **BlurCPU:** CPU recording/replay time.
+- **Recomp/s, allocation MB/s, blocking GC/s:** application-side pressure signals.
+
+`Likely:` compares stages with the active frame budget. The largest stage is not automatically the bottleneck; a 2.5 ms GPU stage is healthy at 120 Hz even if another scheduling stall misses the frame.
+
+### 0.17.27 build failures and actual fixes
+
+- **Wrapper distribution download failed with `UnknownHostException`.** The project was correct; the disposable shell lacked direct network resolution and the Gradle 8.13 wrapper distribution was not in the fresh home. Restore the preserved offline Android toolchain instead of changing Gradle.
+- **Long Gradle calls appeared to time out after healthy KSP work.** The outer command runner disconnected and canceled the single-use daemon. Run long gates through a detached log/exit wrapper, then inspect Gradle's real exit code and diagnostics.
+- **Cold Chaquopy merge warned that host Python 3.12 was unavailable.** This only disables host `.pyc` precompilation; it is not an Android packaging failure.
+
+Additional compiler, test, lint, packaging, and verification outcomes for this release are recorded in `Arbor-0.17.27-verification.txt`.
+
+### Fastest safe workflow under the 4 GiB build limit
+
+```bash
+source /mnt/data/android-toolchain/Android-Build-Tools-for-ChatGPT-Arbor-0.5.0/env.sh
+
+# Edit/compile, tests, and lint: two workers.
+gradle --offline --no-daemon --max-workers=2 :app:compileDebugKotlin
+gradle --offline --no-daemon --max-workers=2 :app:testDebugUnitTest
+gradle --offline --no-daemon --max-workers=2 :app:lintDebug
+
+# D8/APK packaging: one worker, separate process.
+gradle --offline --no-daemon --max-workers=1 :app:assembleDebug
+```
+
+Do not run `clean`, lint, tests, D8, and bundle packaging together. Preserve the project build directory and Gradle cache. Build an AAB only when required. A temporary local source checkpoint may be created before D8, but delete it after the final verified source ZIP and APK exist; never retain a `source-checkpoint` ZIP or checkpoint checksum in the persistent Library.
+
 # Arbor build, profiler, and rendering repair notes
 
 This is Arbor's durable engineering log. Record only observed failures, confirmed root causes, applied fixes, verification commands, and remaining runtime risk. Build success is not device-performance proof.
@@ -489,3 +572,65 @@ Do not claim 120 FPS, lower power use, or identical real-device blur output unti
 - The exact 0.17.18 shader-payload hash regression passed.
 - Remaining warnings are the same unrelated API/style findings carried by prior releases; no lint errors were introduced.
 - Real-device performance and power behavior remain unverified until the user repeats the three captured motion scenarios on the Galaxy S23+.
+
+## 0.17.27 verification outcome
+
+- Exact implementation baseline: `Arbor-0.17.26-source.zip`, SHA-256 `cb86c1ae9fb7063e29a8bb031a041e93074b7fbf6e32101c0e8b007fc2e9d724`.
+- `Arbor-0.17.18-source.zip` was consulted only as the visual-history reference; its renderer was not used as the implementation baseline.
+- Production Kotlin and debug instrumentation Kotlin compiled successfully. The moving-backdrop visual stress scene compiled, but no emulator or physical device was connected, so no screenshot claim is made.
+- Focused blur/profiler/compatibility tests passed.
+- Full unit suite: 213 tests across 36 suites; 0 failures, 0 errors, 0 skipped.
+- Android lint: 0 errors, 12 warnings, 1 informational finding.
+- APK assembly: successful with one packaging worker. The revised follow-up build required stopping the retained test/lint daemon before the single-use packaging JVM; the final run completed without an OOM kill.
+- APK identity: `app.arbor.chat.debug`, version code 104, version name `0.17.27-debug`, min SDK 26, target/compile SDK 35.
+- APK zip alignment: verified.
+- APK Signature Scheme v2: verified. The signing certificate is unchanged from 0.17.26: `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`.
+- Room schemas and the main manifest are unchanged. Application/package identifiers, preference keys, migrations, and signing compatibility are therefore preserved.
+- Representative 1080×2340 top/bottom geometry at a 118 px radius and a 68 dp symmetric feather at density 3.0 processes 2,792,610 effect-output pixels versus 7,581,600 for three full-screen passes: approximately 36.8% of the old pixel work, or 63.2% less. This remains a geometry result, not a measured device-FPS or battery result.
+- Static source inspection and regression tests found no refresh-rate forcing, preferred-display-mode override, sustained-performance request, `PerformanceHintManager`, rendering wake lock, or motion-time quality reduction.
+
+### Additional failures caught during verification
+
+1. **Focused-test source was compiled while assertions were still being edited.** The resulting malformed string diagnostics were test-source failures, not renderer failures. Final literal assertions compile and pass.
+2. **Two integer size checks incorrectly used a floating-point delta overload.** They were replaced with explicit ±1 pixel tolerance checks.
+3. **A compatibility test looked for `graphicsLayer` in `ArborApp.kt`.** The actual 0.17.26 isolation correctly lives in `InteractiveNavigationDrawer.kt` and `PredictiveNavigation.kt`; the test now checks the real ownership boundary rather than forcing code into the root.
+4. **Lint and D8 exceeded short command-wrapper windows.** Detached scripts with log and exit files showed real success. Neither was fixed by increasing memory, workers, or clocks.
+
+### Remaining device validation
+
+The build is structurally and statically verified, but visual smoothness, stale-layer behavior, sustained scrolling FPS, thermal behavior, and battery impact must still be checked on the Samsung Galaxy S23+. Do not report visual identity with 0.17.18, sustained 120 FPS, or perfect efficiency from source tests alone.
+
+### Checkpoint cleanup
+
+The temporary local 0.17.27 checkpoint was deleted after the APK and final source ZIP verified. Persistent Library cleanup moved the remaining Arbor 0.17.25/0.17.26 checkpoint ZIPs and BlurLab 0.1.0–0.1.7 checkpoint ZIP/checksum pairs to Trash. Normal source archives, APKs, verification reports, and release checksums were preserved.
+
+## 0.17.27 follow-up: overlay opacity and symmetric edge softness
+
+### Overlay opacity was not absolute
+
+**Observed problem:** The settings slider reached 100%, but `applyOverlayOpacity` multiplied that value by the theme tint's existing alpha. A top tint with alpha 0.34 therefore remained 34% opaque at a nominal 100% setting.
+
+**Fix:** Preserve the tint RGB values but replace alpha with the clamped slider value. The mapping is now literal: 0% is transparent, 50% is alpha 0.5, and 100% is alpha 1.0. The edge feather may still lower final alpha near the panel boundary by design.
+
+### Edge softness must straddle the boundary
+
+**Observed problem:** The earlier fade lived entirely inside the nominal panel rectangle. Increasing softness therefore shortened the visually solid panel and made the edge appear to move inward.
+
+**Final rule:** Keep the existing 68 dp maximum transition span and center that span on the nominal rounded boundary. At 100% softness, the transition is approximately 34 dp inside plus 34 dp outside. Do not solve inward erosion by reducing the maximum softness range.
+
+Implementation requirements:
+
+- Evaluate a signed distance to the nominal rounded top/bottom panel edge.
+- Use `smoothstep(-halfFeather, +halfFeather, signedDistance)` for the completed full-resolution composition pass.
+- Expand the final clip path to the outer feather contour.
+- Add the outward half-span to the fixed capture overscan before any Kawase level is recorded.
+- Keep every downsample and upsample level mapped to that same expanded capture extent.
+- Use the same centered transition for the pre-API-33 tint fallback.
+- Rebuild effects only when size/settings change; scrolling still must not rebuild shaders or effects.
+
+### Packaging reset and actual fix
+
+A first follow-up `assembleDebug` attempt reset the 4 GiB container even with one packaging worker. The renderer had already compiled and its focused/full tests and lint had passed. The actual cause was memory overlap: the retained test/lint Gradle daemon was still resident while the no-daemon packaging invocation forked its single-use JVM.
+
+**Correct workflow:** run tests and lint with two workers, execute `gradle --stop`, confirm no Gradle/Kotlin daemon remains, then run `assembleDebug --no-daemon --max-workers=1`. The reconstructed packaging run completed successfully without an OOM kill. Do not respond to this failure by reducing render quality, changing the shader, increasing clocks, or raising worker count.
+

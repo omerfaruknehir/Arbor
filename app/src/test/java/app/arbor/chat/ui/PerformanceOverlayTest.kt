@@ -73,7 +73,7 @@ class PerformanceOverlayTest {
     fun causeDetectorAttributesGpuPressureWhileBlurIsActive() {
         val cause = detectLikelyBottleneck(
             PerformanceCauseInput(
-                refreshRateHz = 120f, fps = 30.0, frameTotalMs = 30.0, frameIntervalP95Ms = 33.0, jankPercent = 20.0, gpuMs = 19.0,
+                refreshRateHz = 120f, fps = 30.0, frameTotalMs = 30.0, frameDurationP95Ms = 33.0, jankPercent = 20.0, gpuMs = 19.0,
                 inputMs = 0.1, animationMs = 0.2, layoutMs = 1.0, drawMs = 2.0,
                 syncMs = 0.5, commandMs = 2.0, swapMs = 1.0, blurCpuMs = 0.5,
                 blurFrames = 30, blurSourceDrawsPerFrame = 1.0, appRecompositionsPerSecond = 10.0,
@@ -89,7 +89,7 @@ class PerformanceOverlayTest {
         val cause = detectLikelyBottleneck(
             PerformanceCauseInput(
                 refreshRateHz = 120f, fps = 98.0, frameTotalMs = 11.0,
-                frameIntervalP95Ms = 25.0, jankPercent = 4.0, gpuMs = 2.5,
+                frameDurationP95Ms = 25.0, jankPercent = 4.0, gpuMs = 2.5,
                 inputMs = 0.1, animationMs = 0.1, layoutMs = 0.1, drawMs = 2.2,
                 syncMs = 0.4, commandMs = 1.4, swapMs = 0.7, blurCpuMs = 0.12,
                 blurFrames = 49, blurSourceDrawsPerFrame = 1.0,
@@ -105,7 +105,7 @@ class PerformanceOverlayTest {
         val cause = detectLikelyBottleneck(
             PerformanceCauseInput(
                 refreshRateHz = 120f, fps = 80.0, frameTotalMs = 12.0,
-                frameIntervalP95Ms = 20.0, jankPercent = 8.0, gpuMs = 3.0,
+                frameDurationP95Ms = 20.0, jankPercent = 8.0, gpuMs = 3.0,
                 inputMs = 0.1, animationMs = 0.1, layoutMs = 0.3, drawMs = 2.0,
                 syncMs = 0.4, commandMs = 1.0, swapMs = 0.5, blurCpuMs = 0.5,
                 blurFrames = 40, blurSourceDrawsPerFrame = 2.0,
@@ -120,7 +120,7 @@ class PerformanceOverlayTest {
     fun causeDetectorAttributesLayoutPressure() {
         val cause = detectLikelyBottleneck(
             PerformanceCauseInput(
-                refreshRateHz = 120f, fps = 55.0, frameTotalMs = 17.0, frameIntervalP95Ms = 20.0, jankPercent = 10.0, gpuMs = 2.0,
+                refreshRateHz = 120f, fps = 55.0, frameTotalMs = 17.0, frameDurationP95Ms = 20.0, jankPercent = 10.0, gpuMs = 2.0,
                 inputMs = 0.2, animationMs = 0.2, layoutMs = 9.0, drawMs = 2.0,
                 syncMs = 0.3, commandMs = 1.0, swapMs = 0.5, blurCpuMs = 0.2,
                 blurFrames = 20, blurSourceDrawsPerFrame = 1.0, appRecompositionsPerSecond = 10.0,
@@ -135,7 +135,7 @@ class PerformanceOverlayTest {
     fun causeDetectorPrioritizesBlockingGcPressure() {
         val cause = detectLikelyBottleneck(
             PerformanceCauseInput(
-                refreshRateHz = 120f, fps = 40.0, frameTotalMs = 24.0, frameIntervalP95Ms = 30.0, jankPercent = 20.0, gpuMs = 4.0,
+                refreshRateHz = 120f, fps = 40.0, frameTotalMs = 24.0, frameDurationP95Ms = 30.0, jankPercent = 20.0, gpuMs = 4.0,
                 inputMs = 0.2, animationMs = 0.2, layoutMs = 2.0, drawMs = 3.0,
                 syncMs = 0.3, commandMs = 1.0, swapMs = 0.5, blurCpuMs = 0.2,
                 blurFrames = 20, blurSourceDrawsPerFrame = 1.0, appRecompositionsPerSecond = 10.0,
@@ -163,6 +163,27 @@ class PerformanceOverlayTest {
     }
 
     @Test
+    fun renderedFrameEstimatorCannotExceedThePhysicalDisplayRate() {
+        assertEquals(120.0, boundedRenderedFrameRate(130.0, 120f), 0.0)
+        assertEquals(93.5, boundedRenderedFrameRate(93.5, 120f), 0.0)
+        assertEquals(0.0, boundedRenderedFrameRate(-4.0, 120f), 0.0)
+    }
+
+    @Test
+    fun profilerSeparatesDisplayCallbacksRenderedAndPresentedFrames() {
+        val source = java.io.File("src/main/java/app/arbor/chat/ui/PerformanceOverlay.kt").readText()
+        assertTrue(source.contains("displayRefreshRateHz"))
+        assertTrue(source.contains("choreographerCallbackRate"))
+        assertTrue(source.contains("appRenderedFrameRate"))
+        assertTrue(source.contains("presentedFrameRate"))
+        assertTrue(source.contains("Display "))
+        assertTrue(source.contains("Callback "))
+        assertTrue(source.contains("Present "))
+        assertTrue(source.contains("blurDownsampleLevels"))
+        assertTrue(source.contains("blurUpsampleLevels"))
+    }
+
+    @Test
     fun arborDoesNotForceRefreshRateOrPerformanceClocks() {
         val source = java.io.File("src/main/java").walkTopDown()
             .filter { it.isFile && it.extension == "kt" }
@@ -171,6 +192,9 @@ class PerformanceOverlayTest {
         assertTrue(!source.contains("preferredDisplayModeId"))
         assertTrue(!source.contains("setSustainedPerformanceMode"))
         assertTrue(!source.contains("PerformanceHintManager"))
+        assertTrue(!source.contains("FULL_WAKE_LOCK"))
+        assertTrue(!source.contains("PARTIAL_WAKE_LOCK"))
+        assertTrue(!source.contains("setPowerSaveMode"))
     }
 
 }

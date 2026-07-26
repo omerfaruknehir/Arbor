@@ -1,3 +1,13 @@
+## 0.17.27
+
+- Replace the visually broken progressive-crop blur with a fixed-extent, panel-local dual-Kawase-style pyramid.
+- Record Compose content once and reuse it for normal rendering plus top and bottom glass panels.
+- Preserve fixed visual quality and the 0.17.26 drawer/navigation/recomposition performance isolation.
+- Correct profiler semantics by separating display Hz, callbacks, rendered frames, and presented-frame availability.
+- Add renderer architecture, pixel-work, settings-compatibility, power-policy, and visual stress-scene regressions.
+- Correct overlay opacity so 100% produces a fully opaque tint rather than preserving the theme tint's lower built-in alpha.
+- Center the full 68 dp edge-softness transition on the rounded panel boundary, with equal inside/outside support and no reduced maximum range.
+
 ## 0.17.26
 
 - Preserve the exact 0.17.18 adaptive blur kernel while filtering only progressively cropped full-resolution top and bottom dependency regions.
