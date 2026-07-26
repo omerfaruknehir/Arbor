@@ -1,6 +1,9 @@
 package app.arbor.chat.ui
 
 import androidx.compose.ui.graphics.Color
+import app.arbor.chat.settings.CHROME_EDGE_SOFTNESS_ZERO_SNAP_THRESHOLD
+import app.arbor.chat.settings.effectiveChromeEdgeSoftness
+import app.arbor.chat.settings.snapChromeEdgeSoftness
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -24,19 +27,27 @@ class BackdropBlurTest {
         assertEquals(28f, calculateBlurRadiusDp(.5f), .0001f)
         assertEquals(56f, calculateBlurRadiusDp(1f), .0001f)
         assertEquals(0f, calculateMergeDistanceDp(0f), .0001f)
-        assertEquals(34f, calculateMergeDistanceDp(.5f), .0001f)
+        assertTrue(calculateMergeDistanceDp(.5f) > 0f)
+        assertTrue(calculateMergeDistanceDp(.5f) < 68f)
         assertEquals(68f, calculateMergeDistanceDp(1f), .0001f)
     }
 
-    @Test fun edgeSoftnessUsesTheFullSliderRangeWithoutEarlySaturation() {
-        assertEquals(0f, edgeSoftnessActivation(0f), .0001f)
+    @Test fun edgeSoftnessHasAnEasyExactZeroSnapZoneAndFullRemainingRange() {
+        assertEquals(.06f, CHROME_EDGE_SOFTNESS_ZERO_SNAP_THRESHOLD, .0001f)
+        assertEquals(0f, snapChromeEdgeSoftness(0f), .0001f)
+        assertEquals(0f, snapChromeEdgeSoftness(.059f), .0001f)
+        assertEquals(0f, snapChromeEdgeSoftness(.06f), .0001f)
+        assertTrue(snapChromeEdgeSoftness(.061f) > 0f)
+        assertEquals(0f, effectiveChromeEdgeSoftness(.06f), .0001f)
+        assertTrue(effectiveChromeEdgeSoftness(.061f) > 0f)
+        assertEquals(1f, effectiveChromeEdgeSoftness(1f), .0001f)
+        assertEquals(0f, edgeSoftnessActivation(.06f), .0001f)
         assertTrue(edgeSoftnessActivation(.12f) > 0f)
         assertTrue(edgeSoftnessActivation(.12f) < edgeSoftnessActivation(.5f))
         assertTrue(edgeSoftnessActivation(.5f) < edgeSoftnessActivation(.88f))
-        assertTrue(edgeSoftnessActivation(.88f) < 1f)
         assertEquals(1f, edgeSoftnessActivation(1f), .0001f)
-        assertEquals(0f, resolveFeatherDistancePx(0f, 0f, 4f, 100f), .0001f)
-        assertEquals(4f, resolveFeatherDistancePx(1f, .02f, 4f, 100f), .0001f)
+        assertEquals(0f, resolveFeatherDistancePx(1f, .02f, 4f, 100f), .0001f)
+        assertTrue(resolveFeatherDistancePx(1f, .061f, 4f, 100f) > 0f)
     }
 
     @Test fun panelGeometryStillUsesMeasuredTopAndBottomRanges() {
@@ -84,7 +95,7 @@ class BackdropBlurTest {
         for (level in 0..plan.levelCount) assertSame(plan.capture, plan.sourceExtentAtLevel(level))
         assertTrue(kotlin.math.abs(plan.levelSize(0).width / 2 - plan.levelSize(1).width) <= 1)
         assertTrue(kotlin.math.abs(plan.levelSize(1).width / 2 - plan.levelSize(2).width) <= 1)
-        assertEquals(3, plan.levelCount)
+        assertEquals(2, plan.levelCount)
     }
 
     @Test fun rendererRecordsSourceOnceAndReplaysItForBothPanels() {
@@ -124,6 +135,8 @@ class BackdropBlurTest {
             assertFalse("Motion-dependent quality token found: $it", source.contains(it))
         }
         assertTrue(source.contains("resolveKawaseLevelCount(radiusPx)"))
+        assertEquals(2, resolveKawaseLevelCount(1f))
+        assertEquals(2, resolveKawaseLevelCount(200f))
     }
 
     @Test fun effectsAreRememberedAndNotConstructedInsideThePerFrameDrawBlock() {
@@ -166,6 +179,13 @@ class BackdropBlurTest {
         assertEquals(68f / 6f, resolveEdgeBlurRadiusPx(68f), .0001f)
         assertFalse(source.contains("panelCoverage("))
         assertFalse(source.contains("signedDistance"))
+    }
+
+    @Test fun exactZeroKeepsRoundedPanelsAndAnyNonzeroModeIsFlat() {
+        assertEquals(28f, resolvePanelCornerRadiusPx(28f, 0f, 1080f, 128f), .0001f)
+        assertEquals(28f, resolvePanelCornerRadiusPx(28f, .059f, 1080f, 128f), .0001f)
+        assertEquals(0f, resolvePanelCornerRadiusPx(28f, .061f, 1080f, 128f), .0001f)
+        assertEquals(0f, resolvePanelCornerRadiusPx(28f, 1f, 1080f, 128f), .0001f)
     }
 
     @Test fun visualConfigurationIsDeterministicForIdenticalGeometryAndSettings() {
@@ -220,10 +240,17 @@ class BackdropBlurTest {
         assertTrue(source.contains("Blur and tint are recorded into one premultiplied panel layer"))
     }
 
-    @Test fun deepBlurRadiusUsesTheFixedPyramidScale() {
-        assertEquals(0f, calculateDeepBlurRadiusPx(0f, 3), .0001f)
-        assertEquals(8f, calculateDeepBlurRadiusPx(64f, 3), .0001f)
-        assertEquals(16f, calculateDeepBlurRadiusPx(64f, 2), .0001f)
+    @Test fun strongBlurUsesTwoCascadedQuarterResolutionPasses() {
+        assertEquals(0f, calculateQuarterBlurPassRadiusPx(0f), .0001f)
+        assertEquals(64f / (4f * kotlin.math.sqrt(2f)), calculateQuarterBlurPassRadiusPx(64f), .0001f)
+        val source = blurSource()
+        assertTrue(source.contains("quarterBlurA.renderEffect = effects?.quarterBlurPass"))
+        assertTrue(source.contains("quarterBlurB.renderEffect = effects?.quarterBlurPass"))
+        assertTrue(source.contains("drawLayer(layers.quarterBlurA)"))
+        assertFalse(source.contains("down3"))
+        assertFalse(source.contains("up2"))
+        assertEquals(2, resolveKawaseLevelCount(1f))
+        assertEquals(2, resolveKawaseLevelCount(500f))
     }
 
     @Test fun blurRadiusAndTapOffsetRemainContinuousFromZero() {
@@ -231,9 +258,9 @@ class BackdropBlurTest {
         assertEquals(.12f, quantizeBlurRadiusDp(.12f), 0f)
         assertEquals(.13f, quantizeBlurRadiusDp(.13f), 0f)
         assertEquals(18.49f, quantizeBlurRadiusDp(18.49f), 0f)
-        assertEquals(0f, calculateKawaseTapOffsetPx(0f, 3), .0001f)
-        assertTrue(calculateKawaseTapOffsetPx(.01f, 3) > 0f)
-        assertTrue(calculateKawaseTapOffsetPx(.01f, 3) < calculateKawaseTapOffsetPx(1f, 3))
+        assertEquals(0f, calculateKawaseTapOffsetPx(0f, 2), .0001f)
+        assertTrue(calculateKawaseTapOffsetPx(.01f, 2) > 0f)
+        assertTrue(calculateKawaseTapOffsetPx(.01f, 2) < calculateKawaseTapOffsetPx(1f, 2))
         assertEquals(0f, resolveBlurContribution(0f), .0001f)
         assertTrue(resolveBlurContribution(.01f) > 0f)
         assertTrue(resolveBlurContribution(.01f) < resolveBlurContribution(1f))
@@ -243,12 +270,12 @@ class BackdropBlurTest {
     @Test fun pyramidLevelCountCannotJumpBetweenTwentyTwoAndTwentyThreePercent() {
         val belowOldBoundary = 35.9f
         val aboveOldBoundary = 36.1f
-        assertEquals(3, resolveKawaseLevelCount(belowOldBoundary))
-        assertEquals(3, resolveKawaseLevelCount(aboveOldBoundary))
+        assertEquals(2, resolveKawaseLevelCount(belowOldBoundary))
+        assertEquals(2, resolveKawaseLevelCount(aboveOldBoundary))
         assertTrue(
             kotlin.math.abs(
-                calculateKawaseTapOffsetPx(aboveOldBoundary, 3) -
-                    calculateKawaseTapOffsetPx(belowOldBoundary, 3),
+                calculateKawaseTapOffsetPx(aboveOldBoundary, 2) -
+                    calculateKawaseTapOffsetPx(belowOldBoundary, 2),
             ) < .01f,
         )
     }

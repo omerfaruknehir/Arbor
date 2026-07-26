@@ -9,6 +9,26 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+/**
+ * The first part of the edge-softness slider is an intentional zero snap-zone.
+ * This makes the rounded, non-feathered panel mode easy to select on touch
+ * screens instead of requiring pixel-perfect placement at the slider origin.
+ */
+internal const val CHROME_EDGE_SOFTNESS_ZERO_SNAP_THRESHOLD = 0.06f
+
+internal fun snapChromeEdgeSoftness(value: Float): Float {
+    val clamped = value.coerceIn(0f, 1f)
+    return if (clamped <= CHROME_EDGE_SOFTNESS_ZERO_SNAP_THRESHOLD) 0f else clamped
+}
+
+/** Maps the post-snap part of the slider back onto the complete 0..1 range. */
+internal fun effectiveChromeEdgeSoftness(value: Float): Float {
+    val snapped = snapChromeEdgeSoftness(value)
+    if (snapped == 0f) return 0f
+    return ((snapped - CHROME_EDGE_SOFTNESS_ZERO_SNAP_THRESHOLD) /
+        (1f - CHROME_EDGE_SOFTNESS_ZERO_SNAP_THRESHOLD)).coerceIn(0f, 1f)
+}
+
 enum class ColorPalette { ARBOR, SYSTEM, GRAPHITE }
 
 enum class PerformanceOverlayPosition { TOP_START, TOP_END, BOTTOM_START, BOTTOM_END }
@@ -138,7 +158,9 @@ class AppPreferences(context: Context) {
 
     private fun readChromeEdgeSoftness(): Float {
         if (preferences.contains(KEY_CHROME_EDGE_SOFTNESS)) {
-            return preferences.getFloat(KEY_CHROME_EDGE_SOFTNESS, DEFAULT_CHROME_EDGE_SOFTNESS).coerceIn(0f, 1f)
+            return snapChromeEdgeSoftness(
+                preferences.getFloat(KEY_CHROME_EDGE_SOFTNESS, DEFAULT_CHROME_EDGE_SOFTNESS),
+            )
         }
         val migrated = if (preferences.getBoolean(KEY_CHROME_GRADUAL_ENABLED, true)) DEFAULT_CHROME_EDGE_SOFTNESS else 0f
         preferences.edit {
@@ -171,7 +193,7 @@ class AppPreferences(context: Context) {
     }
 
     fun setChromeEdgeSoftness(value: Float) {
-        val normalized = value.coerceIn(0f, 1f)
+        val normalized = snapChromeEdgeSoftness(value)
         _chromeEdgeSoftness.value = normalized
         preferences.edit { putFloat(KEY_CHROME_EDGE_SOFTNESS, normalized) }
     }

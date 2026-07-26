@@ -764,3 +764,42 @@ The fixed pyramid still processes panel-local pixels and records the source once
 **Fix:** Verify every APK certificate against the previous release. Re-sign the already zip-aligned APK with the preserved `androiddebugkey` using `apksigner`, explicitly enabling v2 and disabling v1/v3/v4. Future builds should export the toolchain `ANDROID_USER_HOME` before Gradle packaging so the correct key is selected automatically.
 
 **Non-negotiable rule:** A successful `assembleDebug` and a valid v2 signature do not prove upgrade compatibility. The signer certificate digest must be compared with the previous installable APK before delivery.
+
+## 0.18.3: stable strong blur and explicit edge modes
+
+### Why blur became visibly coarse above roughly 20%
+
+0.18.2 always used a fixed pyramid, but its deepest blur surface was only 1/8 of the panel resolution. As the requested radius increased, the final reconstruction enlarged low-frequency pixels from that surface until the bilinear reconstruction itself became visible. This was not a literal 20% branch; it was a quality limit of the 1/8-resolution source becoming obvious at stronger radii.
+
+### Strong-blur repair
+
+- The blur path is fixed at two downsample levels: full -> 1/2 -> 1/4.
+- Two equal Android blur passes are cascaded at 1/4 resolution.
+- Each pass uses `requestedRadius / (4 * sqrt(2))`, preserving the combined Gaussian sigma while avoiding the coarse 1/8 reconstruction.
+- Both passes use `Shader.TileMode.CLAMP`.
+- The level count remains exactly two at every nonzero slider value. No radius, scroll, animation, thermal, or navigation threshold changes the blur topology.
+- The source is still recorded once and each panel still uses one fixed-overscan capture extent.
+
+For the representative 1080x2340 two-panel test geometry, the revised pipeline processes about 32.5% of the pixels used by three full-screen passes. This is a geometry calculation, not a device frame-rate claim.
+
+### Edge-softness mode semantics
+
+- Slider values from 0% through 6% snap to exact zero. This provides a practical touch target for the zero mode.
+- Exact zero uses the normal rounded top/bottom panel corners and no edge feather.
+- Any stored value above the snap-zone selects flat panel geometry.
+- The remaining slider range is remapped continuously onto the complete 0..1 softness range, so 100% still reaches the full 68 dp feather.
+- The feather distance starts continuously after the snap-zone; there is no forced 4 px minimum jump.
+- The stored preference key remains `chrome_edge_softness`; existing settings and app data are preserved.
+
+### 0.18.3 verification outcome
+
+- Release identity: `versionName 0.18.3`, `versionCode 108`.
+- Full unit suite: 36 suites, 219 tests, 0 failures, 0 errors, 0 skipped.
+- Android lint: 0 errors, 12 warnings, 1 informational finding.
+- Debug instrumentation Kotlin compilation: passed.
+- APK assembly: passed with one packaging worker.
+- Package: `app.arbor.chat.debug`; min SDK 26; target/compile SDK 35.
+- ZIP alignment and APK Signature Scheme v2 verification: passed.
+- Debug certificate SHA-256 remains `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`, identical to 0.18.2.
+- Main manifest and Room schema files are byte-identical to 0.18.2.
+- Final blur appearance still requires installation on the Galaxy S23+; host tests cannot prove device GPU/compositor output.

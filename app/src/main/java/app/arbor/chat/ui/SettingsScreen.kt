@@ -502,7 +502,7 @@ private fun AppearanceSettingsPage(
         valueRange = 0f..1f,
     )
     Text(
-        "0% is a hard edge; 100% uses a 68 dp smoothing band centered on the edge without fading the panel body.",
+        "0-6% snaps to 0% and keeps rounded panels. Any nonzero value uses flat panel edges; 100% uses the full 68 dp feather.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

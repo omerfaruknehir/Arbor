@@ -6,6 +6,8 @@ import android.graphics.RenderEffect
 import android.graphics.Shader
 import android.os.Build
 import androidx.annotation.RequiresApi
+import app.arbor.chat.settings.effectiveChromeEdgeSoftness
+import app.arbor.chat.settings.snapChromeEdgeSoftness
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
@@ -42,6 +44,7 @@ import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 /** Which chrome edge owns a backdrop panel. */
 enum class ArborBlurEdge { TOP, BOTTOM }
@@ -114,7 +117,7 @@ class ArborBackdropBlurState internal constructor() {
         val fade = fadeDp.coerceAtLeast(1f)
         val corner = cornerRadiusDp.coerceAtLeast(0f)
         val merge = mergeDp.coerceIn(0f, fade)
-        val normalizedSoftness = softness.coerceIn(0f, 1f)
+        val normalizedSoftness = snapChromeEdgeSoftness(softness)
         val normalizedSaturation = saturation.coerceIn(0.75f, 1.35f)
         val normalizedContrast = contrast.coerceIn(0.85f, 1.20f)
         val normalizedBrightness = brightness.coerceIn(0.85f, 1.15f)
@@ -305,8 +308,10 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
     }
 
     measured.drawWithContent {
-        val topBlurActive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && topPlan != null && topEffects?.deepBlur != null
-        val bottomBlurActive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && bottomPlan != null && bottomEffects?.deepBlur != null
+        val topBlurActive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            topPlan != null && topEffects?.quarterBlurPass != null
+        val bottomBlurActive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            bottomPlan != null && bottomEffects?.quarterBlurPass != null
         val blurActive = topBlurActive || bottomBlurActive
         val topPanelVisible = topBlurActive || topVisual.tint.alpha > 0f
         val bottomPanelVisible = bottomBlurActive || bottomVisual.tint.alpha > 0f
@@ -408,8 +413,8 @@ private fun rememberKawaseLayers(): KawaseLayerSet = KawaseLayerSet(
     capture = rememberGraphicsLayer(),
     down1 = rememberGraphicsLayer(),
     down2 = rememberGraphicsLayer(),
-    down3 = rememberGraphicsLayer(),
-    up2 = rememberGraphicsLayer(),
+    quarterBlurA = rememberGraphicsLayer(),
+    quarterBlurB = rememberGraphicsLayer(),
     up1 = rememberGraphicsLayer(),
     finalFull = rememberGraphicsLayer(),
     panelComposite = rememberGraphicsLayer(),
@@ -419,8 +424,8 @@ private data class KawaseLayerSet(
     val capture: GraphicsLayer,
     val down1: GraphicsLayer,
     val down2: GraphicsLayer,
-    val down3: GraphicsLayer,
-    val up2: GraphicsLayer,
+    val quarterBlurA: GraphicsLayer,
+    val quarterBlurB: GraphicsLayer,
     val up1: GraphicsLayer,
     val finalFull: GraphicsLayer,
     val panelComposite: GraphicsLayer,
@@ -429,8 +434,8 @@ private data class KawaseLayerSet(
         capture.renderEffect = null
         down1.renderEffect = null
         down2.renderEffect = null
-        down3.renderEffect = effects?.deepBlur
-        up2.renderEffect = null
+        quarterBlurA.renderEffect = effects?.quarterBlurPass
+        quarterBlurB.renderEffect = effects?.quarterBlurPass
         up1.renderEffect = null
         finalFull.renderEffect = effects?.colorAdjust
         finalFull.alpha = effects?.blurMix ?: 1f
@@ -452,20 +457,14 @@ private fun DrawScope.recordKawasePanelChain(
     layers.down2.record(size = plan.levelSize(2)) {
         scale(0.5f, 0.5f, pivot = Offset.Zero) { drawLayer(layers.down1) }
     }
-    if (plan.levelCount == 3) {
-        layers.down3.record(size = plan.levelSize(3)) {
-            scale(0.5f, 0.5f, pivot = Offset.Zero) { drawLayer(layers.down2) }
-        }
-        layers.up2.record(size = plan.levelSize(2)) {
-            scale(2f, 2f, pivot = Offset.Zero) { drawLayer(layers.down3) }
-        }
-        layers.up1.record(size = plan.levelSize(1)) {
-            scale(2f, 2f, pivot = Offset.Zero) { drawLayer(layers.up2) }
-        }
-    } else {
-        layers.up1.record(size = plan.levelSize(1)) {
-            scale(2f, 2f, pivot = Offset.Zero) { drawLayer(layers.down2) }
-        }
+    layers.quarterBlurA.record(size = plan.levelSize(2)) {
+        drawLayer(layers.down2)
+    }
+    layers.quarterBlurB.record(size = plan.levelSize(2)) {
+        drawLayer(layers.quarterBlurA)
+    }
+    layers.up1.record(size = plan.levelSize(1)) {
+        scale(2f, 2f, pivot = Offset.Zero) { drawLayer(layers.quarterBlurB) }
     }
     layers.finalFull.record(size = plan.levelSize(0)) {
         scale(2f, 2f, pivot = Offset.Zero) { drawLayer(layers.up1) }
@@ -488,7 +487,7 @@ internal data class KawasePanelPlan(
     val radiusPx: Float,
     val baseTapOffsetPx: Float,
 ) {
-    init { require(levelCount in 2..3) }
+    init { require(levelCount == QUARTER_RESOLUTION_LEVELS) }
 
     /** All levels map to this exact full-resolution source extent. */
     fun sourceExtentAtLevel(level: Int): BlurCaptureExtent {
@@ -506,13 +505,15 @@ internal data class KawasePanelPlan(
     }
 
     fun processedPixels(): Long {
-        var total = 0L
-        for (level in 1..levelCount) total += levelSize(level).pixelCount()
-        for (level in levelCount - 1 downTo 0) total += levelSize(level).pixelCount()
-        return total
+        return levelSize(1).pixelCount() +
+            levelSize(2).pixelCount() +
+            levelSize(2).pixelCount() +
+            levelSize(2).pixelCount() +
+            levelSize(1).pixelCount() +
+            levelSize(0).pixelCount()
     }
 
-    val recordingReplayCount: Int get() = 1 + levelCount + levelCount
+    val recordingReplayCount: Int get() = 7
 }
 
 private fun IntSize.pixelCount(): Long = width.toLong() * height.toLong()
@@ -547,7 +548,7 @@ internal fun resolveKawasePanelPlan(
     )
 }
 
-internal fun resolveKawaseLevelCount(@Suppress("UNUSED_PARAMETER") radiusPx: Float): Int = KAWASE_MAX_LEVELS
+internal fun resolveKawaseLevelCount(@Suppress("UNUSED_PARAMETER") radiusPx: Float): Int = QUARTER_RESOLUTION_LEVELS
 
 internal fun calculateKawaseSupportPx(radiusPx: Float, levelCount: Int): Float {
     val reconstructionSupport = (1 shl levelCount) * KAWASE_MAX_LEVEL_TAP_SUPPORT_PX
@@ -555,8 +556,8 @@ internal fun calculateKawaseSupportPx(radiusPx: Float, levelCount: Int): Float {
 }
 
 internal fun calculateKawaseTapOffsetPx(radiusPx: Float, levelCount: Int): Float {
-    val divisor = if (levelCount >= 3) 72f else 58f
-    return (radiusPx.coerceAtLeast(0f) / divisor)
+    require(levelCount == QUARTER_RESOLUTION_LEVELS)
+    return (radiusPx.coerceAtLeast(0f) / 58f)
         .coerceIn(KAWASE_MIN_TAP_OFFSET_PX, KAWASE_MAX_TAP_OFFSET_PX)
 }
 
@@ -615,7 +616,12 @@ private fun buildPanelGeometry(widthPx: Float, heightPx: Float, visual: GlassVis
         featherSpanPx = featherSpan,
         sourceHeightPx = heightPx,
     )
-    val nominalRadius = visual.cornerRadiusPx.coerceIn(0f, minOf(widthPx / 2f, nominalExtent / 2f))
+    val nominalRadius = resolvePanelCornerRadiusPx(
+        requestedRadiusPx = visual.cornerRadiusPx,
+        edgeSoftness = visual.softness,
+        widthPx = widthPx,
+        extentPx = nominalExtent,
+    )
     val bodyStartLocal = bounds.bodyStartPx - bounds.drawStartPx
     val bodyEndLocal = bounds.bodyEndPx - bounds.drawStartPx
     val localBodyPath = Path().apply {
@@ -659,6 +665,20 @@ private fun buildPanelGeometry(widthPx: Float, heightPx: Float, visual: GlassVis
     )
 }
 
+/** Rounded in exact zero mode; deliberately flat for every feathered mode. */
+internal fun resolvePanelCornerRadiusPx(
+    requestedRadiusPx: Float,
+    edgeSoftness: Float,
+    widthPx: Float,
+    extentPx: Float,
+): Float {
+    if (snapChromeEdgeSoftness(edgeSoftness) != 0f) return 0f
+    return requestedRadiusPx.coerceIn(
+        0f,
+        minOf(widthPx.coerceAtLeast(0f) / 2f, extentPx.coerceAtLeast(0f) / 2f),
+    )
+}
+
 /**
  * Blur and tint are recorded into one premultiplied panel layer before edge
  * softness is applied. This guarantees identical geometry and prevents a
@@ -697,7 +717,7 @@ private fun DrawScope.recordStablePanelComposite(
 }
 
 private data class StablePanelEffects(
-    val deepBlur: androidx.compose.ui.graphics.RenderEffect?,
+    val quarterBlurPass: androidx.compose.ui.graphics.RenderEffect?,
     val colorAdjust: androidx.compose.ui.graphics.RenderEffect?,
     val edgeSoftness: androidx.compose.ui.graphics.RenderEffect?,
     val blurMix: Float,
@@ -709,9 +729,13 @@ private fun buildStablePanelEffects(
     visual: GlassVisualConfig,
     geometry: PanelGeometry,
 ): StablePanelEffects {
-    val deepRadius = plan?.let { calculateDeepBlurRadiusPx(it.radiusPx, it.levelCount) } ?: 0f
-    val deepBlur = if (deepRadius > 0.01f) {
-        RenderEffect.createBlurEffect(deepRadius, deepRadius, Shader.TileMode.CLAMP).asComposeRenderEffect()
+    val quarterPassRadius = plan?.let { calculateQuarterBlurPassRadiusPx(it.radiusPx) } ?: 0f
+    val quarterBlurPass = if (quarterPassRadius > 0.01f) {
+        RenderEffect.createBlurEffect(
+            quarterPassRadius,
+            quarterPassRadius,
+            Shader.TileMode.CLAMP,
+        ).asComposeRenderEffect()
     } else null
     val colorAdjust = if (plan != null) {
         RenderEffect.createColorFilterEffect(
@@ -729,22 +753,25 @@ private fun buildStablePanelEffects(
         RenderEffect.createBlurEffect(edgeRadius, edgeRadius, Shader.TileMode.DECAL).asComposeRenderEffect()
     } else null
     ArborRenderProfiler.recordBlurEffectBuild(
-        (if (deepBlur != null) 1 else 0) +
+        (if (quarterBlurPass != null) 1 else 0) +
             (if (colorAdjust != null) 1 else 0) +
             (if (edgeSoftness != null) 1 else 0),
     )
     return StablePanelEffects(
-        deepBlur = deepBlur,
+        quarterBlurPass = quarterBlurPass,
         colorAdjust = colorAdjust,
         edgeSoftness = edgeSoftness,
         blurMix = plan?.let { resolveBlurContribution(it.radiusPx) } ?: 0f,
     )
 }
 
-internal fun calculateDeepBlurRadiusPx(radiusPx: Float, levelCount: Int): Float {
-    require(levelCount in 1..KAWASE_MAX_LEVELS)
-    return radiusPx.coerceAtLeast(0f) / (1 shl levelCount).toFloat()
-}
+/**
+ * Two equal Gaussian passes are cascaded at 1/4 resolution. Dividing by
+ * sqrt(2) preserves the requested combined sigma while avoiding the coarse
+ * 1/8-resolution reconstruction which became visible at stronger settings.
+ */
+internal fun calculateQuarterBlurPassRadiusPx(radiusPx: Float): Float =
+    radiusPx.coerceAtLeast(0f) / (4f * sqrt(2f))
 
 /** A Gaussian's visible +/-3 sigma span equals the full edge-softness distance. */
 internal fun resolveEdgeBlurRadiusPx(featherSpanPx: Float): Float = featherSpanPx.coerceAtLeast(0f) / 6f
@@ -784,10 +811,10 @@ internal fun calculateBlurRadiusDp(
 internal fun calculateMergeDistanceDp(
     edgeSoftness: Float,
     maximumMergeDp: Float = MAXIMUM_MERGE_DISTANCE_DP,
-): Float = maximumMergeDp.coerceAtLeast(0f) * edgeSoftness.coerceIn(0f, 1f)
+): Float = maximumMergeDp.coerceAtLeast(0f) * edgeSoftnessActivation(edgeSoftness)
 
 internal fun edgeSoftnessActivation(edgeSoftness: Float): Float =
-    arborBlurProgress(edgeSoftness.coerceIn(0f, 1f))
+    arborBlurProgress(effectiveChromeEdgeSoftness(edgeSoftness))
 
 internal fun resolveFeatherDistancePx(
     requestedDistancePx: Float,
@@ -795,10 +822,9 @@ internal fun resolveFeatherDistancePx(
     minimumFeatherPx: Float,
     maximumDistancePx: Float,
 ): Float {
-    val normalized = softness.coerceIn(0f, 1f)
+    val normalized = effectiveChromeEdgeSoftness(softness)
     if (normalized <= 0f || maximumDistancePx <= 0f) return 0f
-    return maxOf(requestedDistancePx, minimumFeatherPx.coerceAtLeast(0f))
-        .coerceIn(0f, maximumDistancePx)
+    return requestedDistancePx.coerceIn(0f, maximumDistancePx)
 }
 
 internal fun resolveSymmetricFeatherHalfSpanPx(
@@ -881,7 +907,7 @@ fun Modifier.arborBackdropBlur(
             fadeDp = overlayDistance.value,
             cornerRadiusDp = cornerRadius.value,
             mergeDp = mergeDp,
-            softness = edgeSoftness.coerceIn(0f, 1f),
+            softness = snapChromeEdgeSoftness(edgeSoftness),
             tint = applyOverlayOpacity(tint, overlayOpacity),
             saturation = saturation,
             contrast = contrast,
@@ -924,5 +950,5 @@ internal const val KAWASE_SUPPORT_MULTIPLIER = 1.35f
 internal const val KAWASE_MAX_LEVEL_TAP_SUPPORT_PX = 2.75f
 internal const val KAWASE_MIN_TAP_OFFSET_PX = 0f
 internal const val KAWASE_MAX_TAP_OFFSET_PX = 2.65f
-internal const val KAWASE_MAX_LEVELS = 3
+internal const val QUARTER_RESOLUTION_LEVELS = 2
 
