@@ -114,4 +114,11 @@ class BackdropBlurTest {
         assertEquals(.25f, quantizeBlurRadiusDp(.13f), 0f)
         assertEquals(18.5f, quantizeBlurRadiusDp(18.49f), 0f)
     }
+
+    @Test
+    fun navigationTransitionBypassIsWiredIntoBackdropSource() {
+        val source = java.io.File("src/main/java/app/arbor/chat/ui/BackdropBlur.kt").readText()
+        assertTrue(source.contains("LocalNavigationTransitionActive.current"))
+        assertTrue(source.contains("navigationTransitionActive"))
+    }
 }

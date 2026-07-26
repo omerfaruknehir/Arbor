@@ -50,4 +50,19 @@ class PerformanceOverlayTest {
         assertTrue(rootSource.contains("ArborPerformanceOverlay"))
         assertTrue(rootSource.contains("showPerformanceOverlay"))
     }
+
+    @Test
+    fun frameIntervalAndFpsAreReciprocals() {
+        val fps = 70.0
+        val intervalMs = 1_000.0 / fps
+        assertEquals(fps, 1_000.0 / intervalMs, 0.0001)
+    }
+
+    @Test
+    fun highRefreshBudgetFlagsOnlyActuallyMissedVsyncs() {
+        val budget120Hz = 1_000.0 / 120.0
+        assertEquals(0, estimatedMissedFrames(8.0, budget120Hz))
+        assertEquals(1, estimatedMissedFrames(16.6, budget120Hz))
+        assertEquals(3, estimatedMissedFrames(33.3, budget120Hz))
+    }
 }

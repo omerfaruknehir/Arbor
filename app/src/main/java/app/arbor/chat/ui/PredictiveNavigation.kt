@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -18,6 +19,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
@@ -35,6 +37,8 @@ import kotlin.math.roundToInt
 
 private val NavigationEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 private const val CommitFadeStart = 0.62f
+
+internal val LocalNavigationTransitionActive = staticCompositionLocalOf { false }
 
 internal fun predictiveBackCompletionDurationMillis(progress: Float): Int {
     val remaining = 1f - progress.coerceIn(0f, 1f)
@@ -177,7 +181,7 @@ internal fun <T : Any> PredictiveNavigationHost(
                 mode = NavigationTransitionMode.ORDINARY
             }
             progress.snapTo(0f)
-            progress.animateTo(1f, tween(145, easing = NavigationEasing))
+            progress.animateTo(1f, tween(120, easing = NavigationEasing))
             settleOn(destination)
             progress.snapTo(0f)
         } catch (cancelled: CancellationException) {
@@ -273,6 +277,7 @@ internal fun <T : Any> PredictiveNavigationHost(
                         .fillMaxSize()
                         .zIndex(z)
                         .graphicsLayer {
+                            clip = true
                             if (isParked) {
                                 alpha = 0f
                                 compositingStrategy = CompositingStrategy.ModulateAlpha
@@ -283,6 +288,7 @@ internal fun <T : Any> PredictiveNavigationHost(
                                     isSource -> {
                                         translationX = predictiveDirection * widthPx * 0.26f * p
                                         alpha = predictiveBackOutgoingAlpha(p)
+                                        compositingStrategy = CompositingStrategy.ModulateAlpha
                                     }
                                     isDestination -> {
                                         translationX = -predictiveDirection * widthPx * 0.04f * (1f - p)
@@ -306,7 +312,9 @@ internal fun <T : Any> PredictiveNavigationHost(
                         },
                 ) {
                     stateHolder.SaveableStateProvider(slot.state) {
-                        latestContent(slot.state)
+                        CompositionLocalProvider(LocalNavigationTransitionActive provides (mode != NavigationTransitionMode.IDLE)) {
+                            latestContent(slot.state)
+                        }
                     }
                 }
             }

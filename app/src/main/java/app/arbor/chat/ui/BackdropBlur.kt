@@ -158,6 +158,7 @@ fun rememberArborBackdropBlurState(): ArborBackdropBlurState = remember { ArborB
 /** Applies the 0.17.8 glass blur and paints its overlays in the same coordinates. */
 fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = composed {
     val density = LocalDensity.current.density
+    val navigationTransitionActive = LocalNavigationTransitionActive.current
     val topRadiusPx = state.topRadiusDp * density
     val bottomRadiusPx = state.bottomRadiusDp * density
     val radiusActive = topRadiusPx >= MIN_VISIBLE_RADIUS_PX || bottomRadiusPx >= MIN_VISIBLE_RADIUS_PX
@@ -203,7 +204,7 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
             minimumFeatherPx = MINIMUM_FEATHER_DISTANCE_DP * density,
         )
     }
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || !radiusActive) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || !radiusActive || navigationTransitionActive) {
         return@composed overlayModifier
     }
 

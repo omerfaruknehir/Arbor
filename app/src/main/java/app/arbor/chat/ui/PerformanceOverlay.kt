@@ -5,8 +5,10 @@ import android.os.Build
 import android.os.Debug
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
+import android.view.Choreographer
 import android.view.FrameMetrics
 import android.view.Window
 import androidx.compose.foundation.border
@@ -34,7 +36,7 @@ internal data class PerformanceSnapshot(
     val p99FrameMs: Double = 0.0,
     val gpuAverageMs: Double? = null,
     val jankPercent: Double = 0.0,
-    val missedFrames: Long = 0,
+    val missedFramesPerSecond: Double = 0.0,
     val droppedMetricReports: Long = 0,
     val cpuPercent: Double = 0.0,
     val pssMb: Double = 0.0,
@@ -58,24 +60,27 @@ internal fun estimatedMissedFrames(frameMs: Double, frameBudgetMs: Double): Int 
 }
 
 internal class ArborPerformanceMonitor(private val activity: Activity) {
-    private data class FrameSample(val totalMs: Double, val gpuMs: Double?)
-
     private val lock = Any()
-    private val recentFrames = ArrayDeque<FrameSample>(MAX_RECENT_FRAMES)
+    private val recentFrameIntervals = ArrayDeque<Double>(MAX_RECENT_FRAMES)
+    private val recentGpuDurations = ArrayDeque<Double>(MAX_RECENT_FRAMES)
     private val _snapshot = kotlinx.coroutines.flow.MutableStateFlow(PerformanceSnapshot())
     val snapshot: kotlinx.coroutines.flow.StateFlow<PerformanceSnapshot> = _snapshot
 
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
-    private var listener: Window.OnFrameMetricsAvailableListener? = null
+    private var metricsListener: Window.OnFrameMetricsAvailableListener? = null
     private var sampler: Runnable? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var choreographer: Choreographer? = null
+    private var frameCallback: Choreographer.FrameCallback? = null
     private var updateIntervalMs = 500
     private var intervalFrames = 0L
     private var intervalJankFrames = 0L
+    private var intervalMissedFrames = 0L
     private var totalFrames = 0L
-    private var totalMissedFrames = 0L
     private var totalDroppedMetricReports = 0L
     private var latestRefreshRate = 60f
+    private var lastFrameTimeNanos = 0L
     private var lastSampleElapsedMs = 0L
     private var lastCpuElapsedMs = 0L
     private var lastMemorySampleElapsedMs = 0L
@@ -97,28 +102,33 @@ internal class ArborPerformanceMonitor(private val activity: Activity) {
         lastCpuElapsedMs = Process.getElapsedCpuTime()
         lastMemorySampleElapsedMs = 0L
 
-        val metricsListener = Window.OnFrameMetricsAvailableListener { _, metrics, droppedReports ->
-            val totalNs = metrics.getMetric(FrameMetrics.TOTAL_DURATION)
-            if (totalNs <= 0L) return@OnFrameMetricsAvailableListener
-            val totalMs = totalNs / 1_000_000.0
+        val listener = Window.OnFrameMetricsAvailableListener { _, metrics, droppedReports ->
             val gpuMs = if (Build.VERSION.SDK_INT >= 31) {
                 metrics.getMetric(FrameMetrics.GPU_DURATION).takeIf { it > 0L }?.div(1_000_000.0)
             } else null
-            val refreshRate = activity.window.decorView.display?.refreshRate?.takeIf { it >= 30f } ?: 60f
-            val budgetMs = 1_000.0 / refreshRate
             synchronized(lock) {
-                latestRefreshRate = refreshRate
-                intervalFrames++
-                totalFrames++
-                if (totalMs > budgetMs * JANK_MULTIPLIER) intervalJankFrames++
-                totalMissedFrames += estimatedMissedFrames(totalMs, budgetMs).toLong()
+                if (gpuMs != null && gpuMs.isFinite()) {
+                    recentGpuDurations.addLast(gpuMs)
+                    while (recentGpuDurations.size > MAX_RECENT_FRAMES) recentGpuDurations.removeFirst()
+                }
                 if (droppedReports > 0) totalDroppedMetricReports += droppedReports.toLong()
-                recentFrames.addLast(FrameSample(totalMs, gpuMs))
-                while (recentFrames.size > MAX_RECENT_FRAMES) recentFrames.removeFirst()
             }
         }
-        listener = metricsListener
-        activity.window.addOnFrameMetricsAvailableListener(metricsListener, workerHandler)
+        metricsListener = listener
+        activity.window.addOnFrameMetricsAvailableListener(listener, workerHandler)
+
+        mainHandler.post {
+            val uiChoreographer = Choreographer.getInstance()
+            choreographer = uiChoreographer
+            val callback = object : Choreographer.FrameCallback {
+                override fun doFrame(frameTimeNanos: Long) {
+                    recordFrame(frameTimeNanos)
+                    if (frameCallback === this) uiChoreographer.postFrameCallback(this)
+                }
+            }
+            frameCallback = callback
+            uiChoreographer.postFrameCallback(callback)
+        }
 
         val sampleTask = object : Runnable {
             override fun run() {
@@ -130,21 +140,48 @@ internal class ArborPerformanceMonitor(private val activity: Activity) {
         workerHandler.postDelayed(sampleTask, updateIntervalMs.toLong())
     }
 
+    private fun recordFrame(frameTimeNanos: Long) {
+        val previous = lastFrameTimeNanos
+        lastFrameTimeNanos = frameTimeNanos
+        if (previous <= 0L) return
+        val intervalMs = (frameTimeNanos - previous) / 1_000_000.0
+        if (!intervalMs.isFinite() || intervalMs <= 0.0 || intervalMs > MAX_VALID_FRAME_INTERVAL_MS) return
+        val refreshRate = activity.window.decorView.display?.refreshRate?.takeIf { it >= 30f } ?: 60f
+        val budgetMs = 1_000.0 / refreshRate
+        synchronized(lock) {
+            latestRefreshRate = refreshRate
+            intervalFrames++
+            totalFrames++
+            if (intervalMs > budgetMs * JANK_MULTIPLIER) intervalJankFrames++
+            intervalMissedFrames += estimatedMissedFrames(intervalMs, budgetMs).toLong()
+            recentFrameIntervals.addLast(intervalMs)
+            while (recentFrameIntervals.size > MAX_RECENT_FRAMES) recentFrameIntervals.removeFirst()
+        }
+    }
+
     @Synchronized
     fun stop() {
-        listener?.let { runCatching { activity.window.removeOnFrameMetricsAvailableListener(it) } }
+        metricsListener?.let { runCatching { activity.window.removeOnFrameMetricsAvailableListener(it) } }
         sampler?.let { handler?.removeCallbacks(it) }
-        listener = null
+        val callback = frameCallback
+        frameCallback = null
+        mainHandler.post {
+            if (callback != null) choreographer?.removeFrameCallback(callback)
+            choreographer = null
+        }
+        metricsListener = null
         sampler = null
         handler = null
         thread?.quitSafely()
         thread = null
+        lastFrameTimeNanos = 0L
         synchronized(lock) {
-            recentFrames.clear()
+            recentFrameIntervals.clear()
+            recentGpuDurations.clear()
             intervalFrames = 0L
             intervalJankFrames = 0L
+            intervalMissedFrames = 0L
             totalFrames = 0L
-            totalMissedFrames = 0L
             totalDroppedMetricReports = 0L
         }
         _snapshot.value = PerformanceSnapshot()
@@ -168,13 +205,14 @@ internal class ArborPerformanceMonitor(private val activity: Activity) {
         }
 
         val snapshotData = synchronized(lock) {
-            val samples = recentFrames.toList()
+            val durations = recentFrameIntervals.toList()
+            val gpuDurations = recentGpuDurations.toList()
             val frameCount = intervalFrames
             val jankCount = intervalJankFrames
+            val missedCount = intervalMissedFrames
             intervalFrames = 0L
             intervalJankFrames = 0L
-            val durations = samples.map { it.totalMs }
-            val gpuDurations = samples.mapNotNull { it.gpuMs }
+            intervalMissedFrames = 0L
             PerformanceSnapshot(
                 fps = frameCount * 1_000.0 / elapsedMs,
                 averageFrameMs = durations.averageOrZero(),
@@ -182,7 +220,7 @@ internal class ArborPerformanceMonitor(private val activity: Activity) {
                 p99FrameMs = performancePercentile(durations, 0.99),
                 gpuAverageMs = gpuDurations.takeIf { it.isNotEmpty() }?.average(),
                 jankPercent = if (frameCount == 0L) 0.0 else jankCount * 100.0 / frameCount,
-                missedFrames = totalMissedFrames,
+                missedFramesPerSecond = missedCount * 1_000.0 / elapsedMs,
                 droppedMetricReports = totalDroppedMetricReports,
                 cpuPercent = cpuPercent,
                 pssMb = cachedPssMb,
@@ -199,6 +237,7 @@ internal class ArborPerformanceMonitor(private val activity: Activity) {
     private companion object {
         const val MAX_RECENT_FRAMES = 240
         const val JANK_MULTIPLIER = 1.5
+        const val MAX_VALID_FRAME_INTERVAL_MS = 250.0
         const val MEMORY_SAMPLE_INTERVAL_MS = 1_000L
         const val BYTES_PER_MB = 1024.0 * 1024.0
         const val KILOBYTES_PER_MB = 1024.0
@@ -241,7 +280,7 @@ internal fun ArborPerformanceOverlay(
                     maxLines = 1,
                 )
                 Text(
-                    "GPU ${snapshot.gpuAverageMs?.f1() ?: "n/a"} ms  Miss ${snapshot.missedFrames}  Reports ${snapshot.droppedMetricReports}",
+                    "GPU ${snapshot.gpuAverageMs?.f1() ?: "n/a"} ms  Miss/s ${snapshot.missedFramesPerSecond.f1()}  Reports ${snapshot.droppedMetricReports}",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.95f),

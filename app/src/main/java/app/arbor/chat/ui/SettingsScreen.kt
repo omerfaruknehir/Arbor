@@ -779,7 +779,7 @@ private fun DeveloperSettingsPage(
 
     Text(
         if (settings.detailedPerformanceOverlay) {
-            "Detailed mode shows FPS, average/p95/p99 frame time, jank, refresh rate, app CPU, PSS, Java heap, GPU duration when Android reports it, missed-frame estimates, and total observed frames."
+            "Detailed mode shows Choreographer FPS, average/p95/p99 frame interval, jank against the current refresh budget, app CPU, PSS, Java heap, GPU duration when Android reports it, missed vsyncs per second, and total observed frames."
         } else {
             "Compact mode shows FPS, average frame time, and jank percentage."
         },
