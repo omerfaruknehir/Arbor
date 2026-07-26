@@ -1,9 +1,14 @@
 package app.arbor.chat.ui
 
+import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.SnackbarHost
@@ -11,6 +16,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -18,9 +24,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.arbor.chat.settings.PerformanceOverlayPosition
 
 @Composable
-fun ArborApp(viewModel: ChatViewModel) {
+fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
     val screen by viewModel.screen.collectAsState()
     val conversations by viewModel.conversations.collectAsState()
     val archivedConversations by viewModel.archivedConversations.collectAsState()
@@ -30,9 +37,19 @@ fun ArborApp(viewModel: ChatViewModel) {
     val showArchived by viewModel.showArchived.collectAsState()
     val pythonRun by viewModel.pythonRun.collectAsState()
     val linuxRun by viewModel.linuxRun.collectAsState()
+    val developerSettings by viewModel.developerSettings.collectAsState()
+    val performanceMonitor = remember(activity) { ArborPerformanceMonitor(activity) }
+    val performanceSnapshot by performanceMonitor.snapshot.collectAsState()
+    val showPerformanceOverlay = developerSettings.enabled && developerSettings.performanceOverlayEnabled
     val drawerState = rememberInteractiveDrawerState()
     val snackbar = remember { SnackbarHostState() }
     val openDrawer = { drawerState.open(); Unit }
+
+    DisposableEffect(performanceMonitor, showPerformanceOverlay, developerSettings.performanceUpdateIntervalMs) {
+        if (showPerformanceOverlay) performanceMonitor.start(developerSettings.performanceUpdateIntervalMs)
+        else performanceMonitor.stop()
+        onDispose { performanceMonitor.stop() }
+    }
 
     LaunchedEffect(viewModel) {
         viewModel.notices.collect { snackbar.showSnackbar(it) }
@@ -138,8 +155,32 @@ fun ArborApp(viewModel: ChatViewModel) {
                 content = content,
             )
         }
+        if (showPerformanceOverlay) {
+            val bottomPosition = developerSettings.performanceOverlayPosition == PerformanceOverlayPosition.BOTTOM_START ||
+                developerSettings.performanceOverlayPosition == PerformanceOverlayPosition.BOTTOM_END
+            ArborPerformanceOverlay(
+                snapshot = performanceSnapshot,
+                detailed = developerSettings.detailedPerformanceOverlay,
+                modifier = Modifier
+                    .align(performanceOverlayAlignment(developerSettings.performanceOverlayPosition))
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(
+                        start = 12.dp,
+                        end = 12.dp,
+                        top = 12.dp,
+                        bottom = if (bottomPosition) 80.dp else 12.dp,
+                    ),
+            )
+        }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
+}
+
+internal fun performanceOverlayAlignment(position: PerformanceOverlayPosition): Alignment = when (position) {
+    PerformanceOverlayPosition.TOP_START -> Alignment.TopStart
+    PerformanceOverlayPosition.TOP_END -> Alignment.TopEnd
+    PerformanceOverlayPosition.BOTTOM_START -> Alignment.BottomStart
+    PerformanceOverlayPosition.BOTTOM_END -> Alignment.BottomEnd
 }
 
 internal fun backDestination(screen: Screen): Screen? = when (screen) {

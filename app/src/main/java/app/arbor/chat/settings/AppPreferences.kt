@@ -11,6 +11,20 @@ import kotlinx.coroutines.flow.asStateFlow
 
 enum class ColorPalette { ARBOR, SYSTEM, GRAPHITE }
 
+enum class PerformanceOverlayPosition { TOP_START, TOP_END, BOTTOM_START, BOTTOM_END }
+
+data class DeveloperSettings(
+    val enabled: Boolean = false,
+    val performanceOverlayEnabled: Boolean = false,
+    val detailedPerformanceOverlay: Boolean = true,
+    val performanceUpdateIntervalMs: Int = 500,
+    val performanceOverlayPosition: PerformanceOverlayPosition = PerformanceOverlayPosition.TOP_END,
+) {
+    fun normalized() = copy(
+        performanceUpdateIntervalMs = performanceUpdateIntervalMs.coerceIn(250, 2_000),
+    )
+}
+
 const val ARBOR_CORE_PROMPT_REVISION = "0.17.0"
 
 val DEFAULT_ARBOR_SYSTEM_PROMPT = """
@@ -97,6 +111,7 @@ class AppPreferences(context: Context) {
     private val _chromeOverlayOpacity = MutableStateFlow(preferences.getFloat(KEY_CHROME_OVERLAY_OPACITY, 1f).coerceIn(0f, 1f))
     private val _newChatDefaults = MutableStateFlow(readNewChatDefaults())
     private val _generatedRepairMaxAttempts = MutableStateFlow(preferences.getInt(KEY_GENERATED_REPAIR_ATTEMPTS, 3).coerceIn(1, 5))
+    private val _developerSettings = MutableStateFlow(readDeveloperSettings())
 
     val amoled: StateFlow<Boolean> = _amoled.asStateFlow()
     val palette: StateFlow<ColorPalette> = _palette.asStateFlow()
@@ -106,6 +121,7 @@ class AppPreferences(context: Context) {
     val chromeOverlayOpacity: StateFlow<Float> = _chromeOverlayOpacity.asStateFlow()
     val newChatDefaults: StateFlow<NewChatDefaults> = _newChatDefaults.asStateFlow()
     val generatedRepairMaxAttempts: StateFlow<Int> = _generatedRepairMaxAttempts.asStateFlow()
+    val developerSettings: StateFlow<DeveloperSettings> = _developerSettings.asStateFlow()
     val hasNewChatDefaults: Boolean get() = preferences.getBoolean(KEY_DEFAULTS_INITIALIZED, false)
 
     private fun readChromeBlurStrength(): Float {
@@ -171,6 +187,21 @@ class AppPreferences(context: Context) {
         preferences.edit { putInt(KEY_GENERATED_REPAIR_ATTEMPTS, normalized) }
     }
 
+    fun setDeveloperSettings(value: DeveloperSettings) {
+        val normalized = value.normalized()
+        _developerSettings.value = normalized
+        preferences.edit {
+            putBoolean(KEY_DEVELOPER_ENABLED, normalized.enabled)
+            putBoolean(KEY_PERFORMANCE_OVERLAY_ENABLED, normalized.performanceOverlayEnabled)
+            putBoolean(KEY_PERFORMANCE_OVERLAY_DETAILED, normalized.detailedPerformanceOverlay)
+            putInt(KEY_PERFORMANCE_UPDATE_INTERVAL_MS, normalized.performanceUpdateIntervalMs)
+            putString(KEY_PERFORMANCE_OVERLAY_POSITION, normalized.performanceOverlayPosition.name)
+        }
+    }
+
+    fun updateDeveloperSettings(transform: (DeveloperSettings) -> DeveloperSettings) =
+        setDeveloperSettings(transform(_developerSettings.value))
+
     fun setNewChatDefaults(value: NewChatDefaults) {
         val normalized = value.copy(
             contextPairs = value.contextPairs.coerceIn(1, 500),
@@ -205,6 +236,14 @@ class AppPreferences(context: Context) {
 
     fun updateNewChatDefaults(transform: (NewChatDefaults) -> NewChatDefaults) =
         setNewChatDefaults(transform(_newChatDefaults.value))
+
+    private fun readDeveloperSettings() = DeveloperSettings(
+        enabled = preferences.getBoolean(KEY_DEVELOPER_ENABLED, false),
+        performanceOverlayEnabled = preferences.getBoolean(KEY_PERFORMANCE_OVERLAY_ENABLED, false),
+        detailedPerformanceOverlay = preferences.getBoolean(KEY_PERFORMANCE_OVERLAY_DETAILED, true),
+        performanceUpdateIntervalMs = preferences.getInt(KEY_PERFORMANCE_UPDATE_INTERVAL_MS, 500),
+        performanceOverlayPosition = enumValue(KEY_PERFORMANCE_OVERLAY_POSITION, PerformanceOverlayPosition.TOP_END),
+    ).normalized()
 
     private fun readNewChatDefaults() = NewChatDefaults(
         selectedProviderId = preferences.getString(KEY_DEFAULT_PROVIDER, null) ?: "deepseek",
@@ -256,5 +295,10 @@ class AppPreferences(context: Context) {
         const val KEY_DEFAULT_HYBRID_COUNTING = "new_chat_hybrid_counting"
         const val KEY_DEFAULTS_INITIALIZED = "new_chat_defaults_initialized"
         const val KEY_GENERATED_REPAIR_ATTEMPTS = "generated_repair_max_attempts"
+        const val KEY_DEVELOPER_ENABLED = "developer_settings_enabled"
+        const val KEY_PERFORMANCE_OVERLAY_ENABLED = "performance_overlay_enabled"
+        const val KEY_PERFORMANCE_OVERLAY_DETAILED = "performance_overlay_detailed"
+        const val KEY_PERFORMANCE_UPDATE_INTERVAL_MS = "performance_update_interval_ms"
+        const val KEY_PERFORMANCE_OVERLAY_POSITION = "performance_overlay_position"
     }
 }

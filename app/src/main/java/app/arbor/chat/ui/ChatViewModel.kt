@@ -123,6 +123,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     val chromeEdgeSoftness: StateFlow<Float> = container.appPreferences.chromeEdgeSoftness
     val chromeOverlayOpacity: StateFlow<Float> = container.appPreferences.chromeOverlayOpacity
     val generatedRepairMaxAttempts: StateFlow<Int> = container.appPreferences.generatedRepairMaxAttempts
+    val developerSettings: StateFlow<app.arbor.chat.settings.DeveloperSettings> = container.appPreferences.developerSettings
     val palette = container.appPreferences.palette
     val themeMode = container.appPreferences.themeMode
     val newChatDefaults: StateFlow<NewChatDefaults> = container.appPreferences.newChatDefaults
@@ -607,6 +608,8 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     fun setChromeEdgeSoftness(value: Float) = container.appPreferences.setChromeEdgeSoftness(value)
     fun setChromeOverlayOpacity(value: Float) = container.appPreferences.setChromeOverlayOpacity(value)
     fun setGeneratedRepairMaxAttempts(value: Int) = container.appPreferences.setGeneratedRepairMaxAttempts(value)
+    fun updateDeveloperSettings(transform: (app.arbor.chat.settings.DeveloperSettings) -> app.arbor.chat.settings.DeveloperSettings) =
+        container.appPreferences.updateDeveloperSettings(transform)
 
     fun clearContextSummary() = launchAction {
         val id = selectedConversationId.value

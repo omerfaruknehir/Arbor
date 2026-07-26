@@ -47,7 +47,7 @@ class MainActivity : ComponentActivity() {
             val themeMode by viewModel.themeMode.collectAsState()
             ArborTheme(amoled = amoled, palette = palette, themeMode = themeMode) {
                 val appName = stringResource(R.string.app_name)
-                ArborApp(viewModel)
+                ArborApp(viewModel, this@MainActivity)
                 val container = (application as ArborApplication).container
                 var crashReport by remember { mutableStateOf(container.crashReporter.read()) }
                 val renderSafeMode by viewModel.renderSafeMode.collectAsState()

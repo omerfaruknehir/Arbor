@@ -30,6 +30,7 @@ import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.DeveloperMode
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Menu
@@ -103,6 +104,8 @@ import app.arbor.chat.data.SystemPromptProfileEntity
 import app.arbor.chat.provider.DiscoveredModel
 import app.arbor.chat.provider.supportedThinkingLevels
 import app.arbor.chat.settings.ColorPalette
+import app.arbor.chat.settings.DeveloperSettings
+import app.arbor.chat.settings.PerformanceOverlayPosition
 import app.arbor.chat.settings.NewChatDefaults
 import app.arbor.chat.settings.ThemeMode
 import kotlinx.coroutines.launch
@@ -120,6 +123,7 @@ private enum class SettingsRoute(val title: String) {
     APPEARANCE("Appearance"),
     PRIVACY("Privacy & safety"),
     LOCAL_EXECUTION("Local Code Execution"),
+    DEVELOPER("Developer settings"),
     SYSTEM_PROMPTS("Custom instructions"),
     PROVIDERS("Providers & models"),
     ABOUT("About"),
@@ -141,6 +145,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsState()
     val renderSafeMode by viewModel.renderSafeMode.collectAsState()
     val generatedRepairMaxAttempts by viewModel.generatedRepairMaxAttempts.collectAsState()
+    val developerSettings by viewModel.developerSettings.collectAsState()
     val registeredProviders = remember(providers, credentialRevision) { viewModel.registeredProviders(providers) }
     val configuredProviders = remember(providers, credentialRevision) { viewModel.configuredProviders(providers) }
     var route by rememberSaveable { mutableStateOf(SettingsRoute.HOME) }
@@ -187,6 +192,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     when (currentRoute) {
                         SettingsRoute.HOME -> SettingsHome(
                             providerCount = registeredProviders.size,
+                            developerEnabled = developerSettings.enabled,
                             onOpen = { route = it },
                         )
                         SettingsRoute.DEFAULTS -> NewChatDefaultsSettings(defaults, configuredProviders, viewModel)
@@ -202,6 +208,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         )
                         SettingsRoute.PRIVACY -> PrivacySettingsPage(renderSafeMode, generatedRepairMaxAttempts, viewModel)
                         SettingsRoute.LOCAL_EXECUTION -> LocalCodeExecutionSettingsPage(defaults, automation, configuredProviders, viewModel)
+                        SettingsRoute.DEVELOPER -> DeveloperSettingsPage(developerSettings, viewModel)
                         SettingsRoute.SYSTEM_PROMPTS -> SystemPromptProfilesPage(promptProfiles, defaults.systemPromptProfileId, viewModel)
                         SettingsRoute.PROVIDERS -> ProviderSettings(
                             providers = providers,
@@ -218,7 +225,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
 }
 
 @Composable
-private fun SettingsHome(providerCount: Int, onOpen: (SettingsRoute) -> Unit) = SettingsPage {
+private fun SettingsHome(providerCount: Int, developerEnabled: Boolean, onOpen: (SettingsRoute) -> Unit) = SettingsPage {
     SettingsGroup("AI & models") {
         SettingsDestination(
             icon = Icons.Outlined.Cloud,
@@ -263,6 +270,12 @@ private fun SettingsHome(providerCount: Int, onOpen: (SettingsRoute) -> Unit) = 
             title = "Local Code Execution",
             subtitle = "Python, Linux tooling, packages, and workspace",
             onClick = { onOpen(SettingsRoute.LOCAL_EXECUTION) },
+        )
+        SettingsDestination(
+            icon = Icons.Outlined.DeveloperMode,
+            title = "Developer settings",
+            subtitle = if (developerEnabled) "Performance overlay and diagnostics enabled" else "Performance overlay and diagnostics",
+            onClick = { onOpen(SettingsRoute.DEVELOPER) },
         )
     }
     SettingsGroup("About") {
@@ -683,6 +696,106 @@ private fun LocalCodeExecutionSettingsPage(
     )
     PackageApprovalEditor(automation, providers, viewModel)
 }
+
+@Composable
+private fun DeveloperSettingsPage(
+    settings: DeveloperSettings,
+    viewModel: ChatViewModel,
+) = SettingsPage {
+    SectionTitle(
+        "Developer settings",
+        "Local diagnostics for measuring Arbor's rendering and process performance. No metrics are uploaded or stored in chat history.",
+    )
+    SettingsSwitch(
+        label = "Enable developer settings",
+        checked = settings.enabled,
+        onCheckedChange = { enabled -> viewModel.updateDeveloperSettings { it.copy(enabled = enabled) } },
+    )
+
+    HorizontalDivider()
+    SectionTitle(
+        "Performance counter",
+        "Shows live frame timing without forcing continuous animation. The monitor observes frames already rendered by Android.",
+    )
+    SettingsSwitch(
+        label = "Show performance overlay",
+        checked = settings.performanceOverlayEnabled,
+        onCheckedChange = { enabled -> viewModel.updateDeveloperSettings { it.copy(performanceOverlayEnabled = enabled) } },
+        enabled = settings.enabled,
+    )
+    SettingsSwitch(
+        label = "Detailed metrics",
+        checked = settings.detailedPerformanceOverlay,
+        onCheckedChange = { detailed -> viewModel.updateDeveloperSettings { it.copy(detailedPerformanceOverlay = detailed) } },
+        enabled = settings.enabled && settings.performanceOverlayEnabled,
+    )
+
+    Text("Update interval", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(
+            listOf(250 to "250 ms", 500 to "500 ms"),
+            listOf(1_000 to "1 s", 2_000 to "2 s"),
+        ).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { (interval, label) ->
+                    FilterChip(
+                        selected = settings.performanceUpdateIntervalMs == interval,
+                        onClick = { viewModel.updateDeveloperSettings { it.copy(performanceUpdateIntervalMs = interval) } },
+                        enabled = settings.enabled && settings.performanceOverlayEnabled,
+                        label = { Text(label) },
+                        leadingIcon = if (settings.performanceUpdateIntervalMs == interval) ({ Icon(Icons.Outlined.CheckCircle, null, Modifier.size(18.dp)) }) else null,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    }
+
+    Text("Overlay position", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PerformanceOverlayPosition.entries.take(2).forEach { position ->
+                FilterChip(
+                    selected = settings.performanceOverlayPosition == position,
+                    onClick = { viewModel.updateDeveloperSettings { it.copy(performanceOverlayPosition = position) } },
+                    enabled = settings.enabled && settings.performanceOverlayEnabled,
+                    label = { Text(position.displayName) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PerformanceOverlayPosition.entries.drop(2).forEach { position ->
+                FilterChip(
+                    selected = settings.performanceOverlayPosition == position,
+                    onClick = { viewModel.updateDeveloperSettings { it.copy(performanceOverlayPosition = position) } },
+                    enabled = settings.enabled && settings.performanceOverlayEnabled,
+                    label = { Text(position.displayName) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+
+    Text(
+        if (settings.detailedPerformanceOverlay) {
+            "Detailed mode shows FPS, average/p95/p99 frame time, jank, refresh rate, app CPU, PSS, Java heap, GPU duration when Android reports it, missed-frame estimates, and total observed frames."
+        } else {
+            "Compact mode shows FPS, average frame time, and jank percentage."
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.padding(bottom = 24.dp))
+}
+
+private val PerformanceOverlayPosition.displayName: String
+    get() = when (this) {
+        PerformanceOverlayPosition.TOP_START -> "Top left"
+        PerformanceOverlayPosition.TOP_END -> "Top right"
+        PerformanceOverlayPosition.BOTTOM_START -> "Bottom left"
+        PerformanceOverlayPosition.BOTTOM_END -> "Bottom right"
+    }
 
 @Composable
 private fun AboutSettingsPage() = SettingsPage {
