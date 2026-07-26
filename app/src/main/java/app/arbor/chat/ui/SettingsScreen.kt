@@ -502,7 +502,7 @@ private fun AppearanceSettingsPage(
         valueRange = 0f..1f,
     )
     Text(
-        "0% is a hard panel edge; 100% uses a 68 dp gradual merge.",
+        "0% is a hard edge; 100% uses a 68 dp smoothing band centered on the edge without fading the panel body.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -516,7 +516,7 @@ private fun AppearanceSettingsPage(
         valueRange = 0f..1f,
     )
     Text(
-        "0% removes the tint; 100% preserves the panel's designed translucent tint.",
+        "0% removes the tint; 100% makes the panel tint fully opaque.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

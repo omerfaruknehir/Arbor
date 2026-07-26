@@ -393,9 +393,9 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
                 blurCpuNanos += System.nanoTime() - started
                 layerReplays++
             }
-        } else {
-            drawFallbackPanelOverlay(topGeometry, topVisual.tint)
         }
+        drawPanelTintOverlay(topGeometry, topVisual.tint)
+
         if (bottomActive) {
             val plan = requireNotNull(bottomPlan)
             val started = if (profilerActive) System.nanoTime() else 0L
@@ -406,9 +406,8 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
                 blurCpuNanos += System.nanoTime() - started
                 layerReplays++
             }
-        } else {
-            drawFallbackPanelOverlay(bottomGeometry, bottomVisual.tint)
         }
+        drawPanelTintOverlay(bottomGeometry, bottomVisual.tint)
 
         if (profilerActive && blurActive) {
             ArborRenderProfiler.recordBlurFrame(
@@ -564,8 +563,7 @@ internal fun resolveKawasePanelPlan(
     )
 }
 
-internal fun resolveKawaseLevelCount(radiusPx: Float): Int =
-    if (radiusPx < KAWASE_THREE_LEVEL_RADIUS_PX) 2 else 3
+internal fun resolveKawaseLevelCount(@Suppress("UNUSED_PARAMETER") radiusPx: Float): Int = KAWASE_MAX_LEVELS
 
 internal fun calculateKawaseSupportPx(radiusPx: Float, levelCount: Int): Float {
     val reconstructionSupport = (1 shl levelCount) * KAWASE_MAX_LEVEL_TAP_SUPPORT_PX
@@ -573,10 +571,13 @@ internal fun calculateKawaseSupportPx(radiusPx: Float, levelCount: Int): Float {
 }
 
 internal fun calculateKawaseTapOffsetPx(radiusPx: Float, levelCount: Int): Float {
-    val divisor = if (levelCount == 3) 92f else 68f
-    return (KAWASE_MIN_TAP_OFFSET_PX + radiusPx.coerceAtLeast(0f) / divisor)
+    val divisor = if (levelCount >= 3) 72f else 58f
+    return (radiusPx.coerceAtLeast(0f) / divisor)
         .coerceIn(KAWASE_MIN_TAP_OFFSET_PX, KAWASE_MAX_TAP_OFFSET_PX)
 }
+
+internal fun resolveBlurContribution(radiusPx: Float): Float =
+    arborBlurProgress(radiusPx.coerceAtLeast(0f) / BLUR_FULL_CONTRIBUTION_RADIUS_PX)
 
 private data class GlassVisualConfig(
     val edge: ArborBlurEdge,
@@ -594,6 +595,7 @@ private data class GlassVisualConfig(
 
 private data class PanelGeometry(
     val path: Path,
+    val bodyPath: Path,
     val startPx: Float,
     val endPx: Float,
     val bodyStartPx: Float,
@@ -649,6 +651,34 @@ private fun buildPanelGeometry(widthPx: Float, heightPx: Float, visual: GlassVis
             )
         }
     }
+    val bodyPath = Path().apply {
+        when (visual.edge) {
+            ArborBlurEdge.TOP -> addRoundRect(
+                RoundRect(
+                    left = 0f,
+                    top = nominalStart,
+                    right = widthPx,
+                    bottom = nominalEnd,
+                    topLeftCornerRadius = CornerRadius.Zero,
+                    topRightCornerRadius = CornerRadius.Zero,
+                    bottomRightCornerRadius = CornerRadius(nominalRadius, nominalRadius),
+                    bottomLeftCornerRadius = CornerRadius(nominalRadius, nominalRadius),
+                ),
+            )
+            ArborBlurEdge.BOTTOM -> addRoundRect(
+                RoundRect(
+                    left = 0f,
+                    top = nominalStart,
+                    right = widthPx,
+                    bottom = nominalEnd,
+                    topLeftCornerRadius = CornerRadius(nominalRadius, nominalRadius),
+                    topRightCornerRadius = CornerRadius(nominalRadius, nominalRadius),
+                    bottomRightCornerRadius = CornerRadius.Zero,
+                    bottomLeftCornerRadius = CornerRadius.Zero,
+                ),
+            )
+        }
+    }
     val fadeBrush = if (featherSpan > 0f && visual.tint.alpha > 0f) {
         when (visual.edge) {
             ArborBlurEdge.TOP -> Brush.verticalGradient(
@@ -669,6 +699,7 @@ private fun buildPanelGeometry(widthPx: Float, heightPx: Float, visual: GlassVis
     } else null
     return PanelGeometry(
         path = path,
+        bodyPath = bodyPath,
         startPx = bounds.drawStartPx,
         endPx = bounds.drawEndPx,
         bodyStartPx = bounds.bodyStartPx,
@@ -677,43 +708,34 @@ private fun buildPanelGeometry(widthPx: Float, heightPx: Float, visual: GlassVis
     )
 }
 
-private fun DrawScope.drawFallbackPanelOverlay(geometry: PanelGeometry, tint: Color) {
+private fun DrawScope.drawPanelTintOverlay(geometry: PanelGeometry, tint: Color) {
     if (tint.alpha <= 0f || geometry.endPx <= geometry.startPx) return
+
+    // The nominal rounded body is always drawn at the exact requested opacity.
+    // Softness never erodes this region, so 100% is genuinely opaque and the
+    // panel edge cannot move inward as the smoothing band grows.
+    clipPath(geometry.bodyPath) {
+        drawRect(
+            color = tint,
+            topLeft = Offset(0f, geometry.bodyStartPx),
+            size = Size(size.width, geometry.bodyEndPx - geometry.bodyStartPx),
+        )
+    }
+
+    val fringe = geometry.fadeBrush ?: return
     clipPath(geometry.path) {
-        when {
-            geometry.fadeBrush == null -> drawRect(
-                color = tint,
-                topLeft = Offset(0f, geometry.startPx),
-                size = Size(size.width, geometry.endPx - geometry.startPx),
+        if (geometry.bodyEndPx < geometry.endPx) {
+            drawRect(
+                brush = fringe,
+                topLeft = Offset(0f, geometry.bodyEndPx),
+                size = Size(size.width, geometry.endPx - geometry.bodyEndPx),
             )
-            geometry.bodyEndPx < geometry.endPx -> {
-                if (geometry.bodyEndPx > geometry.startPx) {
-                    drawRect(
-                        color = tint,
-                        topLeft = Offset(0f, geometry.startPx),
-                        size = Size(size.width, geometry.bodyEndPx - geometry.startPx),
-                    )
-                }
-                drawRect(
-                    brush = geometry.fadeBrush,
-                    topLeft = Offset(0f, geometry.bodyEndPx),
-                    size = Size(size.width, geometry.endPx - geometry.bodyEndPx),
-                )
-            }
-            else -> {
-                drawRect(
-                    brush = geometry.fadeBrush,
-                    topLeft = Offset(0f, geometry.startPx),
-                    size = Size(size.width, geometry.bodyStartPx - geometry.startPx),
-                )
-                if (geometry.bodyStartPx < geometry.endPx) {
-                    drawRect(
-                        color = tint,
-                        topLeft = Offset(0f, geometry.bodyStartPx),
-                        size = Size(size.width, geometry.endPx - geometry.bodyStartPx),
-                    )
-                }
-            }
+        } else if (geometry.startPx < geometry.bodyStartPx) {
+            drawRect(
+                brush = fringe,
+                topLeft = Offset(0f, geometry.startPx),
+                size = Size(size.width, geometry.bodyStartPx - geometry.startPx),
+            )
         }
     }
 }
@@ -770,8 +792,8 @@ private fun buildKawaseEffects(plan: KawasePanelPlan, visual: GlassVisualConfig)
             ),
         )
         setFloatUniform("uSoftness", visual.softness.coerceIn(0f, 1f))
+        setFloatUniform("uBlurMix", resolveBlurContribution(plan.radiusPx))
         setFloatUniform("uEdge", if (visual.edge == ArborBlurEdge.TOP) 0f else 1f)
-        setFloatUniform("uTint", visual.tint.red, visual.tint.green, visual.tint.blue, visual.tint.alpha)
         setFloatUniform("uSaturation", visual.saturation)
         setFloatUniform("uContrast", visual.contrast)
         setFloatUniform("uBrightness", visual.brightness)
@@ -854,13 +876,13 @@ internal fun resolveSymmetricFeatherBounds(
             drawStartPx = start,
             drawEndPx = (end + half).coerceAtMost(sourceHeight),
             bodyStartPx = start,
-            bodyEndPx = (end - half).coerceAtLeast(start),
+            bodyEndPx = end,
             halfSpanPx = half,
         )
         ArborBlurEdge.BOTTOM -> SymmetricFeatherBounds(
             drawStartPx = (start - half).coerceAtLeast(0f),
             drawEndPx = end,
-            bodyStartPx = (start + half).coerceAtMost(end),
+            bodyStartPx = start,
             bodyEndPx = end,
             halfSpanPx = half,
         )
@@ -920,11 +942,10 @@ fun Modifier.arborBackdropBlur(
 internal fun applyOverlayOpacity(tint: Color, opacity: Float): Color =
     tint.copy(alpha = opacity.coerceIn(0f, 1f))
 
-internal fun quantizeBlurRadiusDp(radiusDp: Float): Float =
-    ((radiusDp.coerceAtLeast(0f) / BLUR_RADIUS_STEP_DP).roundToInt() * BLUR_RADIUS_STEP_DP)
+internal fun quantizeBlurRadiusDp(radiusDp: Float): Float = radiusDp.coerceAtLeast(0f)
 
-private const val BLUR_RADIUS_STEP_DP = 0.25f
-private const val MIN_VISIBLE_RADIUS_PX = 0.35f
+private const val MIN_VISIBLE_RADIUS_PX = 0.0001f
+private const val BLUR_FULL_CONTRIBUTION_RADIUS_PX = 12f
 private const val DEFAULT_MAX_RADIUS_DP = 56f
 private const val DEFAULT_PANEL_CORNER_RADIUS_DP = 28f
 private const val DEFAULT_MERGE_DISTANCE_DP = 34f
@@ -937,11 +958,10 @@ private const val DEFAULT_GLASS_CONTRAST = 1.025f
 private const val DEFAULT_GLASS_BRIGHTNESS = 1.008f
 private const val DEFAULT_EDGE_HIGHLIGHT = 0.035f
 
-internal const val KAWASE_THREE_LEVEL_RADIUS_PX = 36f
 internal const val KAWASE_MINIMUM_SUPPORT_PX = 12f
 internal const val KAWASE_SUPPORT_MULTIPLIER = 1.35f
 internal const val KAWASE_MAX_LEVEL_TAP_SUPPORT_PX = 2.75f
-internal const val KAWASE_MIN_TAP_OFFSET_PX = 0.85f
+internal const val KAWASE_MIN_TAP_OFFSET_PX = 0f
 internal const val KAWASE_MAX_TAP_OFFSET_PX = 2.65f
 internal const val KAWASE_MAX_LEVELS = 3
 private val KAWASE_LEVEL_ANGLES = floatArrayOf(0.19634955f, 0.5890486f, 0.9817477f, 1.3744467f)
@@ -983,8 +1003,8 @@ private val KAWASE_COMPOSITE_SHADER = """
     uniform float uCorner;
     uniform float uMerge;
     uniform float uSoftness;
+    uniform float uBlurMix;
     uniform float uEdge;
-    uniform float4 uTint;
     uniform float uSaturation;
     uniform float uContrast;
     uniform float uBrightness;
@@ -995,9 +1015,10 @@ private val KAWASE_COMPOSITE_SHADER = """
         return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
     }
 
-    half4 tent(float2 coord) {
-        float2 dx = uAxisX * uOffset;
-        float2 dy = uAxisY * uOffset;
+    half4 tent(float2 coord, float edgeProfile) {
+        float edgeScale = 1.0 + edgeProfile * uSoftness * 0.45;
+        float2 dx = uAxisX * uOffset * edgeScale;
+        float2 dy = uAxisY * uOffset * edgeScale;
         half4 sum = content.eval(coord) * 2.5;
         sum += content.eval(coord + dx) * 1.35;
         sum += content.eval(coord - dx) * 1.35;
@@ -1037,23 +1058,32 @@ private val KAWASE_COMPOSITE_SHADER = """
         float signedDistance = panelSignedDistance(coord);
         float halfFeather = max(uMerge * 0.5, 0.0);
         float hardMask = smoothstep(-0.8, 0.8, signedDistance);
-        float panelAlpha = uSoftness <= 0.0001 || halfFeather < 0.5
+
+        // Softness is centered on the nominal edge as a sampling/smoothing band.
+        // The panel body is never faded away: only the outward extension loses alpha.
+        float edgeProfile = halfFeather < 0.5
+            ? 0.0
+            : 1.0 - smoother(abs(signedDistance) / halfFeather);
+        float panelMask = uSoftness <= 0.0001 || halfFeather < 0.5
             ? hardMask
-            : smoothstep(-halfFeather, halfFeather, signedDistance);
-        if (panelAlpha <= 0.001) return half4(0.0);
+            : smoothstep(-halfFeather, 0.0, signedDistance);
+        if (panelMask <= 0.001) return half4(0.0);
 
         float edgeDistance = max(signedDistance, 0.0);
+        float3 blurRgb = float3(tent(coord, edgeProfile).rgb);
+        float luma = dot(blurRgb, float3(0.2126, 0.7152, 0.0722));
+        blurRgb = mix(float3(luma), blurRgb, uSaturation);
+        blurRgb = (blurRgb - 0.5) * uContrast + 0.5;
+        blurRgb *= uBrightness;
 
-        float3 rgb = float3(tent(coord).rgb);
-        float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
-        rgb = mix(float3(luma), rgb, uSaturation);
-        rgb = (rgb - 0.5) * uContrast + 0.5;
-        rgb *= uBrightness;
-        rgb = mix(rgb, uTint.rgb, saturate(uTint.a));
+        float highlightBand = edgeProfile * smoothstep(0.0, 1.2, edgeDistance);
+        blurRgb += highlightBand * uEdgeHighlight;
+        blurRgb = clamp(blurRgb, 0.0, 1.0);
 
-        float highlightBand = (1.0 - smoothstep(2.0, 5.0, edgeDistance)) * smoothstep(0.2, 1.2, edgeDistance);
-        rgb += highlightBand * uEdgeHighlight;
-        rgb = clamp(rgb, 0.0, 1.0);
-        return half4(rgb * panelAlpha, panelAlpha);
+        // Blur contribution is composited over the sharp source. Tint is drawn
+        // afterward in a separate Compose pass so its opacity and nominal body
+        // geometry are identical at zero and nonzero blur strengths.
+        float blurAlpha = panelMask * saturate(uBlurMix);
+        return half4(blurRgb * blurAlpha, blurAlpha);
     }
 """.trimIndent()

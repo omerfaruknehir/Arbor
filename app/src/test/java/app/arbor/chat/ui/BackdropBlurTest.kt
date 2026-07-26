@@ -150,7 +150,7 @@ class BackdropBlurTest {
         assertTrue("$panelPixels should be materially below $oldFullScreenPixels", panelPixels < oldFullScreenPixels * 0.45)
     }
 
-    @Test fun edgeFeatherKeepsTheFullRangeAndSplitsItAcrossTheBoundary() {
+    @Test fun edgeSmoothingKeepsTheFullCenteredBandWithoutErodingThePanelBody() {
         assertEquals(34f, resolveSymmetricFeatherHalfSpanPx(68f, 1f, 4f, 200f), .0001f)
 
         val top = resolveSymmetricFeatherBounds(
@@ -160,9 +160,9 @@ class BackdropBlurTest {
             featherSpanPx = 68f,
             sourceHeightPx = 1_000f,
         )
-        assertEquals(466f, top.bodyEndPx, .0001f)
+        assertEquals(500f, top.bodyEndPx, .0001f)
         assertEquals(534f, top.drawEndPx, .0001f)
-        assertEquals(68f, top.drawEndPx - top.bodyEndPx, .0001f)
+        assertEquals(34f, top.drawEndPx - top.bodyEndPx, .0001f)
 
         val bottom = resolveSymmetricFeatherBounds(
             edge = ArborBlurEdge.BOTTOM,
@@ -172,15 +172,17 @@ class BackdropBlurTest {
             sourceHeightPx = 1_000f,
         )
         assertEquals(466f, bottom.drawStartPx, .0001f)
-        assertEquals(534f, bottom.bodyStartPx, .0001f)
-        assertEquals(68f, bottom.bodyStartPx - bottom.drawStartPx, .0001f)
+        assertEquals(500f, bottom.bodyStartPx, .0001f)
+        assertEquals(34f, bottom.bodyStartPx - bottom.drawStartPx, .0001f)
     }
 
-    @Test fun shaderFeathersAroundTheNominalEdgeInsteadOfOnlyInsideIt() {
+    @Test fun shaderCentersSmoothingAtTheEdgeButNeverFadesTheInsideBody() {
         val source = blurSource()
         assertTrue(source.contains("float signedDistance = panelSignedDistance(coord);"))
-        assertTrue(source.contains("smoothstep(-halfFeather, halfFeather, signedDistance)"))
-        assertFalse(source.contains("saturate(edgeDistance / max(uMerge"))
+        assertTrue(source.contains("abs(signedDistance) / halfFeather"))
+        assertTrue(source.contains("smoothstep(-halfFeather, 0.0, signedDistance)"))
+        assertFalse(source.contains("smoothstep(-halfFeather, halfFeather, signedDistance)"))
+        assertTrue(source.contains("The panel body is never faded away"))
     }
 
     @Test fun visualConfigurationIsDeterministicForIdenticalGeometryAndSettings() {
@@ -201,13 +203,55 @@ class BackdropBlurTest {
         assertEquals(tint.red, half.red, .0001f)
         assertEquals(tint.green, half.green, .0001f)
         assertEquals(tint.blue, half.blue, .0001f)
+
+        val source = blurSource()
+        assertTrue(source.contains("drawPanelTintOverlay(topGeometry, topVisual.tint)"))
+        assertTrue(source.contains("drawPanelTintOverlay(bottomGeometry, bottomVisual.tint)"))
+        assertTrue(source.contains("clipPath(geometry.bodyPath)"))
+        assertTrue(source.contains("The nominal rounded body is always drawn at the exact requested opacity"))
+        assertFalse(source.contains("uniform float4 uTint;"))
+        assertFalse(source.contains("setFloatUniform(\"uTint\""))
+        assertTrue(source.contains("return half4(blurRgb * blurAlpha, blurAlpha);"))
     }
 
-    @Test fun radiusQuantizationSuppressesSubPixelStateChurn() {
+
+    @Test fun tintCompositionIsIndependentOfBlurActivation() {
+        val source = blurSource()
+        val topBlurDraw = source.indexOf("if (topActive) {")
+        val topTintDraw = source.indexOf("drawPanelTintOverlay(topGeometry, topVisual.tint)")
+        val bottomBlurDraw = source.indexOf("if (bottomActive) {")
+        val bottomTintDraw = source.indexOf("drawPanelTintOverlay(bottomGeometry, bottomVisual.tint)")
+        assertTrue(topBlurDraw >= 0 && topTintDraw > topBlurDraw)
+        assertTrue(bottomBlurDraw >= 0 && bottomTintDraw > bottomBlurDraw)
+        assertTrue(source.contains("        }\n        drawPanelTintOverlay(topGeometry, topVisual.tint)"))
+        assertTrue(source.contains("        }\n        drawPanelTintOverlay(bottomGeometry, bottomVisual.tint)"))
+    }
+
+    @Test fun blurRadiusAndTapOffsetRemainContinuousFromZero() {
         assertEquals(0f, quantizeBlurRadiusDp(-2f), 0f)
-        assertEquals(0f, quantizeBlurRadiusDp(.12f), 0f)
-        assertEquals(.25f, quantizeBlurRadiusDp(.13f), 0f)
-        assertEquals(18.5f, quantizeBlurRadiusDp(18.49f), 0f)
+        assertEquals(.12f, quantizeBlurRadiusDp(.12f), 0f)
+        assertEquals(.13f, quantizeBlurRadiusDp(.13f), 0f)
+        assertEquals(18.49f, quantizeBlurRadiusDp(18.49f), 0f)
+        assertEquals(0f, calculateKawaseTapOffsetPx(0f, 3), .0001f)
+        assertTrue(calculateKawaseTapOffsetPx(.01f, 3) > 0f)
+        assertTrue(calculateKawaseTapOffsetPx(.01f, 3) < calculateKawaseTapOffsetPx(1f, 3))
+        assertEquals(0f, resolveBlurContribution(0f), .0001f)
+        assertTrue(resolveBlurContribution(.01f) > 0f)
+        assertTrue(resolveBlurContribution(.01f) < resolveBlurContribution(1f))
+        assertEquals(1f, resolveBlurContribution(12f), .0001f)
+    }
+
+    @Test fun pyramidLevelCountCannotJumpBetweenTwentyTwoAndTwentyThreePercent() {
+        val belowOldBoundary = 35.9f
+        val aboveOldBoundary = 36.1f
+        assertEquals(3, resolveKawaseLevelCount(belowOldBoundary))
+        assertEquals(3, resolveKawaseLevelCount(aboveOldBoundary))
+        assertTrue(
+            kotlin.math.abs(
+                calculateKawaseTapOffsetPx(aboveOldBoundary, 3) -
+                    calculateKawaseTapOffsetPx(belowOldBoundary, 3),
+            ) < .01f,
+        )
     }
 
     private fun blurSource(): String = java.io.File("src/main/java/app/arbor/chat/ui/BackdropBlur.kt").readText()

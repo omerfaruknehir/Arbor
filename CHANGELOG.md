@@ -1,3 +1,11 @@
+## 0.18.0
+
+- Remove the blur-strength discontinuity around 22–23% by keeping a fixed three-level pyramid and varying tap distance continuously.
+- Remove the 0%→nonzero jump by blending blur contribution continuously from the sharp source while preserving the zero-work bypass at exactly 0%.
+- Make overlay opacity absolute with a separate final tint pass: 100% fully covers the nominal rounded panel body, independent of the theme tint's original alpha.
+- Keep the full 68 dp sampling-softness band centered around the nominal rounded boundary while preserving full body coverage and fading only the outward fringe.
+- Preserve the 0.17.26 drawer, navigation, recomposition, signing, data, and power-policy behavior.
+
 ## 0.17.27
 
 - Replace the visually broken progressive-crop blur with a fixed-extent, panel-local dual-Kawase-style pyramid.

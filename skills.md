@@ -612,25 +612,57 @@ The temporary local 0.17.27 checkpoint was deleted after the APK and final sourc
 
 **Fix:** Preserve the tint RGB values but replace alpha with the clamped slider value. The mapping is now literal: 0% is transparent, 50% is alpha 0.5, and 100% is alpha 1.0. The edge feather may still lower final alpha near the panel boundary by design.
 
-### Edge softness must straddle the boundary
+### Edge softness must not erode the nominal panel body
 
-**Observed problem:** The earlier fade lived entirely inside the nominal panel rectangle. Increasing softness therefore shortened the visually solid panel and made the edge appear to move inward.
+**Observed problem:** A centered alpha fade multiplied into the whole panel mask makes the inner half of the nominal panel partially transparent. Even when the mathematical midpoint is correct, the result looks like the blur area has been washed away.
 
-**Final rule:** Keep the existing 68 dp maximum transition span and center that span on the nominal rounded boundary. At 100% softness, the transition is approximately 34 dp inside plus 34 dp outside. Do not solve inward erosion by reducing the maximum softness range.
+**Final rule:** Keep the complete 68 dp smoothing span around the nominal rounded boundary for sampling and reconstruction, but separate it from body coverage. The nominal rounded body remains fully covered. The outward half becomes a fading fringe, while the sampling scale is modulated symmetrically on both sides of the boundary.
 
 Implementation requirements:
 
-- Evaluate a signed distance to the nominal rounded top/bottom panel edge.
-- Use `smoothstep(-halfFeather, +halfFeather, signedDistance)` for the completed full-resolution composition pass.
-- Expand the final clip path to the outer feather contour.
-- Add the outward half-span to the fixed capture overscan before any Kawase level is recorded.
-- Keep every downsample and upsample level mapped to that same expanded capture extent.
-- Use the same centered transition for the pre-API-33 tint fallback.
-- Rebuild effects only when size/settings change; scrolling still must not rebuild shaders or effects.
+- Evaluate signed distance to the nominal rounded top/bottom edge.
+- Use `abs(signedDistance)` to center the sampling-softness profile on the boundary.
+- Keep the nominal body mask at full coverage; do not multiply it by an inward alpha fade.
+- Draw tint in a separate final Compose pass using a nominal rounded `bodyPath`; draw only the outward fringe through the expanded path.
+- Add the outward half-span to fixed capture overscan before any Kawase level is recorded.
+- Keep every downsample and upsample level mapped to that same capture extent.
+- Use the same tint pass at zero and nonzero blur strengths so crossing zero cannot change panel opacity or geometry.
+- Rebuild effects only when size/settings change; scrolling must not rebuild shaders or effects.
 
 ### Packaging reset and actual fix
 
 A first follow-up `assembleDebug` attempt reset the 4 GiB container even with one packaging worker. The renderer had already compiled and its focused/full tests and lint had passed. The actual cause was memory overlap: the retained test/lint Gradle daemon was still resident while the no-daemon packaging invocation forked its single-use JVM.
 
 **Correct workflow:** run tests and lint with two workers, execute `gradle --stop`, confirm no Gradle/Kotlin daemon remains, then run `assembleDebug --no-daemon --max-workers=1`. The reconstructed packaging run completed successfully without an OOM kill. Do not respond to this failure by reducing render quality, changing the shader, increasing clocks, or raising worker count.
+
+## 0.18.0: continuous controls and non-eroding edge treatment
+
+### Blur discontinuities
+
+The old 22–23% jump was caused by changing pyramid depth at a radius threshold. Even with identical shader text, changing level count changes reconstruction bandwidth and therefore the visible kernel. Arbor 0.18.0 keeps the bounded three-level pyramid fixed and varies the Kawase tap offset continuously.
+
+The separate jump between exactly 0% and the first nonzero value came from bypassing the renderer at zero, then exposing a pyramid whose resample passes still had fixed per-level offsets. The corrected renderer keeps the exact-zero bypass, starts the radius-dependent tap offset at zero, and blends the processed backdrop contribution from zero to full strength continuously.
+
+### Absolute overlay opacity
+
+Overlay opacity is no longer a multiplier on the theme tint's original alpha. The stored 0–1 value becomes the final tint alpha directly, so 100% means alpha 1.0. Tint is drawn after blur in a separate Compose pass through the nominal rounded body path. This guarantees that a fully opaque tint cannot leak backdrop color through the panel body and makes tint geometry identical at zero and nonzero blur strengths.
+
+### Edge softness
+
+The full 68 dp softness range is retained. The softness profile straddles the nominal rounded boundary for sampling and edge reconstruction, while body coverage remains full. Do not implement softness by multiplying the complete panel mask with an inward fade: that visually shortens the panel and washes the blur area away. Capture support must include the outward half of the smoothing band.
+
+### Release identity
+
+Arbor 0.18.0 uses `versionCode 105`, preserves `app.arbor.chat.debug`, and retains the existing debug signing certificate and persistent-data compatibility.
+
+### 0.18.0 verification outcome
+
+- Full unit suite: 36 suites, 215 tests, 0 failures, 0 errors, 0 skipped.
+- Android lint: 0 errors, 12 warnings, 1 informational finding.
+- APK assembly: passed with one worker; 20 seconds Gradle time (21.2 seconds measured wall time) and approximately 1.03 GiB maximum resident memory.
+- APK identity: `app.arbor.chat.debug`, version code 105, version name `0.18.0-debug`, min SDK 26, target/compile SDK 35.
+- ZIP alignment: passed. APK Signature Scheme v2: passed.
+- Debug signing certificate SHA-256 remained `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`, identical to 0.17.27.
+- Main manifest and all exported Room schema files were byte-identical to the 0.17.27 source baseline.
+- No device-side sustained-FPS, thermal, battery, or final visual-quality claim is made without installing this APK on the Galaxy S23+.
 
