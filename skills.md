@@ -714,3 +714,53 @@ Do not solve this by adding a gray/white tint, increasing overlay opacity, or sh
 - ZIP alignment and APK Signature Scheme v2 verification: passed.
 - Debug certificate SHA-256 remains `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`, identical to 0.18.0.
 - Runtime AGSL output still requires installation on the Galaxy S23+ for final visual confirmation. Host unit tests and APK verification cannot prove device GPU-driver rendering.
+
+## 0.18.2: artifact-free premultiplied panel composition
+
+### Why 0.18.1 still produced artifacts
+
+The renderer still combined several individually plausible operations that were unstable together:
+
+- every downsample and upsample stage used rotated custom AGSL taps;
+- the final blur shader generated its own alpha mask;
+- Compose clipped that result again with a separately constructed path;
+- tint was masked and composited on another path/effect;
+- transparent samples could pass through RGB un-premultiplication and become dark fringes.
+
+Those independent masks and sampling domains produced corner seams, directional patterns, unstable edge coverage, and occasional black contamination. Matching formulas or shader source was not enough because the actual layer boundaries and alpha operations differed.
+
+### Final renderer architecture
+
+- Record the Compose source once.
+- Capture only fixed-overscan top and bottom panel regions.
+- Build a fixed three-level 1x -> 1/2x -> 1/4x -> 1/8x pyramid.
+- Apply one low-resolution Android `RenderEffect` blur with `Shader.TileMode.CLAMP` at the deepest level.
+- Reconstruct to full resolution through bilinear graphics-layer scaling.
+- Apply saturation, contrast, and brightness with a `ColorMatrixColorFilter`, not a runtime shader.
+- Clip blurred backdrop and absolute-opacity tint together into one nominal rounded panel layer.
+- Apply edge softness once to that combined premultiplied layer with `Shader.TileMode.DECAL`.
+- Draw the resulting panel layer without any second mask or crop.
+
+### Geometry and alpha rules
+
+- Blur, tint, corner geometry, highlight, and edge softness must share one local `Path` and one composite layer.
+- Never independently feather blur and tint.
+- Never apply both shader alpha masking and a second Compose clip to the same visible edge.
+- Keep colors premultiplied through all blur stages; do not divide RGB by alpha in the renderer.
+- Backdrop blur uses `CLAMP`; softened panel alpha uses `DECAL`.
+- The edge-softness setting defines the full visible +/-3 sigma transition span. It does not reduce the nominal panel body.
+- A 100% overlay is alpha 1.0 in the panel body before edge softness is applied.
+
+### Performance implications
+
+The fixed pyramid still processes panel-local pixels and records the source once. Removing six custom runtime-shader resample/composite effects reduces shader rebuild complexity, eliminates rotated multi-tap patterns, and leaves Android's optimized blur implementation operating only at 1/8 resolution. Edge softness is panel-local and applied after blur+tint are combined.
+
+### 0.18.2 build-signing failure and actual fix
+
+**Observed failure:** The first assembled 0.18.2 APK verified correctly but had certificate SHA-256 `2102d09c...`, which did not match Arbor's established debug certificate `b9d95df7...`.
+
+**Root cause:** The offline toolchain's stable debug keystore existed under its dedicated `android-user-home`, but `ANDROID_USER_HOME` was not exported for the one-worker packaging process. Android Gradle Plugin therefore generated/selected another default debug keystore under the temporary build user home.
+
+**Fix:** Verify every APK certificate against the previous release. Re-sign the already zip-aligned APK with the preserved `androiddebugkey` using `apksigner`, explicitly enabling v2 and disabling v1/v3/v4. Future builds should export the toolchain `ANDROID_USER_HOME` before Gradle packaging so the correct key is selected automatically.
+
+**Non-negotiable rule:** A successful `assembleDebug` and a valid v2 signature do not prove upgrade compatibility. The signer certificate digest must be compared with the previous installable APK before delivery.

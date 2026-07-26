@@ -66,7 +66,7 @@ class BackdropBlurTest {
         assertTrue(plan.capture.supportPx >= 60f * KAWASE_SUPPORT_MULTIPLIER)
     }
 
-    @Test fun captureSupportIncludesTheOutsideHalfOfTheSymmetricFeather() {
+    @Test fun captureSupportCanIncludeAnExplicitOutsideMargin() {
         val radius = 60f
         val blurOnly = calculateKawaseSupportPx(radius, resolveKawaseLevelCount(radius))
         val plan = resolveKawasePanelPlan(
@@ -81,9 +81,7 @@ class BackdropBlurTest {
 
     @Test fun everyPyramidLevelUsesOneConsistentSourceExtent() {
         val plan = resolveKawasePanelPlan(ArborPanelRange(400f, 900f), 1080f, 2340f, 80f)!!
-        for (level in 0..plan.levelCount) {
-            assertSame(plan.capture, plan.sourceExtentAtLevel(level))
-        }
+        for (level in 0..plan.levelCount) assertSame(plan.capture, plan.sourceExtentAtLevel(level))
         assertTrue(kotlin.math.abs(plan.levelSize(0).width / 2 - plan.levelSize(1).width) <= 1)
         assertTrue(kotlin.math.abs(plan.levelSize(1).width / 2 - plan.levelSize(2).width) <= 1)
         assertEquals(3, plan.levelCount)
@@ -99,24 +97,25 @@ class BackdropBlurTest {
     }
 
     @Test fun visibleCropOccursOnlyAfterTheCompleteBlurChain() {
-        val drawBlock = blurSource().substringAfter("measured.drawWithContent {").substringBefore("\n    }\n}")
-        val topChain = drawBlock.indexOf("recordKawasePanelChain(sourceLayer, topLayers, plan)")
-        val topCrop = drawBlock.indexOf("clipPath(topGeometry.path)")
-        val bottomChain = drawBlock.indexOf("recordKawasePanelChain(sourceLayer, bottomLayers, plan)")
-        val bottomCrop = drawBlock.indexOf("clipPath(bottomGeometry.path)")
-        assertTrue(topChain >= 0 && topCrop > topChain)
-        assertTrue(bottomChain >= 0 && bottomCrop > bottomChain)
+        val source = blurSource()
+        val topChain = source.indexOf("recordKawasePanelChain(sourceLayer, topLayers, plan)")
+        val topComposite = source.indexOf("layers = topLayers,", topChain)
+        val bottomChain = source.indexOf("recordKawasePanelChain(sourceLayer, bottomLayers, plan)")
+        val bottomComposite = source.indexOf("layers = bottomLayers,", bottomChain)
+        assertTrue(topChain >= 0 && topComposite > topChain)
+        assertTrue(bottomChain >= 0 && bottomComposite > bottomChain)
+        assertTrue(source.contains("clipPath(geometry.localBodyPath)"))
     }
 
-    @Test fun progressivePerPassCroppingAndOldFullResolutionKernelAreGone() {
+    @Test fun progressiveCroppingAndArtifactProneRuntimeShadersAreGone() {
         val source = blurSource()
         assertFalse(source.contains("resolveAdaptiveBlurPassCaptures"))
         assertFalse(source.contains("recordAdaptivePassChain"))
-        assertFalse(source.contains("adaptiveGlassBlur"))
-        assertFalse(source.contains("BLUR_MAX_SAMPLES_PER_PASS"))
-        assertFalse(source.contains("73.0"))
-        assertTrue(source.contains("KAWASE_RESAMPLE_SHADER"))
-        assertTrue(source.contains("KAWASE_COMPOSITE_SHADER"))
+        assertFalse(source.contains("RuntimeShader"))
+        assertFalse(source.contains("KAWASE_RESAMPLE_SHADER"))
+        assertFalse(source.contains("KAWASE_COMPOSITE_SHADER"))
+        assertTrue(source.contains("Shader.TileMode.CLAMP"))
+        assertTrue(source.contains("Shader.TileMode.DECAL"))
     }
 
     @Test fun scrollAndMotionCannotSelectALowerQualityPath() {
@@ -129,10 +128,9 @@ class BackdropBlurTest {
 
     @Test fun effectsAreRememberedAndNotConstructedInsideThePerFrameDrawBlock() {
         val source = blurSource()
-        assertTrue(source.contains("val topEffects = remember(topPlan, topVisual)"))
-        assertTrue(source.contains("val bottomEffects = remember(bottomPlan, bottomVisual)"))
-        val drawBlock = source.substringAfter("measured.drawWithContent {").substringBefore("\n    }\n}")
-        assertFalse(drawBlock.contains("RuntimeShader("))
+        assertTrue(source.contains("val topEffects = remember(topPlan, topVisual, topGeometry)"))
+        assertTrue(source.contains("val bottomEffects = remember(bottomPlan, bottomVisual, bottomGeometry)"))
+        val drawBlock = source.substringAfter("measured.drawWithContent {").substringBefore("if (profilerActive && blurActive)")
         assertFalse(drawBlock.contains("RenderEffect.create"))
         assertFalse(drawBlock.contains("Path()"))
         assertFalse(drawBlock.contains("floatArrayOf("))
@@ -152,36 +150,22 @@ class BackdropBlurTest {
 
     @Test fun edgeSmoothingKeepsTheFullCenteredBandWithoutErodingThePanelBody() {
         assertEquals(34f, resolveSymmetricFeatherHalfSpanPx(68f, 1f, 4f, 200f), .0001f)
-
-        val top = resolveSymmetricFeatherBounds(
-            edge = ArborBlurEdge.TOP,
-            nominalStartPx = 0f,
-            nominalEndPx = 500f,
-            featherSpanPx = 68f,
-            sourceHeightPx = 1_000f,
-        )
+        val top = resolveSymmetricFeatherBounds(ArborBlurEdge.TOP, 0f, 500f, 68f, 1_000f)
         assertEquals(500f, top.bodyEndPx, .0001f)
         assertEquals(534f, top.drawEndPx, .0001f)
-        assertEquals(34f, top.drawEndPx - top.bodyEndPx, .0001f)
-
-        val bottom = resolveSymmetricFeatherBounds(
-            edge = ArborBlurEdge.BOTTOM,
-            nominalStartPx = 500f,
-            nominalEndPx = 1_000f,
-            featherSpanPx = 68f,
-            sourceHeightPx = 1_000f,
-        )
+        val bottom = resolveSymmetricFeatherBounds(ArborBlurEdge.BOTTOM, 500f, 1_000f, 68f, 1_000f)
         assertEquals(466f, bottom.drawStartPx, .0001f)
         assertEquals(500f, bottom.bodyStartPx, .0001f)
-        assertEquals(34f, bottom.bodyStartPx - bottom.drawStartPx, .0001f)
     }
 
-    @Test fun shaderCentersSmoothingOnTheNominalRoundedEdge() {
+    @Test fun edgeSoftnessIsAppliedOnceToTheCombinedPanelLayer() {
         val source = blurSource()
-        assertTrue(source.contains("float signedDistance = panelSignedDistance(coord);"))
-        assertTrue(source.contains("abs(signedDistance) / halfFeather"))
-        assertTrue(source.contains("smoothstep(-halfFeather, halfFeather, signedDistance)"))
-        assertFalse(source.contains("smoothstep(-halfFeather, 0.0, signedDistance)"))
+        assertTrue(source.contains("layers.panelComposite.record(size = geometry.layerSize)"))
+        assertTrue(source.contains("panelComposite.renderEffect = effects?.edgeSoftness"))
+        assertTrue(source.contains("Shader.TileMode.DECAL"))
+        assertEquals(68f / 6f, resolveEdgeBlurRadiusPx(68f), .0001f)
+        assertFalse(source.contains("panelCoverage("))
+        assertFalse(source.contains("signedDistance"))
     }
 
     @Test fun visualConfigurationIsDeterministicForIdenticalGeometryAndSettings() {
@@ -202,42 +186,44 @@ class BackdropBlurTest {
         assertEquals(tint.red, half.red, .0001f)
         assertEquals(tint.green, half.green, .0001f)
         assertEquals(tint.blue, half.blue, .0001f)
-
         val source = blurSource()
-        assertTrue(source.contains("drawPanelTintLayer(topTintLayer, topGeometry, topVisual.tint)"))
-        assertTrue(source.contains("drawPanelTintLayer(bottomTintLayer, bottomGeometry, bottomVisual.tint)"))
-        assertTrue(source.contains("private val PANEL_TINT_SHADER"))
-        assertTrue(source.contains("return tint * coverage;"))
-        assertTrue(source.contains("return half4(blurRgb * blurAlpha, blurAlpha);"))
+        assertTrue(source.contains("color = visual.tint"))
+        assertTrue(source.contains("clipPath(geometry.localBodyPath)"))
+        assertFalse(source.contains("PANEL_TINT_SHADER"))
     }
-
 
     @Test fun tintCompositionIsIndependentOfBlurActivation() {
         val source = blurSource()
-        val topBlurDraw = source.indexOf("if (topActive) {")
-        val topTintDraw = source.indexOf("drawPanelTintLayer(topTintLayer, topGeometry, topVisual.tint)")
-        val bottomBlurDraw = source.indexOf("if (bottomActive) {")
-        val bottomTintDraw = source.indexOf("drawPanelTintLayer(bottomTintLayer, bottomGeometry, bottomVisual.tint)")
-        assertTrue(topBlurDraw >= 0 && topTintDraw > topBlurDraw)
-        assertTrue(bottomBlurDraw >= 0 && bottomTintDraw > bottomBlurDraw)
-        assertTrue(source.contains("val topTintEffect = remember(topGeometry, topVisual.tint)"))
-        assertTrue(source.contains("val bottomTintEffect = remember(bottomGeometry, bottomVisual.tint)"))
+        assertTrue(source.contains("plan = if (topBlurActive) topPlan else null"))
+        assertTrue(source.contains("plan = if (bottomBlurActive) bottomPlan else null"))
+        assertTrue(source.contains("if (visual.tint.alpha > 0f && geometry.bodyExtentPx > 0f)"))
+        assertTrue(source.contains("val topPanelVisible = topBlurActive || topVisual.tint.alpha > 0f"))
+        assertTrue(source.contains("val bottomPanelVisible = bottomBlurActive || bottomVisual.tint.alpha > 0f"))
     }
 
-    @Test fun blurAndTintUseExactlyTheSameSignedDistanceGeometry() {
+    @Test fun blurAndTintUseExactlyTheSamePremultipliedPanelGeometry() {
         val source = blurSource()
-        assertEquals(2, source.split("\$PANEL_SIGNED_DISTANCE_AGSL").size - 1)
-        assertTrue(source.contains("private val PANEL_TINT_SHADER"))
-        assertTrue(source.contains("private val KAWASE_COMPOSITE_SHADER"))
+        assertEquals(1, Regex("panelComposite\\.record\\(").findAll(source).count())
+        assertTrue(source.contains("clipPath(geometry.localBodyPath)"))
+        assertTrue(source.contains("drawLayer(layers.finalFull)"))
+        assertTrue(source.contains("color = visual.tint"))
+        assertFalse(source.contains("PANEL_SIGNED_DISTANCE_AGSL"))
         assertFalse(source.contains("Brush.verticalGradient"))
-        assertFalse(source.contains("fadeBrush"))
     }
 
-    @Test fun transparentKawaseSamplesCannotTurnTheBackdropBlack() {
+    @Test fun transparentSamplesRemainPremultipliedAndCannotBecomeOpaqueBlack() {
         val source = blurSource()
-        assertTrue(source.contains("half4 safeEval(float2 coord, half4 fallback)"))
-        assertTrue(source.contains("sample.a > 0.001 ? sample : fallback"))
-        assertTrue(source.contains("filtered.rgb / alpha"))
+        assertFalse(source.contains("filtered.rgb / alpha"))
+        assertFalse(source.contains("half4(0.0)"))
+        assertFalse(source.contains("RuntimeShader"))
+        assertTrue(source.contains("Shader.TileMode.CLAMP"))
+        assertTrue(source.contains("Blur and tint are recorded into one premultiplied panel layer"))
+    }
+
+    @Test fun deepBlurRadiusUsesTheFixedPyramidScale() {
+        assertEquals(0f, calculateDeepBlurRadiusPx(0f, 3), .0001f)
+        assertEquals(8f, calculateDeepBlurRadiusPx(64f, 3), .0001f)
+        assertEquals(16f, calculateDeepBlurRadiusPx(64f, 2), .0001f)
     }
 
     @Test fun blurRadiusAndTapOffsetRemainContinuousFromZero() {
