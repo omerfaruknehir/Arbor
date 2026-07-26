@@ -1,3 +1,7 @@
+## 0.17.17
+
+- Smooth low edge-softness behavior for gradual blur without changing the glass kernel.
+
 ## 0.17.14
 
 - Replaced Blur and Gradual toggles with exact blur-amount and edge-softness sliders.

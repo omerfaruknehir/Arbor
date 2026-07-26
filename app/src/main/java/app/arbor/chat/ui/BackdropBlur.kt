@@ -72,6 +72,8 @@ class ArborBackdropBlurState internal constructor() {
     internal var bottomCornerRadiusDp by mutableFloatStateOf(DEFAULT_PANEL_CORNER_RADIUS_DP)
     internal var topMergeDp by mutableFloatStateOf(DEFAULT_MERGE_DISTANCE_DP)
     internal var bottomMergeDp by mutableFloatStateOf(DEFAULT_MERGE_DISTANCE_DP)
+    internal var topSoftness by mutableFloatStateOf(0.5f)
+    internal var bottomSoftness by mutableFloatStateOf(0.5f)
     internal var topTint by mutableStateOf(Color.Transparent)
     internal var bottomTint by mutableStateOf(Color.Transparent)
     internal var sourceTopInRootPx by mutableFloatStateOf(0f)
@@ -84,18 +86,21 @@ class ArborBackdropBlurState internal constructor() {
         fadeDp: Float,
         cornerRadiusDp: Float,
         mergeDp: Float,
+        softness: Float,
         tint: Color,
     ) {
         val radius = quantizeBlurRadiusDp(radiusDp)
         val fade = fadeDp.coerceAtLeast(1f)
         val corner = cornerRadiusDp.coerceAtLeast(0f)
         val merge = mergeDp.coerceIn(0f, fade)
+        val normalizedSoftness = softness.coerceIn(0f, 1f)
         when (edge) {
             ArborBlurEdge.TOP -> {
                 if (topRadiusDp != radius) topRadiusDp = radius
                 if (topFadeDp != fade) topFadeDp = fade
                 if (topCornerRadiusDp != corner) topCornerRadiusDp = corner
                 if (topMergeDp != merge) topMergeDp = merge
+                if (topSoftness != normalizedSoftness) topSoftness = normalizedSoftness
                 if (topTint != tint) topTint = tint
             }
             ArborBlurEdge.BOTTOM -> {
@@ -103,6 +108,7 @@ class ArborBackdropBlurState internal constructor() {
                 if (bottomFadeDp != fade) bottomFadeDp = fade
                 if (bottomCornerRadiusDp != corner) bottomCornerRadiusDp = corner
                 if (bottomMergeDp != merge) bottomMergeDp = merge
+                if (bottomSoftness != normalizedSoftness) bottomSoftness = normalizedSoftness
                 if (bottomTint != tint) bottomTint = tint
             }
         }
@@ -132,10 +138,12 @@ class ArborBackdropBlurState internal constructor() {
         when (edge) {
             ArborBlurEdge.TOP -> {
                 topRadiusDp = 0f
+                topSoftness = 0f
                 topTint = Color.Transparent
             }
             ArborBlurEdge.BOTTOM -> {
                 bottomRadiusDp = 0f
+                bottomSoftness = 0f
                 bottomTint = Color.Transparent
                 bottomPanelStartInRootPx = Float.NaN
                 bottomPanelEndInRootPx = Float.NaN
@@ -182,6 +190,8 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
             tint = state.topTint,
             cornerRadiusPx = state.topCornerRadiusDp * density,
             mergeDistancePx = state.topMergeDp * density,
+            softness = state.topSoftness,
+            minimumFeatherPx = MINIMUM_FEATHER_DISTANCE_DP * density,
         )
         drawArborPanelOverlay(
             range = bottomRange,
@@ -189,6 +199,8 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
             tint = state.bottomTint,
             cornerRadiusPx = state.bottomCornerRadiusDp * density,
             mergeDistancePx = state.bottomMergeDp * density,
+            softness = state.bottomSoftness,
+            minimumFeatherPx = MINIMUM_FEATHER_DISTANCE_DP * density,
         )
     }
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || !radiusActive) {
@@ -202,6 +214,8 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         setFloatUniform("uPanelEnd", topRange.endPx, bottomRange.endPx)
         setFloatUniform("uCorner", state.topCornerRadiusDp * density, state.bottomCornerRadiusDp * density)
         setFloatUniform("uMerge", state.topMergeDp * density, state.bottomMergeDp * density)
+        setFloatUniform("uSoftness", state.topSoftness, state.bottomSoftness)
+        setFloatUniform("uMinMerge", MINIMUM_FEATHER_DISTANCE_DP * density)
         setFloatUniform("uMaxBlurRadius", DEFAULT_MAX_RADIUS_DP * density)
         setFloatUniform("uDirection", directionX, directionY)
     }
@@ -211,18 +225,21 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         topRange, bottomRange,
         state.topCornerRadiusDp, state.bottomCornerRadiusDp,
         state.topMergeDp, state.bottomMergeDp,
+        state.topSoftness, state.bottomSoftness,
     ) { buildShader(BLUR_AXIS_A_X, BLUR_AXIS_A_Y) }
     val secondShader = remember(
         topRadiusPx, bottomRadiusPx, contentWidthPx, contentHeightPx,
         topRange, bottomRange,
         state.topCornerRadiusDp, state.bottomCornerRadiusDp,
         state.topMergeDp, state.bottomMergeDp,
+        state.topSoftness, state.bottomSoftness,
     ) { buildShader(BLUR_AXIS_B_X, BLUR_AXIS_B_Y) }
     val thirdShader = remember(
         topRadiusPx, bottomRadiusPx, contentWidthPx, contentHeightPx,
         topRange, bottomRange,
         state.topCornerRadiusDp, state.bottomCornerRadiusDp,
         state.topMergeDp, state.bottomMergeDp,
+        state.topSoftness, state.bottomSoftness,
     ) { buildShader(BLUR_AXIS_C_X, BLUR_AXIS_C_Y) }
     val composeEffect = remember(firstShader, secondShader, thirdShader) {
         val first = RenderEffect.createRuntimeShaderEffect(firstShader, "content")
@@ -242,6 +259,8 @@ private fun DrawScope.drawArborPanelOverlay(
     tint: Color,
     cornerRadiusPx: Float,
     mergeDistancePx: Float,
+    softness: Float,
+    minimumFeatherPx: Float,
 ) {
     if (tint.alpha <= 0f || range.extentPx <= 0f) return
     val panelColor = tint
@@ -250,7 +269,13 @@ private fun DrawScope.drawArborPanelOverlay(
     val extent = end - start
     if (extent <= 0f) return
     val radius = cornerRadiusPx.coerceIn(0f, minOf(size.width / 2f, extent / 2f))
-    val merge = if (mergeDistancePx >= 0.5f) mergeDistancePx.coerceIn(0.5f, extent) else 0f
+    val softnessMix = edgeSoftnessActivation(softness)
+    val merge = resolveFeatherDistancePx(
+        requestedDistancePx = mergeDistancePx,
+        softness = softness,
+        minimumFeatherPx = minimumFeatherPx,
+        maximumDistancePx = extent,
+    )
 
     val panelPath = Path().apply {
         when (edge) {
@@ -293,9 +318,9 @@ private fun DrawScope.drawArborPanelOverlay(
                         brush = Brush.verticalGradient(
                             colorStops = arrayOf(
                                 0f to panelColor,
-                                0.52f to panelColor.copy(alpha = panelColor.alpha * 0.92f),
-                                0.78f to panelColor.copy(alpha = panelColor.alpha * 0.54f),
-                                1f to Color.Transparent,
+                                0.52f to panelColor.copy(alpha = panelColor.alpha * (1f - 0.08f * softnessMix)),
+                                0.78f to panelColor.copy(alpha = panelColor.alpha * (1f - 0.46f * softnessMix)),
+                                1f to panelColor.copy(alpha = panelColor.alpha * (1f - softnessMix)),
                             ),
                             startY = bodyEnd,
                             endY = end,
@@ -313,9 +338,9 @@ private fun DrawScope.drawArborPanelOverlay(
                     drawRect(
                         brush = Brush.verticalGradient(
                             colorStops = arrayOf(
-                                0f to Color.Transparent,
-                                0.22f to panelColor.copy(alpha = panelColor.alpha * 0.54f),
-                                0.48f to panelColor.copy(alpha = panelColor.alpha * 0.92f),
+                                0f to panelColor.copy(alpha = panelColor.alpha * (1f - softnessMix)),
+                                0.22f to panelColor.copy(alpha = panelColor.alpha * (1f - 0.46f * softnessMix)),
+                                0.48f to panelColor.copy(alpha = panelColor.alpha * (1f - 0.08f * softnessMix)),
                                 1f to panelColor,
                             ),
                             startY = start,
@@ -348,6 +373,22 @@ internal fun calculateMergeDistanceDp(
     maximumMergeDp: Float = MAXIMUM_MERGE_DISTANCE_DP,
 ): Float = maximumMergeDp.coerceAtLeast(0f) * edgeSoftness.coerceIn(0f, 1f)
 
+
+internal fun edgeSoftnessActivation(edgeSoftness: Float): Float =
+    arborBlurProgress(edgeSoftness.coerceIn(0f, 1f) / LOW_SOFTNESS_RAMP_END)
+
+internal fun resolveFeatherDistancePx(
+    requestedDistancePx: Float,
+    softness: Float,
+    minimumFeatherPx: Float,
+    maximumDistancePx: Float,
+): Float {
+    val normalized = softness.coerceIn(0f, 1f)
+    if (normalized <= 0f || maximumDistancePx <= 0f) return 0f
+    return maxOf(requestedDistancePx, minimumFeatherPx.coerceAtLeast(0f))
+        .coerceIn(0f, maximumDistancePx)
+}
+
 /** Registers a chrome panel. Blur and tint are rendered together by the source. */
 fun Modifier.arborBackdropBlur(
     state: ArborBackdropBlurState,
@@ -378,6 +419,7 @@ fun Modifier.arborBackdropBlur(
             fadeDp = overlayDistance.value,
             cornerRadiusDp = cornerRadius.value,
             mergeDp = mergeDp,
+            softness = edgeSoftness.coerceIn(0f, 1f),
             tint = applyOverlayOpacity(tint, overlayOpacity),
         )
     }
@@ -403,6 +445,8 @@ private const val DEFAULT_MAX_RADIUS_DP = 56f
 private const val DEFAULT_PANEL_CORNER_RADIUS_DP = 28f
 private const val DEFAULT_MERGE_DISTANCE_DP = 34f
 private const val MAXIMUM_MERGE_DISTANCE_DP = 68f
+private const val MINIMUM_FEATHER_DISTANCE_DP = 4f
+private const val LOW_SOFTNESS_RAMP_END = 0.12f
 private const val DEFAULT_TOP_FADE_DP = 128f
 private const val DEFAULT_BOTTOM_FADE_DP = 208f
 
@@ -458,6 +502,8 @@ private val EDGE_BLUR_SHADER = """
     uniform float2 uPanelEnd;
     uniform float2 uCorner;
     uniform float2 uMerge;
+    uniform float2 uSoftness;
+    uniform float uMinMerge;
     uniform float2 uDirection;
 
     float smoother(float value) {
@@ -847,16 +893,18 @@ private val EDGE_BLUR_SHADER = """
         float topStart = uPanelStart.x;
         float topEnd = uPanelEnd.x;
         float topMask = roundedTopPanelMask(coord, topStart, topEnd, uCorner.x);
-        float topMerge = max(uMerge.x, 1.0);
+        float topSoftnessMix = smoother(uSoftness.x / 0.12);
+        float topMerge = max(max(uMerge.x, uMinMerge), 1.0);
         float topFeather = smoother((topEnd - coord.y) / topMerge);
-        float topMix = topMask * (uMerge.x >= 0.5 ? topFeather : 1.0);
+        float topMix = topMask * mix(1.0, topFeather, topSoftnessMix);
 
         float bottomStart = uPanelStart.y;
         float bottomEnd = uPanelEnd.y;
         float bottomMask = roundedBottomPanelMask(coord, bottomStart, bottomEnd, uCorner.y);
-        float bottomMerge = max(uMerge.y, 1.0);
+        float bottomSoftnessMix = smoother(uSoftness.y / 0.12);
+        float bottomMerge = max(max(uMerge.y, uMinMerge), 1.0);
         float bottomFeather = smoother((coord.y - bottomStart) / bottomMerge);
-        float bottomMix = bottomMask * (uMerge.y >= 0.5 ? bottomFeather : 1.0);
+        float bottomMix = bottomMask * mix(1.0, bottomFeather, bottomSoftnessMix);
 
         float radius = max(uBlur.x * topMix, uBlur.y * bottomMix);
         if (radius < 0.35) return content.eval(coord);

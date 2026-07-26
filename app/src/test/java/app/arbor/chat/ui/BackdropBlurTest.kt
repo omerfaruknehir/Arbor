@@ -31,6 +31,18 @@ class BackdropBlurTest {
         assertEquals(68f, calculateMergeDistanceDp(1f), .0001f)
     }
 
+    @Test fun lowEdgeSoftnessRampsContinuouslyWithoutANarrowFeatherSpike() {
+        assertEquals(0f, edgeSoftnessActivation(0f), .0001f)
+        assertTrue(edgeSoftnessActivation(.02f) > 0f)
+        assertTrue(edgeSoftnessActivation(.02f) < edgeSoftnessActivation(.06f))
+        assertTrue(edgeSoftnessActivation(.06f) < edgeSoftnessActivation(.12f))
+        assertEquals(1f, edgeSoftnessActivation(.12f), .0001f)
+
+        assertEquals(0f, resolveFeatherDistancePx(0f, 0f, 4f, 100f), .0001f)
+        assertEquals(4f, resolveFeatherDistancePx(1f, .02f, 4f, 100f), .0001f)
+        assertEquals(12f, resolveFeatherDistancePx(12f, .20f, 4f, 100f), .0001f)
+    }
+
     @Test fun topPanelPreservesTheKnownCorrectSourceGeometry() {
         assertEquals(ArborPanelRange(0f, 128f), resolveTopPanelRange(900f, 128f))
         assertEquals(ArborPanelRange(0f, 90f), resolveTopPanelRange(90f, 128f))
