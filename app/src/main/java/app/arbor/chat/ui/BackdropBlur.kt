@@ -19,8 +19,6 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asComposeRenderEffect
@@ -313,6 +311,8 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
     val sourceLayer = rememberGraphicsLayer()
     val topLayers = rememberKawaseLayers()
     val bottomLayers = rememberKawaseLayers()
+    val topTintLayer = rememberGraphicsLayer()
+    val bottomTintLayer = rememberGraphicsLayer()
 
     val topEffects = remember(topPlan, topVisual) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -324,9 +324,21 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
             bottomPlan?.let { buildKawaseEffects(it, bottomVisual) }
         } else null
     }
+    val topTintEffect = remember(topGeometry, topVisual.tint) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && topVisual.tint.alpha > 0f) {
+            buildPanelTintEffect(topGeometry, topVisual)
+        } else null
+    }
+    val bottomTintEffect = remember(bottomGeometry, bottomVisual.tint) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && bottomVisual.tint.alpha > 0f) {
+            buildPanelTintEffect(bottomGeometry, bottomVisual)
+        } else null
+    }
     SideEffect {
         topLayers.applyEffects(topEffects)
         bottomLayers.applyEffects(bottomEffects)
+        topTintLayer.renderEffect = topTintEffect
+        bottomTintLayer.renderEffect = bottomTintEffect
     }
 
     measured.drawWithContent {
@@ -394,7 +406,11 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
                 layerReplays++
             }
         }
-        drawPanelTintOverlay(topGeometry, topVisual.tint)
+        if (topTintEffect != null) {
+            drawPanelTintLayer(topTintLayer, topGeometry, topVisual.tint)
+        } else {
+            drawPanelTintFallback(topGeometry, topVisual.tint)
+        }
 
         if (bottomActive) {
             val plan = requireNotNull(bottomPlan)
@@ -407,7 +423,11 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
                 layerReplays++
             }
         }
-        drawPanelTintOverlay(bottomGeometry, bottomVisual.tint)
+        if (bottomTintEffect != null) {
+            drawPanelTintLayer(bottomTintLayer, bottomGeometry, bottomVisual.tint)
+        } else {
+            drawPanelTintFallback(bottomGeometry, bottomVisual.tint)
+        }
 
         if (profilerActive && blurActive) {
             ArborRenderProfiler.recordBlurFrame(
@@ -596,12 +616,21 @@ private data class GlassVisualConfig(
 private data class PanelGeometry(
     val path: Path,
     val bodyPath: Path,
+    val widthPx: Float,
     val startPx: Float,
     val endPx: Float,
     val bodyStartPx: Float,
     val bodyEndPx: Float,
-    val fadeBrush: Brush?,
-)
+    val cornerRadiusPx: Float,
+    val featherDistancePx: Float,
+    val edge: ArborBlurEdge,
+) {
+    val extentPx: Float get() = (endPx - startPx).coerceAtLeast(0f)
+    val layerSize: IntSize get() = IntSize(
+        width = ceil(widthPx.coerceAtLeast(1f)).toInt().coerceAtLeast(1),
+        height = ceil(extentPx.coerceAtLeast(1f)).toInt().coerceAtLeast(1),
+    )
+}
 
 private fun buildPanelGeometry(widthPx: Float, heightPx: Float, visual: GlassVisualConfig): PanelGeometry {
     val nominalStart = visual.range.startPx.coerceIn(0f, heightPx)
@@ -679,65 +708,59 @@ private fun buildPanelGeometry(widthPx: Float, heightPx: Float, visual: GlassVis
             )
         }
     }
-    val fadeBrush = if (featherSpan > 0f && visual.tint.alpha > 0f) {
-        when (visual.edge) {
-            ArborBlurEdge.TOP -> Brush.verticalGradient(
-                0f to visual.tint,
-                0.5f to visual.tint.copy(alpha = visual.tint.alpha * 0.5f),
-                1f to visual.tint.copy(alpha = 0f),
-                startY = bounds.bodyEndPx,
-                endY = bounds.drawEndPx,
-            )
-            ArborBlurEdge.BOTTOM -> Brush.verticalGradient(
-                0f to visual.tint.copy(alpha = 0f),
-                0.5f to visual.tint.copy(alpha = visual.tint.alpha * 0.5f),
-                1f to visual.tint,
-                startY = bounds.drawStartPx,
-                endY = bounds.bodyStartPx,
-            )
-        }
-    } else null
     return PanelGeometry(
         path = path,
         bodyPath = bodyPath,
+        widthPx = widthPx,
         startPx = bounds.drawStartPx,
         endPx = bounds.drawEndPx,
         bodyStartPx = bounds.bodyStartPx,
         bodyEndPx = bounds.bodyEndPx,
-        fadeBrush = fadeBrush,
+        cornerRadiusPx = nominalRadius,
+        featherDistancePx = featherSpan,
+        edge = visual.edge,
     )
 }
 
-private fun DrawScope.drawPanelTintOverlay(geometry: PanelGeometry, tint: Color) {
-    if (tint.alpha <= 0f || geometry.endPx <= geometry.startPx) return
+private fun DrawScope.drawPanelTintLayer(
+    layer: GraphicsLayer,
+    geometry: PanelGeometry,
+    tint: Color,
+) {
+    if (tint.alpha <= 0f || geometry.extentPx <= 0f) return
+    layer.record(size = geometry.layerSize) { drawRect(color = tint) }
+    clipPath(geometry.path) {
+        translate(0f, geometry.startPx) { drawLayer(layer) }
+    }
+}
 
-    // The nominal rounded body is always drawn at the exact requested opacity.
-    // Softness never erodes this region, so 100% is genuinely opaque and the
-    // panel edge cannot move inward as the smoothing band grows.
+/** API 26-32 fallback. API 33+ uses the same AGSL signed-distance mask as blur. */
+private fun DrawScope.drawPanelTintFallback(geometry: PanelGeometry, tint: Color) {
+    if (tint.alpha <= 0f || geometry.bodyEndPx <= geometry.bodyStartPx) return
     clipPath(geometry.bodyPath) {
         drawRect(
             color = tint,
             topLeft = Offset(0f, geometry.bodyStartPx),
-            size = Size(size.width, geometry.bodyEndPx - geometry.bodyStartPx),
+            size = androidx.compose.ui.geometry.Size(size.width, geometry.bodyEndPx - geometry.bodyStartPx),
         )
     }
+}
 
-    val fringe = geometry.fadeBrush ?: return
-    clipPath(geometry.path) {
-        if (geometry.bodyEndPx < geometry.endPx) {
-            drawRect(
-                brush = fringe,
-                topLeft = Offset(0f, geometry.bodyEndPx),
-                size = Size(size.width, geometry.endPx - geometry.bodyEndPx),
-            )
-        } else if (geometry.startPx < geometry.bodyStartPx) {
-            drawRect(
-                brush = fringe,
-                topLeft = Offset(0f, geometry.startPx),
-                size = Size(size.width, geometry.bodyStartPx - geometry.startPx),
-            )
-        }
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+private fun buildPanelTintEffect(
+    geometry: PanelGeometry,
+    visual: GlassVisualConfig,
+): androidx.compose.ui.graphics.RenderEffect {
+    ArborRenderProfiler.recordBlurEffectBuild(1)
+    val shader = RuntimeShader(PANEL_TINT_SHADER).apply {
+        setFloatUniform("uSize", geometry.widthPx, geometry.extentPx)
+        setFloatUniform("uPanelStart", geometry.bodyStartPx - geometry.startPx)
+        setFloatUniform("uPanelEnd", geometry.bodyEndPx - geometry.startPx)
+        setFloatUniform("uCorner", geometry.cornerRadiusPx)
+        setFloatUniform("uMerge", geometry.featherDistancePx)
+        setFloatUniform("uEdge", if (visual.edge == ArborBlurEdge.TOP) 0f else 1f)
     }
+    return RenderEffect.createRuntimeShaderEffect(shader, "content").asComposeRenderEffect()
 }
 
 private data class KawaseEffects(
@@ -889,7 +912,7 @@ internal fun resolveSymmetricFeatherBounds(
     }
 }
 
-/** Registers a chrome panel. Blur and tint are rendered together by the source. */
+/** Registers a chrome panel. Blur and tint share one signed-distance panel geometry. */
 fun Modifier.arborBackdropBlur(
     state: ArborBackdropBlurState,
     strength: Float,
@@ -966,71 +989,7 @@ internal const val KAWASE_MAX_TAP_OFFSET_PX = 2.65f
 internal const val KAWASE_MAX_LEVELS = 3
 private val KAWASE_LEVEL_ANGLES = floatArrayOf(0.19634955f, 0.5890486f, 0.9817477f, 1.3744467f)
 
-private val KAWASE_RESAMPLE_SHADER = """
-    uniform shader content;
-    uniform float uOffset;
-    uniform float2 uAxisX;
-    uniform float2 uAxisY;
-    uniform float uCenterWeight;
-    uniform float uCardinalWeight;
-    uniform float uDiagonalWeight;
-
-    half4 main(float2 coord) {
-        float2 dx = uAxisX * uOffset;
-        float2 dy = uAxisY * uOffset;
-        half4 sum = content.eval(coord) * uCenterWeight;
-        sum += content.eval(coord + dx) * uCardinalWeight;
-        sum += content.eval(coord - dx) * uCardinalWeight;
-        sum += content.eval(coord + dy) * uCardinalWeight;
-        sum += content.eval(coord - dy) * uCardinalWeight;
-        sum += content.eval(coord + dx + dy) * uDiagonalWeight;
-        sum += content.eval(coord + dx - dy) * uDiagonalWeight;
-        sum += content.eval(coord - dx + dy) * uDiagonalWeight;
-        sum += content.eval(coord - dx - dy) * uDiagonalWeight;
-        float weight = uCenterWeight + 4.0 * uCardinalWeight + 4.0 * uDiagonalWeight;
-        return sum / weight;
-    }
-""".trimIndent()
-
-private val KAWASE_COMPOSITE_SHADER = """
-    uniform shader content;
-    uniform float uOffset;
-    uniform float2 uAxisX;
-    uniform float2 uAxisY;
-    uniform float2 uSize;
-    uniform float uPanelStart;
-    uniform float uPanelEnd;
-    uniform float uCorner;
-    uniform float uMerge;
-    uniform float uSoftness;
-    uniform float uBlurMix;
-    uniform float uEdge;
-    uniform float uSaturation;
-    uniform float uContrast;
-    uniform float uBrightness;
-    uniform float uEdgeHighlight;
-
-    float smoother(float value) {
-        float x = saturate(value);
-        return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
-    }
-
-    half4 tent(float2 coord, float edgeProfile) {
-        float edgeScale = 1.0 + edgeProfile * uSoftness * 0.45;
-        float2 dx = uAxisX * uOffset * edgeScale;
-        float2 dy = uAxisY * uOffset * edgeScale;
-        half4 sum = content.eval(coord) * 2.5;
-        sum += content.eval(coord + dx) * 1.35;
-        sum += content.eval(coord - dx) * 1.35;
-        sum += content.eval(coord + dy) * 1.35;
-        sum += content.eval(coord - dy) * 1.35;
-        sum += content.eval(coord + dx + dy) * 0.75;
-        sum += content.eval(coord + dx - dy) * 0.75;
-        sum += content.eval(coord - dx + dy) * 0.75;
-        sum += content.eval(coord - dx - dy) * 0.75;
-        return sum / 10.9;
-    }
-
+private const val PANEL_SIGNED_DISTANCE_AGSL = """
     float panelSignedDistance(float2 coord) {
         float extent = uPanelEnd - uPanelStart;
         float radius = clamp(uCorner, 0.0, min(uSize.x * 0.5, extent * 0.5));
@@ -1054,21 +1013,124 @@ private val KAWASE_COMPOSITE_SHADER = """
         return coord.y - uPanelStart;
     }
 
+    float panelCoverage(float signedDistance) {
+        float halfFeather = max(uMerge * 0.5, 0.0);
+        return halfFeather < 0.5
+            ? smoothstep(-0.8, 0.8, signedDistance)
+            : smoothstep(-halfFeather, halfFeather, signedDistance);
+    }
+"""
+
+private val KAWASE_RESAMPLE_SHADER = """
+    uniform shader content;
+    uniform float uOffset;
+    uniform float2 uAxisX;
+    uniform float2 uAxisY;
+    uniform float uCenterWeight;
+    uniform float uCardinalWeight;
+    uniform float uDiagonalWeight;
+
+    half4 safeEval(float2 coord, half4 fallback) {
+        half4 sample = content.eval(coord);
+        return sample.a > 0.001 ? sample : fallback;
+    }
+
+    half4 main(float2 coord) {
+        float2 dx = uAxisX * uOffset;
+        float2 dy = uAxisY * uOffset;
+        half4 center = content.eval(coord);
+        if (center.a <= 0.001) return center;
+        half4 sum = center * uCenterWeight;
+        sum += safeEval(coord + dx, center) * uCardinalWeight;
+        sum += safeEval(coord - dx, center) * uCardinalWeight;
+        sum += safeEval(coord + dy, center) * uCardinalWeight;
+        sum += safeEval(coord - dy, center) * uCardinalWeight;
+        sum += safeEval(coord + dx + dy, center) * uDiagonalWeight;
+        sum += safeEval(coord + dx - dy, center) * uDiagonalWeight;
+        sum += safeEval(coord - dx + dy, center) * uDiagonalWeight;
+        sum += safeEval(coord - dx - dy, center) * uDiagonalWeight;
+        float weight = uCenterWeight + 4.0 * uCardinalWeight + 4.0 * uDiagonalWeight;
+        return sum / weight;
+    }
+""".trimIndent()
+
+private val PANEL_TINT_SHADER = """
+    uniform shader content;
+    uniform float2 uSize;
+    uniform float uPanelStart;
+    uniform float uPanelEnd;
+    uniform float uCorner;
+    uniform float uMerge;
+    uniform float uEdge;
+
+    $PANEL_SIGNED_DISTANCE_AGSL
+
+    half4 main(float2 coord) {
+        half4 tint = content.eval(coord);
+        float coverage = panelCoverage(panelSignedDistance(coord));
+        return tint * coverage;
+    }
+""".trimIndent()
+
+private val KAWASE_COMPOSITE_SHADER = """
+    uniform shader content;
+    uniform float uOffset;
+    uniform float2 uAxisX;
+    uniform float2 uAxisY;
+    uniform float2 uSize;
+    uniform float uPanelStart;
+    uniform float uPanelEnd;
+    uniform float uCorner;
+    uniform float uMerge;
+    uniform float uSoftness;
+    uniform float uBlurMix;
+    uniform float uEdge;
+    uniform float uSaturation;
+    uniform float uContrast;
+    uniform float uBrightness;
+    uniform float uEdgeHighlight;
+
+    $PANEL_SIGNED_DISTANCE_AGSL
+
+    float smoother(float value) {
+        float x = saturate(value);
+        return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
+    }
+
+    half4 safeEval(float2 coord, half4 fallback) {
+        half4 sample = content.eval(coord);
+        return sample.a > 0.001 ? sample : fallback;
+    }
+
+    half4 tent(float2 coord, float edgeProfile) {
+        float edgeScale = 1.0 + edgeProfile * uSoftness * 0.45;
+        float2 dx = uAxisX * uOffset * edgeScale;
+        float2 dy = uAxisY * uOffset * edgeScale;
+        half4 center = content.eval(coord);
+        if (center.a <= 0.001) return half4(0.0);
+        half4 sum = center * 2.5;
+        sum += safeEval(coord + dx, center) * 1.35;
+        sum += safeEval(coord - dx, center) * 1.35;
+        sum += safeEval(coord + dy, center) * 1.35;
+        sum += safeEval(coord - dy, center) * 1.35;
+        sum += safeEval(coord + dx + dy, center) * 0.75;
+        sum += safeEval(coord + dx - dy, center) * 0.75;
+        sum += safeEval(coord - dx + dy, center) * 0.75;
+        sum += safeEval(coord - dx - dy, center) * 0.75;
+        half4 filtered = sum / 10.9;
+        float alpha = max(float(filtered.a), 0.001);
+        return half4(filtered.rgb / alpha, 1.0);
+    }
+
     half4 main(float2 coord) {
         float signedDistance = panelSignedDistance(coord);
         float halfFeather = max(uMerge * 0.5, 0.0);
-        float hardMask = smoothstep(-0.8, 0.8, signedDistance);
+        float panelMask = panelCoverage(signedDistance);
+        if (panelMask <= 0.001) return half4(0.0);
 
-        // Softness is centered on the nominal edge as a sampling/smoothing band.
-        // The panel body is never faded away: only the outward extension loses alpha.
         float edgeProfile = halfFeather < 0.5
             ? 0.0
             : 1.0 - smoother(abs(signedDistance) / halfFeather);
-        float panelMask = uSoftness <= 0.0001 || halfFeather < 0.5
-            ? hardMask
-            : smoothstep(-halfFeather, 0.0, signedDistance);
-        if (panelMask <= 0.001) return half4(0.0);
-
         float edgeDistance = max(signedDistance, 0.0);
         float3 blurRgb = float3(tent(coord, edgeProfile).rgb);
         float luma = dot(blurRgb, float3(0.2126, 0.7152, 0.0722));
@@ -1080,9 +1142,6 @@ private val KAWASE_COMPOSITE_SHADER = """
         blurRgb += highlightBand * uEdgeHighlight;
         blurRgb = clamp(blurRgb, 0.0, 1.0);
 
-        // Blur contribution is composited over the sharp source. Tint is drawn
-        // afterward in a separate Compose pass so its opacity and nominal body
-        // geometry are identical at zero and nonzero blur strengths.
         float blurAlpha = panelMask * saturate(uBlurMix);
         return half4(blurRgb * blurAlpha, blurAlpha);
     }

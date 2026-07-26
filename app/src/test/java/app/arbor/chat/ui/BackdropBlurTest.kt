@@ -176,13 +176,12 @@ class BackdropBlurTest {
         assertEquals(34f, bottom.bodyStartPx - bottom.drawStartPx, .0001f)
     }
 
-    @Test fun shaderCentersSmoothingAtTheEdgeButNeverFadesTheInsideBody() {
+    @Test fun shaderCentersSmoothingOnTheNominalRoundedEdge() {
         val source = blurSource()
         assertTrue(source.contains("float signedDistance = panelSignedDistance(coord);"))
         assertTrue(source.contains("abs(signedDistance) / halfFeather"))
-        assertTrue(source.contains("smoothstep(-halfFeather, 0.0, signedDistance)"))
-        assertFalse(source.contains("smoothstep(-halfFeather, halfFeather, signedDistance)"))
-        assertTrue(source.contains("The panel body is never faded away"))
+        assertTrue(source.contains("smoothstep(-halfFeather, halfFeather, signedDistance)"))
+        assertFalse(source.contains("smoothstep(-halfFeather, 0.0, signedDistance)"))
     }
 
     @Test fun visualConfigurationIsDeterministicForIdenticalGeometryAndSettings() {
@@ -205,12 +204,10 @@ class BackdropBlurTest {
         assertEquals(tint.blue, half.blue, .0001f)
 
         val source = blurSource()
-        assertTrue(source.contains("drawPanelTintOverlay(topGeometry, topVisual.tint)"))
-        assertTrue(source.contains("drawPanelTintOverlay(bottomGeometry, bottomVisual.tint)"))
-        assertTrue(source.contains("clipPath(geometry.bodyPath)"))
-        assertTrue(source.contains("The nominal rounded body is always drawn at the exact requested opacity"))
-        assertFalse(source.contains("uniform float4 uTint;"))
-        assertFalse(source.contains("setFloatUniform(\"uTint\""))
+        assertTrue(source.contains("drawPanelTintLayer(topTintLayer, topGeometry, topVisual.tint)"))
+        assertTrue(source.contains("drawPanelTintLayer(bottomTintLayer, bottomGeometry, bottomVisual.tint)"))
+        assertTrue(source.contains("private val PANEL_TINT_SHADER"))
+        assertTrue(source.contains("return tint * coverage;"))
         assertTrue(source.contains("return half4(blurRgb * blurAlpha, blurAlpha);"))
     }
 
@@ -218,13 +215,29 @@ class BackdropBlurTest {
     @Test fun tintCompositionIsIndependentOfBlurActivation() {
         val source = blurSource()
         val topBlurDraw = source.indexOf("if (topActive) {")
-        val topTintDraw = source.indexOf("drawPanelTintOverlay(topGeometry, topVisual.tint)")
+        val topTintDraw = source.indexOf("drawPanelTintLayer(topTintLayer, topGeometry, topVisual.tint)")
         val bottomBlurDraw = source.indexOf("if (bottomActive) {")
-        val bottomTintDraw = source.indexOf("drawPanelTintOverlay(bottomGeometry, bottomVisual.tint)")
+        val bottomTintDraw = source.indexOf("drawPanelTintLayer(bottomTintLayer, bottomGeometry, bottomVisual.tint)")
         assertTrue(topBlurDraw >= 0 && topTintDraw > topBlurDraw)
         assertTrue(bottomBlurDraw >= 0 && bottomTintDraw > bottomBlurDraw)
-        assertTrue(source.contains("        }\n        drawPanelTintOverlay(topGeometry, topVisual.tint)"))
-        assertTrue(source.contains("        }\n        drawPanelTintOverlay(bottomGeometry, bottomVisual.tint)"))
+        assertTrue(source.contains("val topTintEffect = remember(topGeometry, topVisual.tint)"))
+        assertTrue(source.contains("val bottomTintEffect = remember(bottomGeometry, bottomVisual.tint)"))
+    }
+
+    @Test fun blurAndTintUseExactlyTheSameSignedDistanceGeometry() {
+        val source = blurSource()
+        assertEquals(2, source.split("\$PANEL_SIGNED_DISTANCE_AGSL").size - 1)
+        assertTrue(source.contains("private val PANEL_TINT_SHADER"))
+        assertTrue(source.contains("private val KAWASE_COMPOSITE_SHADER"))
+        assertFalse(source.contains("Brush.verticalGradient"))
+        assertFalse(source.contains("fadeBrush"))
+    }
+
+    @Test fun transparentKawaseSamplesCannotTurnTheBackdropBlack() {
+        val source = blurSource()
+        assertTrue(source.contains("half4 safeEval(float2 coord, half4 fallback)"))
+        assertTrue(source.contains("sample.a > 0.001 ? sample : fallback"))
+        assertTrue(source.contains("filtered.rgb / alpha"))
     }
 
     @Test fun blurRadiusAndTapOffsetRemainContinuousFromZero() {

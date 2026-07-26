@@ -666,3 +666,51 @@ Arbor 0.18.0 uses `versionCode 105`, preserves `app.arbor.chat.debug`, and retai
 - Main manifest and all exported Room schema files were byte-identical to the 0.17.27 source baseline.
 - No device-side sustained-FPS, thermal, battery, or final visual-quality claim is made without installing this APK on the Galaxy S23+.
 
+
+## 0.18.1: unified panel geometry and transparent-sample repair
+
+### Why the softened overlay and blur had different shapes
+
+Arbor 0.18.0 still used two independent geometry implementations:
+
+- blur coverage came from an AGSL signed-distance function for the nominal rounded panel;
+- overlay coverage came from a Compose `bodyPath` plus a vertical fringe gradient clipped by a separately expanded rounded path.
+
+Those implementations agreed along the straight horizontal edge but diverged around rounded corners. Increasing edge softness also changed the expanded path radius while the vertical gradient remained one-dimensional, so the softened tint could not match the blur mask.
+
+**Final rule:** blur and overlay must not approximate each other. Both shaders interpolate the same `PANEL_SIGNED_DISTANCE_AGSL` source and call the same `panelCoverage` function. The nominal rounded edge is `signedDistance == 0`, and the full softness span is centered with `smoothstep(-halfFeather, halfFeather, signedDistance)`.
+
+The outer Compose path now serves only as a conservative clip for the common signed-distance result. It does not define a separate visual fade. API 33+ tint is rendered through a panel-local solid-color graphics layer with `PANEL_TINT_SHADER`; API 26–32 retain a hard nominal-body fallback because RuntimeShader is unavailable.
+
+### Why blur could turn the backdrop black
+
+Kawase taps outside a recorded layer return transparent black. The previous passes averaged premultiplied RGB with those invalid samples and the final shader then read the darkened RGB without compensating for alpha. This was most visible near capture and screen boundaries, but repeated downsample/upsample passes could spread it farther into the panel.
+
+**Repair:**
+
+- Every resample and final tent pass uses `safeEval`.
+- A tap whose alpha is effectively zero falls back to the valid center sample instead of contributing black.
+- The final tent result is un-premultiplied with `filtered.rgb / alpha` before color adjustment.
+- The blur layer remains premultiplied only at final composition, using the shared panel coverage and blur contribution.
+
+Do not solve this by adding a gray/white tint, increasing overlay opacity, or shrinking the capture. Those hide the symptom and destroy underlying color fidelity.
+
+### Edge-softness semantics
+
+- The stored 0–1 setting still maps to the complete 0–68 dp span.
+- Half of that span lies inside and half outside the nominal signed-distance boundary.
+- At the nominal edge, blur and tint coverage are both 0.5 when softness is active.
+- Deep inside the panel, coverage reaches 1.0; beyond the outward half-span, coverage reaches 0.0.
+- Rounded corners, straight edges, blur, tint, and highlight all use the same signed distance.
+
+### 0.18.1 verification outcome
+
+- Release identity: `versionName 0.18.1`, `versionCode 106`.
+- Full unit suite: 36 suites, 217 tests, 0 failures, 0 errors, 0 skipped.
+- Android lint: 0 errors, 12 warnings.
+- Debug instrumentation Kotlin compilation: passed.
+- APK assembly: passed with one packaging worker after stopping retained Gradle daemons.
+- Package: `app.arbor.chat.debug`; min SDK 26; target/compile SDK 35.
+- ZIP alignment and APK Signature Scheme v2 verification: passed.
+- Debug certificate SHA-256 remains `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`, identical to 0.18.0.
+- Runtime AGSL output still requires installation on the Galaxy S23+ for final visual confirmation. Host unit tests and APK verification cannot prove device GPU-driver rendering.
