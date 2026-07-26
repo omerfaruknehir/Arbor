@@ -45,7 +45,7 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
         (developerSettings.performanceOverlayEnabled || developerSettings.diagnosticProfilerEnabled)
     val drawerState = rememberInteractiveDrawerState()
     val snackbar = remember { SnackbarHostState() }
-    val openDrawer = { drawerState.open(); Unit }
+    val openDrawer = remember(drawerState) { { drawerState.open(); Unit } }
 
     DisposableEffect(
         performanceMonitor,
@@ -81,17 +81,24 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
         }
     }
 
-    BackHandler(enabled = drawerState.isVisible) { drawerState.close() }
+    val drawerVisible = drawerState.isVisible
+    BackHandler(enabled = drawerVisible) { drawerState.close() }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 840.dp
-        val screenContent: @Composable (Screen) -> Unit = { destination ->
-            when (destination) {
-                Screen.CHAT -> ChatScreen(viewModel, if (wide) null else openDrawer)
-                Screen.SEARCH -> SearchScreen(viewModel, if (wide) null else openDrawer)
-                Screen.SETTINGS -> SettingsScreen(viewModel, if (wide) null else openDrawer)
-                Screen.SANDBOX -> SandboxScreen(viewModel)
-                Screen.TERMINAL -> LinuxTerminalScreen(viewModel)
+        val compactOpenDrawer = if (wide) null else openDrawer
+        // Keep this function object stable. PredictiveNavigationHost stores it in
+        // rememberUpdatedState; recreating it on every root update invalidated all
+        // kept-alive page slots, including the parked Chat tree.
+        val screenContent: @Composable (Screen) -> Unit = remember(viewModel, compactOpenDrawer) {
+            { destination ->
+                when (destination) {
+                    Screen.CHAT -> ChatScreen(viewModel, compactOpenDrawer)
+                    Screen.SEARCH -> SearchScreen(viewModel, compactOpenDrawer)
+                    Screen.SETTINGS -> SettingsScreen(viewModel, compactOpenDrawer)
+                    Screen.SANDBOX -> SandboxScreen(viewModel)
+                    Screen.TERMINAL -> LinuxTerminalScreen(viewModel)
+                }
             }
         }
         val content: @Composable () -> Unit = {
@@ -103,7 +110,7 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
                 // Once a closing drawer is no longer visible, page Back must immediately
                 // take ownership. Waiting for its spring job to finish creates a gap where
                 // Android can fall through to Activity exit.
-                backEnabled = pageBackEnabled(drawerState.isVisible),
+                backEnabled = pageBackEnabled(drawerVisible),
                 keepAlive = { it == Screen.CHAT },
                 modifier = Modifier.fillMaxSize(),
                 label = "ArborPageNavigation",

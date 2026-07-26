@@ -3,6 +3,7 @@ package app.arbor.chat.ui
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
 import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
@@ -25,11 +26,14 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import kotlin.math.ceil
@@ -155,12 +159,27 @@ class ArborBackdropBlurState internal constructor() {
 @Composable
 fun rememberArborBackdropBlurState(): ArborBackdropBlurState = remember { ArborBackdropBlurState() }
 
-/** Applies the 0.17.8 glass blur and paints its overlays in the same coordinates. */
+/**
+ * Preserves the 0.17.18 adaptive glass shader while filtering only the pixels
+ * which can contribute to the visible top and bottom panels.
+ *
+ * Each edge uses the original three directions and the original adaptive
+ * 1..73-sample shader. The passes are recorded into progressively smaller,
+ * full-resolution layers:
+ *
+ *  1. pass A: panel + A/B/C vertical support
+ *  2. pass B: panel + B/C support
+ *  3. pass C: panel + C support
+ *
+ * This is mathematically the same dependency region as the old full-screen
+ * chain. It avoids filtering unrelated chat pixels and records Compose content
+ * only once per invalidated frame. Quality never changes because of scrolling,
+ * navigation, velocity, FPS, battery state, or thermal state.
+ */
 fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = composed {
     val density = LocalDensity.current.density
     val topRadiusPx = state.topRadiusDp * density
     val bottomRadiusPx = state.bottomRadiusDp * density
-    val radiusActive = topRadiusPx >= MIN_VISIBLE_RADIUS_PX || bottomRadiusPx >= MIN_VISIBLE_RADIUS_PX
 
     var contentWidthPx by remember { mutableFloatStateOf(0f) }
     var contentHeightPx by remember { mutableFloatStateOf(0f) }
@@ -181,12 +200,170 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         sourceHeightPx = contentHeightPx,
         fallbackExtentPx = state.bottomFadeDp * density,
     )
+    val topCaptures = resolveAdaptiveBlurPassCaptures(topRange, contentHeightPx, topRadiusPx)
+    val bottomCaptures = resolveAdaptiveBlurPassCaptures(bottomRange, contentHeightPx, bottomRadiusPx)
 
-    val overlayModifier = measured.drawWithContent {
-        val profilerActive = ArborRenderProfiler.enabled && radiusActive &&
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-        val profilerStarted = if (profilerActive) System.nanoTime() else 0L
-        drawContent()
+    val sourceLayer = rememberGraphicsLayer()
+    val topPassA = rememberGraphicsLayer()
+    val topPassB = rememberGraphicsLayer()
+    val topPassC = rememberGraphicsLayer()
+    val bottomPassA = rememberGraphicsLayer()
+    val bottomPassB = rememberGraphicsLayer()
+    val bottomPassC = rememberGraphicsLayer()
+
+    val topEffects = remember(
+        topCaptures,
+        topRange,
+        topRadiusPx,
+        contentWidthPx,
+        state.topCornerRadiusDp,
+        state.topMergeDp,
+        state.topSoftness,
+        density,
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) topCaptures?.let {
+            buildAdaptiveStripPassEffects(
+                captures = it,
+                panelRange = topRange,
+                radiusPx = topRadiusPx,
+                sourceWidthPx = contentWidthPx,
+                cornerRadiusPx = state.topCornerRadiusDp * density,
+                mergeDistancePx = state.topMergeDp * density,
+                softness = state.topSoftness,
+                maxBlurRadiusPx = DEFAULT_MAX_RADIUS_DP * density,
+                minimumMergePx = MINIMUM_FEATHER_DISTANCE_DP * density,
+                edge = ArborBlurEdge.TOP,
+            )
+        } else null
+    }
+    val bottomEffects = remember(
+        bottomCaptures,
+        bottomRange,
+        bottomRadiusPx,
+        contentWidthPx,
+        state.bottomCornerRadiusDp,
+        state.bottomMergeDp,
+        state.bottomSoftness,
+        density,
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) bottomCaptures?.let {
+            buildAdaptiveStripPassEffects(
+                captures = it,
+                panelRange = bottomRange,
+                radiusPx = bottomRadiusPx,
+                sourceWidthPx = contentWidthPx,
+                cornerRadiusPx = state.bottomCornerRadiusDp * density,
+                mergeDistancePx = state.bottomMergeDp * density,
+                softness = state.bottomSoftness,
+                maxBlurRadiusPx = DEFAULT_MAX_RADIUS_DP * density,
+                minimumMergePx = MINIMUM_FEATHER_DISTANCE_DP * density,
+                edge = ArborBlurEdge.BOTTOM,
+            )
+        } else null
+    }
+    SideEffect {
+        topPassA.renderEffect = topEffects?.passA
+        topPassB.renderEffect = topEffects?.passB
+        topPassC.renderEffect = topEffects?.passC
+        bottomPassA.renderEffect = bottomEffects?.passA
+        bottomPassB.renderEffect = bottomEffects?.passB
+        bottomPassC.renderEffect = bottomEffects?.passC
+    }
+
+    measured.drawWithContent {
+        val topActive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            topCaptures != null && topEffects != null
+        val bottomActive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            bottomCaptures != null && bottomEffects != null
+        val blurActive = topActive || bottomActive
+        val profilerActive = ArborRenderProfiler.enabled
+        var blurCpuNanos = 0L
+        var filteredPixels = 0L
+        var layerReplays = 0
+
+        if (blurActive) {
+            val sourceSize = IntSize(
+                width = size.width.roundToInt().coerceAtLeast(1),
+                height = size.height.roundToInt().coerceAtLeast(1),
+            )
+            val sourceStarted = if (profilerActive) System.nanoTime() else 0L
+            sourceLayer.record(size = sourceSize) {
+                this@drawWithContent.drawContent()
+            }
+            if (profilerActive) blurCpuNanos += System.nanoTime() - sourceStarted
+
+            if (topActive) {
+                topCaptures?.let { captures ->
+                    val started = if (profilerActive) System.nanoTime() else 0L
+                    recordAdaptivePassChain(
+                        sourceLayer = sourceLayer,
+                        passA = topPassA,
+                        passB = topPassB,
+                        passC = topPassC,
+                        captures = captures,
+                        sourceWidthPx = contentWidthPx,
+                    )
+                    if (profilerActive) {
+                        blurCpuNanos += System.nanoTime() - started
+                        filteredPixels += captures.filteredPixels(contentWidthPx)
+                        layerReplays += 3
+                    }
+                }
+            }
+            if (bottomActive) {
+                bottomCaptures?.let { captures ->
+                    val started = if (profilerActive) System.nanoTime() else 0L
+                    recordAdaptivePassChain(
+                        sourceLayer = sourceLayer,
+                        passA = bottomPassA,
+                        passB = bottomPassB,
+                        passC = bottomPassC,
+                        captures = captures,
+                        sourceWidthPx = contentWidthPx,
+                    )
+                    if (profilerActive) {
+                        blurCpuNanos += System.nanoTime() - started
+                        filteredPixels += captures.filteredPixels(contentWidthPx)
+                        layerReplays += 3
+                    }
+                }
+            }
+
+            drawLayer(sourceLayer)
+            if (profilerActive) layerReplays++
+        } else {
+            drawContent()
+        }
+
+        if (topActive) {
+            topCaptures?.let { captures ->
+                val started = if (profilerActive) System.nanoTime() else 0L
+                clipPath(arborPanelPath(topRange, ArborBlurEdge.TOP, state.topCornerRadiusDp * density)) {
+                    translate(0f, captures.passC.sourceStartPx) {
+                        drawLayer(topPassC)
+                    }
+                }
+                if (profilerActive) {
+                    blurCpuNanos += System.nanoTime() - started
+                    layerReplays++
+                }
+            }
+        }
+        if (bottomActive) {
+            bottomCaptures?.let { captures ->
+                val started = if (profilerActive) System.nanoTime() else 0L
+                clipPath(arborPanelPath(bottomRange, ArborBlurEdge.BOTTOM, state.bottomCornerRadiusDp * density)) {
+                    translate(0f, captures.passC.sourceStartPx) {
+                        drawLayer(bottomPassC)
+                    }
+                }
+                if (profilerActive) {
+                    blurCpuNanos += System.nanoTime() - started
+                    layerReplays++
+                }
+            }
+        }
+
         drawArborPanelOverlay(
             range = topRange,
             edge = ArborBlurEdge.TOP,
@@ -205,64 +382,80 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
             softness = state.bottomSoftness,
             minimumFeatherPx = MINIMUM_FEATHER_DISTANCE_DP * density,
         )
-        if (profilerActive) {
+
+        if (profilerActive && blurActive) {
             ArborRenderProfiler.recordBlurFrame(
-                cpuNanos = System.nanoTime() - profilerStarted,
-                filteredPixels = contentWidthPx.toLong() * contentHeightPx.toLong() * BLUR_PASS_COUNT,
+                cpuNanos = blurCpuNanos,
+                filteredPixels = filteredPixels,
                 sourceDraws = 1,
-                layerReplays = 0,
+                layerReplays = layerReplays,
             )
         }
     }
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || !radiusActive) {
-        return@composed overlayModifier
-    }
+}
 
-    fun buildShader(directionX: Float, directionY: Float) = RuntimeShader(EDGE_BLUR_SHADER).apply {
-        setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
-        setFloatUniform("uSize", contentWidthPx.coerceAtLeast(1f), contentHeightPx.coerceAtLeast(1f))
-        setFloatUniform("uPanelStart", topRange.startPx, bottomRange.startPx)
-        setFloatUniform("uPanelEnd", topRange.endPx, bottomRange.endPx)
-        setFloatUniform("uCorner", state.topCornerRadiusDp * density, state.bottomCornerRadiusDp * density)
-        setFloatUniform("uMerge", state.topMergeDp * density, state.bottomMergeDp * density)
-        setFloatUniform("uSoftness", state.topSoftness, state.bottomSoftness)
-        setFloatUniform("uMinMerge", MINIMUM_FEATHER_DISTANCE_DP * density)
-        setFloatUniform("uMaxBlurRadius", DEFAULT_MAX_RADIUS_DP * density)
-        setFloatUniform("uDirection", directionX, directionY)
+private fun DrawScope.recordAdaptivePassChain(
+    sourceLayer: androidx.compose.ui.graphics.layer.GraphicsLayer,
+    passA: androidx.compose.ui.graphics.layer.GraphicsLayer,
+    passB: androidx.compose.ui.graphics.layer.GraphicsLayer,
+    passC: androidx.compose.ui.graphics.layer.GraphicsLayer,
+    captures: AdaptiveBlurPassCaptures,
+    sourceWidthPx: Float,
+) {
+    passA.record(size = captures.passA.layerSize(sourceWidthPx)) {
+        translate(0f, -captures.passA.sourceStartPx) {
+            drawLayer(sourceLayer)
+        }
     }
-
-    val firstShader = remember(
-        topRadiusPx, bottomRadiusPx, contentWidthPx, contentHeightPx,
-        topRange, bottomRange,
-        state.topCornerRadiusDp, state.bottomCornerRadiusDp,
-        state.topMergeDp, state.bottomMergeDp,
-        state.topSoftness, state.bottomSoftness,
-    ) { buildShader(BLUR_AXIS_A_X, BLUR_AXIS_A_Y) }
-    val secondShader = remember(
-        topRadiusPx, bottomRadiusPx, contentWidthPx, contentHeightPx,
-        topRange, bottomRange,
-        state.topCornerRadiusDp, state.bottomCornerRadiusDp,
-        state.topMergeDp, state.bottomMergeDp,
-        state.topSoftness, state.bottomSoftness,
-    ) { buildShader(BLUR_AXIS_B_X, BLUR_AXIS_B_Y) }
-    val thirdShader = remember(
-        topRadiusPx, bottomRadiusPx, contentWidthPx, contentHeightPx,
-        topRange, bottomRange,
-        state.topCornerRadiusDp, state.bottomCornerRadiusDp,
-        state.topMergeDp, state.bottomMergeDp,
-        state.topSoftness, state.bottomSoftness,
-    ) { buildShader(BLUR_AXIS_C_X, BLUR_AXIS_C_Y) }
-    val composeEffect = remember(firstShader, secondShader, thirdShader) {
-        ArborRenderProfiler.recordBlurEffectBuild()
-        val first = RenderEffect.createRuntimeShaderEffect(firstShader, "content")
-        val second = RenderEffect.createRuntimeShaderEffect(secondShader, "content")
-        val third = RenderEffect.createRuntimeShaderEffect(thirdShader, "content")
-        RenderEffect.createChainEffect(third, RenderEffect.createChainEffect(second, first)).asComposeRenderEffect()
+    passB.record(size = captures.passB.layerSize(sourceWidthPx)) {
+        translate(0f, captures.passA.sourceStartPx - captures.passB.sourceStartPx) {
+            drawLayer(passA)
+        }
     }
+    passC.record(size = captures.passC.layerSize(sourceWidthPx)) {
+        translate(0f, captures.passB.sourceStartPx - captures.passC.sourceStartPx) {
+            drawLayer(passB)
+        }
+    }
+}
 
-    // drawWithContent is deliberately outside the graphics layer: drawContent()
-    // receives the blur, then the tint is painted unblurred using the same ranges.
-    overlayModifier.graphicsLayer { renderEffect = composeEffect }
+private fun DrawScope.arborPanelPath(
+    range: ArborPanelRange,
+    edge: ArborBlurEdge,
+    cornerRadiusPx: Float,
+): Path {
+    val start = range.startPx.coerceIn(0f, size.height)
+    val end = range.endPx.coerceIn(start, size.height)
+    val extent = end - start
+    val radius = cornerRadiusPx.coerceIn(0f, minOf(size.width / 2f, extent / 2f))
+    return Path().apply {
+        when (edge) {
+            ArborBlurEdge.TOP -> addRoundRect(
+                RoundRect(
+                    left = 0f,
+                    top = start,
+                    right = size.width,
+                    bottom = end,
+                    topLeftCornerRadius = CornerRadius.Zero,
+                    topRightCornerRadius = CornerRadius.Zero,
+                    bottomRightCornerRadius = CornerRadius(radius, radius),
+                    bottomLeftCornerRadius = CornerRadius(radius, radius),
+                ),
+            )
+            ArborBlurEdge.BOTTOM -> addRoundRect(
+                RoundRect(
+                    left = 0f,
+                    top = start,
+                    right = size.width,
+                    bottom = end,
+                    topLeftCornerRadius = CornerRadius(radius, radius),
+                    topRightCornerRadius = CornerRadius(radius, radius),
+                    bottomRightCornerRadius = CornerRadius.Zero,
+                    bottomLeftCornerRadius = CornerRadius.Zero,
+                ),
+            )
+        }
+    }
 }
 
 private fun DrawScope.drawArborPanelOverlay(
@@ -489,6 +682,117 @@ internal fun blurEffectiveSamplesPerPass(strength: Float): Float =
 internal fun blurSamplesPerPass(strength: Float): Int {
     if (strength <= 0f) return 1
     return 1 + 2 * ceil(blurPairBudget(strength).toDouble()).toInt()
+}
+
+internal data class BlurStripCapture(
+    val sourceStartPx: Float,
+    val sourceEndPx: Float,
+) {
+    val sourceExtentPx: Float get() = (sourceEndPx - sourceStartPx).coerceAtLeast(0f)
+
+    fun layerSize(sourceWidthPx: Float): IntSize = IntSize(
+        width = ceil(sourceWidthPx.coerceAtLeast(1f)).toInt().coerceAtLeast(1),
+        height = ceil(sourceExtentPx.coerceAtLeast(1f)).toInt().coerceAtLeast(1),
+    )
+}
+
+internal data class AdaptiveBlurPassCaptures(
+    val passA: BlurStripCapture,
+    val passB: BlurStripCapture,
+    val passC: BlurStripCapture,
+) {
+    fun filteredPixels(sourceWidthPx: Float): Long =
+        passA.layerSize(sourceWidthPx).let { it.width.toLong() * it.height.toLong() } +
+            passB.layerSize(sourceWidthPx).let { it.width.toLong() * it.height.toLong() } +
+            passC.layerSize(sourceWidthPx).let { it.width.toLong() * it.height.toLong() }
+}
+
+internal val BLUR_PASS_A_VERTICAL_RADIUS_MULTIPLIER: Float = kotlin.math.abs(BLUR_AXIS_A_Y)
+internal val BLUR_PASS_B_VERTICAL_RADIUS_MULTIPLIER: Float = kotlin.math.abs(BLUR_AXIS_B_Y)
+internal val BLUR_PASS_C_VERTICAL_RADIUS_MULTIPLIER: Float = kotlin.math.abs(BLUR_AXIS_C_Y)
+internal val BLUR_CHAIN_VERTICAL_SUPPORT_RADIUS_MULTIPLIER: Float =
+    BLUR_PASS_A_VERTICAL_RADIUS_MULTIPLIER +
+        BLUR_PASS_B_VERTICAL_RADIUS_MULTIPLIER +
+        BLUR_PASS_C_VERTICAL_RADIUS_MULTIPLIER
+
+internal fun resolveAdaptiveBlurPassCaptures(
+    panelRange: ArborPanelRange,
+    sourceHeightPx: Float,
+    radiusPx: Float,
+): AdaptiveBlurPassCaptures? {
+    val sourceHeight = sourceHeightPx.coerceAtLeast(0f)
+    if (sourceHeight <= 0f || panelRange.extentPx <= 0f || radiusPx < MIN_VISIBLE_RADIUS_PX) return null
+
+    fun capture(verticalSupport: Float): BlurStripCapture {
+        val support = radiusPx.coerceAtLeast(0f) * verticalSupport
+        val start = (panelRange.startPx - support).coerceIn(0f, sourceHeight)
+        val end = (panelRange.endPx + support).coerceIn(start, sourceHeight)
+        return BlurStripCapture(start, end)
+    }
+
+    return AdaptiveBlurPassCaptures(
+        passA = capture(BLUR_CHAIN_VERTICAL_SUPPORT_RADIUS_MULTIPLIER),
+        passB = capture(BLUR_PASS_B_VERTICAL_RADIUS_MULTIPLIER + BLUR_PASS_C_VERTICAL_RADIUS_MULTIPLIER),
+        passC = capture(BLUR_PASS_C_VERTICAL_RADIUS_MULTIPLIER),
+    )
+}
+
+private data class AdaptiveStripPassEffects(
+    val passA: androidx.compose.ui.graphics.RenderEffect,
+    val passB: androidx.compose.ui.graphics.RenderEffect,
+    val passC: androidx.compose.ui.graphics.RenderEffect,
+)
+
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+private fun buildAdaptiveStripPassEffects(
+    captures: AdaptiveBlurPassCaptures,
+    panelRange: ArborPanelRange,
+    radiusPx: Float,
+    sourceWidthPx: Float,
+    cornerRadiusPx: Float,
+    mergeDistancePx: Float,
+    softness: Float,
+    maxBlurRadiusPx: Float,
+    minimumMergePx: Float,
+    edge: ArborBlurEdge,
+): AdaptiveStripPassEffects {
+    ArborRenderProfiler.recordBlurEffectBuild()
+
+    fun effect(capture: BlurStripCapture, directionX: Float, directionY: Float): androidx.compose.ui.graphics.RenderEffect {
+        val localPanelStart = panelRange.startPx - capture.sourceStartPx
+        val localPanelEnd = panelRange.endPx - capture.sourceStartPx
+        val shader = RuntimeShader(EDGE_BLUR_SHADER).apply {
+            when (edge) {
+                ArborBlurEdge.TOP -> {
+                    setFloatUniform("uBlur", radiusPx, 0f)
+                    setFloatUniform("uPanelStart", localPanelStart, 0f)
+                    setFloatUniform("uPanelEnd", localPanelEnd, 0f)
+                    setFloatUniform("uCorner", cornerRadiusPx, 0f)
+                    setFloatUniform("uMerge", mergeDistancePx, 0f)
+                    setFloatUniform("uSoftness", softness.coerceIn(0f, 1f), 0f)
+                }
+                ArborBlurEdge.BOTTOM -> {
+                    setFloatUniform("uBlur", 0f, radiusPx)
+                    setFloatUniform("uPanelStart", 0f, localPanelStart)
+                    setFloatUniform("uPanelEnd", 0f, localPanelEnd)
+                    setFloatUniform("uCorner", 0f, cornerRadiusPx)
+                    setFloatUniform("uMerge", 0f, mergeDistancePx)
+                    setFloatUniform("uSoftness", 0f, softness.coerceIn(0f, 1f))
+                }
+            }
+            setFloatUniform("uSize", sourceWidthPx.coerceAtLeast(1f), capture.sourceExtentPx.coerceAtLeast(1f))
+            setFloatUniform("uMinMerge", minimumMergePx)
+            setFloatUniform("uMaxBlurRadius", maxBlurRadiusPx.coerceAtLeast(0.001f))
+            setFloatUniform("uDirection", directionX, directionY)
+        }
+        return RenderEffect.createRuntimeShaderEffect(shader, "content").asComposeRenderEffect()
+    }
+
+    return AdaptiveStripPassEffects(
+        passA = effect(captures.passA, BLUR_AXIS_A_X, BLUR_AXIS_A_Y),
+        passB = effect(captures.passB, BLUR_AXIS_B_X, BLUR_AXIS_B_Y),
+        passC = effect(captures.passC, BLUR_AXIS_C_X, BLUR_AXIS_C_Y),
+    )
 }
 
 internal const val BLUR_AXIS_A_X = 0.9238795f

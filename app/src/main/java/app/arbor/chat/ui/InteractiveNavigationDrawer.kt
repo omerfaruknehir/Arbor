@@ -42,18 +42,32 @@ internal class InteractiveDrawerState(private val scope: CoroutineScope) {
     private var widthPx = 1f
     private var animationJob: Job? = null
     private var animationRunning by mutableStateOf(false)
+    private val offsetState = mutableFloatStateOf(0f)
+    private var visibleState by mutableStateOf(false)
 
-    var offsetPx by mutableFloatStateOf(0f)
-        private set
+    /**
+     * High-frequency drag position. It is intentionally read only from pointer
+     * handlers and graphicsLayer blocks, never from ArborApp composition.
+     */
+    val offsetPx: Float get() = offsetState.floatValue
     val fraction: Float get() = DrawerPhysics.fraction(offsetPx, widthPx)
-    val isVisible: Boolean get() = offsetPx > 0.5f
-    val isClosed: Boolean get() = offsetPx <= 0.5f && !animationRunning
+
+    /** Changes only when crossing the fully-closed boundary. */
+    val isVisible: Boolean get() = visibleState
+    val isClosed: Boolean get() = !visibleState && !animationRunning
+
+    private fun updateOffset(value: Float) {
+        val next = value.coerceIn(0f, widthPx)
+        if (offsetState.floatValue != next) offsetState.floatValue = next
+        val nextVisible = next > 0.5f
+        if (visibleState != nextVisible) visibleState = nextVisible
+    }
 
     fun updateWidth(value: Float) {
         val wasOpen = fraction > .99f
         widthPx = value.coerceAtLeast(1f)
-        if (wasOpen) offsetPx = widthPx
-        else if (offsetPx > widthPx) offsetPx = widthPx
+        if (wasOpen) updateOffset(widthPx)
+        else if (offsetPx > widthPx) updateOffset(widthPx)
     }
 
     fun stop() {
@@ -63,7 +77,7 @@ internal class InteractiveDrawerState(private val scope: CoroutineScope) {
     }
 
     fun dragTo(startOffsetPx: Float, accumulatedDragPx: Float) {
-        offsetPx = DrawerPhysics.dragOffset(startOffsetPx, accumulatedDragPx, widthPx)
+        updateOffset(DrawerPhysics.dragOffset(startOffsetPx, accumulatedDragPx, widthPx))
     }
 
     fun settle(velocityPxPerSecond: Float, velocityThresholdPxPerSecond: Float) {
@@ -90,7 +104,7 @@ internal class InteractiveDrawerState(private val scope: CoroutineScope) {
                         dampingRatio = Spring.DampingRatioNoBouncy,
                         stiffness = Spring.StiffnessMediumLow,
                     ),
-                ) { offsetPx = value }
+                ) { updateOffset(value) }
             } finally {
                 animationRunning = false
             }

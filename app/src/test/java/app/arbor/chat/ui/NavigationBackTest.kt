@@ -35,4 +35,13 @@ class NavigationBackTest {
         assertEquals(2, screenDepth(Screen.SANDBOX))
         assertEquals(2, screenDepth(Screen.TERMINAL))
     }
+    @Test fun transitionStateDoesNotInvalidateKeptAlivePages() {
+        val navigation = java.io.File("src/main/java/app/arbor/chat/ui/PredictiveNavigation.kt").readText()
+        val root = java.io.File("src/main/java/app/arbor/chat/ui/ArborApp.kt").readText()
+        assertTrue(!navigation.contains("LocalNavigationTransitionActive"))
+        assertTrue(!navigation.contains("CompositionLocalProvider"))
+        assertTrue(root.contains("val screenContent: @Composable (Screen) -> Unit = remember"))
+        assertTrue(root.contains("val openDrawer = remember(drawerState)"))
+    }
+
 }

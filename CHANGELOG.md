@@ -1,3 +1,10 @@
+## 0.17.26
+
+- Preserve the exact 0.17.18 adaptive blur kernel while filtering only progressively cropped full-resolution top and bottom dependency regions.
+- Isolate drawer drag offset from root composition so continuous drawer motion does not recompose ArborApp and ChatScreen every frame.
+- Keep navigation transition state out of kept-alive page composition and stabilize the page-content function.
+- Preserve adaptive refresh and thermal policy; no quality reduction or forced performance mode.
+
 ## 0.17.25
 
 - Restore the complete 0.17.18 adaptive three-pass backdrop-blur feature exactly, while retaining later profiler and unrelated fixes.

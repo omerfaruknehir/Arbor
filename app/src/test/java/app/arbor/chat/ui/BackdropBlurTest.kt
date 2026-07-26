@@ -95,17 +95,58 @@ class BackdropBlurTest {
         assertEquals(1f, lenC, .0001f)
     }
 
-    @Test fun exact01718RendererIsActiveInsteadOfTheLaterStripReplacement() {
+    @Test fun exact01718AdaptiveKernelRunsInProgressivelyCroppedFullResolutionPasses() {
         val source = java.io.File("src/main/java/app/arbor/chat/ui/BackdropBlur.kt").readText()
         assertTrue(source.contains("adaptiveGlassBlur"))
-        assertTrue(source.contains("RenderEffect.createChainEffect(third"))
         assertTrue(source.contains("basePairBudget = 25.0 * strength"))
         assertTrue(source.contains("corePairBudget = 4.0"))
         assertTrue(source.contains("edgePairBudget = 7.0"))
-        assertTrue(source.contains("overlayModifier.graphicsLayer"))
-        assertTrue(!source.contains("resolveBlurStripCapture"))
+        assertTrue(source.contains("resolveAdaptiveBlurPassCaptures"))
+        assertTrue(source.contains("recordAdaptivePassChain"))
+        assertTrue(source.contains("rememberGraphicsLayer"))
         assertTrue(!source.contains("STRIP_GLASS_SHADER"))
         assertTrue(!source.contains("FIXED_BLUR_DOWNSAMPLE"))
+        assertTrue(!source.contains("overlayModifier.graphicsLayer"))
+    }
+
+    @Test fun exact01718ShaderPayloadIsUnchanged() {
+        val source = java.io.File("src/main/java/app/arbor/chat/ui/BackdropBlur.kt").readText()
+        val shader = source.substringAfter("private val EDGE_BLUR_SHADER = \"\"\"\n")
+            .substringBefore("\n\"\"\".trimIndent()")
+        val hash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(shader.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        assertEquals("d48b6f6dd47f41c85f25433caa712a456fbf2ea3d04e47e3e2d30bccb0d414d9", hash)
+    }
+
+    @Test fun adaptivePassCapturesContainOnlyTheExactRemainingVerticalSupport() {
+        val radius = 50f
+        val captures = resolveAdaptiveBlurPassCaptures(
+            panelRange = ArborPanelRange(100f, 300f),
+            sourceHeightPx = 1_000f,
+            radiusPx = radius,
+        )!!
+        assertEquals(100f - radius * BLUR_CHAIN_VERTICAL_SUPPORT_RADIUS_MULTIPLIER, captures.passA.sourceStartPx, .001f)
+        assertEquals(300f + radius * BLUR_CHAIN_VERTICAL_SUPPORT_RADIUS_MULTIPLIER, captures.passA.sourceEndPx, .001f)
+        assertEquals(
+            100f - radius * (BLUR_PASS_B_VERTICAL_RADIUS_MULTIPLIER + BLUR_PASS_C_VERTICAL_RADIUS_MULTIPLIER),
+            captures.passB.sourceStartPx,
+            .001f,
+        )
+        assertEquals(100f - radius * BLUR_PASS_C_VERTICAL_RADIUS_MULTIPLIER, captures.passC.sourceStartPx, .001f)
+        assertTrue(captures.passA.sourceExtentPx > captures.passB.sourceExtentPx)
+        assertTrue(captures.passB.sourceExtentPx > captures.passC.sourceExtentPx)
+    }
+
+    @Test fun typicalTopAndBottomPanelsFilterFarLessThanThreeFullScreens() {
+        val width = 1_080f
+        val height = 2_340f
+        val radius = 118f
+        val top = resolveAdaptiveBlurPassCaptures(ArborPanelRange(0f, 384f), height, radius)!!
+        val bottom = resolveAdaptiveBlurPassCaptures(ArborPanelRange(1_716f, height), height, radius)!!
+        val croppedPixels = top.filteredPixels(width) + bottom.filteredPixels(width)
+        val fullScreenPixels = width.toLong() * height.toLong() * BLUR_PASS_COUNT
+        assertTrue(croppedPixels < fullScreenPixels * 0.70)
     }
 
     @Test fun overlayOpacityIsClampedAndPreservesRgb() {

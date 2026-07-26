@@ -404,3 +404,88 @@ This is an exact visual/behavioral restoration, not the later strip optimization
 ### Build worker lesson reinforced
 
 Use two workers for compile/tests/lint when the cache is warm, but keep APK packaging at one worker. During lint, two workers again approached the 4 GiB limit. Do not make three or four workers the default merely because more logical CPUs are visible.
+
+
+## 0.17.26 — motion-path profiling and exact-quality optimization
+
+### Device evidence and root causes
+
+The user captured the same Galaxy S23+ at 120 Hz in three continuous-motion scenarios:
+
+1. **Chat scrolling:** about 66 FPS, 15.4 ms average, p95 41.7 ms, p99 66.7 ms, 44.1% jank, GPU 16.4 ms, approximately 265 filtered MP/s, one blur source traversal, and about 35 captures/s. This is a demonstrated shader/render-target cost: GPU time alone exceeds the 8.33 ms 120 Hz budget.
+2. **Drawer opening/closing:** about 95 FPS, 10.0 ms average, GPU 10.2 ms, no active blur work, but both `app` and `chat` recomposed at approximately 91.3/s. The high-frequency drawer offset was observed by root composition.
+3. **Rapid Settings navigation/back:** about 78 FPS, 11.9 ms average, GPU 15.7 ms, about 30 filtered MP/s, four captures/s, and Chat recomposed at approximately 45.8/s. Transition state and an unstable content lambda invalidated kept-alive pages.
+
+Do not collapse these into one generic “GPU problem.” Each motion path had a different dominant software cause.
+
+### Exact 0.17.18 blur with cropped full-resolution dependency regions
+
+The 0.17.18 shader payload remains authoritative and unchanged. Its raw shader-body SHA-256 is:
+
+```text
+d48b6f6dd47f41c85f25433caa712a456fbf2ea3d04e47e3e2d30bccb0d414d9
+```
+
+The optimization changes render-target geometry, not visual quality:
+
+- Record the Compose source once into a reusable `GraphicsLayer`.
+- Preserve pass order A → B → C and every shader uniform/sample.
+- For each visible top/bottom panel, create progressively smaller full-resolution layers:
+  - pass A includes the panel plus the vertical support required by A, B, and C;
+  - pass B includes the panel plus support required by B and C;
+  - pass C includes the panel plus support required by C.
+- Draw only the final pass inside the exact original rounded panel mask.
+- Keep full screen width so horizontal boundary behavior remains unchanged.
+- Do not downsample, reduce sample density, substitute a Gaussian, or bypass blur during motion.
+
+For a representative 1080×2340 viewport with the measured panel geometry and 118 px blur radius, the three progressive top/bottom regions process about 57.2% of the pixels used by three full-screen passes. This is a geometry estimate, not a device FPS claim.
+
+### Drawer state isolation
+
+Never expose continuously changing drag offset as a root-composition dependency.
+
+- Store offset in a dedicated high-frequency state read only from pointer handlers and graphics-layer/draw blocks.
+- Expose a separate boolean visible state that changes only when crossing the fully closed boundary.
+- Root Back handling may observe the boolean; it must not observe raw offset.
+
+Expected profiler result: during continuous drawer dragging, `app` and `chat` recompositions should fall substantially from the observed ~91/s.
+
+### Navigation kept-alive page isolation
+
+- Do not inject transition-active/progress state through a `CompositionLocal` into kept-alive pages.
+- Apply transition translation/scale/alpha in parent render layers.
+- Remember the screen-content composable so `rememberUpdatedState(content)` is not fed a new function object on unrelated root updates.
+
+Expected profiler result: the parked Chat page should no longer recompose around ~46/s during rapid Settings navigation.
+
+### Verification requirements
+
+- Regression-test the exact 0.17.18 shader hash.
+- Test that pass A/B/C captures contain exactly the remaining vertical support needed by the chain.
+- Test that typical top/bottom geometry processes materially fewer pixels than three full screens.
+- Source-test that drawer offset is not read by root composition.
+- Source-test that navigation transition state is not propagated into kept-alive page composition.
+- Continue to reject forced 120 Hz, preferred display-mode overrides, sustained-performance mode, and clock/performance-hint requests.
+
+### Device validation still required
+
+Do not claim 120 FPS, lower power use, or identical real-device blur output until the Galaxy S23+ repeats the same three scenarios. The most useful comparison signals are:
+
+- scrolling: GPU ms and filtered MP/s versus 16.4 ms / 265 MP/s;
+- drawer: app/chat recompositions per second versus ~91.3/s;
+- navigation: parked Chat recompositions per second versus ~45.8/s;
+- p95/p99 and jank, not average FPS alone.
+
+### 0.17.26 verification outcome
+
+- Kotlin compilation: successful.
+- Focused blur, drawer, navigation, and profiler regression tests: successful.
+- Full unit suite: 205 tests across 35 suites; 0 failures, 0 errors, 0 skipped.
+- Android lint: 0 errors, 12 warnings, 1 informational finding.
+- APK assembly: successful in 32 seconds with one packaging worker.
+- APK identity: `app.arbor.chat.debug`, version code 103, version name `0.17.26-debug`, min SDK 26, target/compile SDK 35.
+- APK is zip-aligned and verifies with APK Signature Scheme v2.
+- Debug certificate SHA-256 remains `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`.
+- The exact 0.17.18 shader-payload hash regression passed.
+- Remaining warnings are the same unrelated API/style findings carried by prior releases; no lint errors were introduced.
+- Real-device performance and power behavior remain unverified until the user repeats the three captured motion scenarios on the Galaxy S23+.

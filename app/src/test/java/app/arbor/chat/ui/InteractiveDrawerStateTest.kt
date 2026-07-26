@@ -64,4 +64,15 @@ class InteractiveDrawerStateTest {
         assertEquals(7f, DrawerPhysics.dragOffset(0f, 7f, width), .001f)
         assertEquals(DrawerAnchor.CLOSED, DrawerPhysics.settleTarget(7f, width, 0f, 950f))
     }
+    @Test fun dragOffsetIsIsolatedFromRootComposition() {
+        val drawer = java.io.File("src/main/java/app/arbor/chat/ui/InteractiveNavigationDrawer.kt").readText()
+        val root = java.io.File("src/main/java/app/arbor/chat/ui/ArborApp.kt").readText()
+        assertTrue(drawer.contains("private val offsetState = mutableFloatStateOf(0f)"))
+        assertTrue(drawer.contains("private var visibleState by mutableStateOf(false)"))
+        assertTrue(drawer.contains("val isVisible: Boolean get() = visibleState"))
+        assertTrue(!drawer.contains("val isVisible: Boolean get() = offsetPx >"))
+        assertTrue(root.contains("val drawerVisible = drawerState.isVisible"))
+        assertTrue(!root.contains("pageBackEnabled(drawerState.isVisible)"))
+    }
+
 }
