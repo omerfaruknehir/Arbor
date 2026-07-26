@@ -516,7 +516,7 @@ private fun AppearanceSettingsPage(
         valueRange = 0f..1f,
     )
     Text(
-        "0% removes the tint; 100% is fully opaque.",
+        "0% removes the tint; 100% preserves the panel's designed translucent tint.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

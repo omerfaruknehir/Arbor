@@ -1,3 +1,11 @@
+## 0.17.27
+
+- Replace the visually broken progressive-crop blur with a fixed-extent, panel-local dual-Kawase-style pyramid.
+- Record Compose content once and reuse it for normal rendering plus top and bottom glass panels.
+- Preserve fixed visual quality and the 0.17.26 drawer/navigation/recomposition performance isolation.
+- Correct profiler semantics by separating display Hz, callbacks, rendered frames, and presented-frame availability.
+- Add renderer architecture, pixel-work, settings-compatibility, power-policy, and visual stress-scene regressions.
+
 ## 0.17.26
 
 - Preserve the exact 0.17.18 adaptive blur kernel while filtering only progressively cropped full-resolution top and bottom dependency regions.

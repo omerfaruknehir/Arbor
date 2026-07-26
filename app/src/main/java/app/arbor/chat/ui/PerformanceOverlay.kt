@@ -31,7 +31,12 @@ import kotlin.math.ceil
 import kotlin.math.max
 
 internal data class PerformanceSnapshot(
+    /** Legacy compact-overlay alias for appRenderedFrameRate. */
     val fps: Double = 0.0,
+    val displayRefreshRateHz: Float = 60f,
+    val choreographerCallbackRate: Double = 0.0,
+    val appRenderedFrameRate: Double = 0.0,
+    val presentedFrameRate: Double? = null,
     val averageFrameMs: Double = 0.0,
     val p95FrameMs: Double = 0.0,
     val p99FrameMs: Double = 0.0,
@@ -59,6 +64,8 @@ internal data class PerformanceSnapshot(
     val blurLayerReplaysPerFrame: Double = 0.0,
     val blurCaptureUpdatesPerSecond: Double = 0.0,
     val blurEffectBuildsPerSecond: Double = 0.0,
+    val blurDownsampleLevels: Double = 0.0,
+    val blurUpsampleLevels: Double = 0.0,
     val appRecompositionsPerSecond: Double = 0.0,
     val chatRecompositionsPerSecond: Double = 0.0,
     val allocationMbPerSecond: Double = 0.0,
@@ -74,6 +81,8 @@ internal data class RenderProfilerInterval(
     val blurLayerReplaysPerFrame: Double,
     val blurCaptureUpdatesPerSecond: Double,
     val blurEffectBuildsPerSecond: Double,
+    val blurDownsampleLevels: Double,
+    val blurUpsampleLevels: Double,
     val appRecompositionsPerSecond: Double,
     val chatRecompositionsPerSecond: Double,
     val blurFrames: Long,
@@ -91,6 +100,9 @@ internal object ArborRenderProfiler {
     private val blurSourceDraws = AtomicLong()
     private val blurLayerReplays = AtomicLong()
     private val blurEffectBuilds = AtomicLong()
+    private val blurCaptureUpdates = AtomicLong()
+    private val blurDownsampleLevels = AtomicLong()
+    private val blurUpsampleLevels = AtomicLong()
     private val appRecompositions = AtomicLong()
     private val chatRecompositions = AtomicLong()
 
@@ -104,16 +116,29 @@ internal object ArborRenderProfiler {
 
     fun setScreen(name: String) { currentScreen = name }
 
-    fun recordBlurFrame(cpuNanos: Long, filteredPixels: Long, sourceDraws: Int, layerReplays: Int) {
+    fun recordBlurFrame(
+        cpuNanos: Long,
+        processedPixels: Long,
+        sourceTraversals: Int,
+        layerReplays: Int,
+        downsampleLevels: Int,
+        upsampleLevels: Int,
+        captureUpdates: Int,
+    ) {
         if (!active) return
         blurCpuNanos.addAndGet(cpuNanos.coerceAtLeast(0L))
-        blurFilteredPixels.addAndGet(filteredPixels.coerceAtLeast(0L))
-        blurSourceDraws.addAndGet(sourceDraws.coerceAtLeast(0).toLong())
+        blurFilteredPixels.addAndGet(processedPixels.coerceAtLeast(0L))
+        blurSourceDraws.addAndGet(sourceTraversals.coerceAtLeast(0).toLong())
         blurLayerReplays.addAndGet(layerReplays.coerceAtLeast(0).toLong())
+        blurDownsampleLevels.addAndGet(downsampleLevels.coerceAtLeast(0).toLong())
+        blurUpsampleLevels.addAndGet(upsampleLevels.coerceAtLeast(0).toLong())
+        blurCaptureUpdates.addAndGet(captureUpdates.coerceAtLeast(0).toLong())
         blurFrames.incrementAndGet()
     }
 
-    fun recordBlurEffectBuild() { if (active) blurEffectBuilds.incrementAndGet() }
+    fun recordBlurEffectBuild(count: Int = 1) {
+        if (active) blurEffectBuilds.addAndGet(count.coerceAtLeast(0).toLong())
+    }
     fun recordAppRecomposition() { if (active) appRecompositions.incrementAndGet() }
     fun recordChatRecomposition() { if (active) chatRecompositions.incrementAndGet() }
 
@@ -125,6 +150,9 @@ internal object ArborRenderProfiler {
         val sourceDraws = blurSourceDraws.getAndSet(0L)
         val layerReplays = blurLayerReplays.getAndSet(0L)
         val effectBuilds = blurEffectBuilds.getAndSet(0L)
+        val captureUpdates = blurCaptureUpdates.getAndSet(0L)
+        val downsampleLevels = blurDownsampleLevels.getAndSet(0L)
+        val upsampleLevels = blurUpsampleLevels.getAndSet(0L)
         val appRecomposes = appRecompositions.getAndSet(0L)
         val chatRecomposes = chatRecompositions.getAndSet(0L)
         return RenderProfilerInterval(
@@ -132,8 +160,10 @@ internal object ArborRenderProfiler {
             blurFilteredMegapixelsPerSecond = pixels / 1_000_000.0 / elapsedSeconds,
             blurSourceDrawsPerFrame = if (frames == 0L) 0.0 else sourceDraws.toDouble() / frames,
             blurLayerReplaysPerFrame = if (frames == 0L) 0.0 else layerReplays.toDouble() / frames,
-            blurCaptureUpdatesPerSecond = frames / elapsedSeconds,
+            blurCaptureUpdatesPerSecond = captureUpdates / elapsedSeconds,
             blurEffectBuildsPerSecond = effectBuilds / elapsedSeconds,
+            blurDownsampleLevels = if (frames == 0L) 0.0 else downsampleLevels.toDouble() / frames,
+            blurUpsampleLevels = if (frames == 0L) 0.0 else upsampleLevels.toDouble() / frames,
             appRecompositionsPerSecond = appRecomposes / elapsedSeconds,
             chatRecompositionsPerSecond = chatRecomposes / elapsedSeconds,
             blurFrames = frames,
@@ -148,6 +178,9 @@ internal object ArborRenderProfiler {
         blurSourceDraws.set(0L)
         blurLayerReplays.set(0L)
         blurEffectBuilds.set(0L)
+        blurCaptureUpdates.set(0L)
+        blurDownsampleLevels.set(0L)
+        blurUpsampleLevels.set(0L)
         appRecompositions.set(0L)
         chatRecompositions.set(0L)
     }
@@ -157,7 +190,7 @@ internal data class PerformanceCauseInput(
     val refreshRateHz: Float,
     val fps: Double,
     val frameTotalMs: Double,
-    val frameIntervalP95Ms: Double,
+    val frameDurationP95Ms: Double,
     val jankPercent: Double,
     val gpuMs: Double?,
     val inputMs: Double,
@@ -200,7 +233,7 @@ internal fun detectLikelyBottleneck(input: PerformanceCauseInput): String {
         add("Buffer swap" to input.swapMs)
         add("Animation" to input.animationMs)
         add("Input handling" to input.inputMs)
-        if (input.blurFrames > 0L) add("Blur strip CPU recording" to input.blurCpuMs)
+        if (input.blurFrames > 0L) add("Blur CPU recording / replay" to input.blurCpuMs)
     }
     val dominant = stages.maxByOrNull { it.second } ?: return "Mixed / unattributed frame work"
 
@@ -216,7 +249,7 @@ internal fun detectLikelyBottleneck(input: PerformanceCauseInput): String {
         }
     }
 
-    val intervalSlow = input.frameIntervalP95Ms >= budgetMs * 1.45 || input.jankPercent >= 3.0
+    val intervalSlow = input.frameDurationP95Ms >= budgetMs * 1.45 || input.jankPercent >= 3.0
     if ((input.frameTotalMs >= budgetMs || intervalSlow) && dominant.second < stageCausalThreshold) {
         return "Frame pacing / scheduling stalls"
     }
@@ -232,6 +265,9 @@ internal fun performancePercentile(values: List<Double>, percentile: Double): Do
     return sorted[rank - 1]
 }
 
+internal fun boundedRenderedFrameRate(rawRenderedRate: Double, displayRefreshRateHz: Float): Double =
+    rawRenderedRate.coerceAtLeast(0.0).coerceAtMost(displayRefreshRateHz.toDouble().coerceAtLeast(1.0))
+
 internal fun estimatedMissedFrames(frameMs: Double, frameBudgetMs: Double): Int {
     if (frameMs <= 0.0 || frameBudgetMs <= 0.0) return 0
     return (ceil(frameMs / frameBudgetMs).toInt() - 1).coerceAtLeast(0)
@@ -240,6 +276,7 @@ internal fun estimatedMissedFrames(frameMs: Double, frameBudgetMs: Double): Int 
 internal class ArborPerformanceMonitor(private val activity: Activity) {
     private val lock = Any()
     private val recentFrameIntervals = ArrayDeque<Double>(MAX_RECENT_FRAMES)
+    private val recentFrameDurations = ArrayDeque<Double>(MAX_RECENT_FRAMES)
     private val recentGpuDurations = ArrayDeque<Double>(MAX_RECENT_FRAMES)
     private val _snapshot = kotlinx.coroutines.flow.MutableStateFlow(PerformanceSnapshot())
     val snapshot: kotlinx.coroutines.flow.StateFlow<PerformanceSnapshot> = _snapshot
@@ -253,7 +290,8 @@ internal class ArborPerformanceMonitor(private val activity: Activity) {
     private var frameCallback: Choreographer.FrameCallback? = null
     private var updateIntervalMs = 500
     private var diagnosticProfilerEnabled = false
-    private var intervalFrames = 0L
+    private var intervalCallbacks = 0L
+    private var intervalRenderedFrames = 0L
     private var intervalJankFrames = 0L
     private var intervalMissedFrames = 0L
     private var totalFrames = 0L
@@ -297,17 +335,30 @@ internal class ArborPerformanceMonitor(private val activity: Activity) {
         lastBlockingGcCount = runtimeStatLong(RUNTIME_BLOCKING_GC_COUNT)
 
         val listener = Window.OnFrameMetricsAvailableListener { _, metrics, droppedReports ->
+            val totalDurationNs = metricNanos(metrics, FrameMetrics.TOTAL_DURATION)
+            val totalDurationMs = totalDurationNs / 1_000_000.0
             val gpuMs = if (Build.VERSION.SDK_INT >= 31) {
                 metrics.getMetric(FrameMetrics.GPU_DURATION).takeIf { it > 0L }?.div(1_000_000.0)
             } else null
+            val refreshRate = activity.window.decorView.display?.refreshRate?.takeIf { it >= 30f } ?: latestRefreshRate
+            val budgetMs = 1_000.0 / refreshRate.coerceAtLeast(30f)
             synchronized(lock) {
+                latestRefreshRate = refreshRate
+                intervalRenderedFrames++
+                totalFrames++
+                if (totalDurationMs.isFinite() && totalDurationMs > 0.0) {
+                    recentFrameDurations.addLast(totalDurationMs)
+                    while (recentFrameDurations.size > MAX_RECENT_FRAMES) recentFrameDurations.removeFirst()
+                    if (totalDurationMs > budgetMs * JANK_MULTIPLIER) intervalJankFrames++
+                    intervalMissedFrames += estimatedMissedFrames(totalDurationMs, budgetMs).toLong()
+                }
                 if (gpuMs != null && gpuMs.isFinite()) {
                     recentGpuDurations.addLast(gpuMs)
                     while (recentGpuDurations.size > MAX_RECENT_FRAMES) recentGpuDurations.removeFirst()
                 }
                 if (diagnosticProfilerEnabled) {
                     frameMetricCount++
-                    frameMetricTotalNs += metricNanos(metrics, FrameMetrics.TOTAL_DURATION)
+                    frameMetricTotalNs += totalDurationNs
                     inputNs += metricNanos(metrics, FrameMetrics.INPUT_HANDLING_DURATION)
                     animationNs += metricNanos(metrics, FrameMetrics.ANIMATION_DURATION)
                     layoutNs += metricNanos(metrics, FrameMetrics.LAYOUT_MEASURE_DURATION)
@@ -352,13 +403,9 @@ internal class ArborPerformanceMonitor(private val activity: Activity) {
         val intervalMs = (frameTimeNanos - previous) / 1_000_000.0
         if (!intervalMs.isFinite() || intervalMs <= 0.0 || intervalMs > MAX_VALID_FRAME_INTERVAL_MS) return
         val refreshRate = activity.window.decorView.display?.refreshRate?.takeIf { it >= 30f } ?: 60f
-        val budgetMs = 1_000.0 / refreshRate
         synchronized(lock) {
             latestRefreshRate = refreshRate
-            intervalFrames++
-            totalFrames++
-            if (intervalMs > budgetMs * JANK_MULTIPLIER) intervalJankFrames++
-            intervalMissedFrames += estimatedMissedFrames(intervalMs, budgetMs).toLong()
+            intervalCallbacks++
             recentFrameIntervals.addLast(intervalMs)
             while (recentFrameIntervals.size > MAX_RECENT_FRAMES) recentFrameIntervals.removeFirst()
         }
@@ -383,8 +430,10 @@ internal class ArborPerformanceMonitor(private val activity: Activity) {
         ArborRenderProfiler.setEnabled(false)
         synchronized(lock) {
             recentFrameIntervals.clear()
+            recentFrameDurations.clear()
             recentGpuDurations.clear()
-            intervalFrames = 0L
+            intervalCallbacks = 0L
+            intervalRenderedFrames = 0L
             intervalJankFrames = 0L
             intervalMissedFrames = 0L
             totalFrames = 0L
@@ -425,14 +474,15 @@ internal class ArborPerformanceMonitor(private val activity: Activity) {
         val renderProfiler = if (diagnosticProfilerEnabled) ArborRenderProfiler.drain(elapsedMs) else EMPTY_RENDER_INTERVAL
 
         val snapshotData = synchronized(lock) {
-            val durations = recentFrameIntervals.toList()
+            val frameDurations = recentFrameDurations.toList()
             val gpuDurations = recentGpuDurations.toList()
-            val frameCount = intervalFrames
+            val callbackCount = intervalCallbacks
+            val renderedFrameCount = intervalRenderedFrames
             val jankCount = intervalJankFrames
             val missedCount = intervalMissedFrames
-            val p95FrameMs = performancePercentile(durations, 0.95)
-            val p99FrameMs = performancePercentile(durations, 0.99)
-            val jankPercent = if (frameCount == 0L) 0.0 else jankCount * 100.0 / frameCount
+            val p95FrameMs = performancePercentile(frameDurations, 0.95)
+            val p99FrameMs = performancePercentile(frameDurations, 0.99)
+            val jankPercent = if (renderedFrameCount == 0L) 0.0 else jankCount * 100.0 / renderedFrameCount
             val metricCount = frameMetricCount
             val totalMs = averageMetricMs(frameMetricTotalNs, metricCount)
             val inputAverageMs = averageMetricMs(inputNs, metricCount)
@@ -442,18 +492,25 @@ internal class ArborPerformanceMonitor(private val activity: Activity) {
             val syncAverageMs = averageMetricMs(syncNs, metricCount)
             val commandAverageMs = averageMetricMs(commandNs, metricCount)
             val swapAverageMs = averageMetricMs(swapNs, metricCount)
-            intervalFrames = 0L
+            intervalCallbacks = 0L
+            intervalRenderedFrames = 0L
             intervalJankFrames = 0L
             intervalMissedFrames = 0L
             resetFrameMetricSums()
             val gpuAverage = gpuDurations.takeIf { it.isNotEmpty() }?.average()
-            val fps = frameCount * 1_000.0 / elapsedMs
+            val callbackRate = callbackCount * 1_000.0 / elapsedMs
+            val rawRenderedRate = renderedFrameCount * 1_000.0 / elapsedMs
+            // FrameMetrics reports rendered window frames, not guaranteed physical presentation.
+            // Clamp the compact FPS value to the active display rate so it cannot imply 130
+            // physically displayed frames on a 120 Hz panel.
+            val appRenderedRate = boundedRenderedFrameRate(rawRenderedRate, latestRefreshRate)
+            val fps = appRenderedRate
             val cause = if (diagnosticProfilerEnabled) detectLikelyBottleneck(
                 PerformanceCauseInput(
                     refreshRateHz = latestRefreshRate,
                     fps = fps,
                     frameTotalMs = totalMs,
-                    frameIntervalP95Ms = p95FrameMs,
+                    frameDurationP95Ms = p95FrameMs,
                     jankPercent = jankPercent,
                     gpuMs = gpuAverage,
                     inputMs = inputAverageMs,
@@ -474,7 +531,11 @@ internal class ArborPerformanceMonitor(private val activity: Activity) {
             ) else "Profiler disabled"
             PerformanceSnapshot(
                 fps = fps,
-                averageFrameMs = durations.averageOrZero(),
+                displayRefreshRateHz = latestRefreshRate,
+                choreographerCallbackRate = callbackRate,
+                appRenderedFrameRate = appRenderedRate,
+                presentedFrameRate = null,
+                averageFrameMs = frameDurations.averageOrZero(),
                 p95FrameMs = p95FrameMs,
                 p99FrameMs = p99FrameMs,
                 gpuAverageMs = gpuAverage,
@@ -501,6 +562,8 @@ internal class ArborPerformanceMonitor(private val activity: Activity) {
                 blurLayerReplaysPerFrame = renderProfiler.blurLayerReplaysPerFrame,
                 blurCaptureUpdatesPerSecond = renderProfiler.blurCaptureUpdatesPerSecond,
                 blurEffectBuildsPerSecond = renderProfiler.blurEffectBuildsPerSecond,
+                blurDownsampleLevels = renderProfiler.blurDownsampleLevels,
+                blurUpsampleLevels = renderProfiler.blurUpsampleLevels,
                 appRecompositionsPerSecond = renderProfiler.appRecompositionsPerSecond,
                 chatRecompositionsPerSecond = renderProfiler.chatRecompositionsPerSecond,
                 allocationMbPerSecond = allocationMbPerSecond,
@@ -545,6 +608,8 @@ internal class ArborPerformanceMonitor(private val activity: Activity) {
             blurLayerReplaysPerFrame = 0.0,
             blurCaptureUpdatesPerSecond = 0.0,
             blurEffectBuildsPerSecond = 0.0,
+            blurDownsampleLevels = 0.0,
+            blurUpsampleLevels = 0.0,
             appRecompositionsPerSecond = 0.0,
             chatRecompositionsPerSecond = 0.0,
             blurFrames = 0L,
@@ -572,14 +637,21 @@ internal fun ArborPerformanceOverlay(
     ) {
         Column(Modifier.padding(horizontal = 9.dp, vertical = 7.dp)) {
             Text(
-                "${snapshot.fps.f0()} FPS  ${snapshot.averageFrameMs.f1()} ms  J ${snapshot.jankPercent.f1()}%",
+                "Render ${snapshot.appRenderedFrameRate.f0()} fps  ${snapshot.averageFrameMs.f1()} ms  J ${snapshot.jankPercent.f1()}%",
                 fontFamily = FontFamily.Monospace,
                 fontSize = 11.sp,
                 maxLines = 1,
             )
             if (detailed) {
                 Text(
-                    "p95 ${snapshot.p95FrameMs.f1()}  p99 ${snapshot.p99FrameMs.f1()}  ${snapshot.refreshRateHz.toDouble().f0()} Hz",
+                    "Display ${snapshot.displayRefreshRateHz.toDouble().f0()} Hz  Callback ${snapshot.choreographerCallbackRate.f0()}/s  Present ${snapshot.presentedFrameRate?.f0() ?: "n/a"}",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    color = Color.White.copy(alpha = 0.86f),
+                    maxLines = 1,
+                )
+                Text(
+                    "FM avg ${snapshot.frameMetricsTotalMs.f1()} ms  p95 ${snapshot.p95FrameMs.f1()}  p99 ${snapshot.p99FrameMs.f1()}",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
                     color = Color.White.copy(alpha = 0.86f),
@@ -615,14 +687,21 @@ internal fun ArborPerformanceOverlay(
                         maxLines = 1,
                     )
                     Text(
-                        "BlurCPU ${snapshot.blurCpuMsPerFrame.f2()}  ${snapshot.blurFilteredMegapixelsPerSecond.f0()} MP/s  src×${snapshot.blurSourceDrawsPerFrame.f1()} replay×${snapshot.blurLayerReplaysPerFrame.f1()}",
+                        "BlurCPU ${snapshot.blurCpuMsPerFrame.f2()}  ${snapshot.blurFilteredMegapixelsPerSecond.f0()} MP/s  srcTrav×${snapshot.blurSourceDrawsPerFrame.f1()} replay×${snapshot.blurLayerReplaysPerFrame.f1()}",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 9.sp,
                         color = Color.White.copy(alpha = 0.82f),
                         maxLines = 1,
                     )
                     Text(
-                        "cap/s ${snapshot.blurCaptureUpdatesPerSecond.f1()} fx/s ${snapshot.blurEffectBuildsPerSecond.f1()}  Recomp/s app ${snapshot.appRecompositionsPerSecond.f1()} chat ${snapshot.chatRecompositionsPerSecond.f1()}",
+                        "cap/s ${snapshot.blurCaptureUpdatesPerSecond.f1()} fx/s ${snapshot.blurEffectBuildsPerSecond.f1()}  levels D${snapshot.blurDownsampleLevels.f1()}/U${snapshot.blurUpsampleLevels.f1()}",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 9.sp,
+                        color = Color.White.copy(alpha = 0.82f),
+                        maxLines = 1,
+                    )
+                    Text(
+                        "Recomp/s app ${snapshot.appRecompositionsPerSecond.f1()} chat ${snapshot.chatRecompositionsPerSecond.f1()}",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 9.sp,
                         color = Color.White.copy(alpha = 0.82f),
