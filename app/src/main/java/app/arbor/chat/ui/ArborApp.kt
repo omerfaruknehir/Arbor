@@ -21,9 +21,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.arbor.chat.settings.DeveloperSettings
 import app.arbor.chat.settings.PerformanceOverlayPosition
 
 @Composable
@@ -39,16 +41,30 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
     val linuxRun by viewModel.linuxRun.collectAsState()
     val developerSettings by viewModel.developerSettings.collectAsState()
     val performanceMonitor = remember(activity) { ArborPerformanceMonitor(activity) }
-    val performanceSnapshot by performanceMonitor.snapshot.collectAsState()
-    val showPerformanceOverlay = developerSettings.enabled && developerSettings.performanceOverlayEnabled
+    val showPerformanceOverlay = developerSettings.enabled &&
+        (developerSettings.performanceOverlayEnabled || developerSettings.diagnosticProfilerEnabled)
     val drawerState = rememberInteractiveDrawerState()
     val snackbar = remember { SnackbarHostState() }
     val openDrawer = { drawerState.open(); Unit }
 
-    DisposableEffect(performanceMonitor, showPerformanceOverlay, developerSettings.performanceUpdateIntervalMs) {
-        if (showPerformanceOverlay) performanceMonitor.start(developerSettings.performanceUpdateIntervalMs)
-        else performanceMonitor.stop()
+    DisposableEffect(
+        performanceMonitor,
+        showPerformanceOverlay,
+        developerSettings.performanceUpdateIntervalMs,
+        developerSettings.diagnosticProfilerEnabled,
+    ) {
+        if (showPerformanceOverlay) {
+            performanceMonitor.start(
+                intervalMs = developerSettings.performanceUpdateIntervalMs,
+                diagnosticsEnabled = developerSettings.diagnosticProfilerEnabled,
+            )
+        } else performanceMonitor.stop()
         onDispose { performanceMonitor.stop() }
+    }
+
+    SideEffect {
+        ArborRenderProfiler.setScreen(screen.name)
+        if (developerSettings.diagnosticProfilerEnabled) ArborRenderProfiler.recordAppRecomposition()
     }
 
     LaunchedEffect(viewModel) {
@@ -158,9 +174,9 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
         if (showPerformanceOverlay) {
             val bottomPosition = developerSettings.performanceOverlayPosition == PerformanceOverlayPosition.BOTTOM_START ||
                 developerSettings.performanceOverlayPosition == PerformanceOverlayPosition.BOTTOM_END
-            ArborPerformanceOverlay(
-                snapshot = performanceSnapshot,
-                detailed = developerSettings.detailedPerformanceOverlay,
+            PerformanceOverlayHost(
+                monitor = performanceMonitor,
+                settings = developerSettings,
                 modifier = Modifier
                     .align(performanceOverlayAlignment(developerSettings.performanceOverlayPosition))
                     .windowInsetsPadding(WindowInsets.safeDrawing)
@@ -174,6 +190,24 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
+}
+
+
+@Composable
+private fun PerformanceOverlayHost(
+    monitor: ArborPerformanceMonitor,
+    settings: DeveloperSettings,
+    modifier: Modifier = Modifier,
+) {
+    // Snapshot updates must not recompose ArborApp, the navigation host, drawer,
+    // or the active screen. Keeping the collection in this leaf makes the
+    // profiler observe the app instead of becoming a periodic source of work.
+    val snapshot by monitor.snapshot.collectAsState()
+    ArborPerformanceOverlay(
+        snapshot = snapshot,
+        detailed = settings.detailedPerformanceOverlay || settings.diagnosticProfilerEnabled,
+        modifier = modifier,
+    )
 }
 
 internal fun performanceOverlayAlignment(position: PerformanceOverlayPosition): Alignment = when (position) {

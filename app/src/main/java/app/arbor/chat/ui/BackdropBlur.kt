@@ -158,7 +158,6 @@ fun rememberArborBackdropBlurState(): ArborBackdropBlurState = remember { ArborB
 /** Applies the 0.17.8 glass blur and paints its overlays in the same coordinates. */
 fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = composed {
     val density = LocalDensity.current.density
-    val navigationTransitionActive = LocalNavigationTransitionActive.current
     val topRadiusPx = state.topRadiusDp * density
     val bottomRadiusPx = state.bottomRadiusDp * density
     val radiusActive = topRadiusPx >= MIN_VISIBLE_RADIUS_PX || bottomRadiusPx >= MIN_VISIBLE_RADIUS_PX
@@ -184,6 +183,9 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
     )
 
     val overlayModifier = measured.drawWithContent {
+        val profilerActive = ArborRenderProfiler.enabled && radiusActive &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+        val profilerStarted = if (profilerActive) System.nanoTime() else 0L
         drawContent()
         drawArborPanelOverlay(
             range = topRange,
@@ -203,8 +205,16 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
             softness = state.bottomSoftness,
             minimumFeatherPx = MINIMUM_FEATHER_DISTANCE_DP * density,
         )
+        if (profilerActive) {
+            ArborRenderProfiler.recordBlurFrame(
+                cpuNanos = System.nanoTime() - profilerStarted,
+                filteredPixels = contentWidthPx.toLong() * contentHeightPx.toLong() * BLUR_PASS_COUNT,
+                sourceDraws = 1,
+                layerReplays = 0,
+            )
+        }
     }
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || !radiusActive || navigationTransitionActive) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || !radiusActive) {
         return@composed overlayModifier
     }
 
@@ -243,6 +253,7 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         state.topSoftness, state.bottomSoftness,
     ) { buildShader(BLUR_AXIS_C_X, BLUR_AXIS_C_Y) }
     val composeEffect = remember(firstShader, secondShader, thirdShader) {
+        ArborRenderProfiler.recordBlurEffectBuild()
         val first = RenderEffect.createRuntimeShaderEffect(firstShader, "content")
         val second = RenderEffect.createRuntimeShaderEffect(secondShader, "content")
         val third = RenderEffect.createRuntimeShaderEffect(thirdShader, "content")
@@ -456,6 +467,7 @@ internal const val BLUR_EXTRA_CORE_PAIRS = 4
 internal const val BLUR_EXTRA_EDGE_PAIRS = 7
 internal const val BLUR_SAMPLES_PER_PASS = 31
 internal const val BLUR_MAX_SAMPLES_PER_PASS = 73
+internal const val BLUR_PASS_COUNT = 3
 private const val BLUR_CORE_DENSITY_FULL_STRENGTH = 0.40f
 private const val BLUR_EDGE_DENSITY_START_STRENGTH = 0.30f
 

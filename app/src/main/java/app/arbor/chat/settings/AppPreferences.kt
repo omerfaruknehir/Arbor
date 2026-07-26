@@ -16,6 +16,7 @@ enum class PerformanceOverlayPosition { TOP_START, TOP_END, BOTTOM_START, BOTTOM
 data class DeveloperSettings(
     val enabled: Boolean = false,
     val performanceOverlayEnabled: Boolean = false,
+    val diagnosticProfilerEnabled: Boolean = false,
     val detailedPerformanceOverlay: Boolean = true,
     val performanceUpdateIntervalMs: Int = 500,
     val performanceOverlayPosition: PerformanceOverlayPosition = PerformanceOverlayPosition.TOP_END,
@@ -193,6 +194,7 @@ class AppPreferences(context: Context) {
         preferences.edit {
             putBoolean(KEY_DEVELOPER_ENABLED, normalized.enabled)
             putBoolean(KEY_PERFORMANCE_OVERLAY_ENABLED, normalized.performanceOverlayEnabled)
+            putBoolean(KEY_DIAGNOSTIC_PROFILER_ENABLED, normalized.diagnosticProfilerEnabled)
             putBoolean(KEY_PERFORMANCE_OVERLAY_DETAILED, normalized.detailedPerformanceOverlay)
             putInt(KEY_PERFORMANCE_UPDATE_INTERVAL_MS, normalized.performanceUpdateIntervalMs)
             putString(KEY_PERFORMANCE_OVERLAY_POSITION, normalized.performanceOverlayPosition.name)
@@ -240,6 +242,7 @@ class AppPreferences(context: Context) {
     private fun readDeveloperSettings() = DeveloperSettings(
         enabled = preferences.getBoolean(KEY_DEVELOPER_ENABLED, false),
         performanceOverlayEnabled = preferences.getBoolean(KEY_PERFORMANCE_OVERLAY_ENABLED, false),
+        diagnosticProfilerEnabled = preferences.getBoolean(KEY_DIAGNOSTIC_PROFILER_ENABLED, false),
         detailedPerformanceOverlay = preferences.getBoolean(KEY_PERFORMANCE_OVERLAY_DETAILED, true),
         performanceUpdateIntervalMs = preferences.getInt(KEY_PERFORMANCE_UPDATE_INTERVAL_MS, 500),
         performanceOverlayPosition = enumValue(KEY_PERFORMANCE_OVERLAY_POSITION, PerformanceOverlayPosition.TOP_END),
@@ -297,6 +300,7 @@ class AppPreferences(context: Context) {
         const val KEY_GENERATED_REPAIR_ATTEMPTS = "generated_repair_max_attempts"
         const val KEY_DEVELOPER_ENABLED = "developer_settings_enabled"
         const val KEY_PERFORMANCE_OVERLAY_ENABLED = "performance_overlay_enabled"
+        const val KEY_DIAGNOSTIC_PROFILER_ENABLED = "diagnostic_profiler_enabled"
         const val KEY_PERFORMANCE_OVERLAY_DETAILED = "performance_overlay_detailed"
         const val KEY_PERFORMANCE_UPDATE_INTERVAL_MS = "performance_update_interval_ms"
         const val KEY_PERFORMANCE_OVERLAY_POSITION = "performance_overlay_position"

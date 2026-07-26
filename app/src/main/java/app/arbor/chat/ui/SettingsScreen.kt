@@ -720,8 +720,34 @@ private fun DeveloperSettingsPage(
     SettingsSwitch(
         label = "Show performance overlay",
         checked = settings.performanceOverlayEnabled,
-        onCheckedChange = { enabled -> viewModel.updateDeveloperSettings { it.copy(performanceOverlayEnabled = enabled) } },
+        onCheckedChange = { enabled ->
+            viewModel.updateDeveloperSettings {
+                it.copy(
+                    performanceOverlayEnabled = enabled,
+                    diagnosticProfilerEnabled = it.diagnosticProfilerEnabled && enabled,
+                )
+            }
+        },
         enabled = settings.enabled,
+    )
+    SettingsSwitch(
+        label = "Cause profiler",
+        checked = settings.diagnosticProfilerEnabled,
+        onCheckedChange = { profilerEnabled ->
+            viewModel.updateDeveloperSettings {
+                it.copy(
+                    diagnosticProfilerEnabled = profilerEnabled,
+                    performanceOverlayEnabled = it.performanceOverlayEnabled || profilerEnabled,
+                    detailedPerformanceOverlay = it.detailedPerformanceOverlay || profilerEnabled,
+                )
+            }
+        },
+        enabled = settings.enabled,
+    )
+    Text(
+        "Attributes slow frames to Android frame stages, Arbor blur work, Compose recomposition pressure, allocations, and blocking GC. It adds some diagnostic overhead, so use it while reproducing an issue.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     SettingsSwitch(
         label = "Detailed metrics",
@@ -779,7 +805,7 @@ private fun DeveloperSettingsPage(
 
     Text(
         if (settings.detailedPerformanceOverlay) {
-            "Detailed mode shows Choreographer FPS, average/p95/p99 frame interval, jank against the current refresh budget, app CPU, PSS, Java heap, GPU duration when Android reports it, missed vsyncs per second, and total observed frames."
+            "Detailed mode shows Choreographer FPS, average/p95/p99 frame interval, jank against the current refresh budget, app CPU, PSS, Java heap, GPU duration when Android reports it, missed vsyncs per second, and total observed frames. Cause profiler also shows a likely bottleneck plus FrameMetrics, blur-strip, recomposition, allocation, and GC counters."
         } else {
             "Compact mode shows FPS, average frame time, and jank percentage."
         },

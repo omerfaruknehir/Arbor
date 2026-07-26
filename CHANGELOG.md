@@ -1,3 +1,24 @@
+## 0.17.25
+
+- Restore the complete 0.17.18 adaptive three-pass backdrop-blur feature exactly, while retaining later profiler and unrelated fixes.
+
+## 0.17.24
+
+- Restore full-resolution 0.17.8 glass quality while filtering only exact cropped strip regions.
+- Record scrolling content once and replay one display list instead of traversing Compose once per blur strip.
+- Isolate profiler overlay recomposition from the application root.
+- Correct false GPU attribution and expose source traversal, layer replay, capture rate, and effect rebuild metrics.
+- Preserve adaptive display/thermal behavior; no forced 120 Hz or sustained-performance policy.
+
+## 0.17.22
+
+- Replaced the 3-stage high-sample custom backdrop blur with a hardware-accelerated Gaussian RenderEffect plus a low-cost AGSL panel mask.
+- Blur no longer turns off or changes quality during scrolling, ordinary navigation, or predictive-back animation.
+- Matching top/bottom blur radii share one Gaussian branch; unequal radii retain exact independent rendering.
+- Removed boxed chat bottom-inset state from the scroll-sensitive viewport path.
+- Documented observed build problems, fixes, and the cache-preserving build workflow in `skills.md`.
+- Added `scripts/sign-debug-aab.sh` to produce and independently verify a signed debug AAB.
+
 ## 0.17.17
 
 - Smooth low edge-softness behavior for gradual blur without changing the glass kernel.

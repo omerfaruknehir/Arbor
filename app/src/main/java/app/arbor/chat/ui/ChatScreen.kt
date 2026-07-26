@@ -101,6 +101,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -393,6 +394,7 @@ internal fun calculateComposerChromeProgressFromBottom(
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+    SideEffect { ArborRenderProfiler.recordChatRecomposition() }
     val conversation by viewModel.conversation.collectAsStateWithLifecycle()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsStateWithLifecycle()
     val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsStateWithLifecycle()
@@ -425,7 +427,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     var manualFollowHold by remember(conversation?.id) { mutableStateOf(false) }
     var initialPositioned by remember(conversation?.id) { mutableStateOf(false) }
     var messageViewportBounds by remember(conversation?.id) { mutableStateOf<Rect?>(null) }
-    var messageBottomInsetPx by remember(conversation?.id) { mutableStateOf(0) }
+    var messageBottomInsetPx by remember(conversation?.id) { mutableIntStateOf(0) }
     var workingCardMutationCount by remember(conversation?.id) { mutableIntStateOf(0) }
     val messageViewportBoundsState = rememberUpdatedState(messageViewportBounds)
     val messageBottomInsetState = rememberUpdatedState(messageBottomInsetPx)

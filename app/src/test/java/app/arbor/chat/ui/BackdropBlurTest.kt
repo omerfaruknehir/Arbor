@@ -95,6 +95,19 @@ class BackdropBlurTest {
         assertEquals(1f, lenC, .0001f)
     }
 
+    @Test fun exact01718RendererIsActiveInsteadOfTheLaterStripReplacement() {
+        val source = java.io.File("src/main/java/app/arbor/chat/ui/BackdropBlur.kt").readText()
+        assertTrue(source.contains("adaptiveGlassBlur"))
+        assertTrue(source.contains("RenderEffect.createChainEffect(third"))
+        assertTrue(source.contains("basePairBudget = 25.0 * strength"))
+        assertTrue(source.contains("corePairBudget = 4.0"))
+        assertTrue(source.contains("edgePairBudget = 7.0"))
+        assertTrue(source.contains("overlayModifier.graphicsLayer"))
+        assertTrue(!source.contains("resolveBlurStripCapture"))
+        assertTrue(!source.contains("STRIP_GLASS_SHADER"))
+        assertTrue(!source.contains("FIXED_BLUR_DOWNSAMPLE"))
+    }
+
     @Test fun overlayOpacityIsClampedAndPreservesRgb() {
         val tint = androidx.compose.ui.graphics.Color(0.2f, 0.4f, 0.6f, 0.5f)
         val hidden = applyOverlayOpacity(tint, -1f)
@@ -113,12 +126,5 @@ class BackdropBlurTest {
         assertEquals(0f, quantizeBlurRadiusDp(.12f), 0f)
         assertEquals(.25f, quantizeBlurRadiusDp(.13f), 0f)
         assertEquals(18.5f, quantizeBlurRadiusDp(18.49f), 0f)
-    }
-
-    @Test
-    fun navigationTransitionBypassIsWiredIntoBackdropSource() {
-        val source = java.io.File("src/main/java/app/arbor/chat/ui/BackdropBlur.kt").readText()
-        assertTrue(source.contains("LocalNavigationTransitionActive.current"))
-        assertTrue(source.contains("navigationTransitionActive"))
     }
 }
