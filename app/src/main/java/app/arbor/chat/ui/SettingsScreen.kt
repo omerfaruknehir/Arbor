@@ -113,11 +113,14 @@ import app.arbor.chat.provider.OpenAiOAuthUsageSnapshot
 import app.arbor.chat.provider.OpenAiOAuthUsageState
 import app.arbor.chat.provider.OpenAiOAuthUsageWindow
 import app.arbor.chat.provider.supportedThinkingLevels
+import app.arbor.chat.settings.CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT
+import app.arbor.chat.settings.CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT
 import app.arbor.chat.settings.ColorPalette
 import app.arbor.chat.settings.DeveloperSettings
 import app.arbor.chat.settings.PerformanceOverlayPosition
 import app.arbor.chat.settings.NewChatDefaults
 import app.arbor.chat.settings.ThemeMode
+import app.arbor.chat.settings.displayedChromeEdgeSoftness
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
@@ -523,18 +526,29 @@ private fun AppearanceSettingsPage(
     )
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text("Edge softness", modifier = Modifier.weight(1f))
-        Text("${(chromeEdgeSoftness * 100).toInt()}%", color = MaterialTheme.colorScheme.primary)
+        val displayedSoftness = displayedChromeEdgeSoftness(chromeEdgeSoftness)
+        val edgeLabel = when {
+            chromeEdgeSoftness == CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT -> "Rounded · 0%"
+            chromeEdgeSoftness < CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT -> "Shape transition · 0%"
+            chromeEdgeSoftness == CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT -> "Flat · 0%"
+            else -> "${(displayedSoftness * 100).roundToInt()}%"
+        }
+        Text(edgeLabel, color = MaterialTheme.colorScheme.primary)
     }
     ArborSlider(
         value = chromeEdgeSoftness,
         onValueChange = viewModel::setChromeEdgeSoftness,
         valueRange = 0f..1f,
-        snapPoints = listOf(0f, 0.25f, 0.5f, 0.75f, 1f),
-        attractionRadiusFraction = 0.075f,
-        pullStrength = 0.88f,
+        snapPoints = listOf(
+            CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT,
+            CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT,
+        ),
+        attractionRadiusFraction = 0.028f,
+        pullStrength = 0.30f,
+        releaseSnapRadiusFraction = 0.016f,
     )
     Text(
-        "Zero keeps rounded panels. The thumb is magnetically attracted to zero without a dead zone; nonzero values use flat geometry with a symmetric boundary feather.",
+        "Both snap points are 0% softness. The first is a rounded box; the unsnapped lane between them changes only the shape; the second is a flat hard edge. After the flat snap point, actual edge softness rises continuously from 0% to 100%.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

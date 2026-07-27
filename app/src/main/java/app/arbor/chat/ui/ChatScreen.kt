@@ -2279,7 +2279,10 @@ private fun ThinkingComposerChip(
             if (!enabled) !option.enabled else option.enabled && option.effort == effort
         }.takeIf { it >= 0 } ?: options.indexOfFirst { it.enabled }.coerceAtLeast(0)
     }
-    var sliderValue by remember(options, selectedIndex, menu) { mutableFloatStateOf(selectedIndex.toFloat()) }
+    // Keep the physical thumb continuous while the menu is open. Re-keying
+    // this state with selectedIndex used to teleport the thumb to an integer
+    // as soon as the selected effort propagated back from the ViewModel.
+    var sliderValue by remember(options) { mutableFloatStateOf(selectedIndex.toFloat()) }
     val selected = options.getOrNull(selectedIndex)
 
     Box {
@@ -2287,6 +2290,7 @@ private fun ThinkingComposerChip(
             onClick = {
                 if (options.isNotEmpty()) {
                     haptics.tap()
+                    sliderValue = selectedIndex.toFloat()
                     menu = true
                 }
             },
@@ -2334,7 +2338,9 @@ private fun ThinkingComposerChip(
                             onSelection(option.enabled, option.effort)
                         },
                         valueRange = 0f..options.lastIndex.toFloat().coerceAtLeast(1f),
-                        steps = (options.size - 2).coerceAtLeast(0),
+                        snapPoints = options.indices.map(Int::toFloat),
+                        liveMagnetism = false,
+                        snapToNearestOnRelease = false,
                         enabled = options.size > 1,
                     )
                     Row(Modifier.fillMaxWidth()) {

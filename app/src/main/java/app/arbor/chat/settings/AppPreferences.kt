@@ -9,14 +9,50 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** Magnetic capture radius used by the UI around the exact zero anchor. */
-internal const val CHROME_EDGE_SOFTNESS_ZERO_SNAP_THRESHOLD = 0.06f
+/** First physical anchor: 0% softness with a fully rounded panel. */
+internal const val CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT = 0f
 
-/** Persistence remains continuous; only an actual magnetic settle stores zero. */
+/**
+ * Second physical anchor: still 0% softness, but with a fully flat panel.
+ *
+ * The value is an internal control position, not a displayed softness value.
+ * Keeping the anchors separated gives the user a continuous, non-snapping
+ * rounded-to-flat geometry lane while both endpoints remain semantically 0%.
+ */
+internal const val CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT = 0.20f
+
+/** Persistence remains continuous; snapping is performed only by the slider on release. */
 internal fun snapChromeEdgeSoftness(value: Float): Float = value.coerceIn(0f, 1f)
 
-/** The complete post-zero slider range remains available without a dead zone. */
-internal fun effectiveChromeEdgeSoftness(value: Float): Float = snapChromeEdgeSoftness(value)
+/**
+ * 0..FLAT is reserved for the rounded-to-flat geometry transition. The actual
+ * edge feather starts at the second anchor and then spans the rest of the slider.
+ */
+internal fun effectiveChromeEdgeSoftness(value: Float): Float {
+    val normalized = snapChromeEdgeSoftness(value)
+    if (normalized <= CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT) return 0f
+    return ((normalized - CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT) /
+        (1f - CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT)).coerceIn(0f, 1f)
+}
+
+/** Percentage shown to the user. Both geometry anchors intentionally read 0%. */
+internal fun displayedChromeEdgeSoftness(value: Float): Float =
+    effectiveChromeEdgeSoftness(value)
+
+/** Maps a semantic 0..100% feather value into the post-flat control lane. */
+internal fun chromeEdgeControlPositionForSoftness(softness: Float): Float {
+    val normalized = softness.coerceIn(0f, 1f)
+    if (normalized <= 0f) return CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT
+    return CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT +
+        normalized * (1f - CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT)
+}
+
+/** Smooth rounded-to-flat geometry transition between the two snap anchors. */
+internal fun chromeEdgeCornerTransition(value: Float): Float {
+    val x = (snapChromeEdgeSoftness(value) / CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT)
+        .coerceIn(0f, 1f)
+    return x * x * (3f - 2f * x)
+}
 
 enum class ColorPalette { ARBOR, SYSTEM, GRAPHITE }
 
@@ -156,14 +192,36 @@ class AppPreferences(context: Context) {
 
     private fun readChromeEdgeSoftness(): Float {
         if (preferences.contains(KEY_CHROME_EDGE_SOFTNESS)) {
-            return snapChromeEdgeSoftness(
-                preferences.getFloat(KEY_CHROME_EDGE_SOFTNESS, DEFAULT_CHROME_EDGE_SOFTNESS),
-            )
+            val saved = preferences.getFloat(KEY_CHROME_EDGE_SOFTNESS, DEFAULT_CHROME_EDGE_SOFTNESS)
+                .coerceIn(0f, 1f)
+            if (preferences.getInt(KEY_CHROME_EDGE_CONTROL_REVISION, 1) >= CHROME_EDGE_CONTROL_REVISION) {
+                return snapChromeEdgeSoftness(saved)
+            }
+
+            // 0.19.8 and older stored the whole slider as actual softness:
+            // zero meant rounded, every nonzero value meant flat + feather.
+            // Preserve that visual meaning while moving the feather range after
+            // the new second 0% anchor.
+            val migrated = if (saved <= 0f) {
+                CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT
+            } else {
+                chromeEdgeControlPositionForSoftness(saved)
+            }
+            preferences.edit {
+                putFloat(KEY_CHROME_EDGE_SOFTNESS, migrated)
+                putInt(KEY_CHROME_EDGE_CONTROL_REVISION, CHROME_EDGE_CONTROL_REVISION)
+            }
+            return migrated
         }
-        val migrated = if (preferences.getBoolean(KEY_CHROME_GRADUAL_ENABLED, true)) DEFAULT_CHROME_EDGE_SOFTNESS else 0f
+        val migrated = if (preferences.getBoolean(KEY_CHROME_GRADUAL_ENABLED, true)) {
+            DEFAULT_CHROME_EDGE_SOFTNESS
+        } else {
+            CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT
+        }
         preferences.edit {
             remove(KEY_CHROME_GRADUAL_ENABLED)
             putFloat(KEY_CHROME_EDGE_SOFTNESS, migrated)
+            putInt(KEY_CHROME_EDGE_CONTROL_REVISION, CHROME_EDGE_CONTROL_REVISION)
         }
         return migrated
     }
@@ -308,9 +366,11 @@ class AppPreferences(context: Context) {
         const val KEY_CHROME_GRADUAL_ENABLED = "chrome_gradual_enabled" // legacy migration only
         const val KEY_CHROME_BLUR_STRENGTH = "chrome_blur_strength"
         const val KEY_CHROME_EDGE_SOFTNESS = "chrome_edge_softness"
+        const val KEY_CHROME_EDGE_CONTROL_REVISION = "chrome_edge_control_revision"
         const val KEY_CHROME_OVERLAY_OPACITY = "chrome_overlay_opacity"
         const val KEY_CHROME_TOP_PANEL_HEIGHT_DP = "chrome_top_panel_height_dp"
-        const val DEFAULT_CHROME_EDGE_SOFTNESS = 0.5f
+        const val CHROME_EDGE_CONTROL_REVISION = 2
+        const val DEFAULT_CHROME_EDGE_SOFTNESS = 0.6f // 50% semantic feather after the flat 0% anchor.
         const val DEFAULT_CHROME_TOP_PANEL_HEIGHT_DP = 128f
         const val MIN_CHROME_TOP_PANEL_HEIGHT_DP = 64f
         const val MAX_CHROME_TOP_PANEL_HEIGHT_DP = 240f

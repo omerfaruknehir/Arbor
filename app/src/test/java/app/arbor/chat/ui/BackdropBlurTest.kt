@@ -1,7 +1,11 @@
 package app.arbor.chat.ui
 
 import androidx.compose.ui.graphics.Color
-import app.arbor.chat.settings.CHROME_EDGE_SOFTNESS_ZERO_SNAP_THRESHOLD
+import app.arbor.chat.settings.CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT
+import app.arbor.chat.settings.CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT
+import app.arbor.chat.settings.chromeEdgeCornerTransition
+import app.arbor.chat.settings.chromeEdgeControlPositionForSoftness
+import app.arbor.chat.settings.displayedChromeEdgeSoftness
 import app.arbor.chat.settings.effectiveChromeEdgeSoftness
 import app.arbor.chat.settings.snapChromeEdgeSoftness
 import org.junit.Assert.assertEquals
@@ -29,16 +33,27 @@ class BackdropBlurTest {
         assertEquals(.13f, quantizeBlurRadiusDp(.13f), 0f)
     }
 
-    @Test fun edgeSoftnessPersistenceIsContinuousAndZeroRemainsExact() {
-        assertEquals(.06f, CHROME_EDGE_SOFTNESS_ZERO_SNAP_THRESHOLD, .0001f)
-        assertEquals(0f, snapChromeEdgeSoftness(0f), .0001f)
-        assertEquals(.02f, snapChromeEdgeSoftness(.02f), .0001f)
-        assertEquals(.06f, snapChromeEdgeSoftness(.06f), .0001f)
-        assertEquals(.061f, effectiveChromeEdgeSoftness(.061f), .0001f)
-        assertEquals(1f, effectiveChromeEdgeSoftness(1f), .0001f)
-        assertEquals(0f, edgeSoftnessActivation(0f), .0001f)
-        assertTrue(edgeSoftnessActivation(.02f) > 0f)
-        assertTrue(edgeSoftnessActivation(.5f) < edgeSoftnessActivation(.88f))
+    @Test fun edgeSoftnessUsesRoundedTransitionFlatAndFeatherRanges() {
+        assertEquals(0f, CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT, 0f)
+        assertEquals(.20f, CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT, 0f)
+        assertEquals(0f, snapChromeEdgeSoftness(0f), 0f)
+        assertEquals(.10f, snapChromeEdgeSoftness(.10f), 0f)
+        assertEquals(0f, effectiveChromeEdgeSoftness(.10f), 0f)
+        assertEquals(0f, effectiveChromeEdgeSoftness(.20f), 0f)
+        assertEquals(0f, displayedChromeEdgeSoftness(0f), 0f)
+        assertEquals(0f, displayedChromeEdgeSoftness(.10f), 0f)
+        assertEquals(0f, displayedChromeEdgeSoftness(.20f), 0f)
+        assertEquals(.20f, chromeEdgeControlPositionForSoftness(0f), 0f)
+        assertEquals(.60f, chromeEdgeControlPositionForSoftness(.50f), .0001f)
+        assertEquals(1f, chromeEdgeControlPositionForSoftness(1f), 0f)
+        assertEquals(.5f, effectiveChromeEdgeSoftness(.60f), .0001f)
+        assertEquals(1f, effectiveChromeEdgeSoftness(1f), 0f)
+        assertEquals(0f, chromeEdgeCornerTransition(0f), 0f)
+        assertTrue(chromeEdgeCornerTransition(.10f) > 0f)
+        assertTrue(chromeEdgeCornerTransition(.10f) < 1f)
+        assertEquals(1f, chromeEdgeCornerTransition(.20f), 0f)
+        assertEquals(0f, edgeSoftnessActivation(.20f), 0f)
+        assertTrue(edgeSoftnessActivation(.21f) > 0f)
         assertEquals(68f, calculateMergeDistanceDp(1f), .0001f)
     }
 
@@ -48,7 +63,10 @@ class BackdropBlurTest {
         assertTrue(source.contains("Shader.TileMode.CLAMP"))
         assertTrue(source.contains("RenderEffect.createBlendModeEffect"))
         assertTrue(source.contains("BlendMode.SRC_OVER"))
+        assertTrue(source.contains("BlendMode.PLUS"))
         assertTrue(source.contains("BlendMode.DST_IN"))
+        assertTrue(source.contains("BlendMode.DST_OUT"))
+        assertTrue(source.contains("identityOutsidePanels"))
         assertTrue(source.contains("RenderEffect.createShaderEffect(maskShader)"))
         assertTrue(source.contains("PANEL_ALPHA_MASK_SHADER"))
         assertFalse(source.contains("sampleStep *"))
@@ -72,9 +90,9 @@ class BackdropBlurTest {
         assertTrue(source.contains("decorated.graphicsLayer { renderEffect = composeEffect }"))
     }
 
-    @Test fun zeroSoftnessUsesRoundedPanelsAndNonzeroUsesSymmetricFlatFeather() {
+    @Test fun firstRangeMorphsRoundedToFlatAndSecondRangeAddsSymmetricFeather() {
         val source = blurSource()
-        assertTrue(source.contains("if (normalizedSoftness == 0f) cornerRadiusDp"))
+        assertTrue(source.contains("chromeEdgeCornerTransition(normalizedSoftness)"))
         assertTrue(source.contains("if (!softnessActive)"))
         assertTrue(source.contains("val half = mergeDistance * 0.5f"))
         assertTrue(source.contains("uBounds.y - halfSpan"))
@@ -123,7 +141,7 @@ class BackdropBlurTest {
 
     @Test fun profilerRemainsWiredToTheGaussianRenderer() {
         val source = blurSource()
-        assertTrue(source.contains("recordBlurEffectBuild(panelEffects.size * 4 + 1)"))
+        assertTrue(source.contains("recordBlurEffectBuild(panels.size * 6 + 5)"))
         assertTrue(source.contains("recordBlurFrame("))
         assertTrue(source.contains("sourceTraversals = 1"))
         assertTrue(source.contains("downsampleLevels = 0"))

@@ -7,6 +7,7 @@ import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.os.Build
+import app.arbor.chat.settings.chromeEdgeCornerTransition
 import app.arbor.chat.settings.effectiveChromeEdgeSoftness
 import app.arbor.chat.settings.snapChromeEdgeSoftness
 import androidx.compose.runtime.Composable
@@ -92,8 +93,8 @@ class ArborBackdropBlurState internal constructor() {
         val radius = quantizeBlurRadiusDp(radiusDp)
         val height = panelHeightDp.coerceAtLeast(1f)
         val normalizedSoftness = snapChromeEdgeSoftness(softness)
-        val corner = if (normalizedSoftness == 0f) cornerRadiusDp.coerceAtLeast(0f) else 0f
-        val merge = if (normalizedSoftness == 0f) 0f else mergeDp.coerceIn(0f, height * 2f)
+        val corner = cornerRadiusDp.coerceAtLeast(0f) * (1f - chromeEdgeCornerTransition(normalizedSoftness))
+        val merge = mergeDp.coerceIn(0f, height * 2f)
         val normalizedSaturation = saturation.coerceIn(0.75f, 1.35f)
         val normalizedContrast = contrast.coerceIn(0.85f, 1.20f)
         val normalizedBrightness = brightness.coerceIn(0.85f, 1.15f)
@@ -218,7 +219,7 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
     val normalizedBottomEnd = bottomEndPx.coerceIn(-contentHeightPx, contentHeightPx * 2f)
     val normalizedBottomStart = minOf(bottomStartPx, normalizedBottomEnd - 1f).coerceIn(-contentHeightPx, contentHeightPx * 2f)
 
-    val topPanelEffect = if (topBlurActive) remember(
+    val topPanelEffects = if (topBlurActive) remember(
         topRadiusPx,
         contentWidthPx,
         contentHeightPx,
@@ -248,7 +249,7 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         )
     } else null
 
-    val bottomPanelEffect = if (bottomBlurActive) remember(
+    val bottomPanelEffects = if (bottomBlurActive) remember(
         bottomRadiusPx,
         contentWidthPx,
         contentHeightPx,
@@ -278,14 +279,35 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         )
     } else null
 
-    val composeEffect = remember(topPanelEffect, bottomPanelEffect) {
-        val panelEffects = listOfNotNull(topPanelEffect, bottomPanelEffect)
-        if (panelEffects.isEmpty()) return@remember null
-        ArborRenderProfiler.recordBlurEffectBuild(panelEffects.size * 4 + 1)
+    val composeEffect = remember(topPanelEffects, bottomPanelEffects) {
+        val panels = listOfNotNull(topPanelEffects, bottomPanelEffects)
+        if (panels.isEmpty()) return@remember null
+
+        // A backdrop blur must replace the source inside its mask. Drawing the
+        // blurred pixels over an untouched identity layer doubles bright areas
+        // and looks like bloom. Mask the identity out first, then fill those
+        // exact pixels with the Gaussian result.
+        val unionMask = panels.map { it.mask }.reduce { background, panelMask ->
+            RenderEffect.createBlendModeEffect(background, panelMask, BlendMode.SRC_OVER)
+        }
         val identity = RenderEffect.createOffsetEffect(0f, 0f)
-        panelEffects.fold(identity) { background, panel ->
+        val identityOutsidePanels = RenderEffect.createBlendModeEffect(identity, unionMask, BlendMode.DST_OUT)
+        val blurredPanels = panels.map { it.replacement }.reduce { background, panel ->
             RenderEffect.createBlendModeEffect(background, panel, BlendMode.SRC_OVER)
-        }.asComposeRenderEffect()
+        }
+
+        // The two branches are complementary premultiplied images:
+        // original * (1 - mask) and Gaussian * mask. PLUS combines them once,
+        // avoiding both the old source-over bloom and a double attenuation at
+        // partially feathered mask pixels. Top/bottom overlap is resolved in
+        // blurredPanels before the complementary branches are added.
+        val replacement = RenderEffect.createBlendModeEffect(
+            identityOutsidePanels,
+            blurredPanels,
+            BlendMode.PLUS,
+        )
+        ArborRenderProfiler.recordBlurEffectBuild(panels.size * 6 + 5)
+        replacement.asComposeRenderEffect()
     }
 
     val decorated = measured.drawWithContent {
@@ -343,6 +365,11 @@ internal fun buildGlassColorMatrix(
     brightness: Float,
 ): ColorMatrix = ColorMatrix(glassColorMatrixValues(saturation, contrast, brightness))
 
+internal data class NativeGaussianPanelEffects(
+    val replacement: RenderEffect,
+    val mask: RenderEffect,
+)
+
 internal fun buildNativeGaussianPanelEffect(
     edge: ArborBlurEdge,
     radiusPx: Float,
@@ -357,7 +384,7 @@ internal fun buildNativeGaussianPanelEffect(
     saturation: Float,
     contrast: Float,
     brightness: Float,
-): RenderEffect? {
+): NativeGaussianPanelEffects? {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || radiusPx < MIN_VISIBLE_RADIUS_PX) return null
     val maskShader = RuntimeShader(PANEL_ALPHA_MASK_SHADER).apply {
         setFloatUniform("uSize", contentWidthPx.coerceAtLeast(1f), contentHeightPx.coerceAtLeast(1f))
@@ -373,7 +400,10 @@ internal fun buildNativeGaussianPanelEffect(
         gaussian,
     )
     val alphaMask = RenderEffect.createShaderEffect(maskShader)
-    return RenderEffect.createBlendModeEffect(adjusted, alphaMask, BlendMode.DST_IN)
+    return NativeGaussianPanelEffects(
+        replacement = RenderEffect.createBlendModeEffect(adjusted, alphaMask, BlendMode.DST_IN),
+        mask = alphaMask,
+    )
 }
 
 internal fun glassColorMatrixValues(

@@ -1,3 +1,13 @@
+## 0.19.9
+
+- Correct the native Gaussian compositor so blurred pixels replace the original panel region instead of visually accumulating as bloom, with complementary original/blur branches combined exactly once.
+- Redesign edge softness as two distinct 0% anchors: rounded 0%, a continuous unsnapped shape-transition lane, flat 0%, then a continuous 0–100% feather range.
+- Migrate existing edge-softness settings so prior nonzero softness retains the same visual feather amount in the new post-flat range.
+- Remove live value warping from Arbor sliders by default; retain small release-only anchors and tactile proximity feedback without thumb oscillation or discontinuous jumps.
+- Keep the Thinking slider physically continuous while its menu is open and select the nearest effort on release without snapping or resetting the thumb to integer values.
+- Preserve slider priority over drawer gestures, configurable panel height, haptics, package identity, signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
+- Add regression coverage for the two-zero-anchor mapping, preference-preserving control conversion, complementary Gaussian composition, and continuous Thinking slider state.
+
 ## 0.19.8
 
 - Repair the native Gaussian backdrop renderer by replacing RuntimeShader child-image filter chaining with independent native Gaussian, color-filter, alpha-mask, and source-over effects for each panel.

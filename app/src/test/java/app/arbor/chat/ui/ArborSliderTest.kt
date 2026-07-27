@@ -2,43 +2,39 @@ package app.arbor.chat.ui
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ArborSliderTest {
     @Test fun magneticForceLeavesValuesOutsideTheCaptureRadiusUntouched() {
-        val result = applyMagneticSliderForce(.40f, 0f..1f, listOf(0f, .5f, 1f), attractionRadiusFraction = .06f)
+        val result = applyMagneticSliderForce(.40f, 0f..1f, listOf(0f, .5f, 1f), attractionRadiusFraction = .03f)
         assertEquals(.40f, result.value, .0001f)
-        assertEquals(null, result.anchor)
+        assertNull(result.anchor)
         assertFalse(result.captured)
     }
 
-    @Test fun magneticForcePullsSmoothlyBeforeTheHardSettleCore() {
-        val result = applyMagneticSliderForce(.46f, 0f..1f, listOf(.5f), attractionRadiusFraction = .08f)
-        assertTrue(result.value > .46f)
+    @Test fun magneticForceAddsContinuousResistanceWithoutHardSnapping() {
+        val result = applyMagneticSliderForce(.48f, 0f..1f, listOf(.5f), attractionRadiusFraction = .04f)
+        assertTrue(result.value > .48f)
         assertTrue(result.value < .5f)
         assertEquals(.5f, result.anchor!!, 0f)
         assertTrue(result.captured)
     }
 
-    @Test fun tinySettleCoreProducesAnExactAnchor() {
-        val result = applyMagneticSliderForce(.505f, 0f..1f, listOf(.5f), settleRadiusFraction = .01f)
-        assertEquals(.5f, result.value, 0f)
-        assertEquals(.5f, result.anchor!!, 0f)
-        assertTrue(result.captured)
+    @Test fun liveMagnetismIsMonotonicAcrossAnAnchor() {
+        val rawValues = (450..550).map { it / 1000f }
+        val values = rawValues.map {
+            applyMagneticSliderForce(it, 0f..1f, listOf(.5f), attractionRadiusFraction = .06f).value
+        }
+        values.zipWithNext().forEach { (a, b) -> assertTrue("$a > $b", b >= a) }
+        assertEquals(.5f, values[50], 0f)
     }
 
-    @Test fun leavingZeroHasNoSixPercentDeadZone() {
-        val result = applyMagneticSliderForce(
-            rawValue = .059f,
-            valueRange = 0f..1f,
-            anchors = listOf(0f),
-            attractionRadiusFraction = .06f,
-            pullStrength = .82f,
-            settleRadiusFraction = .012f,
-        )
-        assertTrue(result.value > 0f)
-        assertTrue(result.value <= .059f)
+    @Test fun releaseSnappingUsesOnlyTheSmallExplicitCore() {
+        assertEquals(.5f, releaseSnapAnchor(.487f, 0f..1f, listOf(.5f), .018f, false)!!, 0f)
+        assertNull(releaseSnapAnchor(.47f, 0f..1f, listOf(.5f), .018f, false))
+        assertEquals(0f, releaseSnapAnchor(.12f, 0f..1f, listOf(0f, .5f, 1f), .018f, true)!!, 0f)
     }
 
     @Test fun discreteSliderAnchorsIncludeBothEndpointsAndAllSteps() {
@@ -46,11 +42,21 @@ class ArborSliderTest {
         assertEquals(listOf(0f, .5f, 1f), sliderStepAnchors(0f..1f, 1))
     }
 
-
     @Test fun fastFlicksHaveAWeakerReleaseCaptureThanSlowDrags() {
-        assertEquals(1.35f, magneticReleaseRadiusMultiplier(.2f), 0f)
-        assertEquals(.75f, magneticReleaseRadiusMultiplier(1.5f), 0f)
-        assertEquals(.45f, magneticReleaseRadiusMultiplier(-3f), 0f)
+        assertEquals(1f, magneticReleaseRadiusMultiplier(.2f), 0f)
+        assertEquals(.70f, magneticReleaseRadiusMultiplier(1.5f), 0f)
+        assertEquals(.40f, magneticReleaseRadiusMultiplier(-3f), 0f)
+    }
+
+    @Test fun thinkingSliderMovesContinuouslyAndSnapsOnlyOnRelease() {
+        val chat = java.io.File("src/main/java/app/arbor/chat/ui/ChatScreen.kt").readText()
+        val thinkingBlock = chat.substringAfter("private fun ThinkingComposerChip").substringBefore("private val ThinkingEffort.effortDescription")
+        assertTrue(thinkingBlock.contains("snapPoints = options.indices.map(Int::toFloat)"))
+        assertTrue(thinkingBlock.contains("liveMagnetism = false"))
+        assertTrue(thinkingBlock.contains("snapToNearestOnRelease = false"))
+        assertFalse(thinkingBlock.contains("steps = (options.size - 2)"))
+        assertTrue(thinkingBlock.contains("var sliderValue by remember(options)"))
+        assertFalse(thinkingBlock.contains("remember(options, selectedIndex, menu)"))
     }
 
     @Test fun implementationProvidesGestureTicksSnapAndSystemRespectingHaptics() {

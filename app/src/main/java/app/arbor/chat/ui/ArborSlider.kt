@@ -13,7 +13,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 internal data class MagneticSliderResult(
     val value: Float,
@@ -22,16 +21,19 @@ internal data class MagneticSliderResult(
 )
 
 /**
- * Pulls the thumb toward nearby anchors with a smooth force curve.
- * Only the tiny settle core hard-snaps, so leaving an anchor does not jump.
+ * Applies a continuous, monotonic resistance curve around an anchor.
+ *
+ * There is deliberately no hard settle core while the pointer is moving. The
+ * old implementation changed the value discontinuously near every anchor,
+ * which made dense and discrete controls—especially Thinking—jump between
+ * values. Exact snapping happens only after release.
  */
 internal fun applyMagneticSliderForce(
     rawValue: Float,
     valueRange: ClosedFloatingPointRange<Float>,
     anchors: List<Float>,
-    attractionRadiusFraction: Float = 0.06f,
-    pullStrength: Float = 0.82f,
-    settleRadiusFraction: Float = 0.012f,
+    attractionRadiusFraction: Float = 0.03f,
+    pullStrength: Float = 0.35f,
 ): MagneticSliderResult {
     val start = valueRange.start
     val end = valueRange.endInclusive
@@ -44,18 +46,17 @@ internal fun applyMagneticSliderForce(
         .minByOrNull { abs(it - raw) }
         ?: return MagneticSliderResult(raw, null, false)
     val distance = abs(anchor - raw)
-    val attractionRadius = span * attractionRadiusFraction.coerceIn(0f, 0.5f)
+    val attractionRadius = span * attractionRadiusFraction.coerceIn(0f, 0.25f)
     if (attractionRadius <= 0f || distance >= attractionRadius) {
         return MagneticSliderResult(raw, null, false)
     }
 
-    val settleRadius = span * settleRadiusFraction.coerceIn(0f, attractionRadiusFraction)
-    if (distance <= settleRadius) return MagneticSliderResult(anchor, anchor, true)
-
-    val proximity = 1f - distance / attractionRadius
-    val smoothForce = proximity * proximity * (3f - 2f * proximity)
-    val pull = (smoothForce * pullStrength.coerceIn(0f, 1f)).coerceIn(0f, 1f)
-    val attracted = raw + (anchor - raw) * pull
+    // This compression is continuous at both the anchor and radius boundary.
+    // It slows the thumb near an anchor without ever teleporting it.
+    val normalizedDistance = (distance / attractionRadius).coerceIn(0f, 1f)
+    val resistance = pullStrength.coerceIn(0f, 0.75f) *
+        (1f - normalizedDistance) * (1f - normalizedDistance)
+    val attracted = anchor + (raw - anchor) * (1f - resistance)
     return MagneticSliderResult(attracted.coerceIn(start, end), anchor, true)
 }
 
@@ -70,12 +71,27 @@ internal fun sliderStepAnchors(
 }
 
 internal fun magneticReleaseRadiusMultiplier(normalizedVelocityPerSecond: Float): Float = when {
-    abs(normalizedVelocityPerSecond) >= 2.4f -> 0.45f
-    abs(normalizedVelocityPerSecond) >= 1.2f -> 0.75f
-    else -> 1.35f
+    abs(normalizedVelocityPerSecond) >= 2.4f -> 0.40f
+    abs(normalizedVelocityPerSecond) >= 1.2f -> 0.70f
+    else -> 1f
 }
 
-/** Material slider with magnetic anchors, velocity-aware settling and tactile ticks. */
+internal fun releaseSnapAnchor(
+    rawValue: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    anchors: List<Float>,
+    radiusFraction: Float,
+    alwaysNearest: Boolean,
+): Float? {
+    if (anchors.isEmpty()) return null
+    val raw = rawValue.coerceIn(valueRange.start, valueRange.endInclusive)
+    val anchor = anchors.minByOrNull { abs(it - raw) } ?: return null
+    if (alwaysNearest) return anchor
+    val span = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0f)
+    return anchor.takeIf { abs(it - raw) <= span * radiusFraction.coerceIn(0f, 0.25f) }
+}
+
+/** Material slider with subtle magnetic resistance, release-only snapping and tactile ticks. */
 @Composable
 fun ArborSlider(
     value: Float,
@@ -85,9 +101,11 @@ fun ArborSlider(
     valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
     steps: Int = 0,
     snapPoints: List<Float> = emptyList(),
-    attractionRadiusFraction: Float = 0.06f,
-    pullStrength: Float = 0.82f,
-    settleRadiusFraction: Float = 0.012f,
+    attractionRadiusFraction: Float = 0.03f,
+    pullStrength: Float = 0.35f,
+    releaseSnapRadiusFraction: Float = 0.018f,
+    liveMagnetism: Boolean = false,
+    snapToNearestOnRelease: Boolean = false,
     onValueChangeFinished: (() -> Unit)? = null,
     colors: SliderColors = SliderDefaults.colors(),
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
@@ -101,8 +119,9 @@ fun ArborSlider(
     }
     var dragging by remember { mutableStateOf(false) }
     var activeAnchor by remember { mutableStateOf<Float?>(null) }
-    var lastStepIndex by remember { mutableIntStateOf(Int.MIN_VALUE) }
+    var lastTickIndex by remember { mutableIntStateOf(Int.MIN_VALUE) }
     var lastRawValue by remember { mutableStateOf(value) }
+    var lastDeliveredValue by remember { mutableStateOf(value) }
     var lastSampleAtMs by remember { mutableStateOf(0L) }
     var normalizedVelocityPerSecond by remember { mutableStateOf(0f) }
 
@@ -118,29 +137,42 @@ fun ArborSlider(
             if (lastSampleAtMs > 0L) {
                 val elapsedSeconds = ((now - lastSampleAtMs).coerceAtLeast(1L)) / 1_000f
                 val instantaneous = ((raw - lastRawValue) / span) / elapsedSeconds
-                normalizedVelocityPerSecond = normalizedVelocityPerSecond * 0.58f + instantaneous * 0.42f
+                normalizedVelocityPerSecond = normalizedVelocityPerSecond * 0.65f + instantaneous * 0.35f
             }
             lastSampleAtMs = now
             lastRawValue = raw
-            val result = applyMagneticSliderForce(
-                rawValue = raw,
-                valueRange = valueRange,
-                anchors = anchors,
-                attractionRadiusFraction = attractionRadiusFraction,
-                pullStrength = pullStrength,
-                settleRadiusFraction = settleRadiusFraction,
-            )
-            if (result.anchor != activeAnchor) {
-                activeAnchor = result.anchor
-                if (result.anchor != null) haptics.selection()
+
+            val result = if (liveMagnetism && steps == 0) {
+                applyMagneticSliderForce(
+                    rawValue = raw,
+                    valueRange = valueRange,
+                    anchors = anchors,
+                    attractionRadiusFraction = attractionRadiusFraction,
+                    pullStrength = pullStrength,
+                )
+            } else {
+                MagneticSliderResult(raw, null, false)
             }
-            if (steps > 0) {
-                val stepSpan = valueRange.endInclusive - valueRange.start
-                val index = if (stepSpan <= 0f) 0 else
-                    (((result.value - valueRange.start) / stepSpan) * (steps + 1)).roundToInt()
-                if (lastStepIndex != Int.MIN_VALUE && index != lastStepIndex) haptics.frequentTick()
-                lastStepIndex = index
+
+            val proximityAnchor = if (anchors.isNotEmpty()) {
+                val nearest = anchors.minByOrNull { abs(it - raw) }
+                val span = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0f)
+                nearest?.takeIf {
+                    span > 0f && abs(it - raw) < span * attractionRadiusFraction.coerceIn(0f, .25f)
+                }
+            } else null
+            if (proximityAnchor != activeAnchor) {
+                activeAnchor = proximityAnchor
+                if (proximityAnchor != null) haptics.selection()
             }
+
+            if (anchors.size > 1) {
+                val tickIndex = anchors.indices.minByOrNull { index -> abs(anchors[index] - raw) } ?: 0
+                if (lastTickIndex != Int.MIN_VALUE && tickIndex != lastTickIndex) haptics.frequentTick()
+                lastTickIndex = tickIndex
+            }
+
+            lastDeliveredValue = result.value
             onValueChange(result.value)
         },
         modifier = modifier.horizontalGesturePriority(enabled),
@@ -150,24 +182,37 @@ fun ArborSlider(
         onValueChangeFinished = {
             if (dragging) {
                 val releaseMultiplier = magneticReleaseRadiusMultiplier(normalizedVelocityPerSecond)
-                val settle = applyMagneticSliderForce(
-                    rawValue = lastRawValue,
-                    valueRange = valueRange,
-                    anchors = anchors,
-                    attractionRadiusFraction = attractionRadiusFraction * releaseMultiplier,
-                    pullStrength = 1f,
-                    settleRadiusFraction = attractionRadiusFraction * releaseMultiplier,
-                )
-                if (settle.anchor != null && settle.value != value) {
-                    onValueChange(settle.anchor)
-                    haptics.snap()
+                val target = if (steps > 0 && !snapToNearestOnRelease) {
+                    null // Material already emitted an exact discrete step.
                 } else {
-                    haptics.gestureEnd()
+                    releaseSnapAnchor(
+                        rawValue = lastRawValue,
+                        valueRange = valueRange,
+                        anchors = anchors,
+                        radiusFraction = releaseSnapRadiusFraction * releaseMultiplier,
+                        alwaysNearest = snapToNearestOnRelease,
+                    )
+                }
+                when {
+                    target != null && abs(target - lastDeliveredValue) > 0.00001f -> {
+                        lastDeliveredValue = target
+                        onValueChange(target)
+                        haptics.snap()
+                    }
+                    target == null && liveMagnetism && steps == 0 &&
+                        abs(lastRawValue - lastDeliveredValue) > 0.00001f -> {
+                        // Do not persist a magnetically warped value when the
+                        // release was outside the intentionally small snap core.
+                        lastDeliveredValue = lastRawValue
+                        onValueChange(lastRawValue)
+                        haptics.gestureEnd()
+                    }
+                    else -> haptics.gestureEnd()
                 }
             }
             dragging = false
             activeAnchor = null
-            lastStepIndex = Int.MIN_VALUE
+            lastTickIndex = Int.MIN_VALUE
             lastSampleAtMs = 0L
             normalizedVelocityPerSecond = 0f
             onValueChangeFinished?.invoke()
