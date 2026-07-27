@@ -803,3 +803,68 @@ For the representative 1080x2340 two-panel test geometry, the revised pipeline p
 - Debug certificate SHA-256 remains `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`, identical to 0.18.2.
 - Main manifest and Room schema files are byte-identical to 0.18.2.
 - Final blur appearance still requires installation on the Galaxy S23+; host tests cannot prove device GPU/compositor output.
+
+
+## 0.18.4: remove coarse strong blur and screen-edge fading
+
+### Why the blur still broke above about 20%
+
+0.18.3 removed the 1/8 surface, but it still reconstructed the visible panel from a 1/4-resolution image. The requested blur radius continued increasing linearly while the reconstruction grid stayed fixed. At stronger values, enlarged quarter-resolution color cells and bilinear interpolation became visible as deformation, uneven diffusion, and other artifacts. There was no literal 20% branch; the slider crossed the visual limit of the reconstruction surface.
+
+**Final repair:**
+
+- Use exactly one downsample level for every nonzero value.
+- Run four equal Gaussian passes at 1/2 resolution.
+- Set each pass radius to `fullResolutionRadius / 4`. Four passes combine by root-sum-square at half resolution and reconstruct to the requested full-resolution sigma.
+- Reconstruct directly from 1/2 resolution to full resolution.
+- Never switch topology based on radius or motion.
+
+The representative panel-local pixel calculation remains materially below three full-screen passes, while retaining four times as many reconstruction pixels as a quarter-resolution source.
+
+### Why edge softness faded the screen top
+
+0.18.3 applied an Android blur effect with `Shader.TileMode.DECAL` to the entire completed panel layer. DECAL correctly fades alpha outside every layer boundary, but the top panel's layer boundary also included the physical top of the screen. The effect therefore softened the wrong edge and produced a transparent/faded strip in the status-bar region. The bottom panel had the equivalent risk at the physical screen bottom.
+
+**Final repair:**
+
+- Do not blur the completed panel alpha.
+- Record blur, tint, and highlight into one premultiplied offscreen panel layer.
+- For nonzero softness, apply one cached vertical gradient with `BlendMode.DstIn`.
+- Top panel mask: opaque from the screen top, then transitions from opaque to transparent only across the lower content-facing edge.
+- Bottom panel mask: transitions from transparent to opaque only across the upper content-facing edge, then remains opaque through the screen bottom.
+- Keep the transition centered on the nominal content-facing edge.
+- Include the outward half-span in capture support.
+- Exact zero uses the rounded path and no gradient mask.
+
+**Rule:** Edge softness must identify which edge is semantically soft. Never apply a generic blur/DECAL effect to the complete panel when some panel sides coincide with physical screen boundaries.
+
+### 0.18.4 build failures and actual fixes
+
+1. **Wrong `CompositingStrategy` namespace**
+   - Symptom: Kotlin reported that `androidx.compose.ui.graphics.CompositingStrategy` could not be assigned to `GraphicsLayer.compositingStrategy`.
+   - Cause: direct `GraphicsLayer` objects use `androidx.compose.ui.graphics.layer.CompositingStrategy`, while `graphicsLayer {}` modifiers expose the similarly named type from `androidx.compose.ui.graphics`.
+   - Fix: import `androidx.compose.ui.graphics.layer.CompositingStrategy` and set `panelComposite.compositingStrategy = CompositingStrategy.Offscreen`.
+
+2. **Timed command wrapper left a high-memory Gradle daemon behind**
+   - Symptom: the command wrapper ended during Kotlin compilation, no result file appeared, and the daemon retained roughly 2.4 GiB RSS near the cgroup limit.
+   - Cause: the wrapper/client was terminated while the daemon remained alive; the incomplete log was not a compiler failure.
+   - Fix: terminate the orphan daemon, run each gate in a fresh single-use daemon via a detached `setsid` command, and wait for an explicit exit-status file before starting another memory-heavy gate.
+
+3. **D8 memory safety**
+   - Tests and lint were completed and allowed to exit before packaging.
+   - `assembleDebug` ran alone with `--no-daemon --no-parallel --max-workers=1`.
+   - The build reached `mergeExtDexDebug`, native packaging, signing, and APK assembly without an OOM reset.
+
+### 0.18.4 verification outcome
+
+- Release identity: `versionName 0.18.4`, `versionCode 109`.
+- Full unit suite: 36 suites, 219 tests, 0 failures, 0 errors, 0 skipped.
+- Android lint: 0 errors, 12 warnings, 1 informational finding.
+- Debug instrumentation Kotlin compilation: passed.
+- APK assembly: passed with one packaging worker.
+- Package: `app.arbor.chat.debug`; min SDK 26; target/compile SDK 35.
+- ZIP alignment and APK Signature Scheme v2 verification: passed.
+- Debug certificate SHA-256 remains `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`, identical to 0.18.3.
+- Main manifest and all Room schema files are byte-identical to 0.18.3.
+- Representative 1080x2340 top/bottom panel geometry processes 3,254,040 pixels per frame versus 7,581,600 for three full-screen passes, or about 42.9% of that reference workload.
+- Final visual output still requires installation and direct testing on the Galaxy S23+; host tests cannot prove Samsung GPU/compositor appearance.

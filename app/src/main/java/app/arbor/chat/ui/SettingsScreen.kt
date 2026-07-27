@@ -488,7 +488,7 @@ private fun AppearanceSettingsPage(
         valueRange = 0f..1f,
     )
     Text(
-        "0% disables blur exactly; 100% uses the full 56 dp blur radius.",
+        "0% disables blur exactly; every nonzero value uses the same four-pass half-resolution pipeline, up to the full 56 dp radius.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -502,7 +502,7 @@ private fun AppearanceSettingsPage(
         valueRange = 0f..1f,
     )
     Text(
-        "0-6% snaps to 0% and keeps rounded panels. Any nonzero value uses flat panel edges; 100% uses the full 68 dp feather.",
+        "0-6% snaps to 0% and keeps rounded panels. Any nonzero value uses flat geometry and feathers only the panel/content boundary; screen edges remain fully covered.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

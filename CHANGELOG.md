@@ -1,3 +1,11 @@
+## 0.18.4
+
+- Replace quarter-resolution strong blur with a constant four-pass half-resolution pipeline.
+- Feather only the content-facing edge of each chrome panel; never fade the physical top or bottom screen edge.
+- Apply one cached directional alpha mask after blur, tint, and highlight are combined.
+- Include the outward feather span in panel capture overscan.
+- Preserve rounded exact-zero mode, flat nonzero mode, settings/data, signing, and performance isolation.
+
 ## 0.18.0
 
 - Remove the blur-strength discontinuity around 22–23% by keeping a fixed three-level pyramid and varying tap distance continuously.
