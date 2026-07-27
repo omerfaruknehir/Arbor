@@ -98,6 +98,7 @@ fun ConversationSidebar(
     var deleteProjectTarget by remember { mutableStateOf<ProjectEntity?>(null) }
     var createProjectForChat by remember { mutableStateOf<String?>(null) }
     var creatingProject by remember { mutableStateOf(false) }
+    val haptics = rememberArborHaptics()
 
     val visible = remember(conversations, selectedProjectId) {
         if (selectedProjectId == null) conversations else conversations.filter { it.conversation.projectId == selectedProjectId }
@@ -109,7 +110,10 @@ fun ConversationSidebar(
                 ArborMark(Modifier.size(34.dp))
                 Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 10.dp))
             }
-            FilledTonalButton(onClick = onNew, modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 4.dp)) {
+            FilledTonalButton(onClick = {
+                haptics.confirm()
+                onNew()
+            }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 4.dp)) {
                 Icon(Icons.Outlined.Add, null)
                 Text("New chat", Modifier.padding(start = 8.dp))
             }
@@ -120,8 +124,8 @@ fun ConversationSidebar(
                     .fillMaxWidth()
                     .padding(vertical = 4.dp)
                     .combinedClickable(
-                        onClick = { onScreen(Screen.SEARCH) },
-                        onLongClick = { onScreen(Screen.SEARCH) },
+                        onClick = { haptics.selection(); onScreen(Screen.SEARCH) },
+                        onLongClick = { haptics.longPress(); onScreen(Screen.SEARCH) },
                     ),
             ) {
                 Row(
@@ -149,7 +153,7 @@ fun ConversationSidebar(
                         label = { Text("All chats") },
                         icon = { Icon(Icons.Outlined.Inbox, null) },
                         selected = !showArchived && selectedProjectId == null,
-                        onClick = { onShowArchived(false); onProjectFilter(null) },
+                        onClick = { haptics.selection(); onShowArchived(false); onProjectFilter(null) },
                     )
                 }
                 item("archived") {
@@ -157,7 +161,7 @@ fun ConversationSidebar(
                         label = { Text("Archived") },
                         icon = { Icon(Icons.Outlined.Archive, null) },
                         selected = showArchived,
-                        onClick = { onShowArchived(true); onProjectFilter(null) },
+                        onClick = { haptics.selection(); onShowArchived(true); onProjectFilter(null) },
                     )
                 }
                 item("projects-header") {
@@ -166,7 +170,7 @@ fun ConversationSidebar(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text("PROJECTS", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        IconButton(onClick = { createProjectForChat = null; creatingProject = true }, modifier = Modifier.size(34.dp)) {
+                        IconButton(onClick = { haptics.tap(); createProjectForChat = null; creatingProject = true }, modifier = Modifier.size(34.dp)) {
                             Icon(Icons.Outlined.Add, "New project", Modifier.size(18.dp))
                         }
                     }
@@ -176,9 +180,9 @@ fun ConversationSidebar(
                         label = { Text(project.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         icon = { Icon(if (selectedProjectId == project.id) Icons.Outlined.FolderOpen else Icons.Outlined.Folder, null, tint = Color(project.colorArgb)) },
                         selected = !showArchived && selectedProjectId == project.id,
-                        onClick = { onShowArchived(false); onProjectFilter(project.id) },
+                        onClick = { haptics.selection(); onShowArchived(false); onProjectFilter(project.id) },
                         modifier = Modifier.combinedClickable(
-                            onClick = { onShowArchived(false); onProjectFilter(project.id) },
+                            onClick = { haptics.selection(); onShowArchived(false); onProjectFilter(project.id) },
                             onLongClick = { projectTarget = project },
                         ),
                     )
@@ -195,8 +199,8 @@ fun ConversationSidebar(
                     ConversationRow(
                         item = item,
                         selected = item.conversation.id == selectedId,
-                        onClick = { onSelect(item.conversation.id) },
-                        onLongClick = { actionTarget = item },
+                        onClick = { haptics.selection(); onSelect(item.conversation.id) },
+                        onLongClick = { haptics.longPress(); actionTarget = item },
                     )
                 }
                 if (visible.isEmpty()) {
@@ -215,7 +219,7 @@ fun ConversationSidebar(
                 label = { Text("Settings") },
                 icon = { Icon(Icons.Outlined.Settings, null) },
                 selected = false,
-                onClick = { onScreen(Screen.SETTINGS) },
+                onClick = { haptics.selection(); onScreen(Screen.SETTINGS) },
             )
             Text("On-device history • BYOK", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(12.dp, 4.dp, 12.dp, 0.dp))
         }

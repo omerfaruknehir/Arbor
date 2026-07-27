@@ -1,11 +1,8 @@
 package app.arbor.chat.ui
 
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
 import android.graphics.RenderEffect
-import android.graphics.Shader
+import android.graphics.RuntimeShader
 import android.os.Build
-import androidx.annotation.RequiresApi
 import app.arbor.chat.settings.effectiveChromeEdgeSoftness
 import app.arbor.chat.settings.snapChromeEdgeSoftness
 import androidx.compose.runtime.Composable
@@ -23,71 +20,46 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.layer.CompositingStrategy
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asComposeRenderEffect
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.graphics.layer.GraphicsLayer
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
-import kotlin.math.ceil
-import kotlin.math.max
-import kotlin.math.roundToInt
 
 /** Which chrome edge owns a backdrop panel. */
 enum class ArborBlurEdge { TOP, BOTTOM }
 
-internal data class ArborPanelRange(val startPx: Float, val endPx: Float) {
-    val extentPx: Float get() = (endPx - startPx).coerceAtLeast(0f)
-}
-
-internal fun resolveTopPanelRange(sourceHeightPx: Float, panelExtentPx: Float): ArborPanelRange =
-    ArborPanelRange(0f, panelExtentPx.coerceIn(0f, sourceHeightPx.coerceAtLeast(0f)))
-
-internal fun resolveBottomPanelRange(
-    sourceTopInRootPx: Float,
-    panelStartInRootPx: Float,
-    panelEndInRootPx: Float,
-    sourceHeightPx: Float,
-    fallbackExtentPx: Float,
-): ArborPanelRange {
-    val sourceHeight = sourceHeightPx.coerceAtLeast(0f)
-    if (panelStartInRootPx.isFinite() && panelEndInRootPx.isFinite()) {
-        val start = (panelStartInRootPx - sourceTopInRootPx).coerceIn(0f, sourceHeight)
-        val end = (panelEndInRootPx - sourceTopInRootPx).coerceIn(start, sourceHeight)
-        return ArborPanelRange(start, end)
-    }
-    val end = sourceHeight
-    return ArborPanelRange((end - fallbackExtentPx).coerceAtLeast(0f), end)
-}
-
-/** Shared configuration for the blur and tint applied behind app chrome. */
+/**
+ * State for the restored Arbor 0.17.8 three-direction AGSL blur.
+ *
+ * The renderer deliberately applies the blur directly to the scrolling content
+ * layer. It does not capture and replay cropped GraphicsLayers, which was the
+ * source of the stale frames, black backgrounds, hard jumps and block artifacts
+ * in the later half-resolution compositor.
+ */
 @Stable
 class ArborBackdropBlurState internal constructor() {
     internal var topRadiusDp by mutableFloatStateOf(0f)
     internal var bottomRadiusDp by mutableFloatStateOf(0f)
     internal var topFadeDp by mutableFloatStateOf(DEFAULT_TOP_FADE_DP)
     internal var bottomFadeDp by mutableFloatStateOf(DEFAULT_BOTTOM_FADE_DP)
+    internal var topSoftness by mutableFloatStateOf(0f)
+    internal var bottomSoftness by mutableFloatStateOf(0f)
     internal var topCornerRadiusDp by mutableFloatStateOf(DEFAULT_PANEL_CORNER_RADIUS_DP)
     internal var bottomCornerRadiusDp by mutableFloatStateOf(DEFAULT_PANEL_CORNER_RADIUS_DP)
-    internal var topMergeDp by mutableFloatStateOf(DEFAULT_MERGE_DISTANCE_DP)
-    internal var bottomMergeDp by mutableFloatStateOf(DEFAULT_MERGE_DISTANCE_DP)
-    internal var topSoftness by mutableFloatStateOf(0.5f)
-    internal var bottomSoftness by mutableFloatStateOf(0.5f)
+    internal var topMergeDp by mutableFloatStateOf(0f)
+    internal var bottomMergeDp by mutableFloatStateOf(0f)
+    internal var topTint by mutableStateOf(Color.Transparent)
+    internal var bottomTint by mutableStateOf(Color.Transparent)
     internal var topSaturation by mutableFloatStateOf(DEFAULT_GLASS_SATURATION)
     internal var bottomSaturation by mutableFloatStateOf(DEFAULT_GLASS_SATURATION)
     internal var topContrast by mutableFloatStateOf(DEFAULT_GLASS_CONTRAST)
@@ -96,11 +68,8 @@ class ArborBackdropBlurState internal constructor() {
     internal var bottomBrightness by mutableFloatStateOf(DEFAULT_GLASS_BRIGHTNESS)
     internal var topEdgeHighlight by mutableFloatStateOf(DEFAULT_EDGE_HIGHLIGHT)
     internal var bottomEdgeHighlight by mutableFloatStateOf(DEFAULT_EDGE_HIGHLIGHT)
-    internal var topTint by mutableStateOf(Color.Transparent)
-    internal var bottomTint by mutableStateOf(Color.Transparent)
     internal var sourceTopInRootPx by mutableFloatStateOf(0f)
-    internal var bottomPanelStartInRootPx by mutableFloatStateOf(Float.NaN)
-    internal var bottomPanelEndInRootPx by mutableFloatStateOf(Float.NaN)
+    internal var bottomEdgeInRootPx by mutableFloatStateOf(Float.NaN)
 
     internal fun update(
         edge: ArborBlurEdge,
@@ -117,9 +86,9 @@ class ArborBackdropBlurState internal constructor() {
     ) {
         val radius = quantizeBlurRadiusDp(radiusDp)
         val fade = fadeDp.coerceAtLeast(1f)
-        val corner = cornerRadiusDp.coerceAtLeast(0f)
-        val merge = mergeDp.coerceIn(0f, fade)
         val normalizedSoftness = snapChromeEdgeSoftness(softness)
+        val corner = if (normalizedSoftness == 0f) cornerRadiusDp.coerceAtLeast(0f) else 0f
+        val merge = if (normalizedSoftness == 0f) 0f else mergeDp.coerceIn(0f, fade * 2f)
         val normalizedSaturation = saturation.coerceIn(0.75f, 1.35f)
         val normalizedContrast = contrast.coerceIn(0.85f, 1.20f)
         val normalizedBrightness = brightness.coerceIn(0.85f, 1.15f)
@@ -128,26 +97,26 @@ class ArborBackdropBlurState internal constructor() {
             ArborBlurEdge.TOP -> {
                 if (topRadiusDp != radius) topRadiusDp = radius
                 if (topFadeDp != fade) topFadeDp = fade
+                if (topSoftness != normalizedSoftness) topSoftness = normalizedSoftness
                 if (topCornerRadiusDp != corner) topCornerRadiusDp = corner
                 if (topMergeDp != merge) topMergeDp = merge
-                if (topSoftness != normalizedSoftness) topSoftness = normalizedSoftness
+                if (topTint != tint) topTint = tint
                 if (topSaturation != normalizedSaturation) topSaturation = normalizedSaturation
                 if (topContrast != normalizedContrast) topContrast = normalizedContrast
                 if (topBrightness != normalizedBrightness) topBrightness = normalizedBrightness
                 if (topEdgeHighlight != normalizedHighlight) topEdgeHighlight = normalizedHighlight
-                if (topTint != tint) topTint = tint
             }
             ArborBlurEdge.BOTTOM -> {
                 if (bottomRadiusDp != radius) bottomRadiusDp = radius
                 if (bottomFadeDp != fade) bottomFadeDp = fade
+                if (bottomSoftness != normalizedSoftness) bottomSoftness = normalizedSoftness
                 if (bottomCornerRadiusDp != corner) bottomCornerRadiusDp = corner
                 if (bottomMergeDp != merge) bottomMergeDp = merge
-                if (bottomSoftness != normalizedSoftness) bottomSoftness = normalizedSoftness
+                if (bottomTint != tint) bottomTint = tint
                 if (bottomSaturation != normalizedSaturation) bottomSaturation = normalizedSaturation
                 if (bottomContrast != normalizedContrast) bottomContrast = normalizedContrast
                 if (bottomBrightness != normalizedBrightness) bottomBrightness = normalizedBrightness
                 if (bottomEdgeHighlight != normalizedHighlight) bottomEdgeHighlight = normalizedHighlight
-                if (bottomTint != tint) bottomTint = tint
             }
         }
     }
@@ -156,19 +125,9 @@ class ArborBackdropBlurState internal constructor() {
         if (abs(sourceTopInRootPx - topInRootPx) >= 0.5f) sourceTopInRootPx = topInRootPx
     }
 
-    internal fun updateBottomPanel(
-        panelTopInRootPx: Float,
-        panelBottomInRootPx: Float,
-        requestedExtentPx: Float,
-    ) {
-        val panelHeight = (panelBottomInRootPx - panelTopInRootPx).coerceAtLeast(0f)
-        val actualExtent = requestedExtentPx.coerceIn(0f, panelHeight)
-        val nextStart = panelBottomInRootPx - actualExtent
-        if (!bottomPanelStartInRootPx.isFinite() || abs(bottomPanelStartInRootPx - nextStart) >= 0.5f) {
-            bottomPanelStartInRootPx = nextStart
-        }
-        if (!bottomPanelEndInRootPx.isFinite() || abs(bottomPanelEndInRootPx - panelBottomInRootPx) >= 0.5f) {
-            bottomPanelEndInRootPx = panelBottomInRootPx
+    internal fun updateBottomEdge(bottomInRootPx: Float) {
+        if (!bottomEdgeInRootPx.isFinite() || abs(bottomEdgeInRootPx - bottomInRootPx) >= 0.5f) {
+            bottomEdgeInRootPx = bottomInRootPx
         }
     }
 
@@ -176,15 +135,12 @@ class ArborBackdropBlurState internal constructor() {
         when (edge) {
             ArborBlurEdge.TOP -> {
                 topRadiusDp = 0f
-                topSoftness = 0f
                 topTint = Color.Transparent
             }
             ArborBlurEdge.BOTTOM -> {
                 bottomRadiusDp = 0f
-                bottomSoftness = 0f
                 bottomTint = Color.Transparent
-                bottomPanelStartInRootPx = Float.NaN
-                bottomPanelEndInRootPx = Float.NaN
+                bottomEdgeInRootPx = Float.NaN
             }
         }
     }
@@ -194,19 +150,17 @@ class ArborBackdropBlurState internal constructor() {
 fun rememberArborBackdropBlurState(): ArborBackdropBlurState = remember { ArborBackdropBlurState() }
 
 /**
- * Shared-source, panel-local multi-pass backdrop renderer.
- *
- * The Compose subtree is recorded exactly once for a frame in [sourceLayer].
- * Each visible panel replays that source into one fixed-overscan capture. Every
- * downsample and reconstruction level represents the same capture extent at a
- * different resolution; no pass progressively crops the source. The visible
- * rounded-panel crop is applied only when the completed full-resolution result
- * is composited over the normal source replay.
+ * Applies the restored 0.17.8 three-pass multi-axis AGSL blur directly to the
+ * content. Edge softness remains continuous and is symmetric around the panel
+ * boundary; zero softness retains rounded panel geometry.
  */
 fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = composed {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return@composed this
+
     val density = LocalDensity.current.density
     val topRadiusPx = state.topRadiusDp * density
     val bottomRadiusPx = state.bottomRadiusDp * density
+    val active = topRadiusPx >= MIN_VISIBLE_RADIUS_PX || bottomRadiusPx >= MIN_VISIBLE_RADIUS_PX
 
     var contentWidthPx by remember { mutableFloatStateOf(0f) }
     var contentHeightPx by remember { mutableFloatStateOf(0f) }
@@ -217,644 +171,72 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         if (contentHeightPx != nextHeight) contentHeightPx = nextHeight
         state.updateSource(coordinates.boundsInRoot().top)
     }
-    if (contentWidthPx <= 0f || contentHeightPx <= 0f) return@composed measured
+    if (!active || contentWidthPx <= 0f || contentHeightPx <= 0f) return@composed measured
 
-    val topRange = resolveTopPanelRange(contentHeightPx, state.topFadeDp * density)
-    val bottomRange = resolveBottomPanelRange(
-        sourceTopInRootPx = state.sourceTopInRootPx,
-        panelStartInRootPx = state.bottomPanelStartInRootPx,
-        panelEndInRootPx = state.bottomPanelEndInRootPx,
-        sourceHeightPx = contentHeightPx,
-        fallbackExtentPx = state.bottomFadeDp * density,
+    val topFadePx = state.topFadeDp * density
+    val bottomFadePx = state.bottomFadeDp * density
+    val bottomEdgePx = state.bottomEdgeInRootPx
+        .takeIf { it.isFinite() }
+        ?.minus(state.sourceTopInRootPx)
+        ?.coerceIn(0f, contentHeightPx)
+        ?: contentHeightPx
+
+    fun buildShader(
+        directionX: Float,
+        directionY: Float,
+        applyColorAdjustment: Boolean,
+    ) = RuntimeShader(EDGE_BLUR_SHADER).apply {
+        setFloatUniform("uBlur", topRadiusPx, bottomRadiusPx)
+        setFloatUniform("uFade", topFadePx, bottomFadePx)
+        setFloatUniform("uSize", contentWidthPx.coerceAtLeast(1f), contentHeightPx.coerceAtLeast(1f))
+        setFloatUniform("uBottomEdge", bottomEdgePx)
+        setFloatUniform("uSoftness", state.topSoftness, state.bottomSoftness)
+        setFloatUniform("uCorner", state.topCornerRadiusDp * density, state.bottomCornerRadiusDp * density)
+        setFloatUniform("uMerge", state.topMergeDp * density, state.bottomMergeDp * density)
+        setFloatUniform("uDirection", directionX, directionY)
+        setFloatUniform("uSaturation", state.topSaturation, state.bottomSaturation)
+        setFloatUniform("uContrast", state.topContrast, state.bottomContrast)
+        setFloatUniform("uBrightness", state.topBrightness, state.bottomBrightness)
+        setFloatUniform("uAdjustColor", if (applyColorAdjustment) 1f else 0f)
+    }
+
+    val shaderKey = arrayOf(
+        topRadiusPx, bottomRadiusPx, topFadePx, bottomFadePx,
+        contentWidthPx, contentHeightPx, bottomEdgePx,
+        state.topSoftness, state.bottomSoftness,
+        state.topCornerRadiusDp, state.bottomCornerRadiusDp,
+        state.topMergeDp, state.bottomMergeDp,
+        state.topSaturation, state.bottomSaturation,
+        state.topContrast, state.bottomContrast,
+        state.topBrightness, state.bottomBrightness,
     )
-    val minimumFeatherPx = MINIMUM_FEATHER_DISTANCE_DP * density
-
-    val topVisual = remember(
-        topRange,
-        state.topCornerRadiusDp,
-        state.topMergeDp,
-        state.topSoftness,
-        state.topTint,
-        state.topSaturation,
-        state.topContrast,
-        state.topBrightness,
-        state.topEdgeHighlight,
-        density,
-    ) {
-        GlassVisualConfig(
-            edge = ArborBlurEdge.TOP,
-            range = topRange,
-            cornerRadiusPx = state.topCornerRadiusDp * density,
-            mergeDistancePx = state.topMergeDp * density,
-            softness = state.topSoftness,
-            tint = state.topTint,
-            saturation = state.topSaturation,
-            contrast = state.topContrast,
-            brightness = state.topBrightness,
-            edgeHighlight = state.topEdgeHighlight,
-            minimumFeatherPx = minimumFeatherPx,
-        )
-    }
-    val bottomVisual = remember(
-        bottomRange,
-        state.bottomCornerRadiusDp,
-        state.bottomMergeDp,
-        state.bottomSoftness,
-        state.bottomTint,
-        state.bottomSaturation,
-        state.bottomContrast,
-        state.bottomBrightness,
-        state.bottomEdgeHighlight,
-        density,
-    ) {
-        GlassVisualConfig(
-            edge = ArborBlurEdge.BOTTOM,
-            range = bottomRange,
-            cornerRadiusPx = state.bottomCornerRadiusDp * density,
-            mergeDistancePx = state.bottomMergeDp * density,
-            softness = state.bottomSoftness,
-            tint = state.bottomTint,
-            saturation = state.bottomSaturation,
-            contrast = state.bottomContrast,
-            brightness = state.bottomBrightness,
-            edgeHighlight = state.bottomEdgeHighlight,
-            minimumFeatherPx = minimumFeatherPx,
-        )
-    }
-    val topGeometry = remember(contentWidthPx, contentHeightPx, topVisual) {
-        buildPanelGeometry(contentWidthPx, contentHeightPx, topVisual)
-    }
-    val bottomGeometry = remember(contentWidthPx, contentHeightPx, bottomVisual) {
-        buildPanelGeometry(contentWidthPx, contentHeightPx, bottomVisual)
-    }
-    val topPlan = remember(topRange, contentWidthPx, contentHeightPx, topRadiusPx, topGeometry.outwardFeatherPx) {
-        resolveKawasePanelPlan(
-            panelRange = topRange,
-            sourceWidthPx = contentWidthPx,
-            sourceHeightPx = contentHeightPx,
-            radiusPx = topRadiusPx,
-            visibleSupportPx = topGeometry.outwardFeatherPx,
-        )
-    }
-    val bottomPlan = remember(bottomRange, contentWidthPx, contentHeightPx, bottomRadiusPx, bottomGeometry.outwardFeatherPx) {
-        resolveKawasePanelPlan(
-            panelRange = bottomRange,
-            sourceWidthPx = contentWidthPx,
-            sourceHeightPx = contentHeightPx,
-            radiusPx = bottomRadiusPx,
-            visibleSupportPx = bottomGeometry.outwardFeatherPx,
-        )
+    val firstShader = remember(*shaderKey) { buildShader(BLUR_AXIS_A_X, BLUR_AXIS_A_Y, false) }
+    val secondShader = remember(*shaderKey) { buildShader(BLUR_AXIS_B_X, BLUR_AXIS_B_Y, false) }
+    val thirdShader = remember(*shaderKey) { buildShader(BLUR_AXIS_C_X, BLUR_AXIS_C_Y, true) }
+    val composeEffect = remember(firstShader, secondShader, thirdShader) {
+        ArborRenderProfiler.recordBlurEffectBuild(3)
+        val first = RenderEffect.createRuntimeShaderEffect(firstShader, "content")
+        val second = RenderEffect.createRuntimeShaderEffect(secondShader, "content")
+        val third = RenderEffect.createRuntimeShaderEffect(thirdShader, "content")
+        RenderEffect.createChainEffect(third, RenderEffect.createChainEffect(second, first)).asComposeRenderEffect()
     }
 
-    val sourceLayer = rememberGraphicsLayer()
-    val topLayers = rememberKawaseLayers()
-    val bottomLayers = rememberKawaseLayers()
-
-    val topEffects = remember(topPlan, topVisual, topGeometry) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            buildStablePanelEffects(topPlan, topVisual, topGeometry)
-        } else null
-    }
-    val bottomEffects = remember(bottomPlan, bottomVisual, bottomGeometry) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            buildStablePanelEffects(bottomPlan, bottomVisual, bottomGeometry)
-        } else null
-    }
-    SideEffect {
-        topLayers.applyEffects(topEffects)
-        bottomLayers.applyEffects(bottomEffects)
-    }
-
-    measured.drawWithContent {
-        val topBlurActive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            topPlan != null && topEffects?.halfBlurPass != null
-        val bottomBlurActive = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            bottomPlan != null && bottomEffects?.halfBlurPass != null
-        val blurActive = topBlurActive || bottomBlurActive
-        val topPanelVisible = topBlurActive || topVisual.tint.alpha > 0f
-        val bottomPanelVisible = bottomBlurActive || bottomVisual.tint.alpha > 0f
-        val profilerActive = ArborRenderProfiler.enabled
-        var blurCpuNanos = 0L
-        var processedPixels = 0L
-        var layerReplays = 0
-        var downsampleLevels = 0
-        var upsampleLevels = 0
-        var captureUpdates = 0
-
-        if (blurActive) {
-            val sourceSize = IntSize(
-                width = size.width.roundToInt().coerceAtLeast(1),
-                height = size.height.roundToInt().coerceAtLeast(1),
-            )
-            val sourceStarted = if (profilerActive) System.nanoTime() else 0L
-            sourceLayer.record(size = sourceSize) { this@drawWithContent.drawContent() }
-            if (profilerActive) blurCpuNanos += System.nanoTime() - sourceStarted
-
-            if (topBlurActive) {
-                val plan = requireNotNull(topPlan)
-                val started = if (profilerActive) System.nanoTime() else 0L
-                recordKawasePanelChain(sourceLayer, topLayers, plan)
-                if (profilerActive) {
-                    blurCpuNanos += System.nanoTime() - started
-                    processedPixels += plan.processedPixels()
-                    layerReplays += plan.recordingReplayCount
-                    downsampleLevels += plan.levelCount
-                    upsampleLevels += plan.levelCount
-                    captureUpdates++
-                }
-            }
-            if (bottomBlurActive) {
-                val plan = requireNotNull(bottomPlan)
-                val started = if (profilerActive) System.nanoTime() else 0L
-                recordKawasePanelChain(sourceLayer, bottomLayers, plan)
-                if (profilerActive) {
-                    blurCpuNanos += System.nanoTime() - started
-                    processedPixels += plan.processedPixels()
-                    layerReplays += plan.recordingReplayCount
-                    downsampleLevels += plan.levelCount
-                    upsampleLevels += plan.levelCount
-                    captureUpdates++
-                }
-            }
-
-            drawLayer(sourceLayer)
-            if (profilerActive) layerReplays++
-        } else {
-            drawContent()
-        }
-
-        if (topPanelVisible) {
-            val started = if (profilerActive) System.nanoTime() else 0L
-            recordStablePanelComposite(
-                layers = topLayers,
-                plan = if (topBlurActive) topPlan else null,
-                geometry = topGeometry,
-                visual = topVisual,
-            )
-            translate(0f, topGeometry.startPx) { drawLayer(topLayers.panelComposite) }
-            if (profilerActive) {
-                blurCpuNanos += System.nanoTime() - started
-                layerReplays += 2
-            }
-        }
-        if (bottomPanelVisible) {
-            val started = if (profilerActive) System.nanoTime() else 0L
-            recordStablePanelComposite(
-                layers = bottomLayers,
-                plan = if (bottomBlurActive) bottomPlan else null,
-                geometry = bottomGeometry,
-                visual = bottomVisual,
-            )
-            translate(0f, bottomGeometry.startPx) { drawLayer(bottomLayers.panelComposite) }
-            if (profilerActive) {
-                blurCpuNanos += System.nanoTime() - started
-                layerReplays += 2
-            }
-        }
-
-        if (profilerActive && blurActive) {
+    val profiled = measured.drawWithContent {
+        val started = if (ArborRenderProfiler.enabled) System.nanoTime() else 0L
+        drawContent()
+        if (ArborRenderProfiler.enabled) {
             ArborRenderProfiler.recordBlurFrame(
-                cpuNanos = blurCpuNanos,
-                processedPixels = processedPixels,
+                cpuNanos = System.nanoTime() - started,
+                processedPixels = (size.width.toLong() * size.height.toLong() * 3L).coerceAtLeast(0L),
                 sourceTraversals = 1,
-                layerReplays = layerReplays,
-                downsampleLevels = downsampleLevels,
-                upsampleLevels = upsampleLevels,
-                captureUpdates = captureUpdates,
+                layerReplays = 0,
+                downsampleLevels = 0,
+                upsampleLevels = 0,
+                captureUpdates = 0,
             )
         }
     }
-}
-
-@Composable
-private fun rememberKawaseLayers(): KawaseLayerSet = KawaseLayerSet(
-    capture = rememberGraphicsLayer(),
-    down1 = rememberGraphicsLayer(),
-    halfBlurA = rememberGraphicsLayer(),
-    halfBlurB = rememberGraphicsLayer(),
-    halfBlurC = rememberGraphicsLayer(),
-    halfBlurD = rememberGraphicsLayer(),
-    finalFull = rememberGraphicsLayer(),
-    panelComposite = rememberGraphicsLayer(),
-)
-
-private data class KawaseLayerSet(
-    val capture: GraphicsLayer,
-    val down1: GraphicsLayer,
-    val halfBlurA: GraphicsLayer,
-    val halfBlurB: GraphicsLayer,
-    val halfBlurC: GraphicsLayer,
-    val halfBlurD: GraphicsLayer,
-    val finalFull: GraphicsLayer,
-    val panelComposite: GraphicsLayer,
-) {
-    fun applyEffects(effects: StablePanelEffects?) {
-        capture.renderEffect = null
-        down1.renderEffect = null
-        halfBlurA.renderEffect = effects?.halfBlurPass
-        halfBlurB.renderEffect = effects?.halfBlurPass
-        halfBlurC.renderEffect = effects?.halfBlurPass
-        halfBlurD.renderEffect = effects?.halfBlurPass
-        finalFull.renderEffect = effects?.colorAdjust
-        finalFull.alpha = effects?.blurMix ?: 1f
-        panelComposite.renderEffect = null
-        panelComposite.compositingStrategy = CompositingStrategy.Offscreen
-    }
-}
-
-private fun DrawScope.recordKawasePanelChain(
-    sourceLayer: GraphicsLayer,
-    layers: KawaseLayerSet,
-    plan: KawasePanelPlan,
-) {
-    layers.capture.record(size = plan.levelSize(0)) {
-        translate(0f, -plan.capture.sourceStartPx) { drawLayer(sourceLayer) }
-    }
-    layers.down1.record(size = plan.levelSize(1)) {
-        scale(0.5f, 0.5f, pivot = Offset.Zero) { drawLayer(layers.capture) }
-    }
-    layers.halfBlurA.record(size = plan.levelSize(1)) {
-        drawLayer(layers.down1)
-    }
-    layers.halfBlurB.record(size = plan.levelSize(1)) {
-        drawLayer(layers.halfBlurA)
-    }
-    layers.halfBlurC.record(size = plan.levelSize(1)) {
-        drawLayer(layers.halfBlurB)
-    }
-    layers.halfBlurD.record(size = plan.levelSize(1)) {
-        drawLayer(layers.halfBlurC)
-    }
-    layers.finalFull.record(size = plan.levelSize(0)) {
-        scale(2f, 2f, pivot = Offset.Zero) { drawLayer(layers.halfBlurD) }
-    }
-}
-
-internal data class BlurCaptureExtent(
-    val sourceStartPx: Float,
-    val sourceEndPx: Float,
-    val sourceWidthPx: Float,
-    val supportPx: Float,
-) {
-    val sourceExtentPx: Float get() = (sourceEndPx - sourceStartPx).coerceAtLeast(0f)
-}
-
-internal data class KawasePanelPlan(
-    val panelRange: ArborPanelRange,
-    val capture: BlurCaptureExtent,
-    val levelCount: Int,
-    val radiusPx: Float,
-    val baseTapOffsetPx: Float,
-) {
-    init { require(levelCount == HALF_RESOLUTION_LEVELS) }
-
-    /** All levels map to this exact full-resolution source extent. */
-    fun sourceExtentAtLevel(level: Int): BlurCaptureExtent {
-        require(level in 0..levelCount)
-        return capture
-    }
-
-    fun levelSize(level: Int): IntSize {
-        require(level in 0..levelCount)
-        val divisor = 1 shl level
-        return IntSize(
-            width = ceil(capture.sourceWidthPx.coerceAtLeast(1f) / divisor).toInt().coerceAtLeast(1),
-            height = ceil(capture.sourceExtentPx.coerceAtLeast(1f) / divisor).toInt().coerceAtLeast(1),
-        )
-    }
-
-    fun processedPixels(): Long {
-        return levelSize(1).pixelCount() +
-            levelSize(1).pixelCount() +
-            levelSize(1).pixelCount() +
-            levelSize(1).pixelCount() +
-            levelSize(1).pixelCount() +
-            levelSize(0).pixelCount()
-    }
-
-    val recordingReplayCount: Int get() = 7
-}
-
-private fun IntSize.pixelCount(): Long = width.toLong() * height.toLong()
-
-internal fun resolveKawasePanelPlan(
-    panelRange: ArborPanelRange,
-    sourceWidthPx: Float,
-    sourceHeightPx: Float,
-    radiusPx: Float,
-    visibleSupportPx: Float = 0f,
-): KawasePanelPlan? {
-    val sourceWidth = sourceWidthPx.coerceAtLeast(0f)
-    val sourceHeight = sourceHeightPx.coerceAtLeast(0f)
-    if (sourceWidth <= 0f || sourceHeight <= 0f || panelRange.extentPx <= 0f || radiusPx < MIN_VISIBLE_RADIUS_PX) {
-        return null
-    }
-    val levelCount = resolveKawaseLevelCount(radiusPx)
-    val support = calculateKawaseSupportPx(radiusPx, levelCount) + visibleSupportPx.coerceAtLeast(0f)
-    val start = (panelRange.startPx - support).coerceIn(0f, sourceHeight)
-    val end = (panelRange.endPx + support).coerceIn(start, sourceHeight)
-    return KawasePanelPlan(
-        panelRange = panelRange,
-        capture = BlurCaptureExtent(
-            sourceStartPx = start,
-            sourceEndPx = end,
-            sourceWidthPx = sourceWidth,
-            supportPx = support,
-        ),
-        levelCount = levelCount,
-        radiusPx = radiusPx,
-        baseTapOffsetPx = calculateKawaseTapOffsetPx(radiusPx, levelCount),
-    )
-}
-
-internal fun resolveKawaseLevelCount(@Suppress("UNUSED_PARAMETER") radiusPx: Float): Int = HALF_RESOLUTION_LEVELS
-
-internal fun calculateKawaseSupportPx(radiusPx: Float, levelCount: Int): Float {
-    val reconstructionSupport = (1 shl levelCount) * KAWASE_MAX_LEVEL_TAP_SUPPORT_PX
-    return ceil(max(KAWASE_MINIMUM_SUPPORT_PX, radiusPx.coerceAtLeast(0f) * KAWASE_SUPPORT_MULTIPLIER + reconstructionSupport))
-}
-
-internal fun calculateKawaseTapOffsetPx(radiusPx: Float, levelCount: Int): Float {
-    require(levelCount == HALF_RESOLUTION_LEVELS)
-    return (radiusPx.coerceAtLeast(0f) / 58f)
-        .coerceIn(KAWASE_MIN_TAP_OFFSET_PX, KAWASE_MAX_TAP_OFFSET_PX)
-}
-
-internal fun resolveBlurContribution(radiusPx: Float): Float =
-    arborBlurProgress(radiusPx.coerceAtLeast(0f) / BLUR_FULL_CONTRIBUTION_RADIUS_PX)
-
-private data class GlassVisualConfig(
-    val edge: ArborBlurEdge,
-    val range: ArborPanelRange,
-    val cornerRadiusPx: Float,
-    val mergeDistancePx: Float,
-    val softness: Float,
-    val tint: Color,
-    val saturation: Float,
-    val contrast: Float,
-    val brightness: Float,
-    val edgeHighlight: Float,
-    val minimumFeatherPx: Float,
-)
-
-private data class PanelGeometry(
-    val localBodyPath: Path,
-    val edgeMaskBrush: Brush?,
-    val widthPx: Float,
-    val startPx: Float,
-    val endPx: Float,
-    val bodyStartPx: Float,
-    val bodyEndPx: Float,
-    val cornerRadiusPx: Float,
-    val featherDistancePx: Float,
-    val edge: ArborBlurEdge,
-) {
-    val extentPx: Float get() = (endPx - startPx).coerceAtLeast(0f)
-    val bodyStartLocalPx: Float get() = bodyStartPx - startPx
-    val bodyEndLocalPx: Float get() = bodyEndPx - startPx
-    val bodyExtentPx: Float get() = (bodyEndPx - bodyStartPx).coerceAtLeast(0f)
-    val outwardFeatherPx: Float get() = (featherDistancePx * 0.5f).coerceAtLeast(0f)
-    val hasFeather: Boolean get() = edgeMaskBrush != null
-    val layerSize: IntSize get() = IntSize(
-        width = ceil(widthPx.coerceAtLeast(1f)).toInt().coerceAtLeast(1),
-        height = ceil(extentPx.coerceAtLeast(1f)).toInt().coerceAtLeast(1),
-    )
-}
-
-private fun buildPanelGeometry(widthPx: Float, heightPx: Float, visual: GlassVisualConfig): PanelGeometry {
-    val nominalStart = visual.range.startPx.coerceIn(0f, heightPx)
-    val nominalEnd = visual.range.endPx.coerceIn(nominalStart, heightPx)
-    val nominalExtent = nominalEnd - nominalStart
-    val featherSpan = resolveFeatherDistancePx(
-        requestedDistancePx = visual.mergeDistancePx,
-        softness = visual.softness,
-        minimumFeatherPx = visual.minimumFeatherPx,
-        maximumDistancePx = nominalExtent,
-    )
-    val bounds = resolveSymmetricFeatherBounds(
-        edge = visual.edge,
-        nominalStartPx = nominalStart,
-        nominalEndPx = nominalEnd,
-        featherSpanPx = featherSpan,
-        sourceHeightPx = heightPx,
-    )
-    val nominalRadius = resolvePanelCornerRadiusPx(
-        requestedRadiusPx = visual.cornerRadiusPx,
-        edgeSoftness = visual.softness,
-        widthPx = widthPx,
-        extentPx = nominalExtent,
-    )
-    val bodyStartLocal = bounds.bodyStartPx - bounds.drawStartPx
-    val bodyEndLocal = bounds.bodyEndPx - bounds.drawStartPx
-    val localBodyPath = Path().apply {
-        when (visual.edge) {
-            ArborBlurEdge.TOP -> addRoundRect(
-                RoundRect(
-                    left = 0f,
-                    top = bodyStartLocal,
-                    right = widthPx,
-                    bottom = bodyEndLocal,
-                    topLeftCornerRadius = CornerRadius.Zero,
-                    topRightCornerRadius = CornerRadius.Zero,
-                    bottomRightCornerRadius = CornerRadius(nominalRadius, nominalRadius),
-                    bottomLeftCornerRadius = CornerRadius(nominalRadius, nominalRadius),
-                ),
-            )
-            ArborBlurEdge.BOTTOM -> addRoundRect(
-                RoundRect(
-                    left = 0f,
-                    top = bodyStartLocal,
-                    right = widthPx,
-                    bottom = bodyEndLocal,
-                    topLeftCornerRadius = CornerRadius(nominalRadius, nominalRadius),
-                    topRightCornerRadius = CornerRadius(nominalRadius, nominalRadius),
-                    bottomRightCornerRadius = CornerRadius.Zero,
-                    bottomLeftCornerRadius = CornerRadius.Zero,
-                ),
-            )
-        }
-    }
-    val featherMask = resolveDirectionalFeatherMask(
-        edge = visual.edge,
-        bodyStartLocalPx = bodyStartLocal,
-        bodyEndLocalPx = bodyEndLocal,
-        halfSpanPx = bounds.halfSpanPx,
-        layerExtentPx = (bounds.drawEndPx - bounds.drawStartPx).coerceAtLeast(0f),
-    )
-    val edgeMaskBrush = featherMask?.let { mask ->
-        if (mask.startsOpaque) {
-            Brush.verticalGradient(
-                colors = listOf(Color.White, Color.Transparent),
-                startY = mask.startPx,
-                endY = mask.endPx,
-            )
-        } else {
-            Brush.verticalGradient(
-                colors = listOf(Color.Transparent, Color.White),
-                startY = mask.startPx,
-                endY = mask.endPx,
-            )
-        }
-    }
-    return PanelGeometry(
-        localBodyPath = localBodyPath,
-        edgeMaskBrush = edgeMaskBrush,
-        widthPx = widthPx,
-        startPx = bounds.drawStartPx,
-        endPx = bounds.drawEndPx,
-        bodyStartPx = bounds.bodyStartPx,
-        bodyEndPx = bounds.bodyEndPx,
-        cornerRadiusPx = nominalRadius,
-        featherDistancePx = featherSpan,
-        edge = visual.edge,
-    )
-}
-
-/** Rounded in exact zero mode; deliberately flat for every feathered mode. */
-internal fun resolvePanelCornerRadiusPx(
-    requestedRadiusPx: Float,
-    edgeSoftness: Float,
-    widthPx: Float,
-    extentPx: Float,
-): Float {
-    if (snapChromeEdgeSoftness(edgeSoftness) != 0f) return 0f
-    return requestedRadiusPx.coerceIn(
-        0f,
-        minOf(widthPx.coerceAtLeast(0f) / 2f, extentPx.coerceAtLeast(0f) / 2f),
-    )
-}
-
-/**
- * Blur and tint are recorded into one premultiplied panel layer before edge
- * softness is applied. This guarantees identical geometry and prevents a
- * transparent blur sample from becoming opaque black during composition.
- */
-private fun DrawScope.drawStablePanelContents(
-    layers: KawaseLayerSet,
-    plan: KawasePanelPlan?,
-    geometry: PanelGeometry,
-    visual: GlassVisualConfig,
-) {
-    if (plan != null) {
-        translate(0f, plan.capture.sourceStartPx - geometry.startPx) {
-            drawLayer(layers.finalFull)
-        }
-    }
-    if (visual.tint.alpha > 0f) {
-        drawRect(color = visual.tint)
-    }
-    if (visual.edgeHighlight > 0f) {
-        if (geometry.hasFeather) {
-            val edgeY = when (geometry.edge) {
-                ArborBlurEdge.TOP -> geometry.bodyEndLocalPx
-                ArborBlurEdge.BOTTOM -> geometry.bodyStartLocalPx
-            }
-            drawLine(
-                color = Color.White.copy(alpha = visual.edgeHighlight),
-                start = Offset(0f, edgeY),
-                end = Offset(geometry.widthPx, edgeY),
-                strokeWidth = 1f,
-            )
-        } else {
-            drawPath(
-                path = geometry.localBodyPath,
-                color = Color.White.copy(alpha = visual.edgeHighlight),
-                style = Stroke(width = 1f),
-            )
-        }
-    }
-}
-
-private fun DrawScope.recordStablePanelComposite(
-    layers: KawaseLayerSet,
-    plan: KawasePanelPlan?,
-    geometry: PanelGeometry,
-    visual: GlassVisualConfig,
-) {
-    if (geometry.extentPx <= 0f) return
-    layers.panelComposite.record(size = geometry.layerSize) {
-        val mask = geometry.edgeMaskBrush
-        if (mask == null) {
-            clipPath(geometry.localBodyPath) {
-                drawStablePanelContents(layers, plan, geometry, visual)
-            }
-        } else {
-            drawStablePanelContents(layers, plan, geometry, visual)
-            drawRect(brush = mask, blendMode = BlendMode.DstIn)
-        }
-    }
-}
-
-private data class StablePanelEffects(
-    val halfBlurPass: androidx.compose.ui.graphics.RenderEffect?,
-    val colorAdjust: androidx.compose.ui.graphics.RenderEffect?,
-    val blurMix: Float,
-)
-
-@RequiresApi(Build.VERSION_CODES.S)
-private fun buildStablePanelEffects(
-    plan: KawasePanelPlan?,
-    visual: GlassVisualConfig,
-    geometry: PanelGeometry,
-): StablePanelEffects {
-    val halfPassRadius = plan?.let { calculateHalfBlurPassRadiusPx(it.radiusPx) } ?: 0f
-    val halfBlurPass = if (halfPassRadius > 0.01f) {
-        RenderEffect.createBlurEffect(
-            halfPassRadius,
-            halfPassRadius,
-            Shader.TileMode.CLAMP,
-        ).asComposeRenderEffect()
-    } else null
-    val colorAdjust = if (plan != null) {
-        RenderEffect.createColorFilterEffect(
-            ColorMatrixColorFilter(
-                buildGlassColorMatrix(
-                    saturation = visual.saturation,
-                    contrast = visual.contrast,
-                    brightness = visual.brightness,
-                ),
-            ),
-        ).asComposeRenderEffect()
-    } else null
-    ArborRenderProfiler.recordBlurEffectBuild(
-        (if (halfBlurPass != null) 1 else 0) +
-            (if (colorAdjust != null) 1 else 0),
-    )
-    return StablePanelEffects(
-        halfBlurPass = halfBlurPass,
-        colorAdjust = colorAdjust,
-        blurMix = plan?.let { resolveBlurContribution(it.radiusPx) } ?: 0f,
-    )
-}
-
-/**
- * Four equal Gaussian passes are cascaded at 1/2 resolution. The combined
- * full-resolution sigma remains the requested radius while the reconstruction
- * grid stays fine enough that stronger settings do not reveal blockiness.
- */
-internal fun calculateHalfBlurPassRadiusPx(radiusPx: Float): Float =
-    radiusPx.coerceAtLeast(0f) / 4f
-
-internal fun buildGlassColorMatrix(
-    saturation: Float,
-    contrast: Float,
-    brightness: Float,
-): ColorMatrix {
-    val saturationMatrix = ColorMatrix().apply { setSaturation(saturation.coerceIn(0.75f, 1.35f)) }
-    val normalizedContrast = contrast.coerceIn(0.85f, 1.20f)
-    val normalizedBrightness = brightness.coerceIn(0.85f, 1.15f)
-    val scale = normalizedContrast * normalizedBrightness
-    val translate = (0.5f - 0.5f * normalizedContrast) * 255f * normalizedBrightness
-    val adjustment = ColorMatrix(
-        floatArrayOf(
-            scale, 0f, 0f, 0f, translate,
-            0f, scale, 0f, 0f, translate,
-            0f, 0f, scale, 0f, translate,
-            0f, 0f, 0f, 1f, 0f,
-        ),
-    )
-    saturationMatrix.postConcat(adjustment)
-    return saturationMatrix
+    profiled.graphicsLayer { renderEffect = composeEffect }
 }
 
 internal fun arborBlurProgress(progress: Float): Float {
@@ -862,6 +244,7 @@ internal fun arborBlurProgress(progress: Float): Float {
     return p * p * p * (p * (p * 6f - 15f) + 10f)
 }
 
+/** Current 0-100% control: no minimum-radius jump and no quantized discontinuity. */
 internal fun calculateBlurRadiusDp(
     strength: Float,
     maxRadiusDp: Float = DEFAULT_MAX_RADIUS_DP,
@@ -875,102 +258,7 @@ internal fun calculateMergeDistanceDp(
 internal fun edgeSoftnessActivation(edgeSoftness: Float): Float =
     arborBlurProgress(effectiveChromeEdgeSoftness(edgeSoftness))
 
-internal fun resolveFeatherDistancePx(
-    requestedDistancePx: Float,
-    softness: Float,
-    minimumFeatherPx: Float,
-    maximumDistancePx: Float,
-): Float {
-    val normalized = effectiveChromeEdgeSoftness(softness)
-    if (normalized <= 0f || maximumDistancePx <= 0f) return 0f
-    return requestedDistancePx.coerceIn(0f, maximumDistancePx)
-}
-
-internal fun resolveSymmetricFeatherHalfSpanPx(
-    requestedDistancePx: Float,
-    softness: Float,
-    minimumFeatherPx: Float,
-    maximumDistancePx: Float,
-): Float = resolveFeatherDistancePx(
-    requestedDistancePx = requestedDistancePx,
-    softness = softness,
-    minimumFeatherPx = minimumFeatherPx,
-    maximumDistancePx = maximumDistancePx,
-) * 0.5f
-
-internal data class DirectionalFeatherMask(
-    val startPx: Float,
-    val endPx: Float,
-    val startsOpaque: Boolean,
-)
-
-/**
- * Softness is centered only on the chrome/content boundary. The physical
- * screen edge remains fully covered, so the top panel can never fade the
- * status-bar area and the bottom panel can never fade the navigation edge.
- */
-internal fun resolveDirectionalFeatherMask(
-    edge: ArborBlurEdge,
-    bodyStartLocalPx: Float,
-    bodyEndLocalPx: Float,
-    halfSpanPx: Float,
-    layerExtentPx: Float,
-): DirectionalFeatherMask? {
-    val half = halfSpanPx.coerceAtLeast(0f)
-    val extent = layerExtentPx.coerceAtLeast(0f)
-    if (half <= 0f || extent <= 0f) return null
-    return when (edge) {
-        ArborBlurEdge.TOP -> DirectionalFeatherMask(
-            startPx = (bodyEndLocalPx - half).coerceIn(0f, extent),
-            endPx = (bodyEndLocalPx + half).coerceIn(0f, extent),
-            startsOpaque = true,
-        )
-        ArborBlurEdge.BOTTOM -> DirectionalFeatherMask(
-            startPx = (bodyStartLocalPx - half).coerceIn(0f, extent),
-            endPx = (bodyStartLocalPx + half).coerceIn(0f, extent),
-            startsOpaque = false,
-        )
-    }
-}
-
-internal data class SymmetricFeatherBounds(
-    val drawStartPx: Float,
-    val drawEndPx: Float,
-    val bodyStartPx: Float,
-    val bodyEndPx: Float,
-    val halfSpanPx: Float,
-)
-
-internal fun resolveSymmetricFeatherBounds(
-    edge: ArborBlurEdge,
-    nominalStartPx: Float,
-    nominalEndPx: Float,
-    featherSpanPx: Float,
-    sourceHeightPx: Float,
-): SymmetricFeatherBounds {
-    val sourceHeight = sourceHeightPx.coerceAtLeast(0f)
-    val start = nominalStartPx.coerceIn(0f, sourceHeight)
-    val end = nominalEndPx.coerceIn(start, sourceHeight)
-    val half = (featherSpanPx.coerceAtLeast(0f) * 0.5f).coerceAtMost((end - start) * 0.5f)
-    return when (edge) {
-        ArborBlurEdge.TOP -> SymmetricFeatherBounds(
-            drawStartPx = start,
-            drawEndPx = (end + half).coerceAtMost(sourceHeight),
-            bodyStartPx = start,
-            bodyEndPx = end,
-            halfSpanPx = half,
-        )
-        ArborBlurEdge.BOTTOM -> SymmetricFeatherBounds(
-            drawStartPx = (start - half).coerceAtLeast(0f),
-            drawEndPx = end,
-            bodyStartPx = start,
-            bodyEndPx = end,
-            halfSpanPx = half,
-        )
-    }
-}
-
-/** Registers a chrome panel. Blur and tint share one signed-distance panel geometry. */
+/** Registers one chrome panel and draws the exact-opacity tint above the blurred body. */
 fun Modifier.arborBackdropBlur(
     state: ArborBackdropBlurState,
     strength: Float,
@@ -988,11 +276,13 @@ fun Modifier.arborBackdropBlur(
     brightness: Float = DEFAULT_GLASS_BRIGHTNESS,
     edgeHighlight: Float = DEFAULT_EDGE_HIGHLIGHT,
 ): Modifier = composed {
+    val normalizedSoftness = snapChromeEdgeSoftness(edgeSoftness)
     val radiusDp = calculateBlurRadiusDp(strength = strength, maxRadiusDp = maxRadius.value)
     val mergeDp = calculateMergeDistanceDp(
-        edgeSoftness = edgeSoftness,
+        edgeSoftness = normalizedSoftness,
         maximumMergeDp = maximumMergeDistance.value,
     )
+    val exactTint = applyOverlayOpacity(tint, overlayOpacity)
 
     SideEffect {
         state.update(
@@ -1001,8 +291,8 @@ fun Modifier.arborBackdropBlur(
             fadeDp = overlayDistance.value,
             cornerRadiusDp = cornerRadius.value,
             mergeDp = mergeDp,
-            softness = snapChromeEdgeSoftness(edgeSoftness),
-            tint = applyOverlayOpacity(tint, overlayOpacity),
+            softness = normalizedSoftness,
+            tint = exactTint,
             saturation = saturation,
             contrast = contrast,
             brightness = brightness,
@@ -1011,11 +301,97 @@ fun Modifier.arborBackdropBlur(
     }
     DisposableEffect(state, edge) { onDispose { state.clear(edge) } }
 
-    if (edge != ArborBlurEdge.BOTTOM) return@composed this
-    val overlayExtentPx = with(LocalDensity.current) { overlayDistance.toPx() }
-    this.onGloballyPositioned { coordinates ->
-        val bounds = coordinates.boundsInRoot()
-        state.updateBottomPanel(bounds.top, bounds.bottom, overlayExtentPx)
+    val anchored = if (edge == ArborBlurEdge.BOTTOM) {
+        this.onGloballyPositioned { coordinates -> state.updateBottomEdge(coordinates.boundsInRoot().bottom) }
+    } else this
+
+    val density = LocalDensity.current
+    val overlayDistancePx = with(density) { overlayDistance.toPx() }
+    val cornerRadiusPx = with(density) { cornerRadius.toPx() }
+    val mergeDistancePx = with(density) { mergeDp.dp.toPx() }
+    val highlightAlpha = edgeHighlight.coerceIn(0f, 0.12f)
+
+    anchored.drawWithContent {
+        val extent = overlayDistancePx.coerceIn(1f, size.height.coerceAtLeast(1f))
+        val softnessActive = normalizedSoftness > 0f && mergeDistancePx > 0f
+        if (!softnessActive) {
+            val radius = cornerRadiusPx.coerceIn(0f, minOf(size.width / 2f, extent / 2f))
+            val path = Path().apply {
+                when (edge) {
+                    ArborBlurEdge.TOP -> addRoundRect(
+                        RoundRect(
+                            0f, 0f, size.width, extent,
+                            CornerRadius.Zero, CornerRadius.Zero,
+                            CornerRadius(radius, radius), CornerRadius(radius, radius),
+                        ),
+                    )
+                    ArborBlurEdge.BOTTOM -> {
+                        val startY = (size.height - extent).coerceAtLeast(0f)
+                        addRoundRect(
+                            RoundRect(
+                                0f, startY, size.width, size.height,
+                                CornerRadius(radius, radius), CornerRadius(radius, radius),
+                                CornerRadius.Zero, CornerRadius.Zero,
+                            ),
+                        )
+                    }
+                }
+            }
+            clipPath(path) { if (exactTint.alpha > 0f) drawRect(exactTint) }
+        } else if (exactTint.alpha > 0f) {
+            val half = mergeDistancePx * 0.5f
+            when (edge) {
+                ArborBlurEdge.TOP -> {
+                    val start = (extent - half).coerceAtLeast(0f)
+                    val end = extent + half
+                    if (start > 0f) drawRect(exactTint, size = Size(size.width, start))
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0f to exactTint,
+                            0.5f to exactTint.copy(alpha = exactTint.alpha * 0.5f),
+                            1f to Color.Transparent,
+                            startY = start,
+                            endY = end,
+                        ),
+                        topLeft = Offset(0f, start),
+                        size = Size(size.width, mergeDistancePx),
+                    )
+                }
+                ArborBlurEdge.BOTTOM -> {
+                    val boundary = size.height - extent
+                    val start = boundary - half
+                    val end = boundary + half
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.5f to exactTint.copy(alpha = exactTint.alpha * 0.5f),
+                            1f to exactTint,
+                            startY = start,
+                            endY = end,
+                        ),
+                        topLeft = Offset(0f, start),
+                        size = Size(size.width, mergeDistancePx),
+                    )
+                    if (end < size.height) {
+                        drawRect(exactTint, topLeft = Offset(0f, end), size = Size(size.width, size.height - end))
+                    }
+                }
+            }
+        }
+
+        if (highlightAlpha > 0f) {
+            val y = when (edge) {
+                ArborBlurEdge.TOP -> extent
+                ArborBlurEdge.BOTTOM -> size.height - extent
+            }
+            drawLine(
+                color = Color.White.copy(alpha = highlightAlpha),
+                start = Offset(0f, y),
+                end = Offset(size.width, y),
+                strokeWidth = 1.dp.toPx(),
+            )
+        }
+        drawContent()
     }
 }
 
@@ -1026,12 +402,9 @@ internal fun applyOverlayOpacity(tint: Color, opacity: Float): Color =
 internal fun quantizeBlurRadiusDp(radiusDp: Float): Float = radiusDp.coerceAtLeast(0f)
 
 private const val MIN_VISIBLE_RADIUS_PX = 0.0001f
-private const val BLUR_FULL_CONTRIBUTION_RADIUS_PX = 12f
 private const val DEFAULT_MAX_RADIUS_DP = 56f
 private const val DEFAULT_PANEL_CORNER_RADIUS_DP = 28f
-private const val DEFAULT_MERGE_DISTANCE_DP = 34f
 private const val MAXIMUM_MERGE_DISTANCE_DP = 68f
-private const val MINIMUM_FEATHER_DISTANCE_DP = 4f
 private const val DEFAULT_TOP_FADE_DP = 128f
 private const val DEFAULT_BOTTOM_FADE_DP = 208f
 private const val DEFAULT_GLASS_SATURATION = 1.10f
@@ -1039,10 +412,113 @@ private const val DEFAULT_GLASS_CONTRAST = 1.025f
 private const val DEFAULT_GLASS_BRIGHTNESS = 1.008f
 private const val DEFAULT_EDGE_HIGHLIGHT = 0.035f
 
-internal const val KAWASE_MINIMUM_SUPPORT_PX = 12f
-internal const val KAWASE_SUPPORT_MULTIPLIER = 1.35f
-internal const val KAWASE_MAX_LEVEL_TAP_SUPPORT_PX = 2.75f
-internal const val KAWASE_MIN_TAP_OFFSET_PX = 0f
-internal const val KAWASE_MAX_TAP_OFFSET_PX = 2.65f
-internal const val HALF_RESOLUTION_LEVELS = 1
+// Exact directions and nine-tap Gaussian kernel from Arbor 0.17.8.
+internal const val BLUR_AXIS_A_X = 0.9238795f
+internal const val BLUR_AXIS_A_Y = 0.3826834f
+internal const val BLUR_AXIS_B_X = 0.1305262f
+internal const val BLUR_AXIS_B_Y = 0.9914449f
+internal const val BLUR_AXIS_C_X = -0.7933533f
+internal const val BLUR_AXIS_C_Y = 0.6087614f
 
+private val EDGE_BLUR_SHADER = """
+    uniform shader content;
+    uniform float2 uBlur;
+    uniform float2 uFade;
+    uniform float2 uSize;
+    uniform float uBottomEdge;
+    uniform float2 uSoftness;
+    uniform float2 uCorner;
+    uniform float2 uMerge;
+    uniform float2 uDirection;
+    uniform float2 uSaturation;
+    uniform float2 uContrast;
+    uniform float2 uBrightness;
+    uniform float uAdjustColor;
+
+    float smoother(float value) {
+        float x = saturate(value);
+        return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
+    }
+
+    float roundedTopPanelMask(float2 coord, float extent, float radius) {
+        if (coord.y < 0.0 || coord.y > extent) return 0.0;
+        radius = clamp(radius, 0.0, min(uSize.x * 0.5, extent * 0.5));
+        if (radius < 0.5 || coord.y <= extent - radius) return 1.0;
+        if (coord.x < radius) {
+            float d = length(coord - float2(radius, extent - radius));
+            return 1.0 - smoothstep(radius - 0.75, radius + 0.75, d);
+        }
+        if (coord.x > uSize.x - radius) {
+            float d = length(coord - float2(uSize.x - radius, extent - radius));
+            return 1.0 - smoothstep(radius - 0.75, radius + 0.75, d);
+        }
+        return 1.0;
+    }
+
+    float roundedBottomPanelMask(float2 coord, float start, float bottom, float radius) {
+        if (coord.y < start || coord.y > bottom) return 0.0;
+        float extent = bottom - start;
+        radius = clamp(radius, 0.0, min(uSize.x * 0.5, extent * 0.5));
+        if (radius < 0.5 || coord.y >= start + radius) return 1.0;
+        if (coord.x < radius) {
+            float d = length(coord - float2(radius, start + radius));
+            return 1.0 - smoothstep(radius - 0.75, radius + 0.75, d);
+        }
+        if (coord.x > uSize.x - radius) {
+            float d = length(coord - float2(uSize.x - radius, start + radius));
+            return 1.0 - smoothstep(radius - 0.75, radius + 0.75, d);
+        }
+        return 1.0;
+    }
+
+    half4 main(float2 coord) {
+        float topExtent = max(uFade.x, 1.0);
+        float topMix;
+        if (uSoftness.x <= 0.0 || uMerge.x <= 0.0) {
+            topMix = roundedTopPanelMask(coord, topExtent, uCorner.x);
+        } else {
+            float halfSpan = uMerge.x * 0.5;
+            topMix = 1.0 - smoother((coord.y - (topExtent - halfSpan)) / max(uMerge.x, 1.0));
+        }
+
+        float bottomEdge = clamp(uBottomEdge, 0.0, uSize.y);
+        float bottomExtent = max(uFade.y, 1.0);
+        float bottomStart = bottomEdge - bottomExtent;
+        float bottomMix;
+        if (uSoftness.y <= 0.0 || uMerge.y <= 0.0) {
+            bottomMix = roundedBottomPanelMask(coord, bottomStart, bottomEdge, uCorner.y);
+        } else {
+            float halfSpan = uMerge.y * 0.5;
+            bottomMix = smoother((coord.y - (bottomStart - halfSpan)) / max(uMerge.y, 1.0));
+            bottomMix *= 1.0 - step(bottomEdge + 0.5, coord.y);
+        }
+
+        float topRadius = uBlur.x * saturate(topMix);
+        float bottomRadius = uBlur.y * saturate(bottomMix);
+        float radius = max(topRadius, bottomRadius);
+        if (radius < 0.0001) return content.eval(coord);
+
+        float2 sampleStep = uDirection * (radius / 8.0);
+        half4 accum = half4(content.eval(coord)) * 0.103152619;
+        accum += half4(content.eval(coord + sampleStep * 1.476579653)) * 0.191010813;
+        accum += half4(content.eval(coord - sampleStep * 1.476579653)) * 0.191010813;
+        accum += half4(content.eval(coord + sampleStep * 3.445529534)) * 0.140428908;
+        accum += half4(content.eval(coord - sampleStep * 3.445529534)) * 0.140428908;
+        accum += half4(content.eval(coord + sampleStep * 5.414898846)) * 0.080715462;
+        accum += half4(content.eval(coord - sampleStep * 5.414898846)) * 0.080715462;
+        accum += half4(content.eval(coord + sampleStep * 7.384912150)) * 0.036268507;
+        accum += half4(content.eval(coord - sampleStep * 7.384912150)) * 0.036268507;
+
+        if (uAdjustColor > 0.5) {
+            float topWeight = step(bottomRadius, topRadius);
+            float saturation = mix(uSaturation.y, uSaturation.x, topWeight);
+            float contrast = mix(uContrast.y, uContrast.x, topWeight);
+            float brightness = mix(uBrightness.y, uBrightness.x, topWeight);
+            half luminance = dot(accum.rgb, half3(0.2126, 0.7152, 0.0722));
+            accum.rgb = mix(half3(luminance), accum.rgb, half(saturation));
+            accum.rgb = (accum.rgb - half3(0.5)) * half(contrast) + half3(0.5);
+            accum.rgb *= half(brightness);
+        }
+        return accum;
+    }
+""".trimIndent()

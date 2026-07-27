@@ -9,25 +9,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * The first part of the edge-softness slider is an intentional zero snap-zone.
- * This makes the rounded, non-feathered panel mode easy to select on touch
- * screens instead of requiring pixel-perfect placement at the slider origin.
- */
+/** Magnetic capture radius used by the UI around the exact zero anchor. */
 internal const val CHROME_EDGE_SOFTNESS_ZERO_SNAP_THRESHOLD = 0.06f
 
-internal fun snapChromeEdgeSoftness(value: Float): Float {
-    val clamped = value.coerceIn(0f, 1f)
-    return if (clamped <= CHROME_EDGE_SOFTNESS_ZERO_SNAP_THRESHOLD) 0f else clamped
-}
+/** Persistence remains continuous; only an actual magnetic settle stores zero. */
+internal fun snapChromeEdgeSoftness(value: Float): Float = value.coerceIn(0f, 1f)
 
-/** Maps the post-snap part of the slider back onto the complete 0..1 range. */
-internal fun effectiveChromeEdgeSoftness(value: Float): Float {
-    val snapped = snapChromeEdgeSoftness(value)
-    if (snapped == 0f) return 0f
-    return ((snapped - CHROME_EDGE_SOFTNESS_ZERO_SNAP_THRESHOLD) /
-        (1f - CHROME_EDGE_SOFTNESS_ZERO_SNAP_THRESHOLD)).coerceIn(0f, 1f)
-}
+/** The complete post-zero slider range remains available without a dead zone. */
+internal fun effectiveChromeEdgeSoftness(value: Float): Float = snapChromeEdgeSoftness(value)
 
 enum class ColorPalette { ARBOR, SYSTEM, GRAPHITE }
 

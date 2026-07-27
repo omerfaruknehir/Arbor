@@ -129,6 +129,7 @@ internal fun InteractiveNavigationDrawer(
 ) {
     val density = LocalDensity.current
     val focusManager = LocalFocusManager.current
+    val haptics = rememberArborHaptics()
     val activationPx = with(density) { 6.dp.toPx() }
     val velocityThresholdPx = with(density) { 850.dp.toPx() }
     val horizontalPriority = remember { HorizontalGesturePriorityRegistry() }
@@ -176,6 +177,7 @@ internal fun InteractiveNavigationDrawer(
                             when (intent) {
                                 DrawerGestureIntent.TRACK_DRAWER -> {
                                     state.stop()
+                                    haptics.gestureStart()
                                     tracking = true
                                 }
                                 DrawerGestureIntent.PASS_TO_CONTENT, DrawerGestureIntent.REJECTED -> break
@@ -192,7 +194,10 @@ internal fun InteractiveNavigationDrawer(
                             state.dragTo(startOffset, totalX)
                         }
                         if (!change.pressed) {
-                            if (tracking) state.settle(velocity.calculateVelocity().x, velocityThresholdPx)
+                            if (tracking) {
+                                state.settle(velocity.calculateVelocity().x, velocityThresholdPx)
+                                haptics.snap()
+                            }
                             break
                         }
                     }
@@ -227,7 +232,10 @@ internal fun InteractiveNavigationDrawer(
                         .fillMaxSize()
                         .graphicsLayer { alpha = state.fraction * .38f }
                         .background(Color.Black)
-                        .clickable(onClick = state::close),
+                        .clickable {
+                            haptics.selection()
+                            state.close()
+                        },
                 )
             }
 

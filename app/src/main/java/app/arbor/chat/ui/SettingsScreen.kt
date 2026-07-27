@@ -63,7 +63,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -166,6 +165,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val registeredProviders = remember(providers, credentialRevision) { viewModel.registeredProviders(providers) }
     val configuredProviders = remember(providers, credentialRevision) { viewModel.configuredProviders(providers) }
     var route by rememberSaveable { mutableStateOf(SettingsRoute.HOME) }
+    val haptics = rememberArborHaptics()
 
     PredictiveNavigationHost(
         targetState = route,
@@ -191,6 +191,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     overlayOpacity = chromeOverlayOpacity,
                     navigationIcon = {
                         IconButton(onClick = {
+                            haptics.selection()
                             if (currentRoute != SettingsRoute.HOME) route = SettingsRoute.HOME
                             else if (openDrawer != null) openDrawer()
                             else viewModel.screen.value = Screen.CHAT
@@ -327,12 +328,16 @@ private fun SettingsDestination(
     subtitle: String,
     onClick: () -> Unit,
 ) {
+    val haptics = rememberArborHaptics()
     ListItem(
         headlineContent = { Text(title, fontWeight = FontWeight.SemiBold) },
         supportingContent = { Text(subtitle) },
         leadingContent = { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) },
         trailingContent = { Icon(Icons.Outlined.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.clickable {
+            haptics.selection()
+            onClick()
+        },
         colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
     )
 }
@@ -501,13 +506,14 @@ private fun AppearanceSettingsPage(
         Text("Blur amount", modifier = Modifier.weight(1f))
         Text("${(chromeBlurStrength * 100).toInt()}%", color = MaterialTheme.colorScheme.primary)
     }
-    Slider(
+    ArborSlider(
         value = chromeBlurStrength,
         onValueChange = viewModel::setChromeBlurStrength,
         valueRange = 0f..1f,
+        snapPoints = listOf(0f, 0.25f, 0.5f, 0.75f, 1f),
     )
     Text(
-        "0% disables blur exactly; every nonzero value uses the same four-pass half-resolution pipeline, up to the full 56 dp radius.",
+        "0% disables blur exactly. Nonzero values use the restored Arbor 0.17.8 three-direction AGSL blur, with the current continuous 0-56 dp control.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -515,13 +521,16 @@ private fun AppearanceSettingsPage(
         Text("Edge softness", modifier = Modifier.weight(1f))
         Text("${(chromeEdgeSoftness * 100).toInt()}%", color = MaterialTheme.colorScheme.primary)
     }
-    Slider(
+    ArborSlider(
         value = chromeEdgeSoftness,
         onValueChange = viewModel::setChromeEdgeSoftness,
         valueRange = 0f..1f,
+        snapPoints = listOf(0f, 0.25f, 0.5f, 0.75f, 1f),
+        attractionRadiusFraction = 0.075f,
+        pullStrength = 0.88f,
     )
     Text(
-        "0-6% snaps to 0% and keeps rounded panels. Any nonzero value uses flat geometry and feathers only the panel/content boundary; screen edges remain fully covered.",
+        "Zero keeps rounded panels. The thumb is magnetically attracted to zero without a dead zone; nonzero values use flat geometry with a symmetric boundary feather.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -529,10 +538,11 @@ private fun AppearanceSettingsPage(
         Text("Overlay opacity", modifier = Modifier.weight(1f))
         Text("${(chromeOverlayOpacity * 100).toInt()}%", color = MaterialTheme.colorScheme.primary)
     }
-    Slider(
+    ArborSlider(
         value = chromeOverlayOpacity,
         onValueChange = viewModel::setChromeOverlayOpacity,
         valueRange = 0f..1f,
+        snapPoints = listOf(0f, 0.25f, 0.5f, 0.75f, 1f),
     )
     Text(
         "0% removes the tint; 100% makes the panel tint fully opaque.",
@@ -559,7 +569,7 @@ private fun PrivacySettingsPage(
         Text("Automatic repair attempts", Modifier.weight(1f))
         Text(generatedRepairMaxAttempts.toString(), color = MaterialTheme.colorScheme.primary)
     }
-    Slider(
+    ArborSlider(
         value = generatedRepairMaxAttempts.toFloat(),
         onValueChange = { viewModel.setGeneratedRepairMaxAttempts(it.toInt().coerceIn(1, 5)) },
         valueRange = 1f..5f,
@@ -776,17 +786,19 @@ private fun DeveloperSettingsPage(
     )
 
     Text("Panel opacity • ${(settings.performanceOverlayBackgroundOpacity * 100).roundToInt()}%", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-    Slider(
+    ArborSlider(
         value = settings.performanceOverlayBackgroundOpacity,
         onValueChange = { value -> viewModel.updateDeveloperSettings { it.copy(performanceOverlayBackgroundOpacity = value) } },
         valueRange = 0f..1f,
+        snapPoints = listOf(0f, 0.25f, 0.5f, 0.75f, 1f),
         enabled = settings.enabled && settings.performanceOverlayEnabled,
     )
     Text("Text opacity • ${(settings.performanceOverlayTextOpacity * 100).roundToInt()}%", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-    Slider(
+    ArborSlider(
         value = settings.performanceOverlayTextOpacity,
         onValueChange = { value -> viewModel.updateDeveloperSettings { it.copy(performanceOverlayTextOpacity = value) } },
         valueRange = 0f..1f,
+        snapPoints = listOf(0f, 0.25f, 0.5f, 0.75f, 1f),
         enabled = settings.enabled && settings.performanceOverlayEnabled,
     )
     Text(
@@ -1093,9 +1105,17 @@ private fun ProviderModelSelector(
 
 @Composable
 private fun SettingsSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, enabled: Boolean = true) {
+    val haptics = rememberArborHaptics()
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+        Switch(
+            checked = checked,
+            onCheckedChange = { next ->
+                haptics.toggle(next)
+                onCheckedChange(next)
+            },
+            enabled = enabled,
+        )
     }
 }
 

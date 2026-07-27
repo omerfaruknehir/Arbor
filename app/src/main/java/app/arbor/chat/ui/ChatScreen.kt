@@ -86,7 +86,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -120,7 +119,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInRoot
@@ -129,7 +127,6 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.FileProvider
@@ -1063,6 +1060,7 @@ private fun MessageCard(
     val working = message.status == MessageStatus.STREAMING
     val animateStreaming = working
     val user = message.role == MessageRole.USER
+    val haptics = rememberArborHaptics()
     val encodedTimeline = remember(message.timelineJson) {
         runCatching { ChatMessageJson.decodeFromString<List<MessageTimelineEvent>>(message.timelineJson) }.getOrDefault(emptyList())
     }
@@ -1201,6 +1199,7 @@ private fun MessageCard(
                         )
                     }
                     IconButton(onClick = {
+                        haptics.selection()
                         val label = if (user) "message" else "response"
                         context.getSystemService(android.content.ClipboardManager::class.java)
                             .setPrimaryClip(android.content.ClipData.newPlainText(label, message.content))
@@ -1209,11 +1208,11 @@ private fun MessageCard(
                         Icon(if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, if (copied) "Copied" else "Copy", Modifier.size(18.dp))
                     }
                     if (user) {
-                        IconButton(onClick = { editedText = message.content; editing = true }, modifier = Modifier.size(34.dp)) {
+                        IconButton(onClick = { haptics.tap(); editedText = message.content; editing = true }, modifier = Modifier.size(34.dp)) {
                             Icon(Icons.Outlined.Edit, "Edit message", Modifier.size(18.dp))
                         }
                     } else if (message.role == MessageRole.ASSISTANT && message.status != MessageStatus.STREAMING) {
-                        IconButton(onClick = { viewModel.retryMessage(message) }, modifier = Modifier.size(34.dp)) {
+                        IconButton(onClick = { haptics.confirm(); viewModel.retryMessage(message) }, modifier = Modifier.size(34.dp)) {
                             Icon(Icons.Outlined.Refresh, "Retry response", Modifier.size(18.dp))
                         }
                     }
@@ -1235,7 +1234,7 @@ private fun MessageCard(
         },
         dismissButton = { AssistChip(onClick = { editing = false }, label = { Text("Cancel") }) },
         confirmButton = {
-            Button(onClick = { viewModel.editMessage(message, editedText); editing = false }, enabled = editedText.isNotBlank()) {
+            Button(onClick = { haptics.confirm(); viewModel.editMessage(message, editedText); editing = false }, enabled = editedText.isNotBlank()) {
                 Text("Save & regenerate")
             }
         },
@@ -1248,13 +1247,14 @@ private fun InlineBranchNavigator(
     options: List<MessageEntity>,
     onActivate: (MessageEntity) -> Unit,
 ) {
+    val haptics = rememberArborHaptics()
     val activeIndex = options.indexOfFirst { it.nodeId == activeNodeId }.coerceAtLeast(0)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         IconButton(
-            onClick = { onActivate(options[activeIndex - 1]) },
+            onClick = { haptics.selection(); onActivate(options[activeIndex - 1]) },
             enabled = activeIndex > 0,
             modifier = Modifier.size(30.dp),
         ) {
@@ -1266,7 +1266,7 @@ private fun InlineBranchNavigator(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         IconButton(
-            onClick = { onActivate(options[activeIndex + 1]) },
+            onClick = { haptics.selection(); onActivate(options[activeIndex + 1]) },
             enabled = activeIndex < options.lastIndex,
             modifier = Modifier.size(30.dp),
         ) {
@@ -1919,7 +1919,7 @@ private fun Composer(
     var plusMenu by remember { mutableStateOf(false) }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var pendingCameraFile by remember { mutableStateOf<File?>(null) }
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberArborHaptics()
     val hasPayload = draft.isNotBlank() || staged.isNotEmpty()
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -2023,7 +2023,10 @@ private fun Composer(
             }
 
             Row(verticalAlignment = Alignment.Bottom) {
-                IconButton(onClick = { plusMenu = true }, enabled = !importing) {
+                IconButton(onClick = {
+                    haptics.tap()
+                    plusMenu = true
+                }, enabled = !importing) {
                     Icon(Icons.Outlined.Add, "Add files, images, camera, or tools")
                 }
                 OutlinedTextField(
@@ -2050,14 +2053,16 @@ private fun Composer(
                     modifier = Modifier.size(48.dp).combinedClickable(
                         onClick = {
                             if (generating && draft.isBlank() && staged.isEmpty()) {
+                                haptics.reject()
                                 viewModel.stop()
                             } else {
+                                haptics.confirm()
                                 onImmediateSend()
                                 viewModel.send()
                             }
                         },
                         onLongClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            haptics.longPress()
                             sendMenu = true
                         },
                     ),
@@ -2263,6 +2268,7 @@ private fun ThinkingComposerChip(
     onSelection: (Boolean, ThinkingEffort?) -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
+    val haptics = rememberArborHaptics()
     val options = remember(provider?.id, provider?.kind, model?.modelId, model?.supportsThinking) {
         supportedThinkingLevels(provider, model)
     }
@@ -2276,7 +2282,12 @@ private fun ThinkingComposerChip(
 
     Box {
         Surface(
-            onClick = { if (options.isNotEmpty()) menu = true },
+            onClick = {
+                if (options.isNotEmpty()) {
+                    haptics.tap()
+                    menu = true
+                }
+            },
             enabled = options.isNotEmpty(),
             color = if (enabled && options.isNotEmpty()) MaterialTheme.colorScheme.secondaryContainer
             else MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -2312,11 +2323,12 @@ private fun ThinkingComposerChip(
                         Text("Think", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                         Text(preview.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     }
-                    Slider(
+                    ArborSlider(
                         value = sliderValue,
                         onValueChange = { sliderValue = it },
                         onValueChangeFinished = {
                             val option = options[sliderValue.roundToInt().coerceIn(options.indices)]
+                            haptics.selection()
                             onSelection(option.enabled, option.effort)
                         },
                         valueRange = 0f..options.lastIndex.toFloat().coerceAtLeast(1f),
@@ -2370,6 +2382,7 @@ private fun SearchComposerChip(
     onSelection: (Boolean, Boolean) -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
+    val haptics = rememberArborHaptics()
     val label = when {
         deepResearchEnabled -> "Deep research"
         webEnabled -> "Search"
@@ -2381,7 +2394,10 @@ private fun SearchComposerChip(
     }
     Box {
         Surface(
-            onClick = { menu = true },
+            onClick = {
+                haptics.tap()
+                menu = true
+            },
             color = when {
                 deepResearchEnabled -> MaterialTheme.colorScheme.tertiaryContainer
                 webEnabled -> MaterialTheme.colorScheme.secondaryContainer
@@ -2407,17 +2423,17 @@ private fun SearchComposerChip(
         ArborDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(
                 text = { Text("Search off") },
-                onClick = { onSelection(false, false); menu = false },
+                onClick = { haptics.selection(); onSelection(false, false); menu = false },
                 leadingIcon = { Icon(Icons.Outlined.Close, null) },
             )
             DropdownMenuItem(
                 text = { Text("Web search") },
-                onClick = { onSelection(true, false); menu = false },
+                onClick = { haptics.selection(); onSelection(true, false); menu = false },
                 leadingIcon = { Icon(Icons.Outlined.Search, null) },
             )
             DropdownMenuItem(
                 text = { Text("Deep Research") },
-                onClick = { onSelection(true, true); menu = false },
+                onClick = { haptics.selection(); onSelection(true, true); menu = false },
                 leadingIcon = { Icon(Icons.Outlined.TravelExplore, null) },
             )
         }
@@ -2431,11 +2447,19 @@ private fun ComposerActionRow(
     subtitle: String,
     onClick: () -> Unit,
 ) {
+    val haptics = rememberArborHaptics()
+    val activate = {
+        haptics.selection()
+        onClick()
+    }
     ListItem(
         headlineContent = { Text(title) },
         supportingContent = { Text(subtitle) },
         leadingContent = { Icon(icon, null) },
-        modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onClick),
+        modifier = Modifier.combinedClickable(onClick = activate, onLongClick = {
+            haptics.longPress()
+            onClick()
+        }),
     )
 }
 
@@ -2448,12 +2472,29 @@ private fun ComposerToggleRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    val haptics = rememberArborHaptics()
+    val toggle = {
+        val next = !checked
+        haptics.toggle(next)
+        onCheckedChange(next)
+    }
     ListItem(
         headlineContent = { Text(title) },
         supportingContent = { Text(subtitle) },
         leadingContent = { Icon(icon, null) },
-        trailingContent = { Switch(checked = checked, onCheckedChange = onCheckedChange) },
-        modifier = Modifier.combinedClickable(onClick = { onCheckedChange(!checked) }, onLongClick = { onCheckedChange(!checked) }),
+        trailingContent = {
+            Switch(
+                checked = checked,
+                onCheckedChange = { next ->
+                    haptics.toggle(next)
+                    onCheckedChange(next)
+                },
+            )
+        },
+        modifier = Modifier.combinedClickable(onClick = toggle, onLongClick = {
+            haptics.longPress()
+            onCheckedChange(!checked)
+        }),
     )
 }
 

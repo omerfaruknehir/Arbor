@@ -1,3 +1,12 @@
+## 0.19.6
+
+- Restore the proven Arbor 0.17.8 three-direction AGSL backdrop blur and remove the later capture/composite path which could produce stale frames, black backgrounds, hard strength jumps, and block artifacts.
+- Retain the current exact blur, overlay, edge-softness, merge-distance, saturation, contrast, brightness, and edge-highlight controls, including rounded exact-zero edge-softness behavior.
+- Replace hard slider snapping with a continuous magnetic force curve, a tiny exact-settle core, and velocity-aware release behavior so fast flicks stay free while slow drags settle confidently.
+- Add centralized system-respecting haptic feedback for sliders, drawer gestures, message actions, branch navigation, settings, sidebar navigation, composer controls, toggles, and confirmations.
+- Add regression coverage for restored blur architecture, continuous stored values, magnetic attraction, release capture radii, discrete slider ticks, and haptic integration.
+- Defer settings-screen drawer gestures to 0.19.7 because the complete 0.19.6 build had already passed when that request was added.
+
 ## 0.19.5
 
 - Restore official OpenAI image models to the normal provider/model picker even when `/models` omits them, and repair existing catalog rows without changing Room schema or migrations.
