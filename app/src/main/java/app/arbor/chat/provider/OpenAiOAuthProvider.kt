@@ -45,7 +45,7 @@ class OpenAiOAuthProvider(
                 .url(endpoint)
                 .header("Accept", "text/event-stream")
                 .header("Content-Type", "application/json")
-                .header("User-Agent", "Arbor/0.19.0 openai-oauth-android")
+                .header("User-Agent", "Arbor/0.19.1 openai-oauth-android")
                 .post(body.toString().toRequestBody("application/json".toMediaType()))
             request.customHeaders.forEach(builder::header)
             // OAuth transport headers are authoritative and must not be overridden by provider metadata.

@@ -81,8 +81,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        (application as ArborApplication).container.openAiOAuth.onBrowserReturned()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         handleIntent(intent)
     }
 

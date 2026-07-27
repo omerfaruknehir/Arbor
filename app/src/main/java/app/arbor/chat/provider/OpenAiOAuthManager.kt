@@ -3,6 +3,8 @@ package app.arbor.chat.provider
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.util.Base64
 import androidx.core.net.toUri
@@ -21,12 +23,15 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.Dns
 import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.BufferedInputStream
+import java.io.IOException
 import java.net.BindException
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -34,9 +39,12 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
 import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 sealed interface OpenAiOAuthState {
     data object SignedOut : OpenAiOAuthState
@@ -68,15 +76,18 @@ data class OpenAiOAuthSession(
 class OpenAiOAuthManager(
     context: Context,
     private val secureStore: SecureStore,
-    private val client: OkHttpClient = OkHttpClient.Builder()
+    providedClient: OkHttpClient? = null,
+) {
+    private val appContext = context.applicationContext
+    private val connectivityManager = appContext.getSystemService(ConnectivityManager::class.java)
+    private val client: OkHttpClient = providedClient ?: OkHttpClient.Builder()
+        .dns(AndroidNetworkDns(connectivityManager))
         .connectTimeout(25, TimeUnit.SECONDS)
         .readTimeout(45, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
         .callTimeout(60, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
-        .build(),
-) {
-    private val appContext = context.applicationContext
+        .build()
     private val loginMutex = Mutex()
     private val refreshMutex = Mutex()
     private val modelMutex = Mutex()
@@ -84,7 +95,9 @@ class OpenAiOAuthManager(
     private var cachedModelsUntil = 0L
     private val random = SecureRandom()
     @Volatile private var activeLoginServers: List<ServerSocket> = emptyList()
+    @Volatile private var activeReturnLatch: CountDownLatch? = null
     @Volatile private var loginCancelled = false
+    private val callbackReceived = AtomicBoolean(false)
     private var session: OpenAiOAuthSession? = secureStore.openAiOAuthSecrets()?.toSession()
 
     private val _state = MutableStateFlow<OpenAiOAuthState>(
@@ -139,8 +152,14 @@ class OpenAiOAuthManager(
 
     fun cancelSignIn() {
         loginCancelled = true
+        activeReturnLatch?.countDown()
         activeLoginServers.forEach { server -> runCatching { server.close() } }
         if (_state.value is OpenAiOAuthState.SigningIn) _state.value = OpenAiOAuthState.SignedOut
+    }
+
+    /** Called when Arbor becomes foreground after the browser OAuth callback. */
+    fun onBrowserReturned() {
+        if (callbackReceived.get()) activeReturnLatch?.countDown()
     }
 
     fun signOut() {
@@ -176,6 +195,9 @@ class OpenAiOAuthManager(
         val state = randomBase64Url(24)
         val verifier = randomBase64Url(48)
         val challenge = base64Url(MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII)))
+        val returnLatch = CountDownLatch(1)
+        activeReturnLatch = returnLatch
+        callbackReceived.set(false)
         val servers = bindLoopbackServers()
         activeLoginServers = servers
 
@@ -219,17 +241,20 @@ class OpenAiOAuthManager(
                 throw IllegalStateException("OpenAI did not return an authorization code")
             }
 
-            return try {
-                exchangeCode(code, verifier).also {
-                    sendBrowserResponse(callback.socket, true, "Signed in. Returning to Arbor…")
-                }
-            } catch (error: Throwable) {
-                sendBrowserResponse(callback.socket, false, error.message ?: "Token exchange failed")
-                throw error
-            } finally {
-                callback.socket.close()
-            }
+            // Token exchange must run after Arbor is foreground again. On some Android builds,
+            // background-app DNS briefly returns EAI_NODATA while the browser owns the foreground.
+            callbackReceived.set(true)
+            sendBrowserResponse(callback.socket, true, "Authorization received. Finishing sign-in in Arbor…")
+            callback.socket.close()
+
+            val returnedToApp = returnLatch.await(APP_RETURN_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            check(!loginCancelled) { "ChatGPT sign-in was cancelled" }
+            check(returnedToApp) { "Return to Arbor to finish ChatGPT sign-in" }
+            awaitUsableNetwork(NETWORK_READY_TIMEOUT_MS)
+            return exchangeCode(code, verifier)
         } finally {
+            callbackReceived.set(false)
+            activeReturnLatch = null
             servers.forEach { server -> runCatching { server.close() } }
             if (activeLoginServers === servers) activeLoginServers = emptyList()
         }
@@ -332,7 +357,7 @@ class OpenAiOAuthManager(
     private fun fetchModelCatalog(auth: OpenAiOAuthSession): List<OpenAiOAuthModelInfo> {
         val clientVersion = runCatching {
             val request = Request.Builder().url(CODEX_NPM_LATEST_URL).get().header("Accept", "application/json").build()
-            client.newCall(request).execute().use { response ->
+            executeWithNetworkRetry(request).use { response ->
                 if (!response.isSuccessful) return@use null
                 val root = ProviderJson.parseToJsonElement(response.body?.string().orEmpty()).jsonObject
                 root["version"]?.jsonPrimitive?.contentOrNull
@@ -344,10 +369,10 @@ class OpenAiOAuthManager(
             .header("Accept", "application/json")
             .header("Authorization", "Bearer ${auth.accessToken}")
             .header("chatgpt-account-id", auth.accountId)
-            .header("User-Agent", "Arbor/0.19.0 openai-oauth-android")
+            .header("User-Agent", "Arbor/0.19.1 openai-oauth-android")
             .apply { if (auth.isFedRamp) header("X-OpenAI-Fedramp", "true") }
             .build()
-        client.newCall(request).execute().use { response ->
+        executeWithNetworkRetry(request).use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) throw ProviderHttpException(
                 response.code,
@@ -381,7 +406,7 @@ class OpenAiOAuthManager(
         }
 
     private fun executeTokenRequest(request: Request, previous: OpenAiOAuthSession?): OpenAiOAuthSession {
-        client.newCall(request).execute().use { response ->
+        executeWithNetworkRetry(request).use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 val detail = runCatching {
@@ -415,6 +440,45 @@ class OpenAiOAuthManager(
             )
         }
     }
+
+    private fun executeWithNetworkRetry(request: Request): Response {
+        var lastFailure: IOException? = null
+        repeat(NETWORK_ATTEMPTS) { attempt ->
+            try {
+                return client.newCall(request).execute()
+            } catch (error: IOException) {
+                if (!error.isDnsFailure() || attempt == NETWORK_ATTEMPTS - 1) {
+                    throw friendlyNetworkError(request, error)
+                }
+                lastFailure = error
+                awaitUsableNetwork(NETWORK_READY_TIMEOUT_MS)
+                Thread.sleep(NETWORK_RETRY_DELAYS_MS[attempt])
+            }
+        }
+        throw friendlyNetworkError(request, lastFailure ?: UnknownHostException(request.url.host))
+    }
+
+    private fun IOException.isDnsFailure(): Boolean = generateSequence<Throwable>(this) { it.cause }
+        .any { it is UnknownHostException }
+
+    private fun friendlyNetworkError(request: Request, cause: IOException): IOException = IOException(
+        "Arbor could not reach ${request.url.host}. Check the connection, VPN, Private DNS, or per-app firewall, then try again.",
+        cause,
+    )
+
+    private fun awaitUsableNetwork(timeoutMs: Long): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        do {
+            val network = connectivityManager.activeNetwork
+            val capabilities = network?.let(connectivityManager::getNetworkCapabilities)
+            if (network != null && capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true) {
+                return true
+            }
+            Thread.sleep(NETWORK_POLL_MS)
+        } while (System.currentTimeMillis() < deadline && !loginCancelled)
+        return false
+    }
+
 
     private fun signedInState(value: OpenAiOAuthSession): OpenAiOAuthState.SignedIn {
         val claims = jwtClaims(value.idToken) ?: jwtClaims(value.accessToken)
@@ -471,7 +535,7 @@ class OpenAiOAuthManager(
     private fun sendBrowserResponse(socket: Socket, success: Boolean, message: String) {
         val safeMessage = message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").take(500)
         val html = if (success) {
-            """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Arbor sign-in complete</title></head><body style="font-family:sans-serif;max-width:34rem;margin:4rem auto;padding:1rem"><h1>Signed in</h1><p>$safeMessage</p><p><a href="arbor://oauth-complete">Return to Arbor</a></p><script>setTimeout(function(){location.href='arbor://oauth-complete'},250)</script></body></html>"""
+            """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Return to Arbor</title></head><body style="font-family:sans-serif;max-width:34rem;margin:4rem auto;padding:1rem"><h1>Authorization received</h1><p>$safeMessage</p><p><a href="arbor://oauth-complete">Return to Arbor</a></p><script>setTimeout(function(){location.href='arbor://oauth-complete'},150)</script></body></html>"""
         } else {
             """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Arbor sign-in failed</title></head><body style="font-family:sans-serif;max-width:34rem;margin:4rem auto;padding:1rem"><h1>Sign-in failed</h1><p>$safeMessage</p><p>Return to Arbor and try again.</p></body></html>"""
         }
@@ -506,6 +570,28 @@ class OpenAiOAuthManager(
         accessToken, accountId, refreshToken, idToken, expiresAtEpochMs, isFedRamp,
     )
 
+    private class AndroidNetworkDns(
+        private val connectivityManager: ConnectivityManager,
+    ) : Dns {
+        override fun lookup(hostname: String): List<InetAddress> {
+            if (hostname.isBlank()) throw UnknownHostException("hostname is empty")
+            var activeNetworkFailure: UnknownHostException? = null
+            connectivityManager.activeNetwork?.let { network ->
+                try {
+                    val addresses = network.getAllByName(hostname).toList()
+                    if (addresses.isNotEmpty()) return addresses
+                } catch (error: UnknownHostException) {
+                    activeNetworkFailure = error
+                }
+            }
+            try {
+                return Dns.SYSTEM.lookup(hostname)
+            } catch (error: UnknownHostException) {
+                throw activeNetworkFailure ?: error
+            }
+        }
+    }
+
     companion object {
         const val PROVIDER_ID = "openai-oauth"
         const val CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
@@ -518,6 +604,11 @@ class OpenAiOAuthManager(
         private const val CALLBACK_POLL_MS = 250L
         private val LOOPBACK_HOSTS = arrayOf("::1", "127.0.0.1")
         private const val LOGIN_TIMEOUT_MS = 5 * 60 * 1_000L
+        private const val APP_RETURN_TIMEOUT_MS = 30_000L
+        private const val NETWORK_READY_TIMEOUT_MS = 8_000L
+        private const val NETWORK_POLL_MS = 250L
+        private const val NETWORK_ATTEMPTS = 3
+        private val NETWORK_RETRY_DELAYS_MS = longArrayOf(400L, 1_200L)
         private const val REFRESH_EARLY_MS = 60_000L
         private const val DEFAULT_TOKEN_LIFETIME_MS = 60 * 60 * 1_000L
         private const val MODEL_CACHE_MS = 5 * 60 * 1_000L
