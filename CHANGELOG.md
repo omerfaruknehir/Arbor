@@ -1,3 +1,13 @@
+## 0.19.4
+
+- Add first-class image-generation model capability across OpenAI-compatible API providers and ChatGPT OAuth providers.
+- Route API image models through `/images/generations`, with GPT Image and DALL·E request/response handling, base64 decoding, URL fallback, usage parsing, and bounded response sizes.
+- Add GPT Image 1 and GPT Image 1 Mini to the bundled OpenAI catalog and automatically recognize common image-model IDs during discovery.
+- Add a manual **Image generation** capability in the model editor for compatible custom providers.
+- Decode OAuth Responses `image_generation_call` output while excluding large image payloads from native replay state.
+- Persist generated images as normal assistant attachments with inline preview, viewer, save/share, retry, and conversation persistence.
+- Add Room migration 13→14 and regression coverage for API/OAuth image protocol handling and queued-generation snapshots.
+
 ## 0.19.3
 
 - Convert ChatGPT OAuth into a normal multi-instance provider type with isolated encrypted sessions, models, usage data, refresh state, rename/reconnect/remove controls, and automatic migration of the existing account.

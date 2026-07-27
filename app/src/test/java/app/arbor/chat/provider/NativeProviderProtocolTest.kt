@@ -217,6 +217,87 @@ class NativeProviderProtocolTest {
     }
 
     @Test
+    fun openAiImageModelsUseImagesGenerationRequestShape() {
+        val base = request(
+            ProviderKind.OPENAI_COMPATIBLE,
+            listOf(InputMessage(MessageRole.USER, "Draw a glass greenhouse")),
+            modelId = "gpt-image-1",
+        )
+        val request = base.copy(model = base.model.copy(supportsImageGeneration = true))
+        val body = OpenAiCompatibleProvider().buildImageRequestBody(request)
+
+        assertEquals("gpt-image-1", body["model"]!!.jsonPrimitive.content)
+        assertEquals("Draw a glass greenhouse", body["prompt"]!!.jsonPrimitive.content)
+        assertEquals("png", body["output_format"]!!.jsonPrimitive.content)
+        assertEquals("auto", body["size"]!!.jsonPrimitive.content)
+        assertEquals("auto", body["quality"]!!.jsonPrimitive.content)
+        assertFalse(body.containsKey("stream"))
+    }
+
+    @Test
+    fun dallEImageModelsRequestBase64Responses() {
+        val base = request(
+            ProviderKind.OPENAI_COMPATIBLE,
+            listOf(InputMessage(MessageRole.USER, "Draw a small robot")),
+            modelId = "dall-e-3",
+        )
+        val request = base.copy(model = base.model.copy(supportsImageGeneration = true))
+        val body = OpenAiCompatibleProvider().buildImageRequestBody(request)
+
+        assertEquals("b64_json", body["response_format"]!!.jsonPrimitive.content)
+        assertEquals("1024x1024", body["size"]!!.jsonPrimitive.content)
+        assertFalse(body.containsKey("output_format"))
+    }
+
+    @Test
+    fun openAiImageResponseDecodesBase64AndRevisedPrompt() {
+        val encoded = java.util.Base64.getEncoder().encodeToString("fake-png".toByteArray())
+        val root = ProviderJson.parseToJsonElement(
+            """{"data":[{"b64_json":"$encoded","revised_prompt":"A polished greenhouse"}],"output_format":"png"}""",
+        ).jsonObject
+
+        val image = OpenAiCompatibleProvider().parseImageResponse(root).single()
+        assertEquals("fake-png", image.bytes.toString(Charsets.UTF_8))
+        assertEquals("image/png", image.mimeType)
+        assertEquals("generated-image-1.png", image.displayName)
+        assertEquals("A polished greenhouse", image.description)
+    }
+
+    @Test
+    fun openAiOAuthSerializesImageToolAndStreamsGeneratedImage() {
+        val base = request(
+            ProviderKind.OPENAI_OAUTH,
+            listOf(InputMessage(MessageRole.USER, "Draw a forest at night")),
+            modelId = "gpt-5.6",
+            providerId = "openai-oauth-account",
+        )
+        val request = base.copy(model = base.model.copy(supportsImageGeneration = true))
+        val body = OpenAiOAuthProvider().buildRequestBody(request)
+        val imageTool = body["tools"]!!.jsonArray.single { item ->
+            item.jsonObject["type"]!!.jsonPrimitive.content == "image_generation"
+        }.jsonObject
+        assertEquals("png", imageTool["output_format"]!!.jsonPrimitive.content)
+        assertEquals("auto", imageTool["quality"]!!.jsonPrimitive.content)
+
+        val encoded = java.util.Base64.getEncoder().encodeToString("oauth-image".toByteArray())
+        val state = OpenAiOAuthProvider.OpenAiOAuthStreamState()
+        state.accept(
+            """{"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","id":"rs_1","encrypted_content":"opaque"}}""",
+        )
+        val imageChunk = state.accept(
+            """{"type":"response.output_item.done","output_index":1,"item":{"type":"image_generation_call","id":"img_1","result":"$encoded"}}""",
+        )
+        assertEquals("oauth-image", imageChunk!!.generatedImages.single().bytes.toString(Charsets.UTF_8))
+        assertEquals("image/png", imageChunk.generatedImages.single().mimeType)
+
+        val final = state.finalChunk()
+        assertNotNull(final)
+        assertTrue(final!!.nativeProviderPayloadJson.contains("encrypted_content"))
+        assertFalse(final.nativeProviderPayloadJson.contains(encoded))
+        assertFalse(final.nativeProviderPayloadJson.contains("image_generation_call"))
+    }
+
+    @Test
     fun providerSpecificThinkingControlsAreSerialized() {
         val openAi = OpenAiCompatibleProvider().buildRequestBody(
             request(ProviderKind.OPENAI_COMPATIBLE, listOf(InputMessage(MessageRole.USER, "Think")), modelId = "o3").copy(

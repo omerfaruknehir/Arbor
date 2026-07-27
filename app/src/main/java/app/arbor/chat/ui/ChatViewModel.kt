@@ -573,6 +573,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
                 supportsVision = true,
                 supportsFiles = false,
                 supportsTools = true,
+                supportsImageGeneration = model.supportsImageGeneration,
             )
         }
         saveDiscoveredModels(providerId, discovered)
@@ -605,6 +606,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
                 supportsVision = true,
                 supportsFiles = false,
                 supportsTools = true,
+                supportsImageGeneration = model.supportsImageGeneration,
             )
         }
         saveDiscoveredModels(providerId, discovered)
@@ -656,7 +658,8 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         require(discovered.isNotEmpty()) { "The provider returned no models" }
         discovered.forEach { candidate ->
             val bundled = DefaultCatalog.models.firstOrNull { it.providerId == providerId && it.modelId == candidate.id }
-            container.repository.saveModel(bundled ?: ModelEntity(
+            val existing = container.repository.model(providerId, candidate.id)
+            val base = bundled ?: existing ?: ModelEntity(
                 providerId = providerId,
                 modelId = candidate.id,
                 displayName = candidate.displayName,
@@ -666,10 +669,16 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
                 inputCacheMissUsdPerMillion = 0.0,
                 outputUsdPerMillion = 0.0,
                 pricingConfigured = false,
-                supportsThinking = candidate.supportsThinking ?: false,
-                supportsVision = candidate.supportsVision ?: false,
-                supportsFiles = candidate.supportsFiles ?: false,
-                supportsTools = candidate.supportsTools ?: false,
+            )
+            container.repository.saveModel(base.copy(
+                displayName = candidate.displayName,
+                contextWindow = candidate.contextWindow ?: base.contextWindow,
+                maxOutputTokens = candidate.maxOutputTokens ?: base.maxOutputTokens,
+                supportsThinking = candidate.supportsThinking ?: base.supportsThinking,
+                supportsVision = candidate.supportsVision ?: base.supportsVision,
+                supportsFiles = candidate.supportsFiles ?: base.supportsFiles,
+                supportsTools = candidate.supportsTools ?: base.supportsTools,
+                supportsImageGeneration = candidate.supportsImageGeneration ?: base.supportsImageGeneration,
             ))
         }
     }

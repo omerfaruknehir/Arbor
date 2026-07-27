@@ -98,6 +98,52 @@ class AttachmentStore(
             ?.forEach { runCatching { it.delete() } }
     }
 
+    suspend fun saveGeneratedImage(
+        conversationId: String,
+        messageNodeId: String,
+        bytes: ByteArray,
+        mimeType: String,
+        displayName: String,
+        description: String? = null,
+    ): AttachmentEntity = withContext(Dispatchers.IO) {
+        require(bytes.isNotEmpty()) { "Generated image was empty" }
+        require(bytes.size.toLong() <= MAX_FILE_BYTES) { "Generated images are limited to 64 MB" }
+        val existing = attachmentDao.forConversation(conversationId)
+        require(existing.sumOf { it.sizeBytes.coerceAtLeast(0) } + bytes.size <= MAX_CHAT_ATTACHMENT_BYTES) {
+            "This chat has reached its 512 MB attachment limit"
+        }
+        val appBytes = File(context.filesDir, "attachments").walkTopDown().filter(File::isFile).sumOf(File::length)
+        require(appBytes + bytes.size <= MAX_APP_ATTACHMENT_BYTES) { "Arbor's 2 GB attachment storage limit has been reached" }
+        require(StatFs(context.filesDir.absolutePath).availableBytes > bytes.size * 2L + MIN_FREE_BYTES) {
+            "Not enough free storage to save the generated image"
+        }
+        val id = UUID.randomUUID().toString()
+        val extension = when (mimeType.lowercase()) {
+            "image/jpeg", "image/jpg" -> "jpg"
+            "image/webp" -> "webp"
+            else -> "png"
+        }
+        val requested = displayName.substringBeforeLast('.', displayName)
+            .replace(Regex("[^A-Za-z0-9._() -]"), "_")
+            .take(140)
+            .ifBlank { "generated-image" }
+        val safeName = "$requested.$extension"
+        val destination = File(context.filesDir, "attachments/$id/$safeName")
+        destination.parentFile?.mkdirs()
+        destination.writeBytes(bytes)
+        AttachmentEntity(
+            id = id,
+            conversationId = conversationId,
+            messageNodeId = messageNodeId,
+            displayName = safeName,
+            mimeType = mimeType.ifBlank { "image/png" },
+            sizeBytes = destination.length(),
+            localPath = destination.absolutePath,
+            imageDescription = description?.take(8_000),
+            createdAt = System.currentTimeMillis(),
+        ).also { attachmentDao.upsert(it) }
+    }
+
     suspend fun importWorkspaceOutput(conversationId: String, messageNodeId: String, relativePath: String): AttachmentEntity? = withContext(Dispatchers.IO) {
         val workspace = File(context.filesDir, "workspaces/$conversationId").canonicalFile
         val source = File(workspace, relativePath).canonicalFile

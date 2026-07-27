@@ -25,6 +25,7 @@ data class DiscoveredModel(
     val supportsVision: Boolean? = null,
     val supportsFiles: Boolean? = null,
     val supportsTools: Boolean? = null,
+    val supportsImageGeneration: Boolean? = null,
 )
 
 class ModelDiscoveryService(
@@ -53,6 +54,7 @@ class ModelDiscoveryService(
                     supportsVision = true,
                     supportsFiles = false,
                     supportsTools = true,
+                    supportsImageGeneration = model.supportsImageGeneration,
                 )
             }
         }
@@ -95,7 +97,7 @@ class ModelDiscoveryService(
             cursor = next
         }
         collected.distinctBy { it.id }.sortedBy { it.displayName.lowercase() }.take(MAX_MODELS)
-            .ifEmpty { throw IllegalStateException("The provider returned no usable chat models") }
+            .ifEmpty { throw IllegalStateException("The provider returned no usable models") }
     }
 
     private suspend fun fetchPage(
@@ -143,6 +145,7 @@ class ModelDiscoveryService(
             contextWindow = model["inputTokenLimit"]?.jsonPrimitive?.intOrNull,
             maxOutputTokens = model["outputTokenLimit"]?.jsonPrimitive?.intOrNull,
             supportsThinking = model["thinking"]?.jsonPrimitive?.booleanOrNull,
+            supportsImageGeneration = imageGenerationModelHeuristic(id),
         )
     }
 
@@ -168,6 +171,15 @@ class ModelDiscoveryService(
         .split(' ').filter(String::isNotBlank).joinToString(" ") { word ->
             word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
         }
+
+    internal fun imageGenerationModelHeuristic(id: String): Boolean {
+        val normalized = id.substringAfterLast('/').lowercase()
+        return normalized.startsWith("gpt-image-") ||
+            normalized.startsWith("dall-e-") ||
+            normalized.startsWith("imagen-") ||
+            normalized.contains("image-generation") ||
+            normalized.endsWith("-image")
+    }
 
     private companion object {
         const val MAX_MODELS = 500

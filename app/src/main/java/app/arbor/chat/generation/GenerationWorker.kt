@@ -28,6 +28,7 @@ import app.arbor.chat.chat.TokenEstimator
 import app.arbor.chat.data.MessageRole
 import app.arbor.chat.data.MessageStatus
 import app.arbor.chat.data.GenerationUsageEntity
+import app.arbor.chat.data.ProviderKind
 import app.arbor.chat.provider.ChatRequest
 import app.arbor.chat.provider.InputMessage
 import app.arbor.chat.provider.NativeToolCall
@@ -118,8 +119,20 @@ class GenerationWorker(
             }
         val provider = snapshot.provider()
         val model = snapshot.model()
+        val directImageModel = provider.kind == ProviderKind.OPENAI_COMPATIBLE && model.supportsImageGeneration
         val conversation = snapshot.applyTo(currentConversation).let { captured ->
-            if (captured.deepResearchEnabled && !captured.webSearchEnabled) captured.copy(webSearchEnabled = true) else captured
+            when {
+                directImageModel -> captured.copy(
+                    thinkingEnabled = false,
+                    webSearchEnabled = false,
+                    agentPythonEnabled = false,
+                    agentUbuntuEnabled = false,
+                    deepResearchEnabled = false,
+                    hybridTokenCountingEnabled = false,
+                )
+                captured.deepResearchEnabled && !captured.webSearchEnabled -> captured.copy(webSearchEnabled = true)
+                else -> captured
+            }
         }
         val key = container.secureStore.apiKey(provider.id)
         val currentProviderState = repository.provider(provider.id) ?: provider
@@ -129,7 +142,7 @@ class GenerationWorker(
 
         val newest = repository.recent(conversationId)
         val compressedContext = container.auxiliaryModels.prepareContextSummary(conversation, newest)
-        val nativeToolDefinitions = if (model.supportsTools) ArborNativeTools.definitions(conversation) else emptyList()
+        val nativeToolDefinitions = if (model.supportsTools && !directImageModel) ArborNativeTools.definitions(conversation) else emptyList()
         val messages = ContextAssembler(container.database.attachmentDao()).assemble(
             conversation,
             newest,
@@ -684,7 +697,30 @@ class GenerationWorker(
                     val (request, preflightInputTokens) = prepareCountedRequest(baseRequest)
                     passInput = preflightInputTokens
                     container.providers.get(provider.kind).stream(request) { chunk ->
-                        if (chunk.text.isNotEmpty() || chunk.reasoning.isNotEmpty() || chunk.toolCallProgress.isNotEmpty() || chunk.toolCalls.isNotEmpty()) passReceived = true
+                        if (chunk.text.isNotEmpty() || chunk.reasoning.isNotEmpty() || chunk.toolCallProgress.isNotEmpty() || chunk.toolCalls.isNotEmpty() || chunk.generatedImages.isNotEmpty()) passReceived = true
+                        chunk.generatedImages.forEach { image ->
+                            closeOpenStreamEvents()
+                            val attachment = container.attachmentStore.saveGeneratedImage(
+                                conversationId = conversationId,
+                                messageNodeId = assistantId,
+                                bytes = image.bytes,
+                                mimeType = image.mimeType,
+                                displayName = image.displayName,
+                                description = image.description,
+                            )
+                            timeline += MessageTimelineEvent(
+                                kind = "file",
+                                label = "Generated image",
+                                status = "complete",
+                                input = image.description?.take(240).orEmpty(),
+                                output = attachment.id,
+                                startedAt = attachment.createdAt,
+                                finishedAt = attachment.createdAt,
+                            )
+                            timelineDirty = true
+                            persistTimeline()
+                            setForeground(notification("Generated image saved", indeterminate = true))
+                        }
                         chunk.toolCallProgress.forEach { progress -> upsertToolCallProgress(progress, callId) }
                         if (chunk.toolCalls.isNotEmpty()) passToolCalls += chunk.toolCalls
                         if (chunk.nativeProviderPayloadJson.isNotBlank()) passNativePayload = chunk.nativeProviderPayloadJson
@@ -860,7 +896,10 @@ class GenerationWorker(
         closeOpenStreamEvents()
         persistTimeline(forceMetadata = true)
         val final = requireNotNull(repository.message(assistantId))
-        if (final.content.isBlank() && final.reasoning.isBlank()) throw ProviderProtocolException("Provider completed without returning any content")
+        val finalAttachments = repository.attachments(assistantId)
+        if (final.content.isBlank() && final.reasoning.isBlank() && finalAttachments.isEmpty()) {
+            throw ProviderProtocolException("Provider completed without returning any content")
+        }
         val usage = repository.generationUsage(assistantId)
         val input = usage.sumOf { it.inputTokens }
         val output = usage.sumOf { it.outputTokens }.takeIf { it > 0 }

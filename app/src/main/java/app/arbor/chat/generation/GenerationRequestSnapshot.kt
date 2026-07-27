@@ -30,6 +30,7 @@ data class GenerationRequestSnapshot(
     val supportsFiles: Boolean,
     val supportsThinking: Boolean,
     val supportsTools: Boolean,
+    val supportsImageGeneration: Boolean = false,
     val contextPairs: Int,
     val contextTokenLimit: Int,
     val workingTokenLimit: Int = 16_000,
@@ -71,6 +72,7 @@ data class GenerationRequestSnapshot(
         supportsFiles = supportsFiles,
         supportsThinking = supportsThinking,
         supportsTools = supportsTools,
+        supportsImageGeneration = supportsImageGeneration,
     )
 
     fun applyTo(conversation: ConversationEntity): ConversationEntity {
@@ -130,6 +132,7 @@ data class GenerationRequestSnapshot(
             supportsFiles = model.supportsFiles,
             supportsThinking = model.supportsThinking,
             supportsTools = model.supportsTools,
+            supportsImageGeneration = model.supportsImageGeneration,
             contextPairs = conversation.contextPairs,
             contextTokenLimit = conversation.contextTokenLimit,
             workingTokenLimit = conversation.workingTokenLimit,

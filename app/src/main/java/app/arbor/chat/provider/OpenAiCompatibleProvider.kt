@@ -8,13 +8,18 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
 
@@ -27,6 +32,10 @@ class OpenAiCompatibleProvider(
         .build(),
 ) : ChatProvider {
     override suspend fun stream(request: ChatRequest, emit: suspend (StreamChunk) -> Unit) = withContext(Dispatchers.IO) {
+        if (request.model.supportsImageGeneration) {
+            generateImage(request, emit)
+            return@withContext
+        }
         val bodyJson = buildRequestBody(request)
         val isDeepSeek = request.provider.id == "deepseek"
         val root = request.provider.baseUrl.trimEnd('/')
@@ -61,6 +70,120 @@ class OpenAiCompatibleProvider(
                 toolCallProgress = completed.map { (index, call) -> call.progress(index, complete = true) },
                 toolCalls = completed.values.map { it.complete() },
             ))
+        }
+    }
+
+    internal suspend fun generateImage(request: ChatRequest, emit: suspend (StreamChunk) -> Unit) {
+        val prompt = imagePrompt(request)
+        require(prompt.isNotBlank()) { "Enter a prompt for image generation" }
+        val latestUser = request.messages.lastOrNull { it.role == MessageRole.USER }
+        require(latestUser?.attachments.orEmpty().none { it.mimeType.startsWith("image/") }) {
+            "This image model supports text-to-image generation in Arbor. Image editing is not enabled for this model yet."
+        }
+        val endpoint = request.provider.baseUrl.trimEnd('/') + "/images/generations"
+        val builder = Request.Builder()
+            .url(endpoint)
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .post(buildImageRequestBody(request, prompt).toString().toRequestBody("application/json".toMediaType()))
+        if (request.apiKey.isNotBlank()) builder.header("Authorization", "Bearer ${request.apiKey}")
+        request.customHeaders.forEach(builder::header)
+        client.newCall(builder.build()).useCancellable { response ->
+            if (!response.isSuccessful) {
+                val error = response.body?.readErrorSnippet().orEmpty()
+                throw ProviderHttpException(response.code, "${response.code} ${response.message}: $error")
+            }
+            val body = response.body ?: throw ProviderProtocolException("Image provider returned an empty response")
+            val declared = body.contentLength()
+            require(declared < 0 || declared <= MAX_IMAGE_RESPONSE_BYTES) { "Image response exceeded Arbor's 96 MB safety limit" }
+            val root = runCatching { ProviderJson.parseToJsonElement(body.string()).jsonObject }
+                .getOrElse { throw ProviderProtocolException("Image provider returned invalid JSON", it) }
+            root.obj("error")?.let { error ->
+                throw ProviderProtocolException(error.string("message") ?: "Image generation failed")
+            }
+            val images = parseImageResponse(root)
+            if (images.isEmpty()) throw ProviderProtocolException("Image provider completed without returning an image")
+            val usage = root.obj("usage")
+            emit(
+                StreamChunk(
+                    generatedImages = images,
+                    inputTokens = usage?.long("input_tokens") ?: usage?.long("prompt_tokens"),
+                    outputTokens = usage?.long("output_tokens") ?: usage?.long("completion_tokens"),
+                    finishReason = "stop",
+                ),
+            )
+        }
+    }
+
+    internal fun buildImageRequestBody(request: ChatRequest, prompt: String = imagePrompt(request)): JsonObject = buildJsonObject {
+        val modelId = request.model.modelId
+        put("model", JsonPrimitive(modelId))
+        put("prompt", JsonPrimitive(prompt))
+        put("n", JsonPrimitive(1))
+        if (modelId.lowercase().startsWith("dall-e-")) {
+            put("response_format", JsonPrimitive("b64_json"))
+            put("size", JsonPrimitive("1024x1024"))
+        } else {
+            put("size", JsonPrimitive("auto"))
+            put("quality", JsonPrimitive("auto"))
+            put("background", JsonPrimitive("auto"))
+            put("output_format", JsonPrimitive("png"))
+        }
+    }
+
+    internal fun imagePrompt(request: ChatRequest): String = request.messages
+        .lastOrNull { it.role == MessageRole.USER }
+        ?.content
+        ?.trim()
+        .orEmpty()
+
+    internal fun parseImageResponse(root: JsonObject): List<GeneratedImageOutput> {
+        val values = root["data"] as? JsonArray ?: JsonArray(listOf(root))
+        return values.mapIndexedNotNull { index, element ->
+            val item = element as? JsonObject ?: return@mapIndexedNotNull null
+            val format = item["output_format"]?.jsonPrimitive?.contentOrNull
+                ?: root["output_format"]?.jsonPrimitive?.contentOrNull
+                ?: "png"
+            val mime = when (format.lowercase()) {
+                "jpeg", "jpg" -> "image/jpeg"
+                "webp" -> "image/webp"
+                else -> "image/png"
+            }
+            val bytes = item["b64_json"]?.jsonPrimitive?.contentOrNull
+                ?.let(::decodeImageBase64)
+                ?: item["image_base64"]?.jsonPrimitive?.contentOrNull?.let(::decodeImageBase64)
+                ?: item["url"]?.jsonPrimitive?.contentOrNull?.let(::downloadImage)
+                ?: return@mapIndexedNotNull null
+            val extension = when (mime) {
+                "image/jpeg" -> "jpg"
+                "image/webp" -> "webp"
+                else -> "png"
+            }
+            GeneratedImageOutput(
+                bytes = bytes,
+                mimeType = mime,
+                displayName = "generated-image-${index + 1}.$extension",
+                description = item["revised_prompt"]?.jsonPrimitive?.contentOrNull,
+            )
+        }
+    }
+
+    private fun decodeImageBase64(value: String): ByteArray = runCatching {
+        Base64.getDecoder().decode(value.substringAfter("base64,", value))
+    }.getOrElse { throw ProviderProtocolException("Image provider returned invalid base64 image data", it) }
+        .also { require(it.size.toLong() <= MAX_IMAGE_BYTES) { "Generated image exceeded Arbor's 64 MB limit" } }
+
+    private fun downloadImage(url: String): ByteArray {
+        val parsed = runCatching { url.toHttpUrl() }.getOrElse {
+            throw ProviderProtocolException("Image provider returned an invalid image URL", it)
+        }
+        require(parsed.scheme in setOf("https", "http")) { "Unsupported generated-image URL" }
+        return client.newCall(Request.Builder().url(parsed).get().build()).execute().use { response ->
+            if (!response.isSuccessful) throw ProviderHttpException(response.code, "Generated-image download failed (${response.code})")
+            val body = response.body ?: throw ProviderProtocolException("Generated-image download returned no data")
+            val declared = body.contentLength()
+            require(declared < 0 || declared <= MAX_IMAGE_BYTES) { "Generated image exceeded Arbor's 64 MB limit" }
+            body.bytes().also { require(it.size.toLong() <= MAX_IMAGE_BYTES) { "Generated image exceeded Arbor's 64 MB limit" } }
         }
     }
 
@@ -226,6 +349,11 @@ class OpenAiCompatibleProvider(
             val stableId = id.ifBlank { "call_${name.hashCode().toUInt().toString(16)}" }
             return NativeToolCall(stableId, name, arguments.toString().ifBlank { "{}" })
         }
+    }
+
+    private companion object {
+        const val MAX_IMAGE_BYTES = 64L * 1024 * 1024
+        const val MAX_IMAGE_RESPONSE_BYTES = 96L * 1024 * 1024
     }
 
 private val app.arbor.chat.data.ThinkingEffort.apiValue: String

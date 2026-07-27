@@ -19,6 +19,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
 
@@ -45,7 +46,7 @@ class OpenAiOAuthProvider(
                 .url(endpoint)
                 .header("Accept", "text/event-stream")
                 .header("Content-Type", "application/json")
-                .header("User-Agent", "Arbor/0.19.3 openai-oauth-android")
+                .header("User-Agent", "Arbor/0.19.4 openai-oauth-android")
                 .post(body.toString().toRequestBody("application/json".toMediaType()))
             request.customHeaders.forEach(builder::header)
             // OAuth transport headers are authoritative and must not be overridden by provider metadata.
@@ -114,6 +115,15 @@ class OpenAiOAuthProvider(
                     put("strict", JsonPrimitive(false))
                 })
             }
+            if (request.model.supportsImageGeneration) add(buildJsonObject {
+                put("type", JsonPrimitive("image_generation"))
+                put("action", JsonPrimitive("auto"))
+                put("background", JsonPrimitive("auto"))
+                put("output_format", JsonPrimitive("png"))
+                put("partial_images", JsonPrimitive(0))
+                put("quality", JsonPrimitive("auto"))
+                put("size", JsonPrimitive("auto"))
+            })
         }
 
         val input = buildInput(request).toMutableList()
@@ -227,6 +237,7 @@ class OpenAiOAuthProvider(
     internal class OpenAiOAuthStreamState {
         private val outputItems = sortedMapOf<Int, JsonObject>()
         private val calls = sortedMapOf<Int, CallAccumulator>()
+        private val emittedImageIds = mutableSetOf<String>()
         private var inputTokens: Long? = null
         private var outputTokens: Long? = null
         private var cachedTokens: Long? = null
@@ -243,12 +254,16 @@ class OpenAiOAuthProvider(
                 "response.output_item.added" -> {
                     val index = root.long("output_index")?.toInt() ?: outputItems.size
                     val item = root.obj("item") ?: return null
-                    outputItems[index] = item
-                    if (item.string("type") == "function_call") {
-                        val call = calls.getOrPut(index) { CallAccumulator() }
-                        call.read(item)
-                        StreamChunk(toolCallProgress = listOf(call.progress(index)))
-                    } else null
+                    when (item.string("type")) {
+                        "function_call" -> {
+                            outputItems[index] = item
+                            val call = calls.getOrPut(index) { CallAccumulator() }
+                            call.read(item)
+                            StreamChunk(toolCallProgress = listOf(call.progress(index)))
+                        }
+                        "image_generation_call" -> null
+                        else -> { outputItems[index] = item; null }
+                    }
                 }
                 "response.function_call_arguments.delta" -> {
                     val index = root.long("output_index")?.toInt() ?: calls.size
@@ -265,22 +280,31 @@ class OpenAiOAuthProvider(
                 "response.output_item.done" -> {
                     val index = root.long("output_index")?.toInt() ?: outputItems.size
                     val item = root.obj("item") ?: return null
-                    outputItems[index] = item
-                    if (item.string("type") == "function_call") {
-                        val call = calls.getOrPut(index) { CallAccumulator() }
-                        call.read(item)
-                        StreamChunk(toolCallProgress = listOf(call.progress(index, complete = true)))
-                    } else null
+                    when (item.string("type")) {
+                        "function_call" -> {
+                            outputItems[index] = item
+                            val call = calls.getOrPut(index) { CallAccumulator() }
+                            call.read(item)
+                            StreamChunk(toolCallProgress = listOf(call.progress(index, complete = true)))
+                        }
+                        "image_generation_call" -> imageFromItem(item, index)?.let { StreamChunk(generatedImages = listOf(it)) }
+                        else -> { outputItems[index] = item; null }
+                    }
                 }
                 "response.completed", "response.incomplete" -> {
-                    readCompleted(root.obj("response"))
+                    val images = readCompleted(root.obj("response"))
                     StreamChunk(
                         inputTokens = inputTokens,
                         outputTokens = outputTokens,
                         cachedInputTokens = cachedTokens,
                         finishReason = finishReason,
+                        generatedImages = images,
                     )
                 }
+                "response.image_generation_call.partial_image",
+                "response.image_generation_call.in_progress",
+                "response.image_generation_call.generating",
+                "response.image_generation_call.completed" -> null
                 "response.failed" -> {
                     val response = root.obj("response")
                     val message = response?.obj("error")?.string("message")
@@ -295,12 +319,19 @@ class OpenAiOAuthProvider(
             }
         }
 
-        private fun readCompleted(response: JsonObject?) {
-            if (response == null) return
+        private fun readCompleted(response: JsonObject?): List<GeneratedImageOutput> {
+            if (response == null) return emptyList()
+            val images = mutableListOf<GeneratedImageOutput>()
             response.array("output")?.forEachIndexed { index, element ->
                 val item = element as? JsonObject ?: return@forEachIndexed
-                outputItems[index] = item
-                if (item.string("type") == "function_call") calls.getOrPut(index) { CallAccumulator() }.read(item)
+                when (item.string("type")) {
+                    "function_call" -> {
+                        outputItems[index] = item
+                        calls.getOrPut(index) { CallAccumulator() }.read(item)
+                    }
+                    "image_generation_call" -> imageFromItem(item, index)?.let(images::add)
+                    else -> outputItems[index] = item
+                }
             }
             val usage = response.obj("usage")
             inputTokens = usage?.long("input_tokens") ?: inputTokens
@@ -312,6 +343,21 @@ class OpenAiOAuthProvider(
                 "failed" -> "error"
                 else -> response.string("status") ?: finishReason
             }
+            return images
+        }
+
+        private fun imageFromItem(item: JsonObject, index: Int): GeneratedImageOutput? {
+            val encoded = item.string("result")?.takeIf(String::isNotBlank) ?: return null
+            val stableId = item.string("id").orEmpty().ifBlank { "image-$index-${encoded.length}" }
+            if (!emittedImageIds.add(stableId)) return null
+            val bytes = runCatching { Base64.getDecoder().decode(encoded.substringAfter("base64,", encoded)) }
+                .getOrElse { throw ProviderProtocolException("ChatGPT returned invalid image data", it) }
+            require(bytes.size.toLong() <= MAX_IMAGE_BYTES) { "Generated image exceeded Arbor's 64 MB limit" }
+            return GeneratedImageOutput(
+                bytes = bytes,
+                mimeType = "image/png",
+                displayName = "chatgpt-image-${index + 1}.png",
+            )
         }
 
         fun finalChunk(): StreamChunk? {
@@ -373,5 +419,6 @@ class OpenAiOAuthProvider(
 
     private companion object {
         const val RESPONSES_LITE_HEADER = "x-openai-internal-codex-responses-lite"
+        const val MAX_IMAGE_BYTES = 64L * 1024 * 1024
     }
 }

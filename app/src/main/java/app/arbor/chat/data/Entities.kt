@@ -276,6 +276,7 @@ data class ModelEntity(
     val supportsFiles: Boolean = false,
     val supportsThinking: Boolean = false,
     val supportsTools: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val supportsImageGeneration: Boolean = false,
 )
 
 @Entity(

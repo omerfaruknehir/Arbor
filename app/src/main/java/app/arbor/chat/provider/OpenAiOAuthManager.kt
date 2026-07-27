@@ -62,6 +62,7 @@ data class OpenAiOAuthModelInfo(
     val contextWindow: Int?,
     val maxOutputTokens: Int?,
     val supportsThinking: Boolean,
+    val supportsImageGeneration: Boolean? = null,
     val useResponsesLite: Boolean,
     val defaultReasoningLevel: String?,
 )
@@ -619,7 +620,7 @@ class OpenAiOAuthManager(
             .header("Accept", "application/json")
             .header("Authorization", "Bearer ${auth.accessToken}")
             .header("chatgpt-account-id", auth.accountId)
-            .header("User-Agent", "Arbor/0.19.3 openai-oauth-android")
+            .header("User-Agent", "Arbor/0.19.4 openai-oauth-android")
             .apply { if (auth.isFedRamp) header("X-OpenAI-Fedramp", "true") }
             .build()
         executeWithNetworkRetry(request).use { response ->
@@ -643,6 +644,13 @@ class OpenAiOAuthManager(
                     contextWindow = model["context_window"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
                     maxOutputTokens = model["max_output_tokens"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
                     supportsThinking = model["default_reasoning_level"]?.jsonPrimitive?.contentOrNull != null || id.startsWith("gpt-5"),
+                    supportsImageGeneration = model["supports_image_generation"]?.jsonPrimitive?.booleanOrNull
+                        ?: model["image_generation"]?.jsonPrimitive?.booleanOrNull
+                        ?: (model["supported_tools"] as? JsonArray)?.let { tools ->
+                            tools.any { it.jsonPrimitive.contentOrNull in setOf("image_generation", "image-gen") }
+                                .takeIf { supported -> supported }
+                        }
+                        ?: true.takeIf { id.startsWith("gpt-image-") },
                     useResponsesLite = model["use_responses_lite"]?.jsonPrimitive?.booleanOrNull == true,
                     defaultReasoningLevel = model["default_reasoning_level"]?.jsonPrimitive?.contentOrNull,
                 )
@@ -659,7 +667,7 @@ class OpenAiOAuthManager(
                 .header("chatgpt-account-id", auth.accountId)
                 .header("OpenAI-Beta", "codex-1")
                 .header("originator", "Arbor")
-                .header("User-Agent", "Arbor/0.19.3 openai-oauth-android")
+                .header("User-Agent", "Arbor/0.19.4 openai-oauth-android")
                 .apply { if (auth.isFedRamp) header("X-OpenAI-Fedramp", "true") }
                 .build()
             executeWithNetworkRetry(request).use { response ->

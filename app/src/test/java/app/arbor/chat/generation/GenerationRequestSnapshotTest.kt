@@ -36,6 +36,7 @@ class GenerationRequestSnapshotTest {
             inputCacheMissUsdPerMillion = 0.0,
             outputUsdPerMillion = 0.0,
             supportsThinking = true,
+            supportsImageGeneration = true,
         )
 
         val snapshot = GenerationRequestSnapshot.capture(conversation, provider, model)
@@ -50,5 +51,7 @@ class GenerationRequestSnapshotTest {
         assertEquals(true, restored.agentUbuntuEnabled)
         assertEquals(true, restored.deepResearchEnabled)
         assertEquals(true, restored.hybridTokenCountingEnabled)
+        assertEquals(true, snapshot.supportsImageGeneration)
+        assertEquals(true, snapshot.model().supportsImageGeneration)
     }
 }

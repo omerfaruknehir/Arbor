@@ -901,3 +901,32 @@ The representative panel-local pixel calculation remains materially below three 
 - Debug certificate SHA-256 remains `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`, identical to 0.18.4.
 - All Room schema JSON files remain byte-identical to 0.18.4.
 - Host validation cannot complete the real browser/account consent flow or prove that OpenAI will keep the unofficial Codex endpoint stable; perform one device/account smoke test after installation.
+
+## 0.19.4: first-class image-generation models
+
+### Capability and routing
+
+- Store image generation as an explicit `ModelEntity.supportsImageGeneration` capability. Do not infer transport solely from a model name at request time; discovery may seed the capability, but users must be able to correct custom-provider metadata.
+- OpenAI-compatible image models are not chat-completion models. Route them to `<baseUrl>/images/generations` and omit chat-only fields such as `messages`, `stream`, tools, thinking, research, and token preflight.
+- Keep OAuth behavior separate: an OAuth chat model uses the Responses API with a built-in `image_generation` tool. Never redirect OAuth credentials to the public Images API.
+- Preserve the selected capability inside `GenerationRequestSnapshot`, so queued work and retries cannot change transport after a model catalog refresh.
+
+### Output handling
+
+- Convert provider output into `GeneratedImageOutput`, then persist it through `AttachmentStore`; do not embed base64 blobs in message content or timeline JSON.
+- Exclude completed `image_generation_call` objects from OAuth native replay payloads. Their potentially multi-megabyte `result` field is output data, not conversation protocol state.
+- Treat an assistant attachment as valid output even when content and reasoning are blank.
+- Bound decoded images to 64 MB and JSON image responses to 96 MB. Validate before writing to app storage and continue enforcing the normal per-chat/global attachment limits and free-space reserve.
+
+### Compatibility and migration
+
+- Room 13→14 adds `supportsImageGeneration INTEGER NOT NULL DEFAULT 0` and marks known `gpt-image-*`/`dall-e-*` rows. A default is required so existing databases migrate without rebuilding model rows.
+- Discovery fields should be nullable. When a provider does not report image capability, preserve the existing/manual value instead of overwriting it with false.
+- This release intentionally supports text-to-image only. Reject image attachments for direct Images API models until `/images/edits` multipart transport and edit-specific controls are implemented.
+
+### Validation
+
+- Test GPT Image and DALL·E request shapes independently.
+- Test base64 output decoding and revised-prompt metadata.
+- Test OAuth image-tool serialization, image event decoding, deduplication, and exclusion from replay JSON.
+- Test snapshot persistence of the capability and compile the generated Room 14 schema.

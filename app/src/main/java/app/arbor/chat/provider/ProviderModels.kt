@@ -16,6 +16,7 @@ data class InputMessage(
     val nativeToolResults: List<NativeToolResult> = emptyList(),
     /** Provider-specific assistant content blocks/parts which must be echoed unchanged during a tool loop. */
     val nativeProviderPayloadJson: String = "",
+    val generatedImages: List<GeneratedImageOutput> = emptyList(),
 )
 
 data class ChatRequest(
@@ -31,6 +32,14 @@ data class ChatRequest(
     val tools: List<NativeToolDefinition> = emptyList(),
 )
 
+
+data class GeneratedImageOutput(
+    val bytes: ByteArray,
+    val mimeType: String = "image/png",
+    val displayName: String = "generated-image.png",
+    val description: String? = null,
+)
+
 data class StreamChunk(
     val text: String = "",
     val reasoning: String = "",
@@ -41,6 +50,7 @@ data class StreamChunk(
     val toolCallProgress: List<NativeToolCallProgress> = emptyList(),
     val toolCalls: List<NativeToolCall> = emptyList(),
     val nativeProviderPayloadJson: String = "",
+    val generatedImages: List<GeneratedImageOutput> = emptyList(),
 )
 
 interface ChatProvider {

@@ -1399,6 +1399,10 @@ private fun ProviderSettings(
                     maxOutputTokens = candidate.maxOutputTokens ?: 16_384,
                     inputCacheHitUsdPerMillion = 0.0, inputCacheMissUsdPerMillion = 0.0, outputUsdPerMillion = 0.0,
                     supportsThinking = candidate.supportsThinking ?: false,
+                    supportsVision = candidate.supportsVision ?: false,
+                    supportsFiles = candidate.supportsFiles ?: false,
+                    supportsTools = candidate.supportsTools ?: false,
+                    supportsImageGeneration = candidate.supportsImageGeneration ?: false,
                 )
             }
             viewModel.addProvider(provider, draft.apiKey, models)
@@ -2304,6 +2308,7 @@ private val ModelEntity.compactSummary: String
         if (supportsThinking) add("Thinking")
         if (supportsVision) add("Vision")
         if (supportsTools) add("Tools")
+        if (supportsImageGeneration) add("Image generation")
         if (!pricingConfigured) add("Cost unavailable")
     }.joinToString(" · ")
 
@@ -2328,6 +2333,7 @@ private fun ModelEditorSheet(
     var files by remember(initial) { mutableStateOf(initial.supportsFiles) }
     var thinking by remember(initial) { mutableStateOf(initial.supportsThinking) }
     var tools by remember(initial) { mutableStateOf(initial.supportsTools) }
+    var imageGeneration by remember(initial) { mutableStateOf(initial.supportsImageGeneration) }
     var showPricing by remember(initial) { mutableStateOf(initial.pricingConfigured) }
     val pricesValid = !pricingConfigured || listOf(cacheHit, cacheMiss, outputPrice).all { it.toDoubleOrNull()?.let { price -> price >= 0.0 } == true }
     val valid = id.isNotBlank() && name.isNotBlank() && context.toIntOrNull() != null && output.toIntOrNull() != null && pricesValid
@@ -2356,6 +2362,12 @@ private fun ModelEditorSheet(
                 FilterChip(selected = vision, onClick = { vision = !vision }, label = { Text("Vision") }, modifier = Modifier.weight(1f))
                 FilterChip(selected = files, onClick = { files = !files }, label = { Text("Files") }, modifier = Modifier.weight(1f))
             }
+            FilterChip(
+                selected = imageGeneration,
+                onClick = { imageGeneration = !imageGeneration },
+                label = { Text("Image generation") },
+                modifier = Modifier.fillMaxWidth(),
+            )
 
             Surface(
                 onClick = { showPricing = !showPricing },
@@ -2397,6 +2409,7 @@ private fun ModelEditorSheet(
                             supportsFiles = files,
                             supportsThinking = thinking,
                             supportsTools = tools,
+                            supportsImageGeneration = imageGeneration,
                         ))
                     },
                 ) { Text("Save") }
