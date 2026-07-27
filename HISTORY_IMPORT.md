@@ -130,6 +130,8 @@ This repository was reconstructed from source archives in the ChatGPT Library. R
 
 | 0.19.7 | `Arbor-0.19.7-source.zip` | `95bc6a241bcd140f134f137fe9402c901b65cf43b35dd05ad9864a4aa6436136` | `62f6f71af012b184328a64a7dba26b46340be296` | `v0.19.7` | 2026-07-27T19:35:00Z | canonical | `main` |
 
+| 0.19.8 | `Arbor-0.19.8-source.zip` | `6724b043407a8fe0da11bbf58119018a3c555647821d95db7f6fbcbe03084a48` | `d9b397e9f4d9892f337c3ce878831c064f581bb6` | `v0.19.8` | 2026-07-27T20:19:32Z | canonical | `main` |
+
 ## Canonical variant selection
 
 - **0.16.31:** the later `(1)` archive is canonical; it adds the corrected scrolling/streaming implementation and regression test. The earlier tree is `v0.16.31-original`.
