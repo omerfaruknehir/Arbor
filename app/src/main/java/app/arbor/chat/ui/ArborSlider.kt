@@ -143,7 +143,7 @@ fun ArborSlider(
             }
             onValueChange(result.value)
         },
-        modifier = modifier,
+        modifier = modifier.horizontalGesturePriority(enabled),
         enabled = enabled,
         valueRange = valueRange,
         steps = steps,

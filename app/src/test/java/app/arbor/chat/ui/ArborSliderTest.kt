@@ -55,7 +55,11 @@ class ArborSliderTest {
 
     @Test fun implementationProvidesGestureTicksSnapAndSystemRespectingHaptics() {
         val slider = java.io.File("src/main/java/app/arbor/chat/ui/ArborSlider.kt").readText()
+        val priority = java.io.File("src/main/java/app/arbor/chat/ui/HorizontalGesturePriority.kt").readText()
         val haptics = java.io.File("src/main/java/app/arbor/chat/ui/ArborHaptics.kt").readText()
+        assertTrue(slider.contains("modifier.horizontalGesturePriority(enabled)"))
+        assertTrue(priority.contains("fun Modifier.horizontalGesturePriority"))
+        assertTrue(priority.contains("registry?.update(owner, coordinates.boundsInRoot())"))
         assertTrue(slider.contains("haptics.gestureStart()"))
         assertTrue(slider.contains("haptics.frequentTick()"))
         assertTrue(slider.contains("haptics.snap()"))

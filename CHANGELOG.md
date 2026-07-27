@@ -1,3 +1,12 @@
+## 0.19.8
+
+- Repair the native Gaussian backdrop renderer by replacing RuntimeShader child-image filter chaining with independent native Gaussian, color-filter, alpha-mask, and source-over effects for each panel.
+- Preserve pattern-free high-radius blur while avoiding black, stale, or missing output on affected Android GPU/Skia paths.
+- Keep blur, tint, feather, rounded corners, and highlights on the exact shared root-coordinate panel bounds introduced in 0.19.7.
+- Give Arbor sliders horizontal gesture priority over the navigation drawer, including sliders near the left edge of the Settings root.
+- Preserve the configurable 64–240 dp top-panel height, magnetic snapping, haptics, package identity, signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
+- Add unit coverage for the native effect graph, color matrix, independent mask path, and slider gesture ownership, plus an Android instrumentation construction test for both panel edges.
+
 ## 0.19.7
 
 - Replace the sparse multi-direction blur kernel with one native Gaussian blur and an exact panel mask, removing high-strength directional grids, repeated sampling bands, and lattice patterns.

@@ -43,17 +43,18 @@ class BackdropBlurTest {
     }
 
     @Test fun highStrengthBlurUsesPatternFreeNativeGaussianComposite() {
-        assertEquals(0f, resolveNativeBlurRadiusPx(0f, 0f), 0f)
-        assertEquals(24f, resolveNativeBlurRadiusPx(24f, 12f), 0f)
-        assertEquals(56f, resolveNativeBlurRadiusPx(28f, 56f), 0f)
         val source = blurSource()
         assertTrue(source.contains("RenderEffect.createBlurEffect"))
         assertTrue(source.contains("Shader.TileMode.CLAMP"))
         assertTrue(source.contains("RenderEffect.createBlendModeEffect"))
         assertTrue(source.contains("BlendMode.SRC_OVER"))
-        assertTrue(source.contains("PANEL_MASK_SHADER"))
+        assertTrue(source.contains("BlendMode.DST_IN"))
+        assertTrue(source.contains("RenderEffect.createShaderEffect(maskShader)"))
+        assertTrue(source.contains("PANEL_ALPHA_MASK_SHADER"))
         assertFalse(source.contains("sampleStep *"))
         assertFalse(source.contains("uDirection"))
+        assertFalse(source.contains("createRuntimeShaderEffect"))
+        assertFalse(source.contains("createChainEffect"))
     }
 
     @Test fun brokenCaptureAndHalfResolutionCompositorIsGone() {
@@ -67,7 +68,6 @@ class BackdropBlurTest {
             "halfBlurC",
             "halfBlurD",
             "resolveKawasePanelPlan",
-            "BlendMode.DstIn",
         ).forEach { token -> assertFalse("Unexpected later blur token: $token", source.contains(token)) }
         assertTrue(source.contains("decorated.graphicsLayer { renderEffect = composeEffect }"))
     }
@@ -77,10 +77,9 @@ class BackdropBlurTest {
         assertTrue(source.contains("if (normalizedSoftness == 0f) cornerRadiusDp"))
         assertTrue(source.contains("if (!softnessActive)"))
         assertTrue(source.contains("val half = mergeDistance * 0.5f"))
-        assertTrue(source.contains("uTopBounds.y - halfSpan"))
-        assertTrue(source.contains("uBottomBounds.x - halfSpan"))
-        assertTrue(source.contains("uSoftness.x <= 0.0"))
-        assertTrue(source.contains("uSoftness.y <= 0.0"))
+        assertTrue(source.contains("uBounds.y - halfSpan"))
+        assertTrue(source.contains("uBounds.x - halfSpan"))
+        assertTrue(source.contains("uSoftness <= 0.0"))
     }
 
     @Test fun overlayOpacityIsAbsoluteAndIndependentFromBlur() {
@@ -94,18 +93,28 @@ class BackdropBlurTest {
         assertFalse(source.contains("PANEL_OPACITY_BOOST"))
     }
 
-    @Test fun colorAdjustmentRunsOnceInTheGaussianMaskStage() {
+    @Test fun colorAdjustmentUsesAStableNativeColorFilterBeforeMasking() {
         val source = blurSource()
-        assertTrue(source.contains("val mask = RenderEffect.createRuntimeShaderEffect"))
-        assertTrue(source.contains("float4 adjusted = float4(content.eval(coord))"))
-        assertTrue(source.contains("adjusted.rgb = mix"))
-        assertFalse(source.contains("uAdjustColor"))
+        assertTrue(source.contains("RenderEffect.createColorFilterEffect"))
+        assertTrue(source.contains("ColorMatrixColorFilter"))
+        assertTrue(source.contains("buildGlassColorMatrix"))
+        assertFalse(source.contains("content.eval(coord)"))
+
+        val identity = glassColorMatrixValues(1f, 1f, 1f)
+        assertEquals(20, identity.size)
+        assertEquals(1f, identity[0], .0001f)
+        assertEquals(1f, identity[6], .0001f)
+        assertEquals(1f, identity[12], .0001f)
+        assertEquals(1f, identity[18], .0001f)
+        listOf(1, 2, 4, 5, 7, 9, 10, 11, 14, 15, 16, 17, 19).forEach { index ->
+            assertEquals("identity[$index]", 0f, identity[index], .0001f)
+        }
     }
 
     @Test fun blurAndOverlayUseTheSameRootCoordinateBounds() {
         val source = blurSource()
         assertTrue(source.contains("updatePanelBounds"))
-        assertTrue(source.contains("uTopBounds"))
+        assertTrue(source.contains("setFloatUniform(\"uBounds\", startPx, endPx)"))
         assertTrue(source.contains("normalizedTopStart"))
         assertTrue(source.contains("normalizedTopEnd"))
         assertTrue(source.contains("drawPanelOverlay"))
@@ -114,7 +123,7 @@ class BackdropBlurTest {
 
     @Test fun profilerRemainsWiredToTheGaussianRenderer() {
         val source = blurSource()
-        assertTrue(source.contains("recordBlurEffectBuild(4)"))
+        assertTrue(source.contains("recordBlurEffectBuild(panelEffects.size * 4 + 1)"))
         assertTrue(source.contains("recordBlurFrame("))
         assertTrue(source.contains("sourceTraversals = 1"))
         assertTrue(source.contains("downsampleLevels = 0"))
