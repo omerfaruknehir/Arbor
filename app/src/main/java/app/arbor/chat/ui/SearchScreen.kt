@@ -35,6 +35,7 @@ fun SearchScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
     val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsState()
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsState()
+    val chromeTopPanelHeightDp by viewModel.chromeTopPanelHeightDp.collectAsState()
     val query by viewModel.searchQuery.collectAsState()
     val results by viewModel.searchResults.collectAsState()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
@@ -51,6 +52,7 @@ fun SearchScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 blurStrength = chromeBlurStrength,
                 edgeSoftness = chromeEdgeSoftness,
                 overlayOpacity = chromeOverlayOpacity,
+                blurArea = chromeTopPanelHeightDp.dp,
                 navigationIcon = {
                     IconButton(onClick = { openDrawer?.invoke() ?: run { viewModel.screen.value = Screen.CHAT } }) {
                         Icon(if (openDrawer != null) Icons.Outlined.Menu else Icons.AutoMirrored.Outlined.ArrowBack, "Back")

@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 
@@ -43,6 +44,7 @@ fun ChatCollapsingTranslucentTopBar(
     blurStrength: Float = 0.7f,
     edgeSoftness: Float = 0.5f,
     overlayOpacity: Float = 1f,
+    topPanelHeight: Dp = 128.dp,
 ) {
     val collapse = scrollBehavior.state.collapsedFraction.coerceIn(0f, 1f)
     val travel = arborBlurProgress(collapse)
@@ -57,8 +59,7 @@ fun ChatCollapsingTranslucentTopBar(
                 edgeSoftness = edgeSoftness,
                 overlayOpacity = overlayOpacity,
                 tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
-                fadeDistance = 128.dp,
-                overlayDistance = 128.dp,
+                panelHeight = topPanelHeight,
             ),
     ) {
         LargeTopAppBar(

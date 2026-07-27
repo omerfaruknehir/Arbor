@@ -159,6 +159,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
     val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsState()
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsState()
+    val chromeTopPanelHeightDp by viewModel.chromeTopPanelHeightDp.collectAsState()
     val renderSafeMode by viewModel.renderSafeMode.collectAsState()
     val generatedRepairMaxAttempts by viewModel.generatedRepairMaxAttempts.collectAsState()
     val developerSettings by viewModel.developerSettings.collectAsState()
@@ -189,6 +190,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     blurStrength = chromeBlurStrength,
                     edgeSoftness = chromeEdgeSoftness,
                     overlayOpacity = chromeOverlayOpacity,
+                    blurArea = chromeTopPanelHeightDp.dp,
                     navigationIcon = {
                         IconButton(onClick = {
                             haptics.selection()
@@ -222,6 +224,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             chromeBlurStrength = chromeBlurStrength,
                             chromeEdgeSoftness = chromeEdgeSoftness,
                             chromeOverlayOpacity = chromeOverlayOpacity,
+                            chromeTopPanelHeightDp = chromeTopPanelHeightDp,
                             viewModel = viewModel,
                         )
                         SettingsRoute.PRIVACY -> PrivacySettingsPage(renderSafeMode, generatedRepairMaxAttempts, viewModel)
@@ -452,6 +455,7 @@ private fun AppearanceSettingsPage(
     chromeBlurStrength: Float,
     chromeEdgeSoftness: Float,
     chromeOverlayOpacity: Float,
+    chromeTopPanelHeightDp: Float,
     viewModel: ChatViewModel,
 ) = SettingsPage {
     val appName = stringResource(R.string.app_name)
@@ -513,7 +517,7 @@ private fun AppearanceSettingsPage(
         snapPoints = listOf(0f, 0.25f, 0.5f, 0.75f, 1f),
     )
     Text(
-        "0% disables blur exactly. Nonzero values use the restored Arbor 0.17.8 three-direction AGSL blur, with the current continuous 0-56 dp control.",
+        "0% disables blur exactly. Nonzero values use a native Gaussian blur with the current continuous 0-56 dp control, avoiding sparse-sample patterns at high strength.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -546,6 +550,24 @@ private fun AppearanceSettingsPage(
     )
     Text(
         "0% removes the tint; 100% makes the panel tint fully opaque.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("Top panel height", modifier = Modifier.weight(1f))
+        Text("${chromeTopPanelHeightDp.roundToInt()} dp", color = MaterialTheme.colorScheme.primary)
+    }
+    ArborSlider(
+        value = chromeTopPanelHeightDp,
+        onValueChange = viewModel::setChromeTopPanelHeightDp,
+        valueRange = 64f..240f,
+        snapPoints = listOf(64f, 96f, 128f, 160f, 192f, 224f, 240f),
+        attractionRadiusFraction = 0.045f,
+        pullStrength = 0.72f,
+    )
+    Text(
+        "Controls the exact shared height of the top blur and tint geometry. This is temporary tuning control; the selected value is preserved across restarts.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

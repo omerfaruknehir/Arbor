@@ -146,9 +146,8 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
             InteractiveNavigationDrawer(
                 state = drawerState,
                 modifier = Modifier.fillMaxSize(),
-                // The left-edge system gesture and pull-to-open have the same direction.
-                // Secondary pages reserve both edges for Back; their menu button still
-                // opens this same drawer state.
+                // Chat and the Settings root support pull-to-open. Nested Settings pages
+                // still register horizontal Back priority, so the drawer yields to them.
                 gesturesEnabled = drawerSwipeEnabled(screen),
                 drawerContent = { drawerModifier ->
                     ModalDrawerSheet(modifier = drawerModifier) {
@@ -238,6 +237,6 @@ internal fun screenDepth(screen: Screen): Int = when (screen) {
     Screen.SANDBOX, Screen.TERMINAL -> 2
 }
 
-internal fun drawerSwipeEnabled(screen: Screen): Boolean = screen == Screen.CHAT
+internal fun drawerSwipeEnabled(screen: Screen): Boolean = screen == Screen.CHAT || screen == Screen.SETTINGS
 
 internal fun pageBackEnabled(drawerVisible: Boolean): Boolean = !drawerVisible

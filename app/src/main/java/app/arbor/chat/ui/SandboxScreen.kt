@@ -73,6 +73,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
     val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsState()
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsState()
+    val chromeTopPanelHeightDp by viewModel.chromeTopPanelHeightDp.collectAsState()
     var code by remember {
         mutableStateOf(
             "from pathlib import Path\n\n" +
@@ -169,6 +170,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                 blurStrength = chromeBlurStrength,
                 edgeSoftness = chromeEdgeSoftness,
                 overlayOpacity = chromeOverlayOpacity,
+                blurArea = chromeTopPanelHeightDp.dp,
                 navigationIcon = {
                     IconButton(onClick = { viewModel.screen.value = Screen.SETTINGS }) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to Settings")

@@ -10,11 +10,13 @@ class BlurCompatibilityTest {
         assertTrue(prefs.contains("chrome_blur_strength"))
         assertTrue(prefs.contains("chrome_edge_softness"))
         assertTrue(prefs.contains("chrome_overlay_opacity"))
+        assertTrue(prefs.contains("chrome_top_panel_height_dp"))
         assertTrue(prefs.contains("chrome_blur_enabled"))
         assertTrue(prefs.contains("chrome_gradual_enabled"))
         assertFalse(prefs.contains("remove(KEY_CHROME_BLUR_STRENGTH"))
         assertFalse(prefs.contains("remove(KEY_CHROME_EDGE_SOFTNESS"))
         assertFalse(prefs.contains("remove(KEY_CHROME_OVERLAY_OPACITY"))
+        assertFalse(prefs.contains("remove(KEY_CHROME_TOP_PANEL_HEIGHT_DP"))
     }
 
     @Test fun drawerAndNavigationRemainGraphicsLayerIsolated() {

@@ -1,3 +1,12 @@
+## 0.19.7
+
+- Replace the sparse multi-direction blur kernel with one native Gaussian blur and an exact panel mask, removing high-strength directional grids, repeated sampling bands, and lattice patterns.
+- Move blur masking, tint, edge feather, and highlight into one shared root-coordinate geometry so the collapsing top bar cannot misalign blur and overlay regions.
+- Add a persistent 64–240 dp top-panel height control for temporary visual tuning across chat, search, settings, sandbox, and terminal screens.
+- Enable pull-to-open drawer gestures on the Settings root while preserving nested Settings-page Back gesture priority.
+- Preserve the 0–100% blur/overlay controls, smooth magnetic sliders, haptics, package identity, signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
+- Add regression coverage for native blur composition, pattern-prone shader removal, shared geometry, top-panel preference compatibility, and Settings drawer gestures.
+
 ## 0.19.6
 
 - Restore the proven Arbor 0.17.8 three-direction AGSL backdrop blur and remove the later capture/composite path which could produce stale frames, black backgrounds, hard strength jumps, and block artifacts.

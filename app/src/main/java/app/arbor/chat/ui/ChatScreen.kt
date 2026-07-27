@@ -396,6 +396,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsStateWithLifecycle()
     val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsStateWithLifecycle()
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsStateWithLifecycle()
+    val chromeTopPanelHeightDp by viewModel.chromeTopPanelHeightDp.collectAsStateWithLifecycle()
     val models by viewModel.models.collectAsStateWithLifecycle()
     val allProviders by viewModel.providers.collectAsStateWithLifecycle()
     val credentialRevision by viewModel.credentialRevision.collectAsStateWithLifecycle()
@@ -808,6 +809,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 blurStrength = chromeBlurStrength,
                 edgeSoftness = chromeEdgeSoftness,
                 overlayOpacity = chromeOverlayOpacity,
+                topPanelHeight = chromeTopPanelHeightDp.dp,
                 navigationIcon = {
                     if (openDrawer != null) {
                         IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Conversations") }
@@ -1955,7 +1957,7 @@ private fun Composer(
                     overlayOpacity = chromeOverlayOpacity,
                     tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.46f),
                     edge = ArborBlurEdge.BOTTOM,
-                    fadeDistance = 208.dp,
+                    panelHeight = 208.dp,
                 ),
         ) {
             Column(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp)) {

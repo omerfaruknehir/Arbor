@@ -56,8 +56,7 @@ fun CollapsingTranslucentTopBar(
                 edgeSoftness = edgeSoftness,
                 overlayOpacity = overlayOpacity,
                 tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
-                fadeDistance = blurArea,
-                overlayDistance = blurArea,
+                panelHeight = blurArea,
             ),
     ) {
         LargeTopAppBar(
