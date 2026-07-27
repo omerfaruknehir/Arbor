@@ -1,3 +1,13 @@
+## 0.19.10
+
+- Replace weak release-only slider snapping with a visible spring well while dragging and a damped spring settle animation on release.
+- Increase snap capture tolerance while preserving velocity-aware behavior, so slow precise drags settle reliably and fast flicks remain easier to pass through.
+- Draw tick dots at every explicit Arbor snap point, including the rounded-hard and flat-hard edge anchors and all Thinking effort choices.
+- Simplify the edge-softness readout to **Hard edges** across the complete two-anchor 0% lane; numeric percentages appear only after actual edge feathering begins.
+- Keep the Thinking thumb continuous during drag, then spring it to the nearest effort only after release instead of teleporting between values.
+- Preserve slider priority over drawer gestures, native Gaussian blur, configurable panel height, package identity, signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
+- Add regression coverage for spring attraction, stronger release capture, anchor-dot placement, hard-edge labeling, and Thinking release behavior.
+
 ## 0.19.9
 
 - Correct the native Gaussian compositor so blurred pixels replace the original panel region instead of visually accumulating as bloom, with complementary original/blur branches combined exactly once.

@@ -14,11 +14,12 @@ class ArborSliderTest {
         assertFalse(result.captured)
     }
 
-    @Test fun magneticForceAddsContinuousResistanceWithoutHardSnapping() {
-        val result = applyMagneticSliderForce(.48f, 0f..1f, listOf(.5f), attractionRadiusFraction = .04f)
-        assertTrue(result.value > .48f)
-        assertTrue(result.value < .5f)
-        assertEquals(.5f, result.anchor!!, 0f)
+    @Test fun magneticForceFeelsLikeAStrongContinuousSpringWithoutTeleporting() {
+        val result = applyMagneticSliderForce(0.46f, 0f..1f, listOf(0.5f), attractionRadiusFraction = 0.07f, pullStrength = 0.78f)
+        assertTrue(result.value > 0.46f)
+        assertTrue(result.value < 0.5f)
+        assertTrue(result.value > 0.47f)
+        assertEquals(0.5f, result.anchor!!, 0f)
         assertTrue(result.captured)
     }
 
@@ -31,10 +32,15 @@ class ArborSliderTest {
         assertEquals(.5f, values[50], 0f)
     }
 
-    @Test fun releaseSnappingUsesOnlyTheSmallExplicitCore() {
-        assertEquals(.5f, releaseSnapAnchor(.487f, 0f..1f, listOf(.5f), .018f, false)!!, 0f)
-        assertNull(releaseSnapAnchor(.47f, 0f..1f, listOf(.5f), .018f, false))
-        assertEquals(0f, releaseSnapAnchor(.12f, 0f..1f, listOf(0f, .5f, 1f), .018f, true)!!, 0f)
+    @Test fun releaseSnappingUsesAUsableExplicitSpringWell() {
+        assertEquals(0.5f, releaseSnapAnchor(0.455f, 0f..1f, listOf(0.5f), 0.05f, false)!!, 0f)
+        assertNull(releaseSnapAnchor(0.44f, 0f..1f, listOf(0.5f), 0.05f, false))
+        assertEquals(0f, releaseSnapAnchor(0.12f, 0f..1f, listOf(0f, 0.5f, 1f), 0.05f, true)!!, 0f)
+    }
+
+    @Test fun explicitSnapDotsUseTheExactAnchorPositions() {
+        assertEquals(listOf(0f, 0.2f, 1f), sliderAnchorFractions(0f..1f, listOf(0f, 0.2f, 1f)))
+        assertEquals(listOf(0f, 0.5f, 1f), sliderAnchorFractions(10f..20f, listOf(10f, 15f, 20f)))
     }
 
     @Test fun discreteSliderAnchorsIncludeBothEndpointsAndAllSteps() {
@@ -53,7 +59,8 @@ class ArborSliderTest {
         val thinkingBlock = chat.substringAfter("private fun ThinkingComposerChip").substringBefore("private val ThinkingEffort.effortDescription")
         assertTrue(thinkingBlock.contains("snapPoints = options.indices.map(Int::toFloat)"))
         assertTrue(thinkingBlock.contains("liveMagnetism = false"))
-        assertTrue(thinkingBlock.contains("snapToNearestOnRelease = false"))
+        assertTrue(thinkingBlock.contains("snapToNearestOnRelease = true"))
+        assertTrue(thinkingBlock.contains("showSnapPointDots = true"))
         assertFalse(thinkingBlock.contains("steps = (options.size - 2)"))
         assertTrue(thinkingBlock.contains("var sliderValue by remember(options)"))
         assertFalse(thinkingBlock.contains("remember(options, selectedIndex, menu)"))
@@ -69,9 +76,22 @@ class ArborSliderTest {
         assertTrue(slider.contains("haptics.gestureStart()"))
         assertTrue(slider.contains("haptics.frequentTick()"))
         assertTrue(slider.contains("haptics.snap()"))
+        assertTrue(slider.contains("settleAnim.animateTo"))
+        assertTrue(slider.contains("animationSpec = spring("))
+        assertTrue(slider.contains("Canvas(Modifier.fillMaxSize())"))
         assertTrue(haptics.contains("view.isHapticFeedbackEnabled"))
         assertTrue(haptics.contains("SEGMENT_TICK"))
         assertTrue(haptics.contains("CONFIRM"))
         assertTrue(haptics.contains("REJECT"))
     }
+    @Test fun edgeSoftnessUsesHardEdgesWithoutTransitionPercentText() {
+        val settings = java.io.File("src/main/java/app/arbor/chat/ui/SettingsScreen.kt").readText()
+        val edgeBlock = settings
+            .substringAfter("Text(\"Edge softness\"")
+            .substringBefore("Text(\"Overlay opacity\"")
+        assertTrue(edgeBlock.contains("\"Hard edges\""))
+        assertFalse(edgeBlock.contains("Shape transition"))
+        assertTrue(edgeBlock.contains("showSnapPointDots = true"))
+    }
+
 }

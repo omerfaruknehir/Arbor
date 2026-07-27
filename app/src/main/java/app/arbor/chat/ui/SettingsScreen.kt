@@ -527,11 +527,10 @@ private fun AppearanceSettingsPage(
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text("Edge softness", modifier = Modifier.weight(1f))
         val displayedSoftness = displayedChromeEdgeSoftness(chromeEdgeSoftness)
-        val edgeLabel = when {
-            chromeEdgeSoftness == CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT -> "Rounded · 0%"
-            chromeEdgeSoftness < CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT -> "Shape transition · 0%"
-            chromeEdgeSoftness == CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT -> "Flat · 0%"
-            else -> "${(displayedSoftness * 100).roundToInt()}%"
+        val edgeLabel = if (displayedSoftness <= 0f) {
+            "Hard edges"
+        } else {
+            "${(displayedSoftness * 100).roundToInt()}%"
         }
         Text(edgeLabel, color = MaterialTheme.colorScheme.primary)
     }
@@ -543,12 +542,14 @@ private fun AppearanceSettingsPage(
             CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT,
             CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT,
         ),
-        attractionRadiusFraction = 0.028f,
-        pullStrength = 0.30f,
-        releaseSnapRadiusFraction = 0.016f,
+        attractionRadiusFraction = 0.085f,
+        pullStrength = 0.88f,
+        releaseSnapRadiusFraction = 0.060f,
+        liveMagnetism = true,
+        showSnapPointDots = true,
     )
     Text(
-        "Both snap points are 0% softness. The first is a rounded box; the unsnapped lane between them changes only the shape; the second is a flat hard edge. After the flat snap point, actual edge softness rises continuously from 0% to 100%.",
+        "The two dots are hard-edge positions: rounded first, flat second. Values between them change only the corner shape. Edge softness starts after the second dot and then rises from 1% to 100%.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

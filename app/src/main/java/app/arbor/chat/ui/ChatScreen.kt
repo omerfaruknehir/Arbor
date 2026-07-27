@@ -2340,7 +2340,8 @@ private fun ThinkingComposerChip(
                         valueRange = 0f..options.lastIndex.toFloat().coerceAtLeast(1f),
                         snapPoints = options.indices.map(Int::toFloat),
                         liveMagnetism = false,
-                        snapToNearestOnRelease = false,
+                        snapToNearestOnRelease = true,
+                        showSnapPointDots = true,
                         enabled = options.size > 1,
                     )
                     Row(Modifier.fillMaxWidth()) {
