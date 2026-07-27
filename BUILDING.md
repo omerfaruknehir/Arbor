@@ -1,6 +1,6 @@
 # Building Arbor
 
-These instructions build Arbor 0.17.0 (`versionCode 77`). The debug variant has application ID `app.arbor.chat.debug` and version name `0.17.0-debug`; its signing setup is unchanged from prior Arbor debug builds.
+These instructions build Arbor 0.19.0 (`versionCode 110`). The debug variant has application ID `app.arbor.chat.debug` and version name `0.19.0-debug`; its signing setup is unchanged from prior Arbor debug builds.
 
 ## Requirements
 

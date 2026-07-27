@@ -4,6 +4,7 @@ object DefaultCatalog {
     val providers = listOf(
         ProviderEntity("deepseek", "DeepSeek", ProviderKind.OPENAI_COMPATIBLE, "https://api.deepseek.com"),
         ProviderEntity("openai", "OpenAI", ProviderKind.OPENAI_COMPATIBLE, "https://api.openai.com/v1"),
+        ProviderEntity("openai-oauth", "ChatGPT account", ProviderKind.OPENAI_OAUTH, "https://chatgpt.com/backend-api/codex", apiKeyRequired = false),
         ProviderEntity("anthropic", "Anthropic", ProviderKind.ANTHROPIC, "https://api.anthropic.com/v1"),
         ProviderEntity("gemini", "Google Gemini", ProviderKind.GEMINI, "https://generativelanguage.googleapis.com/v1beta"),
         ProviderEntity("openrouter", "OpenRouter", ProviderKind.OPENAI_COMPATIBLE, "https://openrouter.ai/api/v1"),

@@ -18,7 +18,7 @@ fun supportedThinkingLevels(provider: ProviderEntity?, model: ModelEntity?): Lis
     return when (provider?.kind) {
         ProviderKind.ANTHROPIC -> anthropicLevels(id)
         ProviderKind.GEMINI -> geminiLevels(id)
-        ProviderKind.OPENAI_COMPATIBLE, null -> openAiCompatibleLevels(provider?.id.orEmpty(), id)
+        ProviderKind.OPENAI_COMPATIBLE, ProviderKind.OPENAI_OAUTH, null -> openAiCompatibleLevels(provider?.id.orEmpty(), id)
     }
 }
 

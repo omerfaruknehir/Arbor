@@ -42,7 +42,7 @@ class HybridTokenCounter(
         when (request.provider.kind) {
             ProviderKind.ANTHROPIC -> runCatching { countAnthropic(request) }.getOrElse { localCount(request, it.message) }
             ProviderKind.GEMINI -> runCatching { countGemini(request) }.getOrElse { localCount(request, it.message) }
-            ProviderKind.OPENAI_COMPATIBLE -> localCount(request, null)
+            ProviderKind.OPENAI_COMPATIBLE, ProviderKind.OPENAI_OAUTH -> localCount(request, null)
         }
     }
 

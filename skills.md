@@ -868,3 +868,36 @@ The representative panel-local pixel calculation remains materially below three 
 - Main manifest and all Room schema files are byte-identical to 0.18.3.
 - Representative 1080x2340 top/bottom panel geometry processes 3,254,040 pixels per frame versus 7,581,600 for three full-screen passes, or about 42.9% of that reference workload.
 - Final visual output still requires installation and direct testing on the Galaxy S23+; host tests cannot prove Samsung GPU/compositor appearance.
+
+## 0.19.0: native ChatGPT OAuth provider
+
+### Integration shape
+
+`openai-oauth` is a TypeScript SDK/proxy, not an Android library. Arbor therefore implements the documented protocol natively in Kotlin instead of bundling Node.js, JavaScript, an extension, a WebView, or a localhost API proxy.
+
+- `OpenAiOAuthManager` owns authorization-code + PKCE login, state verification, token exchange/refresh, encrypted token persistence, account-ID extraction, and account-aware model discovery.
+- The accepted redirect remains `http://localhost:1455/auth/callback`. Listen on both `::1` and `127.0.0.1`; Android browsers may resolve `localhost` to either family.
+- Bind the loopback listeners before launching the browser, reject mismatched state, and close every listener on success, error, timeout, cancellation, or sign-out.
+- Do not call `resolveActivity()` before browser launch unless the manifest also declares package-visibility queries. Launch directly and translate `ActivityNotFoundException` into a user-facing error.
+- Store access, refresh, and ID tokens only in `EncryptedSharedPreferences`; Room keeps no OAuth credentials. The existing provider-key slot contains only a non-secret registration marker.
+- The OAuth transport must overwrite `Authorization`, `chatgpt-account-id`, FedRAMP, and Responses-lite headers after custom provider headers are applied. Never permit saved metadata to replace session credentials.
+
+### Codex Responses transport
+
+- Send directly to `https://chatgpt.com/backend-api/codex/responses` with `store=false`, streaming enabled, and `reasoning.encrypted_content` requested.
+- Preserve completed output items in `nativeProviderPayloadJson` even when no tool call occurs. Encrypted reasoning/output replay is conversation state, not merely tool-call state.
+- For Responses-lite models, move native tools into an `additional_tools` developer item, set reasoning context to `all_turns`, disable parallel tools, and send `x-openai-internal-codex-responses-lite: true`.
+- Reassemble function calls from `response.output_item.*` and `response.function_call_arguments.*`, retain token usage, and retry exactly once after a 401 with a forced token refresh.
+- Model discovery uses the signed-in account's `/models?client_version=...` catalog and repeats once after forced refresh on a 401.
+
+### 0.19.0 validation outcome
+
+- Baseline: Arbor 0.18.4; its `BackdropBlur.kt` is byte-identical in 0.19.0.
+- Release identity: `versionName 0.19.0`, `versionCode 110`.
+- Full unit suite: 36 suites, 223 tests, 0 failures, 0 errors, 0 skipped.
+- Android lint: 0 errors, 12 warnings, 1 informational finding—the same warning count as 0.18.4.
+- `assembleDebug`, `bundleDebug`, and `assembleDebugAndroidTest`: passed.
+- APK ZIP alignment and v2 signature verification: passed.
+- Debug certificate SHA-256 remains `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`, identical to 0.18.4.
+- All Room schema JSON files remain byte-identical to 0.18.4.
+- Host validation cannot complete the real browser/account consent flow or prove that OpenAI will keep the unofficial Codex endpoint stable; perform one device/account smoke test after installation.

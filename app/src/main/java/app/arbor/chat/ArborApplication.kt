@@ -12,6 +12,7 @@ import app.arbor.chat.generation.GenerationScheduler
 import app.arbor.chat.provider.ProviderRegistry
 import app.arbor.chat.provider.ModelDiscoveryService
 import app.arbor.chat.provider.HybridTokenCounter
+import app.arbor.chat.provider.OpenAiOAuthManager
 import app.arbor.chat.sandbox.PythonSandbox
 import app.arbor.chat.sandbox.UbuntuRuntime
 import app.arbor.chat.sandbox.PackageApprovalService
@@ -42,6 +43,15 @@ class ArborApplication : Application() {
             container.database.conversationDao().deleteTrulyEmpty()
             container.database.catalogDao().insertProvidersIfMissing(DefaultCatalog.providers)
             container.database.catalogDao().insertModelsIfMissing(DefaultCatalog.models)
+            container.repository.provider(OpenAiOAuthManager.PROVIDER_ID)?.let { oauthProvider ->
+                if (container.openAiOAuth.signedInAccountId() != null) {
+                    container.secureStore.setApiKey(OpenAiOAuthManager.PROVIDER_ID, "oauth-session")
+                    if (!oauthProvider.registered) container.repository.saveProvider(oauthProvider.copy(registered = true, apiKeyRequired = false))
+                } else if (container.secureStore.apiKey(OpenAiOAuthManager.PROVIDER_ID).isNotBlank()) {
+                    container.secureStore.setApiKey(OpenAiOAuthManager.PROVIDER_ID, "")
+                    if (oauthProvider.registered) container.repository.saveProvider(oauthProvider.copy(registered = false))
+                }
+            }
             container.database.automationSettingsDao().upsert(
                 container.database.automationSettingsDao().get() ?: app.arbor.chat.data.AutomationSettingsEntity(),
             )
@@ -54,8 +64,9 @@ class AppContainer(application: Application, val crashReporter: CrashReporter) {
     val secureStore = SecureStore(application)
     val database = ArborDatabase.create(application, secureStore.databasePassphrase())
     val repository = ChatRepository(database)
-    val providers = ProviderRegistry()
-    val modelDiscovery = ModelDiscoveryService()
+    val openAiOAuth = OpenAiOAuthManager(application, secureStore)
+    val providers = ProviderRegistry(openAiOAuth)
+    val modelDiscovery = ModelDiscoveryService(openAiOAuth)
     val tokenCounter = HybridTokenCounter()
     val auxiliaryModels = AuxiliaryModelService(repository, providers, secureStore)
     val attachmentStore = AttachmentStore(application, database.attachmentDao())

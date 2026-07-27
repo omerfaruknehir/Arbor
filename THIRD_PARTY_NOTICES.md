@@ -38,3 +38,12 @@ Complete license texts are under `third_party/licenses/` and are also embedded i
 - amd64 SHA-256: `046fcabb7f16f45a80ae11824664f2a07e01386c6fb1ed9dc1e225a66a6553a2`
 
 Ubuntu, Debian, or Alpine packages installed later remain subject to their individual package licenses.
+
+## OpenAI OAuth compatibility implementation
+
+Arbor 0.19.0 includes a clean-room Kotlin/Android implementation interoperable with
+`EvanZhouDev/openai-oauth`, based on its documented OAuth and Codex transport behavior.
+The upstream project is Copyright 2026 Evan Zhou and OpenAI OAuth contributors and is
+licensed under the Apache License, Version 2.0. No JavaScript package or browser extension
+is bundled. See: https://github.com/EvanZhouDev/openai-oauth
+

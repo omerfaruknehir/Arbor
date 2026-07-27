@@ -96,6 +96,127 @@ class NativeProviderProtocolTest {
 
 
     @Test
+    fun openAiOAuthSerializesResponsesProtocolAndToolReplay() {
+        val provider = OpenAiOAuthProvider()
+        val assistantPayload = """[{"type":"reasoning","id":"rs_1","encrypted_content":"opaque"},{"type":"function_call","id":"fc_1","call_id":"call_1","name":"web_search","arguments":"{\"query\":\"Android\"}"}]"""
+        val request = request(
+            ProviderKind.OPENAI_OAUTH,
+            listOf(
+                InputMessage(MessageRole.SYSTEM, "Be precise"),
+                InputMessage(MessageRole.USER, "Find it"),
+                InputMessage(
+                    MessageRole.ASSISTANT,
+                    "",
+                    nativeToolCalls = listOf(NativeToolCall("call_1", "web_search", """{"query":"Android"}""")),
+                    nativeProviderPayloadJson = assistantPayload,
+                ),
+                InputMessage(
+                    MessageRole.TOOL,
+                    "",
+                    nativeToolResults = listOf(NativeToolResult("call_1", "web_search", "result", isError = false)),
+                ),
+            ),
+            modelId = "gpt-5.6",
+            providerId = "openai-oauth",
+        ).copy(thinkingEffort = ThinkingEffort.HIGH)
+
+        val body = provider.buildRequestBody(request)
+        assertEquals("gpt-5.6", body["model"]!!.jsonPrimitive.content)
+        assertTrue(body["stream"]!!.jsonPrimitive.content.toBoolean())
+        assertFalse(body["store"]!!.jsonPrimitive.content.toBoolean())
+        assertEquals("reasoning.encrypted_content", body["include"]!!.jsonArray.single().jsonPrimitive.content)
+        assertEquals("high", body["reasoning"]!!.jsonObject["effort"]!!.jsonPrimitive.content)
+        assertEquals("web_search", body["tools"]!!.jsonArray.single().jsonObject["name"]!!.jsonPrimitive.content)
+
+        val input = body["input"]!!.jsonArray
+        assertEquals("developer", input[0].jsonObject["role"]!!.jsonPrimitive.content)
+        assertEquals("reasoning", input[2].jsonObject["type"]!!.jsonPrimitive.content)
+        assertEquals("function_call", input[3].jsonObject["type"]!!.jsonPrimitive.content)
+        assertEquals("function_call_output", input[4].jsonObject["type"]!!.jsonPrimitive.content)
+        assertEquals("call_1", input[4].jsonObject["call_id"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun openAiOAuthUsesAdditionalToolsForResponsesLiteModels() {
+        val provider = OpenAiOAuthProvider()
+        val body = provider.buildRequestBody(
+            request(
+                ProviderKind.OPENAI_OAUTH,
+                listOf(InputMessage(MessageRole.USER, "Find it")),
+                modelId = "gpt-5.6-terra",
+                providerId = "openai-oauth",
+            ),
+            OpenAiOAuthModelInfo(
+                id = "gpt-5.6-terra",
+                displayName = "GPT-5.6 Terra",
+                contextWindow = null,
+                maxOutputTokens = null,
+                supportsThinking = true,
+                useResponsesLite = true,
+                defaultReasoningLevel = "medium",
+            ),
+        )
+
+        assertFalse(body.containsKey("tools"))
+        assertEquals("all_turns", body["reasoning"]!!.jsonObject["context"]!!.jsonPrimitive.content)
+        val firstInput = body["input"]!!.jsonArray.first().jsonObject
+        assertEquals("additional_tools", firstInput["type"]!!.jsonPrimitive.content)
+        assertEquals("web_search", firstInput["tools"]!!.jsonArray.single().jsonObject["name"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun openAiOAuthReassemblesResponsesToolCallsAndUsage() {
+        val state = OpenAiOAuthProvider.OpenAiOAuthStreamState()
+        assertEquals(
+            "Need search",
+            state.accept("""{"type":"response.reasoning_summary_text.delta","delta":"Need search"}""")!!.reasoning,
+        )
+        val started = state.accept(
+            """{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"web_search","arguments":""}}""",
+        )
+        assertEquals("web_search", started!!.toolCallProgress.single().name)
+        val streamed = state.accept(
+            """{"type":"response.function_call_arguments.delta","output_index":0,"delta":"{\"query\":\"Android\"}"}""",
+        )
+        assertEquals("{\"query\":\"Android\"}", streamed!!.toolCallProgress.single().argumentsJson)
+        state.accept(
+            """{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"web_search","arguments":"{\"query\":\"Android\"}"}}""",
+        )
+        val completed = state.accept(
+            """{"type":"response.completed","response":{"status":"completed","output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"web_search","arguments":"{\"query\":\"Android\"}"}],"usage":{"input_tokens":10,"output_tokens":4,"input_tokens_details":{"cached_tokens":3}}}}""",
+        )
+        assertEquals(10L, completed!!.inputTokens)
+        assertEquals(4L, completed.outputTokens)
+        assertEquals(3L, completed.cachedInputTokens)
+
+        val final = state.finalChunk()
+        assertEquals("call_1", final!!.toolCalls.single().id)
+        assertEquals("web_search", final.toolCalls.single().name)
+        assertTrue(final.nativeProviderPayloadJson.contains("fc_1"))
+        assertEquals("stop", final.finishReason)
+    }
+
+    @Test
+    fun openAiOAuthPreservesReasoningReplayWithoutToolCalls() {
+        val state = OpenAiOAuthProvider.OpenAiOAuthStreamState()
+        state.accept(
+            """{"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","id":"rs_1","encrypted_content":"opaque"}}""",
+        )
+        state.accept(
+            """{"type":"response.output_item.done","output_index":1,"item":{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"Done"}]}}""",
+        )
+        state.accept(
+            """{"type":"response.completed","response":{"status":"completed","output":[{"type":"reasoning","id":"rs_1","encrypted_content":"opaque"},{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"Done"}]}],"usage":{"input_tokens":2,"output_tokens":1}}}""",
+        )
+
+        val final = state.finalChunk()
+        assertNotNull(final)
+        assertTrue(final!!.toolCalls.isEmpty())
+        assertTrue(final.nativeProviderPayloadJson.contains("encrypted_content"))
+        assertTrue(final.nativeProviderPayloadJson.contains("msg_1"))
+    }
+
+    @Test
     fun providerSpecificThinkingControlsAreSerialized() {
         val openAi = OpenAiCompatibleProvider().buildRequestBody(
             request(ProviderKind.OPENAI_COMPATIBLE, listOf(InputMessage(MessageRole.USER, "Think")), modelId = "o3").copy(

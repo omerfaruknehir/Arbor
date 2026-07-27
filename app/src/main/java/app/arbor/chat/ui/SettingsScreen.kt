@@ -40,6 +40,9 @@ import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Security
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.automirrored.outlined.Login
+import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -63,6 +66,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
@@ -102,6 +106,7 @@ import app.arbor.chat.data.PackageApprovalMode
 import app.arbor.chat.data.SystemPromptMode
 import app.arbor.chat.data.SystemPromptProfileEntity
 import app.arbor.chat.provider.DiscoveredModel
+import app.arbor.chat.provider.OpenAiOAuthState
 import app.arbor.chat.provider.supportedThinkingLevels
 import app.arbor.chat.settings.ColorPalette
 import app.arbor.chat.settings.DeveloperSettings
@@ -137,6 +142,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val automation by viewModel.automationSettings.collectAsStateWithLifecycle()
     val promptProfiles by viewModel.systemPromptProfiles.collectAsStateWithLifecycle()
     val credentialRevision by viewModel.credentialRevision.collectAsStateWithLifecycle()
+    val openAiOAuthState by viewModel.openAiOAuthState.collectAsStateWithLifecycle()
     val amoled by viewModel.amoled.collectAsState()
     val palette by viewModel.palette.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
@@ -214,6 +220,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             providers = providers,
                             registeredProviders = registeredProviders,
                             conversationProviderId = null,
+                            openAiOAuthState = openAiOAuthState,
                             viewModel = viewModel,
                         )
                         SettingsRoute.ABOUT -> AboutSettingsPage()
@@ -1094,6 +1101,7 @@ private fun ProviderSettings(
     providers: List<ProviderEntity>,
     registeredProviders: List<ProviderEntity>,
     conversationProviderId: String?,
+    openAiOAuthState: OpenAiOAuthState,
     viewModel: ChatViewModel,
 ) {
     var selectedId by remember { mutableStateOf<String?>(null) }
@@ -1132,12 +1140,20 @@ private fun ProviderSettings(
             }
         }
 
+        ChatGptOAuthCard(
+            state = openAiOAuthState,
+            onSignIn = viewModel::signInWithChatGpt,
+            onSignOut = viewModel::signOutFromChatGpt,
+            onRefresh = viewModel::refreshChatGptModels,
+            onCancel = viewModel::cancelChatGptSignIn,
+        )
+
         if (registeredProviders.isEmpty()) {
             Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Outlined.Cloud, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp))
                     Text("No providers yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("Add DeepSeek, OpenAI, Anthropic, Gemini, OpenRouter, or a compatible local endpoint.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Sign in with ChatGPT above, or add DeepSeek, OpenAI API, Anthropic, Gemini, OpenRouter, or a compatible local endpoint.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(onClick = { addingProvider = true }) { Text("Add provider") }
                 }
             }
@@ -1169,7 +1185,7 @@ private fun ProviderSettings(
             }
         }
 
-        selected?.let { provider ->
+        selected?.takeIf { it.kind != ProviderKind.OPENAI_OAUTH }?.let { provider ->
             HorizontalDivider()
             SectionTitle("${provider.displayName} connection", "Connection details stay out of the way until you need them.")
             Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
@@ -1215,6 +1231,11 @@ private fun ProviderSettings(
             }
             ModelCatalogEditor(provider, viewModel)
         }
+        selected?.takeIf { it.kind == ProviderKind.OPENAI_OAUTH }?.let { provider ->
+            HorizontalDivider()
+            SectionTitle("ChatGPT models", "Models available to the signed-in ChatGPT account.")
+            ModelCatalogEditor(provider, viewModel)
+        }
         Spacer(Modifier.padding(bottom = 24.dp))
     }
 
@@ -1258,7 +1279,7 @@ private fun ProviderSettings(
     }
 
     if (addingProvider) AddProviderDialog(
-        templates = providers.filter { provider -> provider !in registeredProviders },
+        templates = providers.filter { provider -> provider.kind != ProviderKind.OPENAI_OAUTH && provider !in registeredProviders },
         onDismiss = { addingProvider = false },
         onDiscover = viewModel::discoverModels,
         onAdd = { draft ->
@@ -1289,6 +1310,76 @@ private fun ProviderSettings(
             addingProvider = false
         },
     )
+}
+
+@Composable
+private fun ChatGptOAuthCard(
+    state: OpenAiOAuthState,
+    onSignIn: () -> Unit,
+    onSignOut: () -> Unit,
+    onRefresh: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val signedIn = state is OpenAiOAuthState.SignedIn
+    Surface(
+        color = if (signedIn) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    color = if (signedIn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = if (signedIn) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    modifier = Modifier.size(42.dp),
+                ) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AccountCircle, null) } }
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text("ChatGPT account", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        when (state) {
+                            OpenAiOAuthState.SignedOut -> "Use your ChatGPT plan without an API key"
+                            OpenAiOAuthState.SigningIn -> "Complete sign-in in your browser…"
+                            is OpenAiOAuthState.SignedIn -> state.email?.let { "Connected • $it" } ?: "Connected"
+                            is OpenAiOAuthState.Error -> state.message
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (state is OpenAiOAuthState.Error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (state is OpenAiOAuthState.SigningIn) {
+                    CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                    TextButton(onClick = onCancel) { Text("Cancel") }
+                }
+            }
+            Text(
+                "One-tap native OAuth. Arbor opens the system browser, receives the localhost callback itself, encrypts the session on this device, and refreshes it automatically. No extension or local proxy is required.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (signedIn) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onRefresh, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Outlined.Refresh, null)
+                        Text(" Refresh models")
+                    }
+                    OutlinedButton(onClick = onSignOut) {
+                        Icon(Icons.AutoMirrored.Outlined.Logout, null)
+                        Text(" Sign out")
+                    }
+                }
+            } else {
+                Button(
+                    onClick = onSignIn,
+                    enabled = state !is OpenAiOAuthState.SigningIn,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.AutoMirrored.Outlined.Login, null)
+                    Text(if (state is OpenAiOAuthState.Error) " Sign in again" else " Sign in with ChatGPT")
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -1448,7 +1539,7 @@ private fun AddProviderDialog(
                         Text("Protocol: ${providerKindLabel(kind)}", Modifier.weight(1f))
                     }
                     ArborDropdownMenu(expanded = typeMenu, onDismissRequest = { typeMenu = false }) {
-                        ProviderKind.entries.forEach { option ->
+                        ProviderKind.entries.filter { it != ProviderKind.OPENAI_OAUTH }.forEach { option ->
                             DropdownMenuItem(
                                 text = { Text(providerKindLabel(option)) },
                                 onClick = {
@@ -1579,12 +1670,14 @@ private fun AddProviderDialog(
 
 private fun providerKindLabel(kind: ProviderKind): String = when (kind) {
     ProviderKind.OPENAI_COMPATIBLE -> "OpenAI-compatible"
+    ProviderKind.OPENAI_OAUTH -> "ChatGPT OAuth"
     ProviderKind.ANTHROPIC -> "Anthropic Messages"
     ProviderKind.GEMINI -> "Google Gemini"
 }
 
 private fun defaultBaseUrl(kind: ProviderKind): String = when (kind) {
     ProviderKind.OPENAI_COMPATIBLE -> "https://api.openai.com/v1"
+    ProviderKind.OPENAI_OAUTH -> "https://chatgpt.com/backend-api/codex"
     ProviderKind.ANTHROPIC -> "https://api.anthropic.com/v1"
     ProviderKind.GEMINI -> "https://generativelanguage.googleapis.com/v1beta"
 }

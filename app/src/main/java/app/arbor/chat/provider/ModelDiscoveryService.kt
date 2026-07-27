@@ -22,9 +22,13 @@ data class DiscoveredModel(
     val contextWindow: Int? = null,
     val maxOutputTokens: Int? = null,
     val supportsThinking: Boolean? = null,
+    val supportsVision: Boolean? = null,
+    val supportsFiles: Boolean? = null,
+    val supportsTools: Boolean? = null,
 )
 
 class ModelDiscoveryService(
+    private val oauth: OpenAiOAuthManager,
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -37,6 +41,20 @@ class ModelDiscoveryService(
         apiKey: String,
         customHeadersJson: String,
     ): List<DiscoveredModel> = withContext(Dispatchers.IO) {
+        if (kind == ProviderKind.OPENAI_OAUTH) {
+            return@withContext oauth.modelCatalog(forceRefresh = true).map { model ->
+                DiscoveredModel(
+                    id = model.id,
+                    displayName = model.displayName,
+                    contextWindow = model.contextWindow,
+                    maxOutputTokens = model.maxOutputTokens,
+                    supportsThinking = model.supportsThinking,
+                    supportsVision = true,
+                    supportsFiles = false,
+                    supportsTools = true,
+                )
+            }
+        }
         val baseUrl = ProviderEndpointPolicy.validate(rawBaseUrl)
         val customHeaders = parseHeaders(customHeadersJson)
         val collected = mutableListOf<DiscoveredModel>()
@@ -46,6 +64,7 @@ class ModelDiscoveryService(
             val endpoint = "$baseUrl/models".toHttpUrl().newBuilder().apply {
                 when (kind) {
                     ProviderKind.OPENAI_COMPATIBLE -> Unit
+                    ProviderKind.OPENAI_OAUTH -> error("OAuth discovery is handled before paging")
                     ProviderKind.ANTHROPIC -> {
                         addQueryParameter("limit", "100")
                         cursor?.let { addQueryParameter("after_id", it) }
@@ -59,11 +78,13 @@ class ModelDiscoveryService(
             val body = fetchPage(kind, endpoint, apiKey, customHeaders)
             collected += when (kind) {
                 ProviderKind.OPENAI_COMPATIBLE, ProviderKind.ANTHROPIC -> parseDataModels(body["data"] as? JsonArray)
+                ProviderKind.OPENAI_OAUTH -> error("OAuth discovery is handled before paging")
                 ProviderKind.GEMINI -> parseGeminiModels(body["models"] as? JsonArray)
             }
             if (collected.size >= MAX_MODELS || kind == ProviderKind.OPENAI_COMPATIBLE) break
             val next = when (kind) {
                 ProviderKind.OPENAI_COMPATIBLE -> null
+                ProviderKind.OPENAI_OAUTH -> null
                 ProviderKind.ANTHROPIC -> if (body["has_more"]?.jsonPrimitive?.booleanOrNull == true) {
                     body["last_id"]?.jsonPrimitive?.contentOrNull
                 } else null
@@ -85,6 +106,7 @@ class ModelDiscoveryService(
         val request = Request.Builder().url(endpoint).get().apply {
             when (kind) {
                 ProviderKind.OPENAI_COMPATIBLE -> if (apiKey.isNotBlank()) header("Authorization", "Bearer $apiKey")
+                ProviderKind.OPENAI_OAUTH -> error("OAuth discovery is handled by OpenAiOAuthManager")
                 ProviderKind.ANTHROPIC -> {
                     if (apiKey.isNotBlank()) header("x-api-key", apiKey)
                     header("anthropic-version", "2023-06-01")

@@ -11,7 +11,7 @@ import kotlinx.serialization.Serializable
 enum class MessageRole { SYSTEM, USER, ASSISTANT, TOOL }
 enum class MessageStatus { QUEUED, STREAMING, INTERRUPTED, COMPLETE, ERROR }
 enum class SendMode { SEND_NOW, QUEUE, STEER }
-@Serializable enum class ProviderKind { OPENAI_COMPATIBLE, ANTHROPIC, GEMINI }
+@Serializable enum class ProviderKind { OPENAI_COMPATIBLE, OPENAI_OAUTH, ANTHROPIC, GEMINI }
 enum class ReasoningVisibility { ALWAYS, SHOW_WHILE_WORKING, COLLAPSED }
 enum class ThinkingEffort { MINIMAL, LOW, MEDIUM, HIGH, XHIGH, MAX }
 enum class AuxiliaryMode { OFF, LOCAL, MODEL }

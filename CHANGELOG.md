@@ -1,3 +1,11 @@
+## 0.19.0
+
+- Add native one-tap Sign in with ChatGPT using OAuth authorization-code + PKCE and Arbor's own localhost callback; no extension, WebView, Node.js process, proxy, copied token, or API key is required.
+- Encrypt OAuth tokens in the existing secure store, refresh sessions automatically, retry once after authentication expiry, and provide complete sign-out cleanup.
+- Discover account-available Codex models and integrate them into the normal Arbor provider/model selector.
+- Add direct Responses streaming with reasoning summaries, native tools, encrypted item replay, images, usage, and Responses-lite handling.
+- Rebase on 0.18.4 and preserve its blur/edge repairs, package IDs, Room data, settings, credentials, workspaces, and debug signing compatibility.
+
 ## 0.18.4
 
 - Replace quarter-resolution strong blur with a constant four-pass half-resolution pipeline.

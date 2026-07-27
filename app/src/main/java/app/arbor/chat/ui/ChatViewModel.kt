@@ -29,6 +29,8 @@ import app.arbor.chat.data.PackageApprovalMode
 import app.arbor.chat.data.PackageTransactionEntity
 import app.arbor.chat.provider.ProviderCredentialPolicy
 import app.arbor.chat.provider.ProviderEndpointPolicy
+import app.arbor.chat.provider.OpenAiOAuthManager
+import app.arbor.chat.provider.OpenAiOAuthState
 import app.arbor.chat.provider.parseHeaders
 import app.arbor.chat.sandbox.ExecutionResult
 import app.arbor.chat.sandbox.ExecutionProgress
@@ -131,6 +133,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     val notices = MutableSharedFlow<String>(extraBufferCapacity = 8)
     private val _credentialRevision = MutableStateFlow(0L)
     val credentialRevision: StateFlow<Long> = _credentialRevision
+    val openAiOAuthState: StateFlow<OpenAiOAuthState> = container.openAiOAuth.state
     private val conversationSettingsMutex = Mutex()
     private val automationSettingsMutex = Mutex()
     private val initializationMutex = Mutex()
@@ -531,6 +534,50 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
 
     fun apiKey(providerId: String): String = container.secureStore.apiKey(providerId)
 
+    fun signInWithChatGpt() = launchAction {
+        container.openAiOAuth.signIn() ?: return@launchAction
+        container.secureStore.setApiKey(OpenAiOAuthManager.PROVIDER_ID, OAUTH_CREDENTIAL_MARKER)
+        val provider = container.repository.provider(OpenAiOAuthManager.PROVIDER_ID)
+            ?: DefaultCatalog.providers.first { it.id == OpenAiOAuthManager.PROVIDER_ID }
+        container.repository.saveProvider(provider.copy(registered = true, apiKeyRequired = false))
+        val discovered = container.modelDiscovery.discover(
+            ProviderKind.OPENAI_OAUTH,
+            provider.baseUrl,
+            OAUTH_CREDENTIAL_MARKER,
+            provider.customHeadersJson,
+        )
+        saveDiscoveredModels(provider.id, discovered)
+        _credentialRevision.value++
+        notices.emit("Signed in with ChatGPT • ${discovered.size} models available")
+    }
+
+
+    fun cancelChatGptSignIn() {
+        container.openAiOAuth.cancelSignIn()
+    }
+
+    fun signOutFromChatGpt() = launchAction {
+        container.openAiOAuth.signOut()
+        container.secureStore.setApiKey(OpenAiOAuthManager.PROVIDER_ID, "")
+        container.repository.provider(OpenAiOAuthManager.PROVIDER_ID)?.let { provider ->
+            container.repository.saveProvider(provider.copy(registered = false))
+        }
+        _credentialRevision.value++
+        notices.emit("Signed out of ChatGPT")
+    }
+
+    fun refreshChatGptModels() = launchAction {
+        val provider = requireNotNull(container.repository.provider(OpenAiOAuthManager.PROVIDER_ID))
+        val discovered = container.modelDiscovery.discover(
+            ProviderKind.OPENAI_OAUTH,
+            provider.baseUrl,
+            OAUTH_CREDENTIAL_MARKER,
+            provider.customHeadersJson,
+        )
+        saveDiscoveredModels(provider.id, discovered)
+        notices.emit("Updated ${discovered.size} ChatGPT models")
+    }
+
     fun registeredProviders(values: List<ProviderEntity>): List<ProviderEntity> =
         values.filter { ProviderCredentialPolicy.isRegistered(it, container.secureStore.apiKey(it.id)) }
 
@@ -568,6 +615,9 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
                 outputUsdPerMillion = 0.0,
                 pricingConfigured = false,
                 supportsThinking = candidate.supportsThinking ?: false,
+                supportsVision = candidate.supportsVision ?: false,
+                supportsFiles = candidate.supportsFiles ?: false,
+                supportsTools = candidate.supportsTools ?: false,
             ))
         }
     }
@@ -921,3 +971,4 @@ private const val PACKAGE_REVIEWED = "REVIEWED"
 private const val PACKAGE_INSTALLING = "INSTALLING"
 private const val PACKAGE_SUCCEEDED = "SUCCEEDED"
 private const val PACKAGE_FAILED = "FAILED"
+private const val OAUTH_CREDENTIAL_MARKER = "oauth-session"
