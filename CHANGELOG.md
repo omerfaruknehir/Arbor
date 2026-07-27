@@ -1,3 +1,12 @@
+## 0.19.5
+
+- Restore official OpenAI image models to the normal provider/model picker even when `/models` omits them, and repair existing catalog rows without changing Room schema or migrations.
+- Replace the generic image-generation capability checkbox with automatic preset transport selection and a compact Chat/Image generation request-type selector only for truly custom OpenAI-compatible providers.
+- Route official GPT Image models through `/images/generations` while keeping chat models on normal chat/completions transport.
+- Render reasoning with Arbor's full Markdown, table, code, link, blockquote, and LaTeX renderer during streaming.
+- Enforce a display-only reasoning boundary: fenced code, widgets, generated-content blocks, scripts, package requests, and tools are rendered but never executed from hidden thinking.
+- Add regression coverage for catalog merging, normal-picker visibility, endpoint selection, custom request types, Markdown reasoning, and non-executable reasoning fences.
+
 ## 0.19.4
 
 - Add first-class image-generation model capability across OpenAI-compatible API providers and ChatGPT OAuth providers.

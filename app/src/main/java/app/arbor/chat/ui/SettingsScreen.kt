@@ -107,6 +107,8 @@ import app.arbor.chat.data.PackageApprovalMode
 import app.arbor.chat.data.SystemPromptMode
 import app.arbor.chat.data.SystemPromptProfileEntity
 import app.arbor.chat.provider.DiscoveredModel
+import app.arbor.chat.provider.ModelRequestPolicy
+import app.arbor.chat.provider.ModelRequestType
 import app.arbor.chat.provider.OpenAiOAuthState
 import app.arbor.chat.provider.OpenAiOAuthUsageSnapshot
 import app.arbor.chat.provider.OpenAiOAuthUsageState
@@ -1393,7 +1395,7 @@ private fun ProviderSettings(
             )
             val discovered = draft.discoveredModels.ifEmpty { listOf(DiscoveredModel(draft.modelId, draft.modelName)) }
             val models = discovered.map { candidate ->
-                DefaultCatalog.models.firstOrNull { it.providerId == id && it.modelId == candidate.id } ?: ModelEntity(
+                val model = DefaultCatalog.models.firstOrNull { it.providerId == id && it.modelId == candidate.id } ?: ModelEntity(
                     providerId = id, modelId = candidate.id, displayName = candidate.displayName,
                     contextWindow = candidate.contextWindow ?: 128_000,
                     maxOutputTokens = candidate.maxOutputTokens ?: 16_384,
@@ -1404,6 +1406,7 @@ private fun ProviderSettings(
                     supportsTools = candidate.supportsTools ?: false,
                     supportsImageGeneration = candidate.supportsImageGeneration ?: false,
                 )
+                ModelRequestPolicy.normalize(provider, model)
             }
             viewModel.addProvider(provider, draft.apiKey, models)
             selectedId = id
@@ -2285,6 +2288,7 @@ private fun ModelCatalogEditor(provider: ProviderEntity, viewModel: ChatViewMode
 
     if (creating) ModelEditorSheet(
         title = "Add model",
+        provider = provider,
         initial = ModelEntity(provider.id, "", "", 128_000, 16_384, 0.0, 0.0, 0.0),
         allowIdEdit = true,
         onDismiss = { creating = false },
@@ -2293,6 +2297,7 @@ private fun ModelCatalogEditor(provider: ProviderEntity, viewModel: ChatViewMode
     editing?.let { model ->
         ModelEditorSheet(
             title = "Edit model",
+            provider = provider,
             initial = model,
             allowIdEdit = false,
             onDismiss = { editing = null },
@@ -2316,6 +2321,7 @@ private val ModelEntity.compactSummary: String
 @Composable
 private fun ModelEditorSheet(
     title: String,
+    provider: ProviderEntity,
     initial: ModelEntity,
     allowIdEdit: Boolean,
     onDismiss: () -> Unit,
@@ -2333,7 +2339,11 @@ private fun ModelEditorSheet(
     var files by remember(initial) { mutableStateOf(initial.supportsFiles) }
     var thinking by remember(initial) { mutableStateOf(initial.supportsThinking) }
     var tools by remember(initial) { mutableStateOf(initial.supportsTools) }
-    var imageGeneration by remember(initial) { mutableStateOf(initial.supportsImageGeneration) }
+    var requestType by remember(initial, provider) {
+        mutableStateOf(ModelRequestPolicy.requestType(provider, initial))
+    }
+    val manualRequestType = ModelRequestPolicy.usesManualRequestType(provider)
+    val automaticPreset = provider.kind == ProviderKind.OPENAI_COMPATIBLE && !manualRequestType
     var showPricing by remember(initial) { mutableStateOf(initial.pricingConfigured) }
     val pricesValid = !pricingConfigured || listOf(cacheHit, cacheMiss, outputPrice).all { it.toDoubleOrNull()?.let { price -> price >= 0.0 } == true }
     val valid = id.isNotBlank() && name.isNotBlank() && context.toIntOrNull() != null && output.toIntOrNull() != null && pricesValid
@@ -2353,21 +2363,38 @@ private fun ModelEditorSheet(
                 OutlinedTextField(output, { output = it.filter(Char::isDigit) }, label = { Text("Max output") }, modifier = Modifier.weight(1f), singleLine = true)
             }
 
-            Text("Capabilities", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = thinking, onClick = { thinking = !thinking }, label = { Text("Thinking") }, modifier = Modifier.weight(1f))
-                FilterChip(selected = tools, onClick = { tools = !tools }, label = { Text("Tools") }, modifier = Modifier.weight(1f))
+            if (manualRequestType) {
+                Text("Request type", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = requestType == ModelRequestType.CHAT,
+                        onClick = { requestType = ModelRequestType.CHAT },
+                        label = { Text("Chat") },
+                        modifier = Modifier.weight(1f),
+                    )
+                    FilterChip(
+                        selected = requestType == ModelRequestType.IMAGE_GENERATION,
+                        onClick = { requestType = ModelRequestType.IMAGE_GENERATION },
+                        label = { Text("Image generation") },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Text("Controls whether this custom endpoint uses chat/completions or images/generations.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else if (automaticPreset) {
+                Text("Model capabilities and request transport are selected automatically by this provider preset.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = vision, onClick = { vision = !vision }, label = { Text("Vision") }, modifier = Modifier.weight(1f))
-                FilterChip(selected = files, onClick = { files = !files }, label = { Text("Files") }, modifier = Modifier.weight(1f))
+
+            if (!automaticPreset) {
+                Text("Advanced compatibility", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = thinking, onClick = { thinking = !thinking }, label = { Text("Thinking") }, modifier = Modifier.weight(1f))
+                    FilterChip(selected = tools, onClick = { tools = !tools }, label = { Text("Tools") }, modifier = Modifier.weight(1f))
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = vision, onClick = { vision = !vision }, label = { Text("Vision") }, modifier = Modifier.weight(1f))
+                    FilterChip(selected = files, onClick = { files = !files }, label = { Text("Files") }, modifier = Modifier.weight(1f))
+                }
             }
-            FilterChip(
-                selected = imageGeneration,
-                onClick = { imageGeneration = !imageGeneration },
-                label = { Text("Image generation") },
-                modifier = Modifier.fillMaxWidth(),
-            )
 
             Surface(
                 onClick = { showPricing = !showPricing },
@@ -2409,7 +2436,7 @@ private fun ModelEditorSheet(
                             supportsFiles = files,
                             supportsThinking = thinking,
                             supportsTools = tools,
-                            supportsImageGeneration = imageGeneration,
+                            supportsImageGeneration = requestType == ModelRequestType.IMAGE_GENERATION,
                         ))
                     },
                 ) { Text("Save") }

@@ -32,14 +32,12 @@ class OpenAiCompatibleProvider(
         .build(),
 ) : ChatProvider {
     override suspend fun stream(request: ChatRequest, emit: suspend (StreamChunk) -> Unit) = withContext(Dispatchers.IO) {
-        if (request.model.supportsImageGeneration) {
+        if (ModelRequestPolicy.requestType(request.provider, request.model) == ModelRequestType.IMAGE_GENERATION) {
             generateImage(request, emit)
             return@withContext
         }
         val bodyJson = buildRequestBody(request)
-        val isDeepSeek = request.provider.id == "deepseek"
-        val root = request.provider.baseUrl.trimEnd('/')
-        val endpoint = if (isDeepSeek && request.continuation) "$root/beta/chat/completions" else "$root/chat/completions"
+        val endpoint = endpointFor(request)
         val builder = Request.Builder()
             .url(endpoint)
             .header("Accept", "text/event-stream")
@@ -80,7 +78,7 @@ class OpenAiCompatibleProvider(
         require(latestUser?.attachments.orEmpty().none { it.mimeType.startsWith("image/") }) {
             "This image model supports text-to-image generation in Arbor. Image editing is not enabled for this model yet."
         }
-        val endpoint = request.provider.baseUrl.trimEnd('/') + "/images/generations"
+        val endpoint = endpointFor(request)
         val builder = Request.Builder()
             .url(endpoint)
             .header("Accept", "application/json")
@@ -114,6 +112,9 @@ class OpenAiCompatibleProvider(
             )
         }
     }
+
+    internal fun endpointFor(request: ChatRequest): String =
+        ModelRequestPolicy.endpoint(request.provider, request.model, request.continuation)
 
     internal fun buildImageRequestBody(request: ChatRequest, prompt: String = imagePrompt(request)): JsonObject = buildJsonObject {
         val modelId = request.model.modelId

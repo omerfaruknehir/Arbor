@@ -15,6 +15,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NativeProviderProtocolTest {
+    @Test
+    fun openAiTransportEndpointFollowsRequestPolicy() {
+        val provider = OpenAiCompatibleProvider()
+        val chat = request(ProviderKind.OPENAI_COMPATIBLE, listOf(InputMessage(MessageRole.USER, "Hello")), providerId = "provider-custom")
+        val image = chat.copy(model = chat.model.copy(modelId = "gpt-image-1", supportsImageGeneration = false))
+        assertEquals("https://example.com/v1/chat/completions", provider.endpointFor(chat))
+        // The generic test provider is custom, so its explicit request type controls transport.
+        assertEquals("https://example.com/v1/chat/completions", provider.endpointFor(image))
+        val explicitImage = image.copy(model = image.model.copy(supportsImageGeneration = true))
+        assertEquals("https://example.com/v1/images/generations", provider.endpointFor(explicitImage))
+    }
+
     private val tool = NativeToolDefinition(
         name = "web_search",
         description = "Search",

@@ -1018,18 +1018,25 @@ private fun ProviderModelMenuRows(
         color = MaterialTheme.colorScheme.primary,
         fontWeight = FontWeight.SemiBold,
     )
-    models.forEach { model ->
+    normalModelPickerModels(models).forEach { model ->
         DropdownMenuItem(
             text = {
                 Column {
                     Text(if (provider.id == selectedProviderId && model.modelId == selectedModelId) "✓ ${model.displayName}" else model.displayName)
-                    Text("${model.contextWindow / 1_000}K context", style = MaterialTheme.typography.labelSmall)
+                    Text(
+                        if (model.supportsImageGeneration) "Image generation" else "${model.contextWindow / 1_000}K context",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
                 }
             },
             onClick = { onSelect(provider.id, model.modelId) },
         )
     }
 }
+
+
+internal fun normalModelPickerModels(models: List<ModelEntity>): List<ModelEntity> =
+    models.sortedBy { it.displayName.lowercase() }
 
 @Composable
 private fun EmptyConversation(modifier: Modifier = Modifier) {
@@ -1437,9 +1444,11 @@ private fun TimelineWorkingBlock(
                                         style = MaterialTheme.typography.labelMedium,
                                         color = if (event.status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                                     )
-                                    if (event.content.isNotBlank()) StreamingPlainText(
+                                    if (event.content.isNotBlank()) DisplayOnlyMarkdown(
+                                        operationScope = "reasoning:${event.id}",
                                         text = event.content,
                                         streaming = activeEvent,
+                                        workingCardViewport = workingCardViewport,
                                     )
                                     val runId = if (event.kind == "script") scriptRunId(event.output) else null
                                     val supersededScriptActivity = runId != null && events.drop(index + 1).any { later -> scriptRunId(later.output) == runId }
@@ -1533,9 +1542,11 @@ private fun LegacyWorkingBlock(
                 exit = if (animateVisibility) workingCardCollapseOut() else ExitTransition.None,
             ) {
                 Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (text.isNotBlank()) StreamingPlainText(
+                    if (text.isNotBlank()) DisplayOnlyMarkdown(
+                        operationScope = "legacy-reasoning:$messageKey",
                         text = text,
                         streaming = animateStreaming,
+                        workingCardViewport = workingCardViewport,
                     )
                     traces.forEach { event ->
                         StreamingFade(

@@ -29,6 +29,7 @@ import app.arbor.chat.data.PackageApprovalMode
 import app.arbor.chat.data.PackageTransactionEntity
 import app.arbor.chat.provider.ProviderCredentialPolicy
 import app.arbor.chat.provider.ProviderEndpointPolicy
+import app.arbor.chat.provider.ModelRequestPolicy
 import app.arbor.chat.provider.OpenAiOAuthManager
 import app.arbor.chat.provider.OpenAiOAuthState
 import app.arbor.chat.provider.OpenAiOAuthUsageState
@@ -649,7 +650,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         if (provider.apiKeyRequired) require(apiKey.isNotBlank()) { "API key is required" }
         container.secureStore.setApiKey(provider.id, apiKey)
         container.repository.saveProvider(provider.copy(baseUrl = validatedUrl, registered = true))
-        initialModels.distinctBy { it.modelId }.forEach { container.repository.saveModel(it) }
+        initialModels.distinctBy { it.modelId }.forEach { container.repository.saveModel(ModelRequestPolicy.normalize(provider, it)) }
         _credentialRevision.value++
         notices.emit("Added ${provider.displayName}")
     }
@@ -670,7 +671,8 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
                 outputUsdPerMillion = 0.0,
                 pricingConfigured = false,
             )
-            container.repository.saveModel(base.copy(
+            val provider = requireNotNull(container.repository.provider(providerId)) { "Provider is missing" }
+            container.repository.saveModel(ModelRequestPolicy.normalize(provider, base.copy(
                 displayName = candidate.displayName,
                 contextWindow = candidate.contextWindow ?: base.contextWindow,
                 maxOutputTokens = candidate.maxOutputTokens ?: base.maxOutputTokens,
@@ -679,11 +681,14 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
                 supportsFiles = candidate.supportsFiles ?: base.supportsFiles,
                 supportsTools = candidate.supportsTools ?: base.supportsTools,
                 supportsImageGeneration = candidate.supportsImageGeneration ?: base.supportsImageGeneration,
-            ))
+            )))
         }
     }
 
-    fun saveModel(model: ModelEntity) = launchAction { container.repository.saveModel(model) }
+    fun saveModel(model: ModelEntity) = launchAction {
+        val provider = requireNotNull(container.repository.provider(model.providerId)) { "Provider is missing" }
+        container.repository.saveModel(ModelRequestPolicy.normalize(provider, model))
+    }
 
     fun modelsFor(providerId: String) = container.repository.observeModels(providerId)
 

@@ -12,6 +12,7 @@ import app.arbor.chat.files.OcrEngine
 import app.arbor.chat.generation.GenerationScheduler
 import app.arbor.chat.provider.ProviderRegistry
 import app.arbor.chat.provider.ModelDiscoveryService
+import app.arbor.chat.provider.ModelRequestPolicy
 import app.arbor.chat.provider.HybridTokenCounter
 import app.arbor.chat.provider.OpenAiOAuthManager
 import app.arbor.chat.sandbox.PythonSandbox
@@ -45,6 +46,9 @@ class ArborApplication : Application() {
             container.database.conversationDao().deleteTrulyEmpty()
             container.database.catalogDao().insertProvidersIfMissing(DefaultCatalog.providers)
             container.database.catalogDao().insertModelsIfMissing(DefaultCatalog.models)
+            // 0.19.4 could leave existing official image rows absent or classified as chat.
+            // Repair only Arbor-owned OpenAI image presets; user-defined models remain untouched.
+            container.database.catalogDao().upsertModels(ModelRequestPolicy.officialOpenAiImageModels())
             container.repository.observeProviders().first()
                 .filter { it.kind == ProviderKind.OPENAI_OAUTH }
                 .forEach { oauthProvider ->

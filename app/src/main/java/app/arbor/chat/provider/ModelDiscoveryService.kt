@@ -80,7 +80,7 @@ class ModelDiscoveryService(
             }.build()
             val body = fetchPage(kind, endpoint, apiKey, customHeaders)
             collected += when (kind) {
-                ProviderKind.OPENAI_COMPATIBLE, ProviderKind.ANTHROPIC -> parseDataModels(body["data"] as? JsonArray)
+                ProviderKind.OPENAI_COMPATIBLE, ProviderKind.ANTHROPIC -> parseDataModels(body["data"] as? JsonArray, baseUrl)
                 ProviderKind.OPENAI_OAUTH -> error("OAuth discovery is handled before paging")
                 ProviderKind.GEMINI -> parseGeminiModels(body["models"] as? JsonArray)
             }
@@ -96,8 +96,11 @@ class ModelDiscoveryService(
             if (next == null || !seenCursors.add(next)) break
             cursor = next
         }
-        collected.distinctBy { it.id }.sortedBy { it.displayName.lowercase() }.take(MAX_MODELS)
-            .ifEmpty { throw IllegalStateException("The provider returned no usable models") }
+        val distinct = collected.distinctBy { it.id }.sortedBy { it.displayName.lowercase() }.take(MAX_MODELS)
+        val merged = if (kind == ProviderKind.OPENAI_COMPATIBLE) {
+            ModelRequestPolicy.mergeOfficialOpenAiCatalog(baseUrl, distinct)
+        } else distinct
+        merged.ifEmpty { throw IllegalStateException("The provider returned no usable models") }
     }
 
     private suspend fun fetchPage(
@@ -132,7 +135,7 @@ class ModelDiscoveryService(
         }
     }
 
-    private fun parseDataModels(values: JsonArray?): List<DiscoveredModel> = values.orEmpty().mapNotNull { element ->
+    private fun parseDataModels(values: JsonArray?, baseUrlForParsing: String): List<DiscoveredModel> = values.orEmpty().mapNotNull { element ->
         val model = element as? JsonObject ?: return@mapNotNull null
         val id = model["id"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
         if (id.isBlank()) return@mapNotNull null
@@ -145,7 +148,14 @@ class ModelDiscoveryService(
             contextWindow = model["inputTokenLimit"]?.jsonPrimitive?.intOrNull,
             maxOutputTokens = model["outputTokenLimit"]?.jsonPrimitive?.intOrNull,
             supportsThinking = model["thinking"]?.jsonPrimitive?.booleanOrNull,
-            supportsImageGeneration = imageGenerationModelHeuristic(id),
+            supportsVision = model.booleanCapability("supports_vision", "supportsVision", "vision"),
+            supportsFiles = model.booleanCapability("supports_files", "supportsFiles", "files"),
+            supportsTools = model.booleanCapability("supports_tools", "supportsTools", "tools"),
+            supportsImageGeneration = model.booleanCapability(
+                "supports_image_generation",
+                "supportsImageGeneration",
+                "image_generation",
+            ) ?: if (ModelRequestPolicy.isOfficialOpenAiBaseUrl(baseUrlForParsing)) imageGenerationModelHeuristic(id) else null,
         )
     }
 
@@ -165,6 +175,14 @@ class ModelDiscoveryService(
             maxOutputTokens = model["outputTokenLimit"]?.jsonPrimitive?.intOrNull,
             supportsThinking = model["thinking"]?.jsonPrimitive?.booleanOrNull,
         )
+    }
+
+
+    private fun JsonObject.booleanCapability(vararg names: String): Boolean? {
+        names.forEach { name -> this[name]?.jsonPrimitive?.booleanOrNull?.let { return it } }
+        val capabilities = this["capabilities"] as? JsonObject ?: return null
+        names.forEach { name -> capabilities[name]?.jsonPrimitive?.booleanOrNull?.let { return it } }
+        return null
     }
 
     private fun humanize(id: String): String = id.substringAfterLast('/').replace('-', ' ').replace('_', ' ')

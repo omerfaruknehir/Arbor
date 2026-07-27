@@ -190,6 +190,7 @@ internal fun RichMessage(
     operationScope: String,
     text: String,
     streaming: Boolean = false,
+    displayOnly: Boolean = false,
     onRunPython: suspend (String, suspend (ExecutionProgress) -> Unit) -> ExecutionResult,
     onRunUbuntu: suspend (String, suspend (ExecutionProgress) -> Unit) -> UbuntuExecutionResult,
     onReviewPythonPackages: suspend (String, String) -> PackageReview,
@@ -338,7 +339,7 @@ internal fun RichMessage(
                         enabled = live,
                     ) {
                         val operationKey = "$operationScope:${parsed.key}"
-                        if (!block.complete) {
+                        if (!shouldExecuteRichCodeBlock(displayOnly, block.complete)) {
                             CodeBlock(block.language, block.code, onRunPython, onRunUbuntu, executable = false)
                         } else when (block.language.lowercase()) {
                             "mermaid", "graph", "diagram", "dot", "graphviz",
@@ -1027,6 +1028,36 @@ private fun LightweightTableText(
             }
         },
         modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+internal fun shouldExecuteRichCodeBlock(displayOnly: Boolean, complete: Boolean): Boolean =
+    !displayOnly && complete
+
+/** Full assistant Markdown visuals with a hard execution boundary for hidden reasoning. */
+@Composable
+internal fun DisplayOnlyMarkdown(
+    operationScope: String,
+    text: String,
+    streaming: Boolean,
+    workingCardViewport: WorkingCardViewportController,
+) {
+    RichMessage(
+        operationScope = operationScope,
+        text = text,
+        streaming = streaming,
+        displayOnly = true,
+        onRunPython = { _, _ -> error("Display-only Markdown cannot execute Python") },
+        onRunUbuntu = { _, _ -> error("Display-only Markdown cannot execute Linux tools") },
+        onReviewPythonPackages = { _, _ -> error("Display-only Markdown cannot review packages") },
+        onInstallPackages = { _, _, _ -> error("Display-only Markdown cannot install packages") },
+        onReviewUbuntuPackages = { _, _ -> error("Display-only Markdown cannot review packages") },
+        onInstallUbuntuPackages = { _, _, _, _ -> error("Display-only Markdown cannot install packages") },
+        onWidgetSubmit = {},
+        onReviewWidgetSecurity = { error("Display-only Markdown cannot run widgets") },
+        onRepairGeneratedBlock = { _, _, _, _, _, _, _ -> error("Display-only Markdown cannot repair generated content") },
+        onAcceptGeneratedEdit = { _, _ -> error("Display-only Markdown cannot edit generated content") },
+        workingCardViewport = workingCardViewport,
     )
 }
 
