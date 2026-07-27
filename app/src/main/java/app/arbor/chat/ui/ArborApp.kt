@@ -213,6 +213,8 @@ private fun PerformanceOverlayHost(
     ArborPerformanceOverlay(
         snapshot = snapshot,
         detailed = settings.detailedPerformanceOverlay || settings.diagnosticProfilerEnabled,
+        backgroundOpacity = settings.performanceOverlayBackgroundOpacity,
+        textOpacity = settings.performanceOverlayTextOpacity,
         modifier = modifier,
     )
 }

@@ -40,9 +40,10 @@ class ModelDiscoveryService(
         rawBaseUrl: String,
         apiKey: String,
         customHeadersJson: String,
+        providerId: String? = null,
     ): List<DiscoveredModel> = withContext(Dispatchers.IO) {
         if (kind == ProviderKind.OPENAI_OAUTH) {
-            return@withContext oauth.modelCatalog(forceRefresh = true).map { model ->
+            return@withContext oauth.modelCatalog(providerId ?: OpenAiOAuthManager.PROVIDER_ID, forceRefresh = true).map { model ->
                 DiscoveredModel(
                     id = model.id,
                     displayName = model.displayName,

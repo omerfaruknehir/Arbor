@@ -6,6 +6,7 @@ import app.arbor.chat.chat.AuxiliaryModelService
 import app.arbor.chat.agent.AgentTools
 import app.arbor.chat.data.ArborDatabase
 import app.arbor.chat.data.DefaultCatalog
+import app.arbor.chat.data.ProviderKind
 import app.arbor.chat.files.AttachmentStore
 import app.arbor.chat.files.OcrEngine
 import app.arbor.chat.generation.GenerationScheduler
@@ -25,6 +26,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 
 class ArborApplication : Application() {
     lateinit var container: AppContainer
@@ -43,15 +45,19 @@ class ArborApplication : Application() {
             container.database.conversationDao().deleteTrulyEmpty()
             container.database.catalogDao().insertProvidersIfMissing(DefaultCatalog.providers)
             container.database.catalogDao().insertModelsIfMissing(DefaultCatalog.models)
-            container.repository.provider(OpenAiOAuthManager.PROVIDER_ID)?.let { oauthProvider ->
-                if (container.openAiOAuth.signedInAccountId() != null) {
-                    container.secureStore.setApiKey(OpenAiOAuthManager.PROVIDER_ID, "oauth-session")
-                    if (!oauthProvider.registered) container.repository.saveProvider(oauthProvider.copy(registered = true, apiKeyRequired = false))
-                } else if (container.secureStore.apiKey(OpenAiOAuthManager.PROVIDER_ID).isNotBlank()) {
-                    container.secureStore.setApiKey(OpenAiOAuthManager.PROVIDER_ID, "")
-                    if (oauthProvider.registered) container.repository.saveProvider(oauthProvider.copy(registered = false))
+            container.repository.observeProviders().first()
+                .filter { it.kind == ProviderKind.OPENAI_OAUTH }
+                .forEach { oauthProvider ->
+                    if (container.openAiOAuth.signedInAccountId(oauthProvider.id) != null) {
+                        container.secureStore.setApiKey(oauthProvider.id, "oauth-session")
+                        if (!oauthProvider.registered || oauthProvider.apiKeyRequired) {
+                            container.repository.saveProvider(oauthProvider.copy(registered = true, apiKeyRequired = false))
+                        }
+                    } else if (container.secureStore.apiKey(oauthProvider.id).isNotBlank()) {
+                        // Keep the provider entry so it can be reconnected; only discard the stale marker.
+                        container.secureStore.setApiKey(oauthProvider.id, "")
+                    }
                 }
-            }
             container.database.automationSettingsDao().upsert(
                 container.database.automationSettingsDao().get() ?: app.arbor.chat.data.AutomationSettingsEntity(),
             )

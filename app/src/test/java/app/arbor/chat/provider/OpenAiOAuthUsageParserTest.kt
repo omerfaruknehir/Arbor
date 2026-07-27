@@ -73,4 +73,20 @@ class OpenAiOAuthUsageParserTest {
     fun rejectsUnknownUsageShape() {
         OpenAiOAuthUsageParser.parse(json.parseToJsonElement("{\"unrelated\":true}").jsonObject)
     }
+    @Test
+    fun normalizesResetDurationsAndMillisecondTimestamps() {
+        val nowSeconds = 1_800_000_000L
+        val durationRoot = json.parseToJsonElement(
+            """{"rate_limit":{"primary_window":{"used_percent":1,"reset_after_seconds":4500,"reset_at":1800604800}}}""",
+        ).jsonObject
+        val duration = OpenAiOAuthUsageParser.parse(durationRoot, fetchedAtEpochMs = nowSeconds * 1_000L)
+        assertEquals(nowSeconds + 4_500L, duration.primary?.resetsAtEpochSeconds)
+
+        val millisecondsRoot = json.parseToJsonElement(
+            """{"rate_limit":{"primary_window":{"used_percent":1,"reset_at":1800007200000}}}""",
+        ).jsonObject
+        val milliseconds = OpenAiOAuthUsageParser.parse(millisecondsRoot, fetchedAtEpochMs = nowSeconds * 1_000L)
+        assertEquals(1_800_007_200L, milliseconds.primary?.resetsAtEpochSeconds)
+    }
+
 }

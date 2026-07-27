@@ -39,6 +39,9 @@ class PerformanceOverlayTest {
         assertEquals(PerformanceOverlayPosition.TOP_END, defaults.performanceOverlayPosition)
         assertEquals(250, defaults.copy(performanceUpdateIntervalMs = 1).normalized().performanceUpdateIntervalMs)
         assertEquals(2_000, defaults.copy(performanceUpdateIntervalMs = 5_000).normalized().performanceUpdateIntervalMs)
+        assertEquals(0f, defaults.copy(performanceOverlayBackgroundOpacity = -1f).normalized().performanceOverlayBackgroundOpacity)
+        assertEquals(1f, defaults.copy(performanceOverlayBackgroundOpacity = 2f).normalized().performanceOverlayBackgroundOpacity)
+        assertEquals(0f, defaults.copy(performanceOverlayTextOpacity = -1f).normalized().performanceOverlayTextOpacity)
     }
 
     @Test
@@ -48,6 +51,8 @@ class PerformanceOverlayTest {
         assertTrue(settingsSource.contains("DEVELOPER(\"Developer settings\")"))
         assertTrue(settingsSource.contains("Show performance overlay"))
         assertTrue(settingsSource.contains("Detailed metrics"))
+        assertTrue(settingsSource.contains("Panel opacity"))
+        assertTrue(settingsSource.contains("click-through"))
         assertTrue(rootSource.contains("ArborPerformanceOverlay"))
         assertTrue(rootSource.contains("PerformanceOverlayHost"))
         assertTrue(rootSource.contains("val snapshot by monitor.snapshot.collectAsState()"))
@@ -195,6 +200,16 @@ class PerformanceOverlayTest {
         assertTrue(!source.contains("FULL_WAKE_LOCK"))
         assertTrue(!source.contains("PARTIAL_WAKE_LOCK"))
         assertTrue(!source.contains("setPowerSaveMode"))
+    }
+
+    @Test
+    fun overlayIsVisualOnlyAndHasNoPointerConsumer() {
+        val source = java.io.File("src/main/java/app/arbor/chat/ui/PerformanceOverlay.kt").readText()
+        val function = source.substringAfter("internal fun ArborPerformanceOverlay(").substringBefore("private fun Double.f0")
+        assertTrue(function.contains("backgroundOpacity"))
+        assertTrue(function.contains("textOpacity"))
+        assertTrue(!function.contains(".clickable("))
+        assertTrue(!function.contains(".pointerInput("))
     }
 
 }

@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -626,16 +627,25 @@ private fun averageMetricMs(totalNanos: Long, count: Long): Double =
 internal fun ArborPerformanceOverlay(
     snapshot: PerformanceSnapshot,
     detailed: Boolean,
+    backgroundOpacity: Float = 0.86f,
+    textOpacity: Float = 1f,
     modifier: Modifier = Modifier,
 ) {
+    val panelAlpha = backgroundOpacity.coerceIn(0f, 1f)
     Surface(
-        modifier = modifier.border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(10.dp)),
-        color = Color.Black.copy(alpha = 0.86f),
+        modifier = modifier.border(1.dp, Color.White.copy(alpha = 0.14f * panelAlpha), RoundedCornerShape(10.dp)),
+        color = Color.Black.copy(alpha = panelAlpha),
         contentColor = Color.White,
         shape = RoundedCornerShape(10.dp),
-        shadowElevation = 6.dp,
+        shadowElevation = (6f * panelAlpha).dp,
     ) {
-        Column(Modifier.padding(horizontal = 9.dp, vertical = 7.dp)) {
+        // No pointer-input/clickable modifier is installed: taps, scrolling and edge gestures
+        // continue to the content underneath this visual-only overlay.
+        Column(
+            Modifier
+                .graphicsLayer { alpha = textOpacity.coerceIn(0f, 1f) }
+                .padding(horizontal = 9.dp, vertical = 7.dp),
+        ) {
             Text(
                 "Render ${snapshot.appRenderedFrameRate.f0()} fps  ${snapshot.averageFrameMs.f1()} ms  J ${snapshot.jankPercent.f1()}%",
                 fontFamily = FontFamily.Monospace,

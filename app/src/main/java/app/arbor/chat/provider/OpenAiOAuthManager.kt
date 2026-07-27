@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -43,6 +44,7 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -111,8 +113,9 @@ sealed interface OpenAiOAuthUsageState {
 internal object OpenAiOAuthUsageParser {
     fun parse(root: JsonObject, fetchedAtEpochMs: Long = System.currentTimeMillis()): OpenAiOAuthUsageSnapshot {
         val rateLimit = root.objectValue("rate_limit", "rateLimit", "rateLimits") ?: root
-        val primary = parseWindow(rateLimit.objectValue("primary_window", "primaryWindow", "primary"))
-        val secondary = parseWindow(rateLimit.objectValue("secondary_window", "secondaryWindow", "secondary"))
+        val nowEpochSeconds = fetchedAtEpochMs / 1_000L
+        val primary = parseWindow(rateLimit.objectValue("primary_window", "primaryWindow", "primary"), nowEpochSeconds)
+        val secondary = parseWindow(rateLimit.objectValue("secondary_window", "secondaryWindow", "secondary"), nowEpochSeconds)
         val credits = root.objectValue("credits") ?: rateLimit.objectValue("credits")
         val additional = buildList {
             (root["additional_rate_limits"] as? JsonArray)?.forEach additionalArray@{ element ->
@@ -126,8 +129,8 @@ internal object OpenAiOAuthUsageParser {
                     OpenAiOAuthAdditionalLimit(
                         id = id,
                         name = name,
-                        primary = parseWindow(nested.objectValue("primary_window", "primaryWindow", "primary")),
-                        secondary = parseWindow(nested.objectValue("secondary_window", "secondaryWindow", "secondary")),
+                        primary = parseWindow(nested.objectValue("primary_window", "primaryWindow", "primary"), nowEpochSeconds),
+                        secondary = parseWindow(nested.objectValue("secondary_window", "secondaryWindow", "secondary"), nowEpochSeconds),
                     ),
                 )
             }
@@ -138,8 +141,8 @@ internal object OpenAiOAuthUsageParser {
                     OpenAiOAuthAdditionalLimit(
                         id = id,
                         name = item.stringValue("limitName", "limit_name") ?: humanizeIdentifier(id),
-                        primary = parseWindow(item.objectValue("primary", "primary_window")),
-                        secondary = parseWindow(item.objectValue("secondary", "secondary_window")),
+                        primary = parseWindow(item.objectValue("primary", "primary_window"), nowEpochSeconds),
+                        secondary = parseWindow(item.objectValue("secondary", "secondary_window"), nowEpochSeconds),
                     ),
                 )
             }
@@ -148,8 +151,8 @@ internal object OpenAiOAuthUsageParser {
                     OpenAiOAuthAdditionalLimit(
                         id = "code-review",
                         name = "Code review",
-                        primary = parseWindow(item.objectValue("primary_window", "primaryWindow", "primary") ?: item),
-                        secondary = parseWindow(item.objectValue("secondary_window", "secondaryWindow", "secondary")),
+                        primary = parseWindow(item.objectValue("primary_window", "primaryWindow", "primary") ?: item, nowEpochSeconds),
+                        secondary = parseWindow(item.objectValue("secondary_window", "secondaryWindow", "secondary"), nowEpochSeconds),
                     ),
                 )
             }
@@ -181,12 +184,23 @@ internal object OpenAiOAuthUsageParser {
         return snapshot
     }
 
-    private fun parseWindow(value: JsonObject?): OpenAiOAuthUsageWindow? {
+    private fun parseWindow(value: JsonObject?, nowEpochSeconds: Long): OpenAiOAuthUsageWindow? {
         value ?: return null
         val used = value.numberValue("used_percent", "usedPercent") ?: return null
         val seconds = value.longValue("limit_window_seconds", "window_duration_seconds", "windowDurationSeconds")
             ?: value.longValue("window_duration_mins", "window_minutes", "windowDurationMins")?.times(60L)
-        val resetAt = value.longValue("reset_at", "resets_at", "resetsAt")
+        val absoluteRaw = value.longValue("reset_at", "resets_at", "resetsAt", "resetAt")
+        val resetAfter = value.longValue(
+            "reset_after_seconds", "resetAfterSeconds", "resets_in_seconds", "resetsInSeconds", "reset_after", "resetAfter",
+        )
+        val resetAt = resetAfter?.takeIf { it >= 0L }?.let(nowEpochSeconds::plus) ?: when {
+            absoluteRaw == null -> null
+            // Defensive normalization: private endpoints have returned both epoch seconds and milliseconds.
+            absoluteRaw >= 10_000_000_000L -> absoluteRaw / 1_000L
+            // A small reset value is a duration, not a Unix timestamp.
+            absoluteRaw in 0L..9_999_999L -> nowEpochSeconds + absoluteRaw
+            else -> absoluteRaw
+        }
         return OpenAiOAuthUsageWindow(
             usedPercent = used.coerceIn(0.0, 100.0),
             windowDurationSeconds = seconds,
@@ -207,7 +221,7 @@ internal object OpenAiOAuthUsageParser {
         keys.firstNotNullOfOrNull { key -> this[key]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() }
 
     private fun JsonObject.longValue(vararg keys: String): Long? =
-        keys.firstNotNullOfOrNull { key -> this[key]?.jsonPrimitive?.contentOrNull?.toLongOrNull() }
+        keys.firstNotNullOfOrNull { key -> this[key]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()?.toLong() }
 
     private fun humanizeIdentifier(id: String): String = id.substringAfterLast('/').replace('-', ' ').replace('_', ' ')
         .split(' ').filter(String::isNotBlank).joinToString(" ") { word ->
@@ -235,114 +249,142 @@ class OpenAiOAuthManager(
     private val refreshMutex = Mutex()
     private val modelMutex = Mutex()
     private val usageMutex = Mutex()
-    private var cachedModels: List<OpenAiOAuthModelInfo> = emptyList()
-    private var cachedModelsUntil = 0L
-    private var cachedUsage: OpenAiOAuthUsageSnapshot? = null
-    private var cachedUsageUntil = 0L
+    private data class ModelCache(val models: List<OpenAiOAuthModelInfo>, val validUntil: Long)
+    private data class UsageCache(val snapshot: OpenAiOAuthUsageSnapshot, val validUntil: Long)
+    private val sessions = ConcurrentHashMap<String, OpenAiOAuthSession>().apply {
+        putAll(secureStore.openAiOAuthAccounts().mapValues { it.value.toSession() })
+    }
+    private val modelCaches = ConcurrentHashMap<String, ModelCache>()
+    private val usageCaches = ConcurrentHashMap<String, UsageCache>()
     private val random = SecureRandom()
     @Volatile private var activeLoginServers: List<ServerSocket> = emptyList()
     @Volatile private var activeReturnLatch: CountDownLatch? = null
+    @Volatile private var activeLoginProviderId: String? = null
     @Volatile private var loginCancelled = false
     private val callbackReceived = AtomicBoolean(false)
-    private var session: OpenAiOAuthSession? = secureStore.openAiOAuthSecrets()?.toSession()
 
+    private val _accountStates = MutableStateFlow<Map<String, OpenAiOAuthState>>(
+        sessions.mapValues { signedInState(it.value) },
+    )
+    val accountStates: StateFlow<Map<String, OpenAiOAuthState>> = _accountStates.asStateFlow()
+
+    private val _usageStates = MutableStateFlow<Map<String, OpenAiOAuthUsageState>>(
+        sessions.keys.associateWith { OpenAiOAuthUsageState.Loading() },
+    )
+    val usageStates: StateFlow<Map<String, OpenAiOAuthUsageState>> = _usageStates.asStateFlow()
+
+    // Compatibility state for the original built-in provider id.
     private val _usageState = MutableStateFlow<OpenAiOAuthUsageState>(
-        if (session == null) OpenAiOAuthUsageState.SignedOut else OpenAiOAuthUsageState.Loading(),
+        if (sessions[PROVIDER_ID] == null) OpenAiOAuthUsageState.SignedOut else OpenAiOAuthUsageState.Loading(),
     )
     val usageState: StateFlow<OpenAiOAuthUsageState> = _usageState.asStateFlow()
-
     private val _state = MutableStateFlow<OpenAiOAuthState>(
-        session?.let(::signedInState) ?: OpenAiOAuthState.SignedOut,
+        sessions[PROVIDER_ID]?.let(::signedInState) ?: OpenAiOAuthState.SignedOut,
     )
     val state: StateFlow<OpenAiOAuthState> = _state.asStateFlow()
 
-    fun signedInAccountId(): String? = session?.accountId
+    fun signedInAccountId(providerId: String = PROVIDER_ID): String? =
+        sessions[providerId]?.accountId ?: secureStore.openAiOAuthSecrets(providerId)?.accountId
 
-    suspend fun modelInfo(modelId: String): OpenAiOAuthModelInfo? = modelCatalog().firstOrNull { it.id == modelId }
+    suspend fun modelInfo(providerId: String, modelId: String): OpenAiOAuthModelInfo? =
+        modelCatalog(providerId).firstOrNull { it.id == modelId }
 
-    suspend fun modelCatalog(forceRefresh: Boolean = false): List<OpenAiOAuthModelInfo> = modelMutex.withLock {
+    suspend fun modelInfo(modelId: String): OpenAiOAuthModelInfo? = modelInfo(PROVIDER_ID, modelId)
+
+    suspend fun modelCatalog(
+        providerId: String = PROVIDER_ID,
+        forceRefresh: Boolean = false,
+    ): List<OpenAiOAuthModelInfo> = modelMutex.withLock {
         val now = System.currentTimeMillis()
-        if (!forceRefresh && cachedModels.isNotEmpty() && now < cachedModelsUntil) return cachedModels
-        var auth = validSession()
+        val cached = modelCaches[providerId]
+        if (!forceRefresh && cached != null && cached.models.isNotEmpty() && now < cached.validUntil) return cached.models
+        var auth = validSession(providerId)
         val models = try {
             withContext(Dispatchers.IO) { fetchModelCatalog(auth) }
         } catch (error: ProviderHttpException) {
             if (error.status != 401) throw error
-            auth = validSession(forceRefresh = true)
+            auth = validSession(providerId, forceRefresh = true)
             withContext(Dispatchers.IO) { fetchModelCatalog(auth) }
         }
         require(models.isNotEmpty()) { "The ChatGPT account returned no usable models" }
-        cachedModels = models
-        cachedModelsUntil = now + MODEL_CACHE_MS
+        modelCaches[providerId] = ModelCache(models, now + MODEL_CACHE_MS)
         models
     }
 
-
-    suspend fun usage(forceRefresh: Boolean = false): OpenAiOAuthUsageSnapshot = usageMutex.withLock {
+    suspend fun usage(
+        providerId: String = PROVIDER_ID,
+        forceRefresh: Boolean = false,
+    ): OpenAiOAuthUsageSnapshot = usageMutex.withLock {
         val now = System.currentTimeMillis()
-        val previous = cachedUsage
-        if (!forceRefresh && previous != null && now < cachedUsageUntil) {
-            _usageState.value = OpenAiOAuthUsageState.Loaded(previous)
-            return previous
+        val cached = usageCaches[providerId]
+        val previous = cached?.snapshot
+        if (!forceRefresh && cached != null && now < cached.validUntil) {
+            updateUsageState(providerId, OpenAiOAuthUsageState.Loaded(cached.snapshot))
+            return cached.snapshot
         }
-        if (session == null && secureStore.openAiOAuthSecrets() == null) {
-            _usageState.value = OpenAiOAuthUsageState.SignedOut
-            throw IllegalStateException("Sign in with ChatGPT in Settings")
+        if (sessions[providerId] == null && secureStore.openAiOAuthSecrets(providerId) == null) {
+            updateUsageState(providerId, OpenAiOAuthUsageState.SignedOut)
+            throw IllegalStateException("Sign in with ChatGPT for this provider in Settings")
         }
 
-        _usageState.value = OpenAiOAuthUsageState.Loading(previous)
+        updateUsageState(providerId, OpenAiOAuthUsageState.Loading(previous))
         try {
-            var auth = validSession()
+            var auth = validSession(providerId)
             val snapshot = try {
                 withContext(Dispatchers.IO) { fetchUsage(auth) }
             } catch (error: ProviderHttpException) {
                 if (error.status != 401) throw error
-                auth = validSession(forceRefresh = true)
+                auth = validSession(providerId, forceRefresh = true)
                 withContext(Dispatchers.IO) { fetchUsage(auth) }
             }
-            cachedUsage = snapshot
-            cachedUsageUntil = System.currentTimeMillis() + USAGE_CACHE_MS
-            _usageState.value = OpenAiOAuthUsageState.Loaded(snapshot)
+            usageCaches[providerId] = UsageCache(snapshot, System.currentTimeMillis() + USAGE_CACHE_MS)
+            updateUsageState(providerId, OpenAiOAuthUsageState.Loaded(snapshot))
             snapshot
         } catch (error: Throwable) {
             val message = error.message?.take(500) ?: "ChatGPT usage could not be loaded"
-            _usageState.value = OpenAiOAuthUsageState.Error(message, previous)
+            updateUsageState(providerId, OpenAiOAuthUsageState.Error(message, previous))
             throw error
         }
     }
 
-    suspend fun signIn(): OpenAiOAuthSession? = loginMutex.withLock {
+    suspend fun signIn(providerId: String = PROVIDER_ID): OpenAiOAuthSession? = loginMutex.withLock {
+        activeLoginProviderId = providerId
         loginCancelled = false
-        _state.value = OpenAiOAuthState.SigningIn
+        updateAccountState(providerId, OpenAiOAuthState.SigningIn)
         try {
             val result = withContext(Dispatchers.IO) { performBrowserLogin() }
             if (loginCancelled) {
-                _state.value = OpenAiOAuthState.SignedOut
+                updateAccountState(providerId, OpenAiOAuthState.SignedOut)
                 return@withLock null
             }
-            persist(result)
-            _state.value = signedInState(result)
-            cachedUsage = null
-            cachedUsageUntil = 0L
-            _usageState.value = OpenAiOAuthUsageState.Loading()
+            persist(providerId, result)
+            updateAccountState(providerId, signedInState(result))
+            usageCaches.remove(providerId)
+            updateUsageState(providerId, OpenAiOAuthUsageState.Loading())
             result
         } catch (error: Throwable) {
             if (loginCancelled) {
-                _state.value = OpenAiOAuthState.SignedOut
+                updateAccountState(providerId, OpenAiOAuthState.SignedOut)
                 null
             } else {
                 val message = error.message?.take(500) ?: "ChatGPT sign-in failed"
-                _state.value = OpenAiOAuthState.Error(message)
+                updateAccountState(providerId, OpenAiOAuthState.Error(message))
                 throw error
             }
+        } finally {
+            activeLoginProviderId = null
         }
     }
 
-    fun cancelSignIn() {
+    fun cancelSignIn(providerId: String? = activeLoginProviderId) {
         loginCancelled = true
         activeReturnLatch?.countDown()
         activeLoginServers.forEach { server -> runCatching { server.close() } }
-        if (_state.value is OpenAiOAuthState.SigningIn) _state.value = OpenAiOAuthState.SignedOut
+        providerId?.let { id ->
+            if (_accountStates.value[id] is OpenAiOAuthState.SigningIn) {
+                updateAccountState(id, if (sessions[id] == null) OpenAiOAuthState.SignedOut else signedInState(sessions.getValue(id)))
+            }
+        }
     }
 
     /** Called when Arbor becomes foreground after the browser OAuth callback. */
@@ -350,38 +392,50 @@ class OpenAiOAuthManager(
         if (callbackReceived.get()) activeReturnLatch?.countDown()
     }
 
-    fun signOut() {
-        cancelSignIn()
-        session = null
-        secureStore.setOpenAiOAuthSecrets(null)
-        cachedModels = emptyList()
-        cachedModelsUntil = 0L
-        cachedUsage = null
-        cachedUsageUntil = 0L
-        _usageState.value = OpenAiOAuthUsageState.SignedOut
-        _state.value = OpenAiOAuthState.SignedOut
+    fun signOut(providerId: String = PROVIDER_ID) {
+        if (activeLoginProviderId == providerId) cancelSignIn(providerId)
+        sessions.remove(providerId)
+        secureStore.setOpenAiOAuthSecrets(providerId, null)
+        modelCaches.remove(providerId)
+        usageCaches.remove(providerId)
+        updateUsageState(providerId, OpenAiOAuthUsageState.SignedOut)
+        updateAccountState(providerId, OpenAiOAuthState.SignedOut)
     }
 
-    suspend fun validSession(forceRefresh: Boolean = false): OpenAiOAuthSession = refreshMutex.withLock {
-        val current = session ?: secureStore.openAiOAuthSecrets()?.toSession()?.also { session = it }
-            ?: throw IllegalStateException("Sign in with ChatGPT in Settings")
+    suspend fun validSession(
+        providerId: String = PROVIDER_ID,
+        forceRefresh: Boolean = false,
+    ): OpenAiOAuthSession = refreshMutex.withLock {
+        val current = sessions[providerId]
+            ?: secureStore.openAiOAuthSecrets(providerId)?.toSession()?.also { sessions[providerId] = it }
+            ?: throw IllegalStateException("Sign in with ChatGPT for this provider in Settings")
         if (!forceRefresh && current.expiresAtEpochMs - REFRESH_EARLY_MS > System.currentTimeMillis()) return current
         val refreshToken = current.refreshToken
-            ?: throw IllegalStateException("The ChatGPT session expired. Sign in again in Settings")
+            ?: throw IllegalStateException("This ChatGPT session expired. Sign in again in Settings")
         return try {
             val refreshed = withContext(Dispatchers.IO) { refresh(refreshToken, current) }
-            persist(refreshed)
-            _state.value = signedInState(refreshed)
+            persist(providerId, refreshed)
+            updateAccountState(providerId, signedInState(refreshed))
             refreshed
         } catch (error: Throwable) {
-            _state.value = OpenAiOAuthState.Error(error.message?.take(500) ?: "ChatGPT session refresh failed")
+            updateAccountState(providerId, OpenAiOAuthState.Error(error.message?.take(500) ?: "ChatGPT session refresh failed"))
             throw error
         }
     }
 
-    private fun persist(value: OpenAiOAuthSession) {
-        session = value
-        secureStore.setOpenAiOAuthSecrets(value.toSecrets())
+    private fun persist(providerId: String, value: OpenAiOAuthSession) {
+        sessions[providerId] = value
+        secureStore.setOpenAiOAuthSecrets(providerId, value.toSecrets())
+    }
+
+    private fun updateAccountState(providerId: String, value: OpenAiOAuthState) {
+        _accountStates.update { it + (providerId to value) }
+        if (providerId == PROVIDER_ID) _state.value = value
+    }
+
+    private fun updateUsageState(providerId: String, value: OpenAiOAuthUsageState) {
+        _usageStates.update { it + (providerId to value) }
+        if (providerId == PROVIDER_ID) _usageState.value = value
     }
 
     private fun performBrowserLogin(): OpenAiOAuthSession {
@@ -406,6 +460,9 @@ class OpenAiOAuthManager(
                 .appendQueryParameter("code_challenge_method", "S256")
                 .appendQueryParameter("id_token_add_organizations", "true")
                 .appendQueryParameter("codex_cli_simplified_flow", "true")
+                // A fresh authentication prompt is required for multi-account providers; otherwise
+                // the browser may silently reuse the previous ChatGPT session.
+                .appendQueryParameter("prompt", "login")
                 .build()
 
             val browser = Intent(Intent.ACTION_VIEW, authorizationUrl)
@@ -562,7 +619,7 @@ class OpenAiOAuthManager(
             .header("Accept", "application/json")
             .header("Authorization", "Bearer ${auth.accessToken}")
             .header("chatgpt-account-id", auth.accountId)
-            .header("User-Agent", "Arbor/0.19.2 openai-oauth-android")
+            .header("User-Agent", "Arbor/0.19.3 openai-oauth-android")
             .apply { if (auth.isFedRamp) header("X-OpenAI-Fedramp", "true") }
             .build()
         executeWithNetworkRetry(request).use { response ->
@@ -602,7 +659,7 @@ class OpenAiOAuthManager(
                 .header("chatgpt-account-id", auth.accountId)
                 .header("OpenAI-Beta", "codex-1")
                 .header("originator", "Arbor")
-                .header("User-Agent", "Arbor/0.19.2 openai-oauth-android")
+                .header("User-Agent", "Arbor/0.19.3 openai-oauth-android")
                 .apply { if (auth.isFedRamp) header("X-OpenAI-Fedramp", "true") }
                 .build()
             executeWithNetworkRetry(request).use { response ->

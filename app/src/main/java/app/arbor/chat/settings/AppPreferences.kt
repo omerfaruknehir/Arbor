@@ -40,9 +40,13 @@ data class DeveloperSettings(
     val detailedPerformanceOverlay: Boolean = true,
     val performanceUpdateIntervalMs: Int = 500,
     val performanceOverlayPosition: PerformanceOverlayPosition = PerformanceOverlayPosition.TOP_END,
+    val performanceOverlayBackgroundOpacity: Float = 0.86f,
+    val performanceOverlayTextOpacity: Float = 1f,
 ) {
     fun normalized() = copy(
         performanceUpdateIntervalMs = performanceUpdateIntervalMs.coerceIn(250, 2_000),
+        performanceOverlayBackgroundOpacity = performanceOverlayBackgroundOpacity.coerceIn(0f, 1f),
+        performanceOverlayTextOpacity = performanceOverlayTextOpacity.coerceIn(0f, 1f),
     )
 }
 
@@ -220,6 +224,8 @@ class AppPreferences(context: Context) {
             putBoolean(KEY_PERFORMANCE_OVERLAY_DETAILED, normalized.detailedPerformanceOverlay)
             putInt(KEY_PERFORMANCE_UPDATE_INTERVAL_MS, normalized.performanceUpdateIntervalMs)
             putString(KEY_PERFORMANCE_OVERLAY_POSITION, normalized.performanceOverlayPosition.name)
+            putFloat(KEY_PERFORMANCE_OVERLAY_BACKGROUND_OPACITY, normalized.performanceOverlayBackgroundOpacity)
+            putFloat(KEY_PERFORMANCE_OVERLAY_TEXT_OPACITY, normalized.performanceOverlayTextOpacity)
         }
     }
 
@@ -268,6 +274,8 @@ class AppPreferences(context: Context) {
         detailedPerformanceOverlay = preferences.getBoolean(KEY_PERFORMANCE_OVERLAY_DETAILED, true),
         performanceUpdateIntervalMs = preferences.getInt(KEY_PERFORMANCE_UPDATE_INTERVAL_MS, 500),
         performanceOverlayPosition = enumValue(KEY_PERFORMANCE_OVERLAY_POSITION, PerformanceOverlayPosition.TOP_END),
+        performanceOverlayBackgroundOpacity = preferences.getFloat(KEY_PERFORMANCE_OVERLAY_BACKGROUND_OPACITY, 0.86f),
+        performanceOverlayTextOpacity = preferences.getFloat(KEY_PERFORMANCE_OVERLAY_TEXT_OPACITY, 1f),
     ).normalized()
 
     private fun readNewChatDefaults() = NewChatDefaults(
@@ -326,5 +334,7 @@ class AppPreferences(context: Context) {
         const val KEY_PERFORMANCE_OVERLAY_DETAILED = "performance_overlay_detailed"
         const val KEY_PERFORMANCE_UPDATE_INTERVAL_MS = "performance_update_interval_ms"
         const val KEY_PERFORMANCE_OVERLAY_POSITION = "performance_overlay_position"
+        const val KEY_PERFORMANCE_OVERLAY_BACKGROUND_OPACITY = "performance_overlay_background_opacity"
+        const val KEY_PERFORMANCE_OVERLAY_TEXT_OPACITY = "performance_overlay_text_opacity"
     }
 }

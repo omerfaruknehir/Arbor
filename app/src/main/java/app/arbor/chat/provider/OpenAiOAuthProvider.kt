@@ -34,9 +34,9 @@ class OpenAiOAuthProvider(
 ) : ChatProvider {
     override suspend fun stream(request: ChatRequest, emit: suspend (StreamChunk) -> Unit) = withContext(Dispatchers.IO) {
         val manager = requireNotNull(oauth) { "OpenAI OAuth manager is unavailable" }
-        val modelInfo = runCatching { manager.modelInfo(request.model.modelId) }.getOrNull()
+        val modelInfo = runCatching { manager.modelInfo(request.provider.id, request.model.modelId) }.getOrNull()
         val body = buildRequestBody(request, modelInfo)
-        var session = manager.validSession()
+        var session = manager.validSession(request.provider.id)
         var refreshed = false
 
         while (true) {
@@ -45,7 +45,7 @@ class OpenAiOAuthProvider(
                 .url(endpoint)
                 .header("Accept", "text/event-stream")
                 .header("Content-Type", "application/json")
-                .header("User-Agent", "Arbor/0.19.2 openai-oauth-android")
+                .header("User-Agent", "Arbor/0.19.3 openai-oauth-android")
                 .post(body.toString().toRequestBody("application/json".toMediaType()))
             request.customHeaders.forEach(builder::header)
             // OAuth transport headers are authoritative and must not be overridden by provider metadata.
@@ -78,7 +78,7 @@ class OpenAiOAuthProvider(
             }
             if (retryWithFreshToken) {
                 refreshed = true
-                session = manager.validSession(forceRefresh = true)
+                session = manager.validSession(request.provider.id, forceRefresh = true)
                 continue
             }
             state.finalChunk()?.let { emit(it) }

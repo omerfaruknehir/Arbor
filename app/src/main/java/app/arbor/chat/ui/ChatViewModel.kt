@@ -135,8 +135,8 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     val notices = MutableSharedFlow<String>(extraBufferCapacity = 8)
     private val _credentialRevision = MutableStateFlow(0L)
     val credentialRevision: StateFlow<Long> = _credentialRevision
-    val openAiOAuthState: StateFlow<OpenAiOAuthState> = container.openAiOAuth.state
-    val openAiOAuthUsageState: StateFlow<OpenAiOAuthUsageState> = container.openAiOAuth.usageState
+    val openAiOAuthStates: StateFlow<Map<String, OpenAiOAuthState>> = container.openAiOAuth.accountStates
+    val openAiOAuthUsageStates: StateFlow<Map<String, OpenAiOAuthUsageState>> = container.openAiOAuth.usageStates
     private val conversationSettingsMutex = Mutex()
     private val automationSettingsMutex = Mutex()
     private val initializationMutex = Mutex()
@@ -522,6 +522,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     }
 
     fun removeProvider(provider: ProviderEntity) = launchAction {
+        if (provider.kind == ProviderKind.OPENAI_OAUTH) container.openAiOAuth.signOut(provider.id)
         container.secureStore.setApiKey(provider.id, "")
         container.repository.saveProvider(provider.copy(registered = false))
         _credentialRevision.value++
@@ -537,61 +538,88 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
 
     fun apiKey(providerId: String): String = container.secureStore.apiKey(providerId)
 
-    fun signInWithChatGpt() = launchAction {
-        container.openAiOAuth.signIn() ?: return@launchAction
-        container.secureStore.setApiKey(OpenAiOAuthManager.PROVIDER_ID, OAUTH_CREDENTIAL_MARKER)
-        val provider = container.repository.provider(OpenAiOAuthManager.PROVIDER_ID)
-            ?: DefaultCatalog.providers.first { it.id == OpenAiOAuthManager.PROVIDER_ID }
+    fun addChatGptProvider(provider: ProviderEntity) = launchAction {
+        require(provider.kind == ProviderKind.OPENAI_OAUTH)
+        require(provider.displayName.isNotBlank()) { "Provider name is required" }
+        val saved = provider.copy(
+            baseUrl = OpenAiOAuthManager.CODEX_BASE_URL,
+            registered = true,
+            apiKeyRequired = false,
+        )
+        container.repository.saveProvider(saved)
+        _credentialRevision.value++
+        notices.emit("Added ${saved.displayName}. Opening ChatGPT sign-in…")
+        connectChatGptProvider(saved)
+    }
+
+    fun signInWithChatGpt(providerId: String) = launchAction {
+        val provider = requireNotNull(container.repository.provider(providerId))
+        require(provider.kind == ProviderKind.OPENAI_OAUTH)
+        connectChatGptProvider(provider)
+    }
+
+    private suspend fun connectChatGptProvider(provider: ProviderEntity) {
+        val providerId = provider.id
+        container.openAiOAuth.signIn(providerId) ?: return
+        container.secureStore.setApiKey(providerId, OAUTH_CREDENTIAL_MARKER)
         container.repository.saveProvider(provider.copy(registered = true, apiKeyRequired = false))
-        val discovered = container.modelDiscovery.discover(
-            ProviderKind.OPENAI_OAUTH,
-            provider.baseUrl,
-            OAUTH_CREDENTIAL_MARKER,
-            provider.customHeadersJson,
-        )
-        saveDiscoveredModels(provider.id, discovered)
-        _credentialRevision.value++
-        runCatching { container.openAiOAuth.usage(forceRefresh = true) }
-        notices.emit("Signed in with ChatGPT • ${discovered.size} models available")
-    }
-
-
-    fun cancelChatGptSignIn() {
-        container.openAiOAuth.cancelSignIn()
-    }
-
-    fun signOutFromChatGpt() = launchAction {
-        container.openAiOAuth.signOut()
-        container.secureStore.setApiKey(OpenAiOAuthManager.PROVIDER_ID, "")
-        container.repository.provider(OpenAiOAuthManager.PROVIDER_ID)?.let { provider ->
-            container.repository.saveProvider(provider.copy(registered = false))
+        val discovered = container.openAiOAuth.modelCatalog(providerId, forceRefresh = true).map { model ->
+            app.arbor.chat.provider.DiscoveredModel(
+                id = model.id,
+                displayName = model.displayName,
+                contextWindow = model.contextWindow,
+                maxOutputTokens = model.maxOutputTokens,
+                supportsThinking = model.supportsThinking,
+                supportsVision = true,
+                supportsFiles = false,
+                supportsTools = true,
+            )
         }
+        saveDiscoveredModels(providerId, discovered)
         _credentialRevision.value++
-        notices.emit("Signed out of ChatGPT")
+        runCatching { container.openAiOAuth.usage(providerId, forceRefresh = true) }
+        notices.emit("Connected ${provider.displayName} • ${discovered.size} models available")
     }
 
-    fun refreshChatGptModels() = launchAction {
-        val provider = requireNotNull(container.repository.provider(OpenAiOAuthManager.PROVIDER_ID))
-        val discovered = container.modelDiscovery.discover(
-            ProviderKind.OPENAI_OAUTH,
-            provider.baseUrl,
-            OAUTH_CREDENTIAL_MARKER,
-            provider.customHeadersJson,
-        )
-        saveDiscoveredModels(provider.id, discovered)
-        notices.emit("Updated ${discovered.size} ChatGPT models")
+    fun cancelChatGptSignIn(providerId: String) {
+        container.openAiOAuth.cancelSignIn(providerId)
     }
 
+    fun signOutFromChatGpt(providerId: String) = launchAction {
+        val name = container.repository.provider(providerId)?.displayName ?: "ChatGPT account"
+        container.openAiOAuth.signOut(providerId)
+        container.secureStore.setApiKey(providerId, "")
+        _credentialRevision.value++
+        notices.emit("Disconnected $name")
+    }
 
-    fun ensureChatGptUsage() {
+    fun refreshChatGptModels(providerId: String) = launchAction {
+        val provider = requireNotNull(container.repository.provider(providerId))
+        val discovered = container.openAiOAuth.modelCatalog(providerId, forceRefresh = true).map { model ->
+            app.arbor.chat.provider.DiscoveredModel(
+                id = model.id,
+                displayName = model.displayName,
+                contextWindow = model.contextWindow,
+                maxOutputTokens = model.maxOutputTokens,
+                supportsThinking = model.supportsThinking,
+                supportsVision = true,
+                supportsFiles = false,
+                supportsTools = true,
+            )
+        }
+        saveDiscoveredModels(providerId, discovered)
+        notices.emit("Updated ${discovered.size} models for ${provider.displayName}")
+    }
+
+    fun ensureChatGptUsage(providerId: String) {
         viewModelScope.launch {
-            runCatching { container.openAiOAuth.usage(forceRefresh = false) }
+            runCatching { container.openAiOAuth.usage(providerId, forceRefresh = false) }
         }
     }
 
-    fun refreshChatGptUsage() {
+    fun refreshChatGptUsage(providerId: String) {
         viewModelScope.launch {
-            runCatching { container.openAiOAuth.usage(forceRefresh = true) }
+            runCatching { container.openAiOAuth.usage(providerId, forceRefresh = true) }
                 .onFailure { notices.emit(it.message ?: "ChatGPT usage could not be refreshed") }
         }
     }
@@ -600,7 +628,13 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         values.filter { ProviderCredentialPolicy.isRegistered(it, container.secureStore.apiKey(it.id)) }
 
     fun configuredProviders(values: List<ProviderEntity>): List<ProviderEntity> =
-        values.filter { ProviderCredentialPolicy.isUsable(it, container.secureStore.apiKey(it.id)) }
+        values.filter { provider ->
+            if (provider.kind == ProviderKind.OPENAI_OAUTH) {
+                provider.registered && provider.enabled && container.openAiOAuth.signedInAccountId(provider.id) != null
+            } else {
+                ProviderCredentialPolicy.isUsable(provider, container.secureStore.apiKey(provider.id))
+            }
+        }
 
     suspend fun discoverModels(kind: ProviderKind, baseUrl: String, apiKey: String, headers: String) =
         container.modelDiscovery.discover(kind, baseUrl, apiKey, headers)

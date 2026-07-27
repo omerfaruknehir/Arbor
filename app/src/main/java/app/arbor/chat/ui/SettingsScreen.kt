@@ -1,6 +1,5 @@
 package app.arbor.chat.ui
 
-import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -118,9 +117,12 @@ import app.arbor.chat.settings.DeveloperSettings
 import app.arbor.chat.settings.PerformanceOverlayPosition
 import app.arbor.chat.settings.NewChatDefaults
 import app.arbor.chat.settings.ThemeMode
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
+import java.text.DateFormat
+import java.util.Date
 import java.util.UUID
 import kotlin.math.roundToInt
 
@@ -148,8 +150,8 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val automation by viewModel.automationSettings.collectAsStateWithLifecycle()
     val promptProfiles by viewModel.systemPromptProfiles.collectAsStateWithLifecycle()
     val credentialRevision by viewModel.credentialRevision.collectAsStateWithLifecycle()
-    val openAiOAuthState by viewModel.openAiOAuthState.collectAsStateWithLifecycle()
-    val openAiOAuthUsageState by viewModel.openAiOAuthUsageState.collectAsStateWithLifecycle()
+    val openAiOAuthStates by viewModel.openAiOAuthStates.collectAsStateWithLifecycle()
+    val openAiOAuthUsageStates by viewModel.openAiOAuthUsageStates.collectAsStateWithLifecycle()
     val amoled by viewModel.amoled.collectAsState()
     val palette by viewModel.palette.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
@@ -227,8 +229,8 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             providers = providers,
                             registeredProviders = registeredProviders,
                             conversationProviderId = null,
-                            openAiOAuthState = openAiOAuthState,
-                            openAiOAuthUsageState = openAiOAuthUsageState,
+                            openAiOAuthStates = openAiOAuthStates,
+                            openAiOAuthUsageStates = openAiOAuthUsageStates,
                             viewModel = viewModel,
                         )
                         SettingsRoute.ABOUT -> AboutSettingsPage()
@@ -771,6 +773,26 @@ private fun DeveloperSettingsPage(
         enabled = settings.enabled && settings.performanceOverlayEnabled,
     )
 
+    Text("Panel opacity • ${(settings.performanceOverlayBackgroundOpacity * 100).roundToInt()}%", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+    Slider(
+        value = settings.performanceOverlayBackgroundOpacity,
+        onValueChange = { value -> viewModel.updateDeveloperSettings { it.copy(performanceOverlayBackgroundOpacity = value) } },
+        valueRange = 0f..1f,
+        enabled = settings.enabled && settings.performanceOverlayEnabled,
+    )
+    Text("Text opacity • ${(settings.performanceOverlayTextOpacity * 100).roundToInt()}%", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+    Slider(
+        value = settings.performanceOverlayTextOpacity,
+        onValueChange = { value -> viewModel.updateDeveloperSettings { it.copy(performanceOverlayTextOpacity = value) } },
+        valueRange = 0f..1f,
+        enabled = settings.enabled && settings.performanceOverlayEnabled,
+    )
+    Text(
+        "The performance overlay is visual-only and click-through. It does not intercept taps, scrolling, drawer gestures, or back navigation.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
     Text("Update interval", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf(
@@ -1109,12 +1131,14 @@ private fun ProviderSettings(
     providers: List<ProviderEntity>,
     registeredProviders: List<ProviderEntity>,
     conversationProviderId: String?,
-    openAiOAuthState: OpenAiOAuthState,
-    openAiOAuthUsageState: OpenAiOAuthUsageState,
+    openAiOAuthStates: Map<String, OpenAiOAuthState>,
+    openAiOAuthUsageStates: Map<String, OpenAiOAuthUsageState>,
     viewModel: ChatViewModel,
 ) {
     var selectedId by remember { mutableStateOf<String?>(null) }
     var addingProvider by remember { mutableStateOf(false) }
+    var addingChatGpt by remember { mutableStateOf(false) }
+    var renamingOAuth by remember { mutableStateOf<ProviderEntity?>(null) }
     var removingProvider by remember { mutableStateOf<ProviderEntity?>(null) }
     var editingConnection by remember { mutableStateOf(false) }
     var baseUrl by remember { mutableStateOf("") }
@@ -1137,8 +1161,13 @@ private fun ProviderSettings(
             apiKeyRequired = it.apiKeyRequired
         }
     }
-    LaunchedEffect(openAiOAuthState) {
-        if (openAiOAuthState is OpenAiOAuthState.SignedIn) viewModel.ensureChatGptUsage()
+    val selectedOAuthState = selected?.takeIf { it.kind == ProviderKind.OPENAI_OAUTH }
+        ?.let { openAiOAuthStates[it.id] } ?: OpenAiOAuthState.SignedOut
+    val selectedOAuthUsageState = selected?.takeIf { it.kind == ProviderKind.OPENAI_OAUTH }
+        ?.let { openAiOAuthUsageStates[it.id] } ?: OpenAiOAuthUsageState.SignedOut
+    LaunchedEffect(selected?.id, selectedOAuthState) {
+        val provider = selected?.takeIf { it.kind == ProviderKind.OPENAI_OAUTH } ?: return@LaunchedEffect
+        if (selectedOAuthState is OpenAiOAuthState.SignedIn) viewModel.ensureChatGptUsage(provider.id)
     }
 
     SettingsPage {
@@ -1146,29 +1175,28 @@ private fun ProviderSettings(
             Column(Modifier.weight(1f)) {
                 SectionTitle("Providers", "Choose a provider, then manage its connection and models.")
             }
-            FilledTonalButton(onClick = { addingProvider = true }) {
-                Icon(Icons.Outlined.Add, null)
-                Text("Add", Modifier.padding(start = 6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { addingChatGpt = true }) {
+                    Icon(Icons.Outlined.AccountCircle, null)
+                    Text(" ChatGPT")
+                }
+                FilledTonalButton(onClick = { addingProvider = true }) {
+                    Icon(Icons.Outlined.Add, null)
+                    Text(" API", Modifier.padding(start = 2.dp))
+                }
             }
         }
-
-        ChatGptOAuthCard(
-            state = openAiOAuthState,
-            usageState = openAiOAuthUsageState,
-            onSignIn = viewModel::signInWithChatGpt,
-            onSignOut = viewModel::signOutFromChatGpt,
-            onRefreshModels = viewModel::refreshChatGptModels,
-            onRefreshUsage = viewModel::refreshChatGptUsage,
-            onCancel = viewModel::cancelChatGptSignIn,
-        )
 
         if (registeredProviders.isEmpty()) {
             Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Outlined.Cloud, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp))
                     Text("No providers yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("Sign in with ChatGPT above, or add DeepSeek, OpenAI API, Anthropic, Gemini, OpenRouter, or a compatible local endpoint.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Button(onClick = { addingProvider = true }) { Text("Add provider") }
+                    Text("Add a ChatGPT account or configure an API-compatible provider.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { addingChatGpt = true }) { Text("Add ChatGPT") }
+                        OutlinedButton(onClick = { addingProvider = true }) { Text("Add API") }
+                    }
                 }
             }
         } else {
@@ -1189,7 +1217,18 @@ private fun ProviderSettings(
                             ) { Box(contentAlignment = Alignment.Center) { Text(provider.displayName.take(1).uppercase(), fontWeight = FontWeight.Bold) } }
                             Column(Modifier.weight(1f).padding(start = 12.dp)) {
                                 Text(provider.displayName, fontWeight = FontWeight.SemiBold)
-                                Text(providerKindLabel(provider.kind), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    if (provider.kind == ProviderKind.OPENAI_OAUTH) {
+                                        when (openAiOAuthStates[provider.id]) {
+                                            is OpenAiOAuthState.SignedIn -> "ChatGPT OAuth • Connected"
+                                            OpenAiOAuthState.SigningIn -> "ChatGPT OAuth • Signing in"
+                                            is OpenAiOAuthState.Error -> "ChatGPT OAuth • Needs attention"
+                                            else -> "ChatGPT OAuth • Disconnected"
+                                        }
+                                    } else providerKindLabel(provider.kind),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                             if (provider.id == conversationProviderId) Text("In use", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                             if (provider.id == selected?.id) Icon(Icons.Outlined.CheckCircle, "Selected", tint = MaterialTheme.colorScheme.primary)
@@ -1247,8 +1286,22 @@ private fun ProviderSettings(
         }
         selected?.takeIf { it.kind == ProviderKind.OPENAI_OAUTH }?.let { provider ->
             HorizontalDivider()
-            SectionTitle("ChatGPT models", "Models available to the signed-in ChatGPT account.")
-            ModelCatalogEditor(provider, viewModel)
+            ChatGptOAuthCard(
+                providerName = provider.displayName,
+                state = selectedOAuthState,
+                usageState = selectedOAuthUsageState,
+                onSignIn = { viewModel.signInWithChatGpt(provider.id) },
+                onSignOut = { viewModel.signOutFromChatGpt(provider.id) },
+                onRefreshModels = { viewModel.refreshChatGptModels(provider.id) },
+                onRefreshUsage = { viewModel.refreshChatGptUsage(provider.id) },
+                onCancel = { viewModel.cancelChatGptSignIn(provider.id) },
+                onRename = { renamingOAuth = provider },
+                onRemove = { removingProvider = provider },
+            )
+            if (selectedOAuthState is OpenAiOAuthState.SignedIn) {
+                SectionTitle("${provider.displayName} models", "Models discovered for this ChatGPT account only.")
+                ModelCatalogEditor(provider, viewModel)
+            }
         }
         Spacer(Modifier.padding(bottom = 24.dp))
     }
@@ -1286,9 +1339,38 @@ private fun ProviderSettings(
         AlertDialog(
             onDismissRequest = { removingProvider = null },
             title = { Text("Remove ${provider.displayName}?") },
-            text = { Text("Its saved API key will be erased and it will disappear from model selectors. Chats and usage history are kept.") },
+            text = { Text(if (provider.kind == ProviderKind.OPENAI_OAUTH) "Its encrypted OAuth session and models will be disconnected. Chats and usage history are kept." else "Its saved API key will be erased and it will disappear from model selectors. Chats and usage history are kept.") },
             dismissButton = { OutlinedButton(onClick = { removingProvider = null }) { Text("Cancel") } },
             confirmButton = { Button(onClick = { viewModel.removeProvider(provider); removingProvider = null }) { Text("Remove provider") } },
+        )
+    }
+
+    if (addingChatGpt) AddChatGptProviderDialog(
+        existingCount = registeredProviders.count { it.kind == ProviderKind.OPENAI_OAUTH },
+        onDismiss = { addingChatGpt = false },
+        onAdd = { name ->
+            val provider = ProviderEntity(
+                id = "openai-oauth-${UUID.randomUUID()}",
+                displayName = name,
+                kind = ProviderKind.OPENAI_OAUTH,
+                baseUrl = defaultBaseUrl(ProviderKind.OPENAI_OAUTH),
+                apiKeyRequired = false,
+                registered = true,
+            )
+            viewModel.addChatGptProvider(provider)
+            selectedId = provider.id
+            addingChatGpt = false
+        },
+    )
+
+    renamingOAuth?.let { provider ->
+        RenameChatGptProviderDialog(
+            provider = provider,
+            onDismiss = { renamingOAuth = null },
+            onRename = { name ->
+                viewModel.saveProvider(provider.copy(displayName = name), viewModel.apiKey(provider.id))
+                renamingOAuth = null
+            },
         )
     }
 
@@ -1327,7 +1409,62 @@ private fun ProviderSettings(
 }
 
 @Composable
+private fun AddChatGptProviderDialog(
+    existingCount: Int,
+    onDismiss: () -> Unit,
+    onAdd: (String) -> Unit,
+) {
+    var name by remember { mutableStateOf(if (existingCount == 0) "ChatGPT account" else "ChatGPT account ${existingCount + 1}") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add ChatGPT provider") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Each provider keeps its OAuth session, models, usage limits, and refresh state separate. Arbor requests a fresh sign-in page so you can add a different ChatGPT account.")
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Provider name") },
+                    placeholder = { Text("Work ChatGPT") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = {
+            Button(onClick = { onAdd(name.trim()) }, enabled = name.isNotBlank()) { Text("Add") }
+        },
+    )
+}
+
+@Composable
+private fun RenameChatGptProviderDialog(
+    provider: ProviderEntity,
+    onDismiss: () -> Unit,
+    onRename: (String) -> Unit,
+) {
+    var name by remember(provider.id) { mutableStateOf(provider.displayName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename ChatGPT provider") },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Provider name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { Button(onClick = { onRename(name.trim()) }, enabled = name.isNotBlank()) { Text("Save") } },
+    )
+}
+
+@Composable
 private fun ChatGptOAuthCard(
+    providerName: String,
     state: OpenAiOAuthState,
     usageState: OpenAiOAuthUsageState,
     onSignIn: () -> Unit,
@@ -1335,6 +1472,8 @@ private fun ChatGptOAuthCard(
     onRefreshModels: () -> Unit,
     onRefreshUsage: () -> Unit,
     onCancel: () -> Unit,
+    onRename: () -> Unit,
+    onRemove: () -> Unit,
 ) {
     val signedIn = state is OpenAiOAuthState.SignedIn
     Surface(
@@ -1351,7 +1490,7 @@ private fun ChatGptOAuthCard(
                     modifier = Modifier.size(42.dp),
                 ) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AccountCircle, null) } }
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text("ChatGPT account", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
+                    Text(providerName, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
                     Text(
                         when (state) {
                             OpenAiOAuthState.SignedOut -> "Use your ChatGPT plan without an API key"
@@ -1362,6 +1501,9 @@ private fun ChatGptOAuthCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = if (state is OpenAiOAuthState.Error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+                IconButton(onClick = onRename, enabled = state !is OpenAiOAuthState.SigningIn) {
+                    Icon(Icons.Outlined.Edit, "Rename provider")
                 }
                 if (state is OpenAiOAuthState.SigningIn) {
                     CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
@@ -1382,7 +1524,7 @@ private fun ChatGptOAuthCard(
                     }
                     OutlinedButton(onClick = onSignOut) {
                         Icon(Icons.AutoMirrored.Outlined.Logout, null)
-                        Text(" Sign out")
+                        Text(" Disconnect")
                     }
                 }
             } else {
@@ -1394,6 +1536,10 @@ private fun ChatGptOAuthCard(
                     Icon(Icons.AutoMirrored.Outlined.Login, null)
                     Text(if (state is OpenAiOAuthState.Error) " Sign in again" else " Sign in with ChatGPT")
                 }
+            }
+            TextButton(onClick = onRemove, enabled = state !is OpenAiOAuthState.SigningIn, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Outlined.DeleteOutline, null, tint = MaterialTheme.colorScheme.error)
+                Text(" Remove provider", color = MaterialTheme.colorScheme.error)
             }
         }
     }
@@ -1504,11 +1650,21 @@ private fun UsageWindowRow(
             progress = { (used / 100.0).toFloat() },
             modifier = Modifier.fillMaxWidth(),
         )
-        val reset = window.resetsAtEpochSeconds?.let(::usageResetText)
+        val resetAt = window.resetsAtEpochSeconds
+        var nowEpochSeconds by remember(resetAt) { mutableStateOf(System.currentTimeMillis() / 1_000L) }
+        LaunchedEffect(resetAt) {
+            if (resetAt != null) {
+                while (true) {
+                    delay(1_000L)
+                    nowEpochSeconds = System.currentTimeMillis() / 1_000L
+                }
+            }
+        }
+        val reset = resetAt?.let { usageResetText(it, nowEpochSeconds) }
         Text(
             buildString {
                 append("${used.roundToInt()}% used")
-                if (reset != null) append(" • resets $reset")
+                if (reset != null) append(" • $reset")
             },
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1529,12 +1685,26 @@ private fun usageWindowName(window: OpenAiOAuthUsageWindow, fallback: String): S
     }
 }
 
-private fun usageResetText(epochSeconds: Long): String = DateUtils.getRelativeTimeSpanString(
-    epochSeconds * 1_000L,
-    System.currentTimeMillis(),
-    DateUtils.MINUTE_IN_MILLIS,
-    DateUtils.FORMAT_ABBREV_RELATIVE,
-).toString()
+internal fun usageResetCountdown(epochSeconds: Long, nowEpochSeconds: Long): String {
+    val remaining = epochSeconds - nowEpochSeconds
+    if (remaining <= 0L) return "now"
+    val days = remaining / 86_400L
+    val hours = (remaining % 86_400L) / 3_600L
+    val minutes = (remaining % 3_600L) / 60L
+    val seconds = remaining % 60L
+    return when {
+        days > 0L -> if (hours > 0L) "in ${days}d ${hours}h" else "in ${days}d"
+        hours > 0L -> if (minutes > 0L) "in ${hours}h ${minutes}m" else "in ${hours}h"
+        minutes > 0L -> if (seconds > 0L) "in ${minutes}m ${seconds}s" else "in ${minutes}m"
+        else -> "in ${seconds}s"
+    }
+}
+
+private fun usageResetText(epochSeconds: Long, nowEpochSeconds: Long): String {
+    val exact = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+        .format(Date(epochSeconds * 1_000L))
+    return "resets ${usageResetCountdown(epochSeconds, nowEpochSeconds)} • $exact"
+}
 
 private fun humanizeUsageName(value: String): String = value
     .replace('-', ' ')

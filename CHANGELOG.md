@@ -1,3 +1,11 @@
+## 0.19.3
+
+- Convert ChatGPT OAuth into a normal multi-instance provider type with isolated encrypted sessions, models, usage data, refresh state, rename/reconnect/remove controls, and automatic migration of the existing account.
+- Request a fresh authentication prompt when connecting a ChatGPT provider so adding another account does not silently reuse the previous browser session.
+- Use server-reported quota reset duration/timestamps, show a live countdown plus exact local reset date/time, and remove inaccurate window-length-derived “7 day” labels.
+- Add independent panel and text opacity controls for the performance overlay while keeping it fully click-through and gesture-transparent.
+- Add regression coverage for per-provider OAuth isolation, account-switch login prompting, reset normalization/countdowns, and overlay input transparency.
+
 ## 0.19.2
 
 - Add a native **Usage & limits** panel for ChatGPT OAuth accounts with current plan, primary/secondary quota windows, percent remaining, reset times, additional limits, credits, and manual refresh.
