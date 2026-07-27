@@ -1,5 +1,6 @@
 package app.arbor.chat.ui
 
+import android.text.format.DateUtils
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -55,6 +56,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -107,6 +109,9 @@ import app.arbor.chat.data.SystemPromptMode
 import app.arbor.chat.data.SystemPromptProfileEntity
 import app.arbor.chat.provider.DiscoveredModel
 import app.arbor.chat.provider.OpenAiOAuthState
+import app.arbor.chat.provider.OpenAiOAuthUsageSnapshot
+import app.arbor.chat.provider.OpenAiOAuthUsageState
+import app.arbor.chat.provider.OpenAiOAuthUsageWindow
 import app.arbor.chat.provider.supportedThinkingLevels
 import app.arbor.chat.settings.ColorPalette
 import app.arbor.chat.settings.DeveloperSettings
@@ -117,6 +122,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
 import java.util.UUID
+import kotlin.math.roundToInt
 
 
 private val LocalSettingsScaffoldPadding = compositionLocalOf { PaddingValues() }
@@ -143,6 +149,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val promptProfiles by viewModel.systemPromptProfiles.collectAsStateWithLifecycle()
     val credentialRevision by viewModel.credentialRevision.collectAsStateWithLifecycle()
     val openAiOAuthState by viewModel.openAiOAuthState.collectAsStateWithLifecycle()
+    val openAiOAuthUsageState by viewModel.openAiOAuthUsageState.collectAsStateWithLifecycle()
     val amoled by viewModel.amoled.collectAsState()
     val palette by viewModel.palette.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
@@ -221,6 +228,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             registeredProviders = registeredProviders,
                             conversationProviderId = null,
                             openAiOAuthState = openAiOAuthState,
+                            openAiOAuthUsageState = openAiOAuthUsageState,
                             viewModel = viewModel,
                         )
                         SettingsRoute.ABOUT -> AboutSettingsPage()
@@ -1102,6 +1110,7 @@ private fun ProviderSettings(
     registeredProviders: List<ProviderEntity>,
     conversationProviderId: String?,
     openAiOAuthState: OpenAiOAuthState,
+    openAiOAuthUsageState: OpenAiOAuthUsageState,
     viewModel: ChatViewModel,
 ) {
     var selectedId by remember { mutableStateOf<String?>(null) }
@@ -1128,6 +1137,9 @@ private fun ProviderSettings(
             apiKeyRequired = it.apiKeyRequired
         }
     }
+    LaunchedEffect(openAiOAuthState) {
+        if (openAiOAuthState is OpenAiOAuthState.SignedIn) viewModel.ensureChatGptUsage()
+    }
 
     SettingsPage {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1142,9 +1154,11 @@ private fun ProviderSettings(
 
         ChatGptOAuthCard(
             state = openAiOAuthState,
+            usageState = openAiOAuthUsageState,
             onSignIn = viewModel::signInWithChatGpt,
             onSignOut = viewModel::signOutFromChatGpt,
-            onRefresh = viewModel::refreshChatGptModels,
+            onRefreshModels = viewModel::refreshChatGptModels,
+            onRefreshUsage = viewModel::refreshChatGptUsage,
             onCancel = viewModel::cancelChatGptSignIn,
         )
 
@@ -1315,9 +1329,11 @@ private fun ProviderSettings(
 @Composable
 private fun ChatGptOAuthCard(
     state: OpenAiOAuthState,
+    usageState: OpenAiOAuthUsageState,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
-    onRefresh: () -> Unit,
+    onRefreshModels: () -> Unit,
+    onRefreshUsage: () -> Unit,
     onCancel: () -> Unit,
 ) {
     val signedIn = state is OpenAiOAuthState.SignedIn
@@ -1358,8 +1374,9 @@ private fun ChatGptOAuthCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (signedIn) {
+                ChatGptUsagePanel(usageState, onRefreshUsage)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onRefresh, modifier = Modifier.weight(1f)) {
+                    OutlinedButton(onClick = onRefreshModels, modifier = Modifier.weight(1f)) {
                         Icon(Icons.Outlined.Refresh, null)
                         Text(" Refresh models")
                     }
@@ -1381,6 +1398,150 @@ private fun ChatGptOAuthCard(
         }
     }
 }
+
+@Composable
+private fun ChatGptUsagePanel(
+    state: OpenAiOAuthUsageState,
+    onRefresh: () -> Unit,
+) {
+    val snapshot = when (state) {
+        is OpenAiOAuthUsageState.Loaded -> state.snapshot
+        is OpenAiOAuthUsageState.Loading -> state.previous
+        is OpenAiOAuthUsageState.Error -> state.previous
+        OpenAiOAuthUsageState.SignedOut -> null
+    }
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = .72f),
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Usage & limits", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        snapshot?.planType?.let { "${humanizeUsageName(it)} plan • reported by ChatGPT" }
+                            ?: "Current account quota windows",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (state is OpenAiOAuthUsageState.Loading) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                }
+                IconButton(onClick = onRefresh, enabled = state !is OpenAiOAuthUsageState.Loading) {
+                    Icon(Icons.Outlined.Refresh, "Refresh usage")
+                }
+            }
+
+            if (snapshot == null) {
+                when (state) {
+                    is OpenAiOAuthUsageState.Error -> Text(
+                        state.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    else -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+            } else {
+                snapshot.primary?.let {
+                    UsageWindowRow(usageWindowName(it, "Session"), it)
+                }
+                snapshot.secondary?.let {
+                    UsageWindowRow(usageWindowName(it, "Weekly"), it)
+                }
+                snapshot.additionalLimits.forEach { limit ->
+                    limit.primary?.let { UsageWindowRow(limit.name, it) }
+                    limit.secondary?.let { UsageWindowRow("${limit.name} • secondary", it) }
+                }
+                val creditText = when {
+                    snapshot.creditsUnlimited == true -> "Credits: unlimited"
+                    snapshot.creditsBalance != null -> "Credits balance: ${snapshot.creditsBalance}"
+                    snapshot.hasCredits == true -> "Additional credits available"
+                    else -> null
+                }
+                creditText?.let {
+                    Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (snapshot.limitReached == true || snapshot.allowed == false) {
+                    Text(
+                        snapshot.rateLimitReachedType?.let { "Limit reached: ${humanizeUsageName(it)}" }
+                            ?: "A ChatGPT usage limit has been reached.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                if (state is OpenAiOAuthUsageState.Error) {
+                    Text(
+                        "Refresh failed • ${state.message}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UsageWindowRow(
+    label: String,
+    window: OpenAiOAuthUsageWindow,
+) {
+    val used = window.usedPercent.coerceIn(0.0, 100.0)
+    val left = (100.0 - used).coerceIn(0.0, 100.0)
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+            Text(
+                "${left.roundToInt()}% left",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (left <= 10.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        LinearProgressIndicator(
+            progress = { (used / 100.0).toFloat() },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        val reset = window.resetsAtEpochSeconds?.let(::usageResetText)
+        Text(
+            buildString {
+                append("${used.roundToInt()}% used")
+                if (reset != null) append(" • resets $reset")
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun usageWindowName(window: OpenAiOAuthUsageWindow, fallback: String): String {
+    val seconds = window.windowDurationSeconds ?: return fallback
+    return when (seconds) {
+        in 17_700L..18_300L -> "5-hour limit"
+        in 604_000L..605_600L -> "Weekly limit"
+        else -> when {
+            seconds % 86_400L == 0L -> "${seconds / 86_400L}-day limit"
+            seconds % 3_600L == 0L -> "${seconds / 3_600L}-hour limit"
+            else -> fallback
+        }
+    }
+}
+
+private fun usageResetText(epochSeconds: Long): String = DateUtils.getRelativeTimeSpanString(
+    epochSeconds * 1_000L,
+    System.currentTimeMillis(),
+    DateUtils.MINUTE_IN_MILLIS,
+    DateUtils.FORMAT_ABBREV_RELATIVE,
+).toString()
+
+private fun humanizeUsageName(value: String): String = value
+    .replace('-', ' ')
+    .replace('_', ' ')
+    .split(' ')
+    .filter(String::isNotBlank)
+    .joinToString(" ") { word -> word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() } }
 
 @Composable
 private fun ProviderEditor(

@@ -76,6 +76,104 @@ data class ExecutionProgress(
     val elapsedMs: Long = 0,
 )
 
+
+data class PackageInstallProgress(
+    val phase: String = "Preparing",
+    val percent: Float? = null,
+    val currentPackage: String? = null,
+    val detail: String = "",
+    val stdoutTail: String = "",
+    val stderrTail: String = "",
+    val elapsedMs: Long = 0,
+)
+
+private const val LIVE_PACKAGE_OUTPUT_TAIL_CHARS = 12_000
+
+private val AptStatusLine = Regex(
+    """^(dlstatus|pmstatus|pmerror|pmconffile|media-change):([^:]*):([0-9]+(?:\.[0-9]+)?):(.*)$""",
+)
+
+internal fun packageInstallProgressFromApt(
+    progress: ExecutionProgress,
+    fallbackPhase: String,
+    rangeStart: Float,
+    rangeEnd: Float,
+    elapsedMs: Long = progress.elapsedMs,
+): PackageInstallProgress {
+    val combinedLines = sequenceOf(progress.stdoutTail, progress.stderrTail)
+        .flatMap { it.lineSequence() }
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .toList()
+    val status = combinedLines.asReversed().firstNotNullOfOrNull(AptStatusLine::matchEntire)
+    val rawPercent = status?.groupValues?.getOrNull(3)?.toFloatOrNull()?.div(100f)?.coerceIn(0f, 1f)
+    val percent = rawPercent?.let { rangeStart + it * (rangeEnd - rangeStart) }
+    val kind = status?.groupValues?.getOrNull(1)
+    val packageName = status?.groupValues?.getOrNull(2)
+        ?.takeIf { it.isNotBlank() && it !in setOf("dpkg-exec", "apt", "unknown") }
+    val statusMessage = status?.groupValues?.getOrNull(4)?.trim().orEmpty()
+    val latestHumanLine = combinedLines.asReversed().firstOrNull { !AptStatusLine.matches(it) }.orEmpty()
+    val detail = statusMessage.ifBlank { latestHumanLine }
+    val phase = when (kind) {
+        "dlstatus" -> "Downloading packages"
+        "pmstatus" -> when {
+            detail.startsWith("Preparing", ignoreCase = true) -> "Preparing packages"
+            detail.startsWith("Unpacking", ignoreCase = true) -> "Unpacking packages"
+            detail.startsWith("Setting up", ignoreCase = true) -> "Configuring packages"
+            detail.startsWith("Processing triggers", ignoreCase = true) -> "Finalizing installation"
+            else -> "Installing packages"
+        }
+        "pmerror" -> "Package installation error"
+        "pmconffile" -> "Configuring package files"
+        "media-change" -> "Waiting for installation media"
+        else -> inferPackagePhase(latestHumanLine, fallbackPhase)
+    }
+    return PackageInstallProgress(
+        phase = phase,
+        percent = percent,
+        currentPackage = packageName,
+        detail = detail.take(500),
+        stdoutTail = stripAptStatusLines(progress.stdoutTail).takeLast(LIVE_PACKAGE_OUTPUT_TAIL_CHARS),
+        stderrTail = stripAptStatusLines(progress.stderrTail).takeLast(LIVE_PACKAGE_OUTPUT_TAIL_CHARS),
+        elapsedMs = elapsedMs,
+    )
+}
+
+internal fun packageInstallProgressFromOutput(
+    progress: ExecutionProgress,
+    fallbackPhase: String,
+    rangeStart: Float,
+    rangeEnd: Float,
+    elapsedMs: Long = progress.elapsedMs,
+): PackageInstallProgress {
+    val combined = listOf(progress.stdoutTail, progress.stderrTail).filter(String::isNotBlank).joinToString("\n")
+    val rawPercent = Regex("""(?<!\d)(100|[0-9]{1,2})%""").findAll(combined).lastOrNull()
+        ?.groupValues?.getOrNull(1)?.toFloatOrNull()?.div(100f)
+    val latest = combined.lineSequence().map(String::trim).lastOrNull(String::isNotBlank).orEmpty()
+    return PackageInstallProgress(
+        phase = inferPackagePhase(latest, fallbackPhase),
+        percent = rawPercent?.let { rangeStart + it.coerceIn(0f, 1f) * (rangeEnd - rangeStart) },
+        detail = latest.take(500),
+        stdoutTail = progress.stdoutTail.takeLast(LIVE_PACKAGE_OUTPUT_TAIL_CHARS),
+        stderrTail = progress.stderrTail.takeLast(LIVE_PACKAGE_OUTPUT_TAIL_CHARS),
+        elapsedMs = elapsedMs,
+    )
+}
+
+private fun inferPackagePhase(line: String, fallback: String): String = when {
+    line.contains("Reading package lists", ignoreCase = true) -> "Reading package lists"
+    line.contains("Building dependency tree", ignoreCase = true) -> "Resolving dependencies"
+    line.contains("Need to get", ignoreCase = true) || line.startsWith("Get:", ignoreCase = true) -> "Downloading packages"
+    line.contains("Unpacking", ignoreCase = true) -> "Unpacking packages"
+    line.contains("Setting up", ignoreCase = true) -> "Configuring packages"
+    line.contains("Processing triggers", ignoreCase = true) -> "Finalizing installation"
+    else -> fallback
+}
+
+private fun stripAptStatusLines(value: String): String = value.lineSequence()
+    .filterNot { AptStatusLine.matches(it.trim()) }
+    .joinToString("\n")
+
 data class UbuntuPackageInstallResult(
     val success: Boolean,
     val stdout: String = "",
@@ -482,28 +580,119 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
         return PackagePlan(PackageEcosystem.APK, items, rawPreview = combined.takeLast(6_000))
     }
 
-    suspend fun installPackages(conversationId: String, raw: String, restrictionsEnabled: Boolean, approvedPlan: PackagePlan? = null): UbuntuPackageInstallResult {
+    suspend fun installPackages(
+        conversationId: String,
+        raw: String,
+        restrictionsEnabled: Boolean,
+        approvedPlan: PackagePlan? = null,
+        onProgress: suspend (PackageInstallProgress) -> Unit = {},
+    ): UbuntuPackageInstallResult {
+        val started = System.currentTimeMillis()
         val plan = preflightPackages(conversationId, raw, restrictionsEnabled)
         require(plan.isValid) { plan.error ?: "Invalid package request" }
         requireApprovedPlan(approvedPlan, plan)
-        if (!plan.hasChanges) return UbuntuPackageInstallResult(true, packages = plan.items.map { it.name })
+        if (!plan.hasChanges) {
+            onProgress(PackageInstallProgress("Already installed", 1f, detail = "No package changes are needed."))
+            return UbuntuPackageInstallResult(true, packages = plan.items.map { it.name })
+        }
         val requests = parsePackageRequests(raw, restrictionsEnabled)
+        suspend fun emit(value: PackageInstallProgress) {
+            onProgress(value.copy(elapsedMs = System.currentTimeMillis() - started))
+        }
+
+        emit(PackageInstallProgress("Preparing package transaction", 0f, detail = requests.joinToString()))
         if (distribution.value.packageManager == LinuxPackageManager.APK) {
-            val result = execute(conversationId, "apk add --no-progress ${requests.joinToString(" ") { shellQuote(it) }}", 900)
+            val result = execute(
+                conversationId,
+                "apk add --progress ${requests.joinToString(" ") { shellQuote(it) }}",
+                900,
+            ) { progress ->
+                emit(packageInstallProgressFromOutput(progress, "Installing packages", 0.05f, 0.98f))
+            }
+            emit(
+                PackageInstallProgress(
+                    phase = if (result.exitCode == 0) "Installation complete" else "Installation failed",
+                    percent = if (result.exitCode == 0) 1f else null,
+                    detail = (result.stderr.ifBlank { result.stdout }).lineSequence().lastOrNull(String::isNotBlank).orEmpty(),
+                    stdoutTail = result.stdout.takeLast(LIVE_PACKAGE_OUTPUT_TAIL_CHARS),
+                    stderrTail = result.stderr.takeLast(LIVE_PACKAGE_OUTPUT_TAIL_CHARS),
+                ),
+            )
             return UbuntuPackageInstallResult(result.exitCode == 0, result.stdout, result.stderr, requests, result.elapsedMs)
         }
-        val recovery = execute(conversationId, "DEBIAN_FRONTEND=noninteractive dpkg --configure -a", 900)
-        if (recovery.exitCode != 0) return UbuntuPackageInstallResult(
-            false, recovery.stdout, "Package database recovery failed before installation:\n${recovery.stderr}", requests, recovery.elapsedMs,
+
+        val recovery = execute(
+            conversationId,
+            "DEBIAN_FRONTEND=noninteractive dpkg --configure -a",
+            900,
+        ) { progress ->
+            emit(packageInstallProgressFromOutput(progress, "Repairing package database", 0.01f, 0.10f))
+        }
+        if (recovery.exitCode != 0) {
+            emit(
+                PackageInstallProgress(
+                    phase = "Package database repair failed",
+                    detail = recovery.stderr.lineSequence().lastOrNull(String::isNotBlank).orEmpty(),
+                    stdoutTail = recovery.stdout.takeLast(LIVE_PACKAGE_OUTPUT_TAIL_CHARS),
+                    stderrTail = recovery.stderr.takeLast(LIVE_PACKAGE_OUTPUT_TAIL_CHARS),
+                ),
+            )
+            return UbuntuPackageInstallResult(
+                false, recovery.stdout, "Package database recovery failed before installation:\n${recovery.stderr}", requests, recovery.elapsedMs,
+            )
+        }
+
+        val aptProgressOptions = "-o APT::Status-Fd=1 -o Dpkg::Progress-Fancy=0 -o Dpkg::Use-Pty=0"
+        val repair = execute(
+            conversationId,
+            "DEBIAN_FRONTEND=noninteractive apt-get $aptProgressOptions -f install -y --no-install-recommends",
+            900,
+        ) { progress ->
+            emit(packageInstallProgressFromApt(progress, "Repairing dependencies", 0.10f, 0.30f))
+        }
+        if (repair.exitCode != 0) {
+            emit(
+                PackageInstallProgress(
+                    phase = "Dependency repair failed",
+                    detail = repair.stderr.lineSequence().lastOrNull(String::isNotBlank).orEmpty(),
+                    stdoutTail = stripAptStatusLines(repair.stdout).takeLast(LIVE_PACKAGE_OUTPUT_TAIL_CHARS),
+                    stderrTail = stripAptStatusLines(repair.stderr).takeLast(LIVE_PACKAGE_OUTPUT_TAIL_CHARS),
+                ),
+            )
+            return UbuntuPackageInstallResult(
+                false,
+                listOf(recovery.stdout, stripAptStatusLines(repair.stdout)).filter(String::isNotBlank).joinToString("\n"),
+                listOf(recovery.stderr, stripAptStatusLines(repair.stderr)).filter(String::isNotBlank).joinToString("\n"),
+                requests,
+                recovery.elapsedMs + repair.elapsedMs,
+            )
+        }
+
+        val install = execute(
+            conversationId,
+            "DEBIAN_FRONTEND=noninteractive apt-get $aptProgressOptions install -y --no-install-recommends ${requests.joinToString(" ") { shellQuote(it) }}",
+            900,
+        ) { progress ->
+            emit(packageInstallProgressFromApt(progress, "Installing packages", 0.30f, 0.99f))
+        }
+        val success = install.exitCode == 0
+        val cleanedStdout = stripAptStatusLines(install.stdout)
+        val cleanedStderr = stripAptStatusLines(install.stderr)
+        emit(
+            PackageInstallProgress(
+                phase = if (success) "Installation complete" else "Installation failed",
+                percent = if (success) 1f else null,
+                detail = (cleanedStderr.ifBlank { cleanedStdout }).lineSequence().lastOrNull(String::isNotBlank).orEmpty(),
+                stdoutTail = cleanedStdout.takeLast(LIVE_PACKAGE_OUTPUT_TAIL_CHARS),
+                stderrTail = cleanedStderr.takeLast(LIVE_PACKAGE_OUTPUT_TAIL_CHARS),
+            ),
         )
-        val command = "DEBIAN_FRONTEND=noninteractive apt-get -f install -y --no-install-recommends && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ${requests.joinToString(" ") { shellQuote(it) }}"
-        val result = execute(conversationId, command, 900)
         return UbuntuPackageInstallResult(
-            result.exitCode == 0,
-            listOf(recovery.stdout, result.stdout).filter(String::isNotBlank).joinToString("\n"),
-            listOf(recovery.stderr, result.stderr).filter(String::isNotBlank).joinToString("\n"),
+            success,
+            listOf(recovery.stdout, stripAptStatusLines(repair.stdout), cleanedStdout).filter(String::isNotBlank).joinToString("\n"),
+            listOf(recovery.stderr, stripAptStatusLines(repair.stderr), cleanedStderr).filter(String::isNotBlank).joinToString("\n"),
             requests,
-            recovery.elapsedMs + result.elapsedMs,
+            recovery.elapsedMs + repair.elapsedMs + install.elapsedMs,
         )
     }
 

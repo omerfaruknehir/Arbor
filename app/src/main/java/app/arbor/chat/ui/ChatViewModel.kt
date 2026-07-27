@@ -31,9 +31,11 @@ import app.arbor.chat.provider.ProviderCredentialPolicy
 import app.arbor.chat.provider.ProviderEndpointPolicy
 import app.arbor.chat.provider.OpenAiOAuthManager
 import app.arbor.chat.provider.OpenAiOAuthState
+import app.arbor.chat.provider.OpenAiOAuthUsageState
 import app.arbor.chat.provider.parseHeaders
 import app.arbor.chat.sandbox.ExecutionResult
 import app.arbor.chat.sandbox.ExecutionProgress
+import app.arbor.chat.sandbox.PackageInstallProgress
 import app.arbor.chat.sandbox.PackageInstallResult
 import app.arbor.chat.sandbox.PythonEnvironmentInfo
 import app.arbor.chat.sandbox.PackageReview
@@ -134,6 +136,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     private val _credentialRevision = MutableStateFlow(0L)
     val credentialRevision: StateFlow<Long> = _credentialRevision
     val openAiOAuthState: StateFlow<OpenAiOAuthState> = container.openAiOAuth.state
+    val openAiOAuthUsageState: StateFlow<OpenAiOAuthUsageState> = container.openAiOAuth.usageState
     private val conversationSettingsMutex = Mutex()
     private val automationSettingsMutex = Mutex()
     private val initializationMutex = Mutex()
@@ -548,6 +551,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         )
         saveDiscoveredModels(provider.id, discovered)
         _credentialRevision.value++
+        runCatching { container.openAiOAuth.usage(forceRefresh = true) }
         notices.emit("Signed in with ChatGPT • ${discovered.size} models available")
     }
 
@@ -576,6 +580,20 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         )
         saveDiscoveredModels(provider.id, discovered)
         notices.emit("Updated ${discovered.size} ChatGPT models")
+    }
+
+
+    fun ensureChatGptUsage() {
+        viewModelScope.launch {
+            runCatching { container.openAiOAuth.usage(forceRefresh = false) }
+        }
+    }
+
+    fun refreshChatGptUsage() {
+        viewModelScope.launch {
+            runCatching { container.openAiOAuth.usage(forceRefresh = true) }
+                .onFailure { notices.emit(it.message ?: "ChatGPT usage could not be refreshed") }
+        }
     }
 
     fun registeredProviders(values: List<ProviderEntity>): List<ProviderEntity> =
@@ -818,10 +836,14 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         return container.packageApprovals.review(id, container.ubuntuRuntime.preflightPackages(id, packages, restrictions))
     }
 
-    suspend fun installUbuntuPackages(packages: String, approvedPlan: PackagePlan? = null): UbuntuPackageInstallResult {
+    suspend fun installUbuntuPackages(
+        packages: String,
+        approvedPlan: PackagePlan? = null,
+        onProgress: suspend (PackageInstallProgress) -> Unit = {},
+    ): UbuntuPackageInstallResult {
         val id = selectedConversationId.value ?: error("No conversation")
         val restrictions = container.repository.automationSettingsNow().packageRestrictionsEnabled
-        val result = container.ubuntuRuntime.installPackages(id, packages, restrictions, approvedPlan)
+        val result = container.ubuntuRuntime.installPackages(id, packages, restrictions, approvedPlan, onProgress)
         if (result.success) container.repository.recordSystemEvent(
             id,
             "Arbor's configured package approval policy allowed and installed these ${container.ubuntuRuntime.distribution.value.displayName} packages: ${result.packages.joinToString()}.",
@@ -829,7 +851,12 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         return result
     }
 
-    suspend fun installUbuntuPackagesAndContinue(operationKey: String, packages: String, approvedPlan: PackagePlan): UbuntuPackageInstallResult {
+    suspend fun installUbuntuPackagesAndContinue(
+        operationKey: String,
+        packages: String,
+        approvedPlan: PackagePlan,
+        onProgress: suspend (PackageInstallProgress) -> Unit,
+    ): UbuntuPackageInstallResult {
         val id = selectedConversationId.value ?: error("No conversation")
         val previous = container.repository.packageTransaction(operationKey)
         if (previous?.status == PACKAGE_SUCCEEDED && previous.requirements == packages) {
@@ -837,7 +864,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         }
         savePackageTransaction(operationKey, id, approvedPlan.ecosystem, packages, approvedPlan, PACKAGE_INSTALLING, "Installation started")
         val result = try {
-            installUbuntuPackages(packages, approvedPlan)
+            installUbuntuPackages(packages, approvedPlan, onProgress)
         } catch (error: Throwable) {
             savePackageTransaction(operationKey, id, approvedPlan.ecosystem, packages, approvedPlan, PACKAGE_FAILED, error.message.orEmpty())
             throw error

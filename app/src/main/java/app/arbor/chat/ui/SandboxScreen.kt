@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import app.arbor.chat.R
 import app.arbor.chat.sandbox.ExecutionResult
 import app.arbor.chat.sandbox.PackageInstallResult
+import app.arbor.chat.sandbox.PackageInstallProgress
 import app.arbor.chat.sandbox.PythonEnvironmentInfo
 import app.arbor.chat.sandbox.PythonPackageSearchResult
 import app.arbor.chat.sandbox.PackageAction
@@ -62,6 +63,8 @@ import app.arbor.chat.sandbox.UbuntuPackageInstallResult
 import app.arbor.chat.sandbox.UbuntuStage
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,6 +98,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
     var ubuntuReview by remember { mutableStateOf<PackageReview?>(null) }
     var confirmUbuntuInstall by remember { mutableStateOf(false) }
     var ubuntuPackageResult by remember { mutableStateOf<UbuntuPackageInstallResult?>(null) }
+    var ubuntuInstallProgress by remember { mutableStateOf<PackageInstallProgress?>(null) }
     var ubuntuInstalling by remember { mutableStateOf(false) }
     var showUbuntuPlan by remember { mutableStateOf(false) }
     var showPythonPlan by remember { mutableStateOf(false) }
@@ -123,7 +127,15 @@ fun SandboxScreen(viewModel: ChatViewModel) {
     }
     suspend fun installUbuntuPackagesNow() {
         ubuntuInstalling = true
-        ubuntuPackageResult = runCatching { viewModel.installUbuntuPackages(ubuntuPackages, ubuntuReview?.plan ?: error("Run preflight again")) }
+        ubuntuInstallProgress = PackageInstallProgress("Starting package installation", 0f)
+        ubuntuPackageResult = runCatching {
+            viewModel.installUbuntuPackages(
+                ubuntuPackages,
+                ubuntuReview?.plan ?: error("Run preflight again"),
+            ) { progress ->
+                withContext(Dispatchers.Main.immediate) { ubuntuInstallProgress = progress }
+            }
+        }
             .getOrElse { UbuntuPackageInstallResult(false, stderr = it.message.orEmpty()) }
         ubuntuInstalling = false
     }
@@ -426,6 +438,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                                 scope.launch {
                                     ubuntuInstalling = true
                                     ubuntuPackageResult = null
+                                    ubuntuInstallProgress = null
                                     ubuntuReview = runCatching { viewModel.reviewUbuntuPackages(ubuntuPackages) }
                                         .onFailure { ubuntuPackageResult = UbuntuPackageInstallResult(false, stderr = it.message.orEmpty()) }
                                         .getOrNull()
@@ -460,6 +473,33 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Medium,
                             )
+                        }
+                        ubuntuInstallProgress?.let { progress ->
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (progress.percent != null) {
+                                    LinearProgressIndicator(
+                                        progress = { progress.percent.coerceIn(0f, 1f) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                } else if (ubuntuInstalling) {
+                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(progress.phase, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                                    progress.percent?.let { Text("${(it.coerceIn(0f, 1f) * 100).toInt()}%", style = MaterialTheme.typography.labelMedium) }
+                                }
+                                progress.currentPackage?.let {
+                                    Text(it, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall)
+                                }
+                                if (progress.detail.isNotBlank()) {
+                                    Text(progress.detail, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                val liveLog = listOf(progress.stdoutTail, progress.stderrTail)
+                                    .filter(String::isNotBlank)
+                                    .joinToString("\n")
+                                    .takeLast(12_000)
+                                if (liveLog.isNotBlank() && ubuntuInstalling) GenericToolOutputCard(liveLog)
+                            }
                         }
                         ubuntuReview?.let { review ->
                             val changes = review.plan.items.count { it.action == PackageAction.INSTALL || it.action == PackageAction.UPDATE }

@@ -1,3 +1,11 @@
+## 0.19.2
+
+- Add a native **Usage & limits** panel for ChatGPT OAuth accounts with current plan, primary/secondary quota windows, percent remaining, reset times, additional limits, credits, and manual refresh.
+- Cache account usage briefly, preserve the last successful snapshot across transient refresh failures, and refresh OAuth tokens automatically before retrying quota requests.
+- Stream apt/dpkg/apk package-install progress through Local Code Execution and inline AI package cards, including phase, percentage when available, current package, elapsed work, and bounded live logs.
+- Parse APT status-fd events while removing protocol lines from the final human-readable install log.
+- Add regression tests for ChatGPT usage payload variants and package-progress parsing.
+
 ## 0.19.0
 
 - Add native one-tap Sign in with ChatGPT using OAuth authorization-code + PKCE and Arbor's own localhost callback; no extension, WebView, Node.js process, proxy, copied token, or API key is required.

@@ -18,6 +18,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
@@ -72,6 +73,148 @@ data class OpenAiOAuthSession(
     val isFedRamp: Boolean,
 )
 
+
+data class OpenAiOAuthUsageWindow(
+    val usedPercent: Double,
+    val windowDurationSeconds: Long?,
+    val resetsAtEpochSeconds: Long?,
+)
+
+data class OpenAiOAuthAdditionalLimit(
+    val id: String?,
+    val name: String,
+    val primary: OpenAiOAuthUsageWindow?,
+    val secondary: OpenAiOAuthUsageWindow?,
+)
+
+data class OpenAiOAuthUsageSnapshot(
+    val planType: String?,
+    val allowed: Boolean?,
+    val limitReached: Boolean?,
+    val rateLimitReachedType: String?,
+    val primary: OpenAiOAuthUsageWindow?,
+    val secondary: OpenAiOAuthUsageWindow?,
+    val additionalLimits: List<OpenAiOAuthAdditionalLimit>,
+    val creditsBalance: String?,
+    val creditsUnlimited: Boolean?,
+    val hasCredits: Boolean?,
+    val fetchedAtEpochMs: Long,
+)
+
+sealed interface OpenAiOAuthUsageState {
+    data object SignedOut : OpenAiOAuthUsageState
+    data class Loading(val previous: OpenAiOAuthUsageSnapshot? = null) : OpenAiOAuthUsageState
+    data class Loaded(val snapshot: OpenAiOAuthUsageSnapshot) : OpenAiOAuthUsageState
+    data class Error(val message: String, val previous: OpenAiOAuthUsageSnapshot? = null) : OpenAiOAuthUsageState
+}
+
+internal object OpenAiOAuthUsageParser {
+    fun parse(root: JsonObject, fetchedAtEpochMs: Long = System.currentTimeMillis()): OpenAiOAuthUsageSnapshot {
+        val rateLimit = root.objectValue("rate_limit", "rateLimit", "rateLimits") ?: root
+        val primary = parseWindow(rateLimit.objectValue("primary_window", "primaryWindow", "primary"))
+        val secondary = parseWindow(rateLimit.objectValue("secondary_window", "secondaryWindow", "secondary"))
+        val credits = root.objectValue("credits") ?: rateLimit.objectValue("credits")
+        val additional = buildList {
+            (root["additional_rate_limits"] as? JsonArray)?.forEach additionalArray@{ element ->
+                val item = element as? JsonObject ?: return@additionalArray
+                val nested = item.objectValue("rate_limit", "rateLimit") ?: item
+                val id = item.stringValue("limit_id", "limitId", "id")
+                val name = item.stringValue("limit_name", "limitName", "name")
+                    ?: id?.let(::humanizeIdentifier)
+                    ?: "Additional limit"
+                add(
+                    OpenAiOAuthAdditionalLimit(
+                        id = id,
+                        name = name,
+                        primary = parseWindow(nested.objectValue("primary_window", "primaryWindow", "primary")),
+                        secondary = parseWindow(nested.objectValue("secondary_window", "secondaryWindow", "secondary")),
+                    ),
+                )
+            }
+            root.objectValue("rateLimitsByLimitId")?.forEach additionalMap@{ (id, element) ->
+                if (id == "codex") return@additionalMap
+                val item = element as? JsonObject ?: return@additionalMap
+                add(
+                    OpenAiOAuthAdditionalLimit(
+                        id = id,
+                        name = item.stringValue("limitName", "limit_name") ?: humanizeIdentifier(id),
+                        primary = parseWindow(item.objectValue("primary", "primary_window")),
+                        secondary = parseWindow(item.objectValue("secondary", "secondary_window")),
+                    ),
+                )
+            }
+            root.objectValue("code_review_rate_limit", "codeReviewRateLimit")?.let { item ->
+                add(
+                    OpenAiOAuthAdditionalLimit(
+                        id = "code-review",
+                        name = "Code review",
+                        primary = parseWindow(item.objectValue("primary_window", "primaryWindow", "primary") ?: item),
+                        secondary = parseWindow(item.objectValue("secondary_window", "secondaryWindow", "secondary")),
+                    ),
+                )
+            }
+        }.filter { it.primary != null || it.secondary != null }.distinctBy { it.id ?: it.name }
+
+        val snapshot = OpenAiOAuthUsageSnapshot(
+            planType = root.stringValue("plan_type", "planType") ?: rateLimit.stringValue("plan_type", "planType"),
+            allowed = rateLimit.booleanValue("allowed"),
+            limitReached = rateLimit.booleanValue("limit_reached", "limitReached"),
+            rateLimitReachedType = rateLimit.stringValue("rate_limit_reached_type", "rateLimitReachedType"),
+            primary = primary,
+            secondary = secondary,
+            additionalLimits = additional,
+            creditsBalance = credits?.stringValue("balance"),
+            creditsUnlimited = credits?.booleanValue("unlimited"),
+            hasCredits = credits?.booleanValue("has_credits", "hasCredits")
+                ?: credits?.stringValue("balance")?.toDoubleOrNull()?.let { it > 0.0 },
+            fetchedAtEpochMs = fetchedAtEpochMs,
+        )
+        if (
+            snapshot.primary == null &&
+            snapshot.secondary == null &&
+            snapshot.additionalLimits.isEmpty() &&
+            snapshot.creditsBalance == null &&
+            snapshot.planType == null
+        ) {
+            throw ProviderProtocolException("ChatGPT returned usage data in an unsupported format")
+        }
+        return snapshot
+    }
+
+    private fun parseWindow(value: JsonObject?): OpenAiOAuthUsageWindow? {
+        value ?: return null
+        val used = value.numberValue("used_percent", "usedPercent") ?: return null
+        val seconds = value.longValue("limit_window_seconds", "window_duration_seconds", "windowDurationSeconds")
+            ?: value.longValue("window_duration_mins", "window_minutes", "windowDurationMins")?.times(60L)
+        val resetAt = value.longValue("reset_at", "resets_at", "resetsAt")
+        return OpenAiOAuthUsageWindow(
+            usedPercent = used.coerceIn(0.0, 100.0),
+            windowDurationSeconds = seconds,
+            resetsAtEpochSeconds = resetAt,
+        )
+    }
+
+    private fun JsonObject.objectValue(vararg keys: String): JsonObject? =
+        keys.firstNotNullOfOrNull { key -> this[key] as? JsonObject }
+
+    private fun JsonObject.stringValue(vararg keys: String): String? =
+        keys.firstNotNullOfOrNull { key -> this[key]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank) }
+
+    private fun JsonObject.booleanValue(vararg keys: String): Boolean? =
+        keys.firstNotNullOfOrNull { key -> this[key]?.jsonPrimitive?.booleanOrNull }
+
+    private fun JsonObject.numberValue(vararg keys: String): Double? =
+        keys.firstNotNullOfOrNull { key -> this[key]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() }
+
+    private fun JsonObject.longValue(vararg keys: String): Long? =
+        keys.firstNotNullOfOrNull { key -> this[key]?.jsonPrimitive?.contentOrNull?.toLongOrNull() }
+
+    private fun humanizeIdentifier(id: String): String = id.substringAfterLast('/').replace('-', ' ').replace('_', ' ')
+        .split(' ').filter(String::isNotBlank).joinToString(" ") { word ->
+            word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        }
+}
+
 /** Native Android PKCE + loopback OAuth flow compatible with Codex/OpenAI OAuth. */
 class OpenAiOAuthManager(
     context: Context,
@@ -91,14 +234,22 @@ class OpenAiOAuthManager(
     private val loginMutex = Mutex()
     private val refreshMutex = Mutex()
     private val modelMutex = Mutex()
+    private val usageMutex = Mutex()
     private var cachedModels: List<OpenAiOAuthModelInfo> = emptyList()
     private var cachedModelsUntil = 0L
+    private var cachedUsage: OpenAiOAuthUsageSnapshot? = null
+    private var cachedUsageUntil = 0L
     private val random = SecureRandom()
     @Volatile private var activeLoginServers: List<ServerSocket> = emptyList()
     @Volatile private var activeReturnLatch: CountDownLatch? = null
     @Volatile private var loginCancelled = false
     private val callbackReceived = AtomicBoolean(false)
     private var session: OpenAiOAuthSession? = secureStore.openAiOAuthSecrets()?.toSession()
+
+    private val _usageState = MutableStateFlow<OpenAiOAuthUsageState>(
+        if (session == null) OpenAiOAuthUsageState.SignedOut else OpenAiOAuthUsageState.Loading(),
+    )
+    val usageState: StateFlow<OpenAiOAuthUsageState> = _usageState.asStateFlow()
 
     private val _state = MutableStateFlow<OpenAiOAuthState>(
         session?.let(::signedInState) ?: OpenAiOAuthState.SignedOut,
@@ -126,6 +277,40 @@ class OpenAiOAuthManager(
         models
     }
 
+
+    suspend fun usage(forceRefresh: Boolean = false): OpenAiOAuthUsageSnapshot = usageMutex.withLock {
+        val now = System.currentTimeMillis()
+        val previous = cachedUsage
+        if (!forceRefresh && previous != null && now < cachedUsageUntil) {
+            _usageState.value = OpenAiOAuthUsageState.Loaded(previous)
+            return previous
+        }
+        if (session == null && secureStore.openAiOAuthSecrets() == null) {
+            _usageState.value = OpenAiOAuthUsageState.SignedOut
+            throw IllegalStateException("Sign in with ChatGPT in Settings")
+        }
+
+        _usageState.value = OpenAiOAuthUsageState.Loading(previous)
+        try {
+            var auth = validSession()
+            val snapshot = try {
+                withContext(Dispatchers.IO) { fetchUsage(auth) }
+            } catch (error: ProviderHttpException) {
+                if (error.status != 401) throw error
+                auth = validSession(forceRefresh = true)
+                withContext(Dispatchers.IO) { fetchUsage(auth) }
+            }
+            cachedUsage = snapshot
+            cachedUsageUntil = System.currentTimeMillis() + USAGE_CACHE_MS
+            _usageState.value = OpenAiOAuthUsageState.Loaded(snapshot)
+            snapshot
+        } catch (error: Throwable) {
+            val message = error.message?.take(500) ?: "ChatGPT usage could not be loaded"
+            _usageState.value = OpenAiOAuthUsageState.Error(message, previous)
+            throw error
+        }
+    }
+
     suspend fun signIn(): OpenAiOAuthSession? = loginMutex.withLock {
         loginCancelled = false
         _state.value = OpenAiOAuthState.SigningIn
@@ -137,6 +322,9 @@ class OpenAiOAuthManager(
             }
             persist(result)
             _state.value = signedInState(result)
+            cachedUsage = null
+            cachedUsageUntil = 0L
+            _usageState.value = OpenAiOAuthUsageState.Loading()
             result
         } catch (error: Throwable) {
             if (loginCancelled) {
@@ -166,6 +354,11 @@ class OpenAiOAuthManager(
         cancelSignIn()
         session = null
         secureStore.setOpenAiOAuthSecrets(null)
+        cachedModels = emptyList()
+        cachedModelsUntil = 0L
+        cachedUsage = null
+        cachedUsageUntil = 0L
+        _usageState.value = OpenAiOAuthUsageState.SignedOut
         _state.value = OpenAiOAuthState.SignedOut
     }
 
@@ -369,7 +562,7 @@ class OpenAiOAuthManager(
             .header("Accept", "application/json")
             .header("Authorization", "Bearer ${auth.accessToken}")
             .header("chatgpt-account-id", auth.accountId)
-            .header("User-Agent", "Arbor/0.19.1 openai-oauth-android")
+            .header("User-Agent", "Arbor/0.19.2 openai-oauth-android")
             .apply { if (auth.isFedRamp) header("X-OpenAI-Fedramp", "true") }
             .build()
         executeWithNetworkRetry(request).use { response ->
@@ -398,6 +591,36 @@ class OpenAiOAuthManager(
                 )
             }.distinctBy { it.id }.sortedBy { it.displayName.lowercase() }
         }
+    }
+
+    private fun fetchUsage(auth: OpenAiOAuthSession): OpenAiOAuthUsageSnapshot {
+        var lastNotFound: ProviderHttpException? = null
+        for (url in USAGE_URLS) {
+            val request = Request.Builder().url(url).get()
+                .header("Accept", "application/json")
+                .header("Authorization", "Bearer ${auth.accessToken}")
+                .header("chatgpt-account-id", auth.accountId)
+                .header("OpenAI-Beta", "codex-1")
+                .header("originator", "Arbor")
+                .header("User-Agent", "Arbor/0.19.2 openai-oauth-android")
+                .apply { if (auth.isFedRamp) header("X-OpenAI-Fedramp", "true") }
+                .build()
+            executeWithNetworkRetry(request).use { response ->
+                val text = response.body?.string().orEmpty()
+                if (response.code == 404 || response.code == 405) {
+                    lastNotFound = ProviderHttpException(response.code, "ChatGPT usage endpoint was unavailable")
+                    return@use
+                }
+                if (!response.isSuccessful) throw ProviderHttpException(
+                    response.code,
+                    "ChatGPT usage lookup failed (${response.code}): ${text.take(1_000)}",
+                )
+                val root = runCatching { ProviderJson.parseToJsonElement(text).jsonObject }
+                    .getOrElse { throw ProviderProtocolException("ChatGPT returned invalid usage data", it) }
+                return OpenAiOAuthUsageParser.parse(root)
+            }
+        }
+        throw lastNotFound ?: ProviderProtocolException("ChatGPT usage data is unavailable")
     }
 
     private fun humanizeModel(id: String): String = id.substringAfterLast('/').replace('-', ' ').replace('_', ' ')
@@ -597,6 +820,10 @@ class OpenAiOAuthManager(
         const val CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
         const val REDIRECT_URI = "http://localhost:1455/auth/callback"
         const val CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
+        private val USAGE_URLS = listOf(
+            "https://chatgpt.com/backend-api/wham/usage",
+            "https://chatgpt.com/backend-api/codex/usage",
+        )
         const val TOKEN_URL = "https://auth.openai.com/oauth/token"
         const val AUTHORIZATION_URL = "https://auth.openai.com/oauth/authorize"
         const val SCOPE = "openid profile email offline_access"
@@ -612,6 +839,7 @@ class OpenAiOAuthManager(
         private const val REFRESH_EARLY_MS = 60_000L
         private const val DEFAULT_TOKEN_LIFETIME_MS = 60 * 60 * 1_000L
         private const val MODEL_CACHE_MS = 5 * 60 * 1_000L
+        private const val USAGE_CACHE_MS = 60 * 1_000L
         private const val DEFAULT_CODEX_CLIENT_VERSION = "0.144.1"
         private const val CODEX_NPM_LATEST_URL = "https://registry.npmjs.org/@openai/codex/latest"
         private const val MAX_REQUEST_LINE = 16_384

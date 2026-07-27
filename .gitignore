@@ -9,3 +9,5 @@ captures/
 app/build/
 *.jks
 *.keystore
+
+.kotlin/

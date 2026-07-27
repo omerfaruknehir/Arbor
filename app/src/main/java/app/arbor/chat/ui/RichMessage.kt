@@ -45,6 +45,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
@@ -75,6 +76,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import app.arbor.chat.sandbox.ExecutionResult
 import app.arbor.chat.sandbox.ExecutionProgress
 import app.arbor.chat.sandbox.PackageInstallResult
+import app.arbor.chat.sandbox.PackageInstallProgress
 import app.arbor.chat.sandbox.PackageAction
 import app.arbor.chat.sandbox.PackageApprovalState
 import app.arbor.chat.sandbox.PackageReview
@@ -193,7 +195,7 @@ internal fun RichMessage(
     onReviewPythonPackages: suspend (String, String) -> PackageReview,
     onInstallPackages: suspend (String, String, PackagePlan) -> PackageInstallResult,
     onReviewUbuntuPackages: suspend (String, String) -> PackageReview,
-    onInstallUbuntuPackages: suspend (String, String, PackagePlan) -> UbuntuPackageInstallResult,
+    onInstallUbuntuPackages: suspend (String, String, PackagePlan, suspend (PackageInstallProgress) -> Unit) -> UbuntuPackageInstallResult,
     onWidgetSubmit: (String) -> Unit,
     onReviewWidgetSecurity: suspend (String) -> String,
     onRepairGeneratedBlock: suspend (
@@ -371,7 +373,7 @@ internal fun RichMessage(
                                 title = "Python package request",
                                 requirements = block.code,
                                 onReview = { requested -> onReviewPythonPackages(operationKey, requested) },
-                                onInstall = { requested, plan ->
+                                onInstall = { requested, plan, _ ->
                                     val result = onInstallPackages(operationKey, requested, plan)
                                     InstallUiResult(
                                         result.success && result.importErrors.isEmpty(),
@@ -390,8 +392,8 @@ internal fun RichMessage(
                                 title = "Linux package request",
                                 requirements = block.code,
                                 onReview = { requested -> onReviewUbuntuPackages(operationKey, requested) },
-                                onInstall = { requested, plan ->
-                                    val result = onInstallUbuntuPackages(operationKey, requested, plan)
+                                onInstall = { requested, plan, progress ->
+                                    val result = onInstallUbuntuPackages(operationKey, requested, plan, progress)
                                     InstallUiResult(
                                         result.success,
                                         if (result.success) "Installed: ${result.packages.joinToString()}" else "Package installation failed",
@@ -454,7 +456,7 @@ private fun PackageRequestBlock(
     title: String,
     requirements: String,
     onReview: suspend (String) -> PackageReview,
-    onInstall: suspend (String, PackagePlan) -> InstallUiResult,
+    onInstall: suspend (String, PackagePlan, suspend (PackageInstallProgress) -> Unit) -> InstallUiResult,
 ) {
     val scope = rememberCoroutineScope()
     var confirm by remember(operationKey, requirements) { mutableStateOf(false) }
@@ -462,6 +464,7 @@ private fun PackageRequestBlock(
     var installing by remember(operationKey, requirements) { mutableStateOf(false) }
     var review by remember(operationKey, requirements) { mutableStateOf<PackageReview?>(null) }
     var result by remember(operationKey, requirements) { mutableStateOf<InstallUiResult?>(null) }
+    var installProgress by remember(operationKey, requirements) { mutableStateOf<PackageInstallProgress?>(null) }
     var showDetails by remember(operationKey, requirements) { mutableStateOf(false) }
 
     suspend fun installNow() {
@@ -471,7 +474,12 @@ private fun PackageRequestBlock(
             installing = false
             return
         }
-        result = runCatching { onInstall(requirements, approved) }
+        installProgress = null
+        result = runCatching {
+            onInstall(requirements, approved) { progress ->
+                withContext(Dispatchers.Main.immediate) { installProgress = progress }
+            }
+        }
             .getOrElse { InstallUiResult(false, "Install failed", it.message.orEmpty()) }
         installing = false
     }
@@ -516,6 +524,33 @@ private fun PackageRequestBlock(
                         fontWeight = FontWeight.Medium,
                         color = if (result?.success == false || review?.state == PackageApprovalState.DENIED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                     )
+                }
+            }
+            installProgress?.let { progress ->
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    if (progress.percent != null) {
+                        LinearProgressIndicator(
+                            progress = { progress.percent.coerceIn(0f, 1f) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    } else if (installing) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(progress.phase, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                        progress.percent?.let { Text("${(it.coerceIn(0f, 1f) * 100).toInt()}%", style = MaterialTheme.typography.labelMedium) }
+                    }
+                    progress.currentPackage?.let {
+                        Text(it, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall)
+                    }
+                    if (progress.detail.isNotBlank()) {
+                        Text(progress.detail, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    val liveLog = listOf(progress.stdoutTail, progress.stderrTail)
+                        .filter(String::isNotBlank)
+                        .joinToString("\n")
+                        .takeLast(8_000)
+                    if (liveLog.isNotBlank() && installing) GenericToolOutputCard(liveLog)
                 }
             }
             review?.let { current ->
@@ -1233,17 +1268,18 @@ private fun installReferenceSpans(
         val target = if (kind == LinkReferenceKind.LINK) raw else parsed.getQueryParameter("target").orEmpty()
         val label = text.subSequence(start, end).toString()
         text.removeSpan(span)
+        val clickableSpan = PreviewClickableSpan(linkColor) { widget ->
+            onClick(
+                LinkReferencePreview(
+                    kind = kind,
+                    label = label,
+                    target = target,
+                    anchorBoundsInWindow = spanBoundsInWindow(widget as? TextView, start, end),
+                ),
+            )
+        }
         text.setSpan(
-            PreviewClickableSpan(linkColor) { widget ->
-                onClick(
-                    LinkReferencePreview(
-                        kind = kind,
-                        label = label,
-                        target = target,
-                        anchorBoundsInWindow = spanBoundsInWindow(widget as? TextView, start, end),
-                    ),
-                )
-            },
+            clickableSpan,
             start,
             end,
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
