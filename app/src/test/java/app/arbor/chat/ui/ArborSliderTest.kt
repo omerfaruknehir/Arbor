@@ -38,6 +38,38 @@ class ArborSliderTest {
         assertEquals(0f, releaseSnapAnchor(0.12f, 0f..1f, listOf(0f, 0.5f, 1f), 0.05f, true)!!, 0f)
     }
 
+    @Test fun boundedSnapLaneChoosesOnlyItsTwoEndpointsAndNeverCapturesSoftness() {
+        val anchors = listOf(0f, .2f)
+        val lane = 0f..0.2f
+        assertEquals(0f, releaseSnapAnchor(.07f, 0f..1f, anchors, .25f, true, lane)!!, 0f)
+        assertEquals(.2f, releaseSnapAnchor(.13f, 0f..1f, anchors, .25f, true, lane)!!, 0f)
+        assertNull(releaseSnapAnchor(.2001f, 0f..1f, anchors, .25f, true, lane))
+        assertNull(releaseSnapAnchor(.24f, 0f..1f, anchors, .25f, true, lane))
+
+        val outside = applyMagneticSliderForce(
+            rawValue = .24f,
+            valueRange = 0f..1f,
+            anchors = anchors,
+            attractionRadiusFraction = .14f,
+            pullStrength = .98f,
+            snapRange = lane,
+        )
+        assertEquals(.24f, outside.value, 0f)
+        assertNull(outside.anchor)
+
+        val values = (0..200).map { it / 1000f }.map {
+            applyMagneticSliderForce(
+                rawValue = it,
+                valueRange = 0f..1f,
+                anchors = anchors,
+                attractionRadiusFraction = .14f,
+                pullStrength = .98f,
+                snapRange = lane,
+            ).value
+        }
+        values.zipWithNext().forEach { (a, b) -> assertTrue("$a > $b", b >= a) }
+    }
+
     @Test fun explicitSnapDotsUseTheExactAnchorPositions() {
         assertEquals(listOf(0f, 0.2f, 1f), sliderAnchorFractions(0f..1f, listOf(0f, 0.2f, 1f)))
         assertEquals(listOf(0f, 0.5f, 1f), sliderAnchorFractions(10f..20f, listOf(10f, 15f, 20f)))
@@ -78,7 +110,10 @@ class ArborSliderTest {
         assertTrue(slider.contains("haptics.snap()"))
         assertTrue(slider.contains("settleAnim.animateTo"))
         assertTrue(slider.contains("animationSpec = spring("))
+        assertTrue(slider.contains("track = { sliderState ->"))
+        assertTrue(slider.contains("SliderDefaults.Track("))
         assertTrue(slider.contains("Canvas(Modifier.fillMaxSize())"))
+        assertTrue(slider.contains("visibleValueFraction"))
         assertTrue(haptics.contains("view.isHapticFeedbackEnabled"))
         assertTrue(haptics.contains("SEGMENT_TICK"))
         assertTrue(haptics.contains("CONFIRM"))
@@ -92,6 +127,22 @@ class ArborSliderTest {
         assertTrue(edgeBlock.contains("\"Hard edges\""))
         assertFalse(edgeBlock.contains("Shape transition"))
         assertTrue(edgeBlock.contains("showSnapPointDots = true"))
+        assertTrue(edgeBlock.contains("snapRange = CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT..CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT"))
+        assertTrue(edgeBlock.contains("pullStrength = 0.98f"))
+    }
+
+    @Test fun continuousAppearanceAndOverlayControlsDoNotInventSnapPoints() {
+        val settings = java.io.File("src/main/java/app/arbor/chat/ui/SettingsScreen.kt").readText()
+        listOf(
+            "value = chromeBlurStrength",
+            "value = chromeOverlayOpacity",
+            "value = chromeTopPanelHeightDp",
+            "value = settings.performanceOverlayBackgroundOpacity",
+            "value = settings.performanceOverlayTextOpacity",
+        ).forEach { marker ->
+            val block = settings.substringAfter(marker).substringBefore(")\n")
+            assertFalse("Unexpected snap points after $marker", block.contains("snapPoints"))
+        }
     }
 
 }

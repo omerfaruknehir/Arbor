@@ -517,7 +517,6 @@ private fun AppearanceSettingsPage(
         value = chromeBlurStrength,
         onValueChange = viewModel::setChromeBlurStrength,
         valueRange = 0f..1f,
-        snapPoints = listOf(0f, 0.25f, 0.5f, 0.75f, 1f),
     )
     Text(
         "0% disables blur exactly. Nonzero values use a native Gaussian blur with the current continuous 0-56 dp control, avoiding sparse-sample patterns at high strength.",
@@ -542,10 +541,11 @@ private fun AppearanceSettingsPage(
             CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT,
             CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT,
         ),
-        attractionRadiusFraction = 0.085f,
-        pullStrength = 0.88f,
-        releaseSnapRadiusFraction = 0.060f,
+        attractionRadiusFraction = 0.14f,
+        pullStrength = 0.98f,
+        snapRange = CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT..CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT,
         liveMagnetism = true,
+        snapToNearestOnRelease = true,
         showSnapPointDots = true,
     )
     Text(
@@ -561,7 +561,6 @@ private fun AppearanceSettingsPage(
         value = chromeOverlayOpacity,
         onValueChange = viewModel::setChromeOverlayOpacity,
         valueRange = 0f..1f,
-        snapPoints = listOf(0f, 0.25f, 0.5f, 0.75f, 1f),
     )
     Text(
         "0% removes the tint; 100% makes the panel tint fully opaque.",
@@ -577,9 +576,6 @@ private fun AppearanceSettingsPage(
         value = chromeTopPanelHeightDp,
         onValueChange = viewModel::setChromeTopPanelHeightDp,
         valueRange = 64f..240f,
-        snapPoints = listOf(64f, 96f, 128f, 160f, 192f, 224f, 240f),
-        attractionRadiusFraction = 0.045f,
-        pullStrength = 0.72f,
     )
     Text(
         "Controls the exact shared height of the top blur and tint geometry. This is temporary tuning control; the selected value is preserved across restarts.",
@@ -827,7 +823,6 @@ private fun DeveloperSettingsPage(
         value = settings.performanceOverlayBackgroundOpacity,
         onValueChange = { value -> viewModel.updateDeveloperSettings { it.copy(performanceOverlayBackgroundOpacity = value) } },
         valueRange = 0f..1f,
-        snapPoints = listOf(0f, 0.25f, 0.5f, 0.75f, 1f),
         enabled = settings.enabled && settings.performanceOverlayEnabled,
     )
     Text("Text opacity • ${(settings.performanceOverlayTextOpacity * 100).roundToInt()}%", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
@@ -835,7 +830,6 @@ private fun DeveloperSettingsPage(
         value = settings.performanceOverlayTextOpacity,
         onValueChange = { value -> viewModel.updateDeveloperSettings { it.copy(performanceOverlayTextOpacity = value) } },
         valueRange = 0f..1f,
-        snapPoints = listOf(0f, 0.25f, 0.5f, 0.75f, 1f),
         enabled = settings.enabled && settings.performanceOverlayEnabled,
     )
     Text(

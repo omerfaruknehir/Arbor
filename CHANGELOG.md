@@ -1,3 +1,13 @@
+## 0.19.11
+
+- Restrict edge-softness snapping to the physical lane between rounded-hard 0% and flat-hard 0%; values after the flat anchor, including the first 0–5% of real feathering, never snap back to **Hard edges**.
+- Always settle releases inside that bounded lane to whichever hard-edge endpoint is closer, with stronger live spring attraction and a firmer damped release.
+- Move explicit snap indicators into the Material slider track so they look like normal built-in tick marks instead of dots floating over the whole control.
+- Remove arbitrary 25% snapping from blur, overlay opacity, top-panel height, and performance-overlay opacity controls; keep snapping only for real discrete choices and the intentional edge geometry anchors.
+- Clamp release velocity before spring animation and use the actual active magnetic anchor for haptic state, reducing thumb oscillation, duplicate ticks, and release glitches.
+- Preserve Thinking as a continuous drag with intentional nearest-effort settling only after release, plus slider priority over drawer gestures.
+- Add regression coverage for bounded edge snapping, free post-anchor softness, in-track ticks, and removal of arbitrary continuous-slider anchors.
+
 ## 0.19.10
 
 - Replace weak release-only slider snapping with a visible spring well while dragging and a damped spring settle animation on release.

@@ -1,0 +1,3 @@
+# Arbor 0.19.11
+
+This release narrows snapping to controls where it is semantically meaningful. Edge softness now has one bounded magnetic lane between its rounded-hard and flat-hard anchors: releasing inside that lane springs to the nearer endpoint, while every value after the flat-hard anchor—including the first 0–5% of real softness—remains completely free. Snap indicators are rendered as normal in-track ticks rather than circles floating over the slider. Continuous appearance and performance controls no longer have arbitrary quarter-step snap points, and spring settling is stronger and less prone to velocity-induced jitter.
