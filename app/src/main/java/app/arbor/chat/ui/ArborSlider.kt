@@ -2,19 +2,18 @@ package app.arbor.chat.ui
 
 import android.os.SystemClock
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderColors
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -48,7 +47,7 @@ internal fun applyMagneticSliderForce(
     valueRange: ClosedFloatingPointRange<Float>,
     anchors: List<Float>,
     attractionRadiusFraction: Float = 0.07f,
-    pullStrength: Float = 0.78f,
+    pullStrength: Float = 0.90f,
     snapRange: ClosedFloatingPointRange<Float>? = null,
 ): MagneticSliderResult {
     val start = valueRange.start
@@ -86,8 +85,12 @@ internal fun applyMagneticSliderForce(
     // The thumb therefore feels attached to a spring rather than being warped
     // or teleported onto a fixed value.
     val normalizedDistance = (distance / attractionRadius).coerceIn(0f, 1f)
-    val springInfluence = (1f - normalizedDistance * normalizedDistance).let { it * it }
-    val resistance = pullStrength.coerceIn(0f, 0.97f) * springInfluence
+    // A sixth-power well keeps the outer edge smooth but makes the inner half
+    // substantially stronger. The thumb still remains monotonic and never
+    // teleports onto the anchor while the pointer is down.
+    val springInfluence = 1f - normalizedDistance * normalizedDistance *
+        normalizedDistance * normalizedDistance * normalizedDistance * normalizedDistance
+    val resistance = pullStrength.coerceIn(0f, 0.992f) * springInfluence
     val attracted = raw + (anchor - raw) * resistance
     return MagneticSliderResult(attracted.coerceIn(start, end), anchor, true)
 }
@@ -136,6 +139,13 @@ internal fun sliderAnchorFractions(
         .sorted()
 }
 
+/** Material-style ticks exclude the range endpoints, which are already shown by the track caps. */
+internal fun sliderInteriorAnchorFractions(
+    valueRange: ClosedFloatingPointRange<Float>,
+    anchors: List<Float>,
+): List<Float> = sliderAnchorFractions(valueRange, anchors)
+    .filter { it > 0.0001f && it < 0.9999f }
+
 /** Material slider with spring attraction, spring settling, tactile ticks, and visible anchors. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -148,14 +158,14 @@ fun ArborSlider(
     steps: Int = 0,
     snapPoints: List<Float> = emptyList(),
     attractionRadiusFraction: Float = 0.08f,
-    pullStrength: Float = 0.92f,
-    releaseSnapRadiusFraction: Float = 0.05f,
+    pullStrength: Float = 0.985f,
+    releaseSnapRadiusFraction: Float = 0.065f,
     snapRange: ClosedFloatingPointRange<Float>? = null,
     liveMagnetism: Boolean = snapPoints.isNotEmpty(),
     snapToNearestOnRelease: Boolean = false,
     showSnapPointDots: Boolean = true,
-    springDampingRatio: Float = 0.72f,
-    springStiffness: Float = Spring.StiffnessHigh,
+    springDampingRatio: Float = 0.64f,
+    springStiffness: Float = 850f,
     onValueChangeFinished: (() -> Unit)? = null,
     colors: SliderColors = SliderDefaults.colors(),
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
@@ -164,6 +174,7 @@ fun ArborSlider(
     val scope = rememberCoroutineScope()
     val settleAnim = remember { Animatable(value) }
     var settleJob by remember { mutableStateOf<Job?>(null) }
+    var visualValue by remember { mutableStateOf(value.coerceIn(valueRange.start, valueRange.endInclusive)) }
     val anchors = remember(valueRange.start, valueRange.endInclusive, steps, snapPoints) {
         (if (steps > 0) sliderStepAnchors(valueRange, steps) else snapPoints)
             .map { it.coerceIn(valueRange.start, valueRange.endInclusive) }
@@ -179,16 +190,23 @@ fun ArborSlider(
     var normalizedVelocityPerSecond by remember { mutableStateOf(0f) }
 
     val anchorFractions = remember(valueRange.start, valueRange.endInclusive, anchors) {
-        sliderAnchorFractions(valueRange, anchors)
+        sliderInteriorAnchorFractions(valueRange, anchors)
     }
-    val visibleValueFraction = remember(value, valueRange.start, valueRange.endInclusive) {
+    val visibleValueFraction = remember(visualValue, valueRange.start, valueRange.endInclusive) {
         val span = valueRange.endInclusive - valueRange.start
-        if (span <= 0f) 0f else ((value.coerceIn(valueRange.start, valueRange.endInclusive) - valueRange.start) / span)
+        if (span <= 0f) 0f else ((visualValue.coerceIn(valueRange.start, valueRange.endInclusive) - valueRange.start) / span)
+    }
+
+    SideEffect {
+        if (!dragging && settleJob == null) {
+            val external = value.coerceIn(valueRange.start, valueRange.endInclusive)
+            if (abs(visualValue - external) > 0.00001f) visualValue = external
+        }
     }
 
     Box(modifier = modifier.horizontalGesturePriority(enabled)) {
         Slider(
-        value = value.coerceIn(valueRange.start, valueRange.endInclusive),
+        value = visualValue.coerceIn(valueRange.start, valueRange.endInclusive),
         onValueChange = { raw ->
             if (!dragging) {
                 settleJob?.cancel()
@@ -232,6 +250,7 @@ fun ArborSlider(
             }
 
             lastDeliveredValue = result.value
+            visualValue = result.value
             onValueChange(result.value)
         },
         modifier = Modifier.fillMaxWidth(),
@@ -271,9 +290,9 @@ fun ArborSlider(
                                 ),
                                 initialVelocity = initialVelocity,
                             ) {
-                                lastDeliveredValue = value
-                                onValueChange(value)
+                                visualValue = value
                             }
+                            visualValue = target
                             lastDeliveredValue = target
                             onValueChange(target)
                             haptics.snap()
@@ -285,6 +304,7 @@ fun ArborSlider(
                         abs(lastRawValue - lastDeliveredValue) > 0.00001f -> {
                         // Do not persist a magnetically displaced value when the
                         // release occurs outside a snap well.
+                        visualValue = lastRawValue
                         lastDeliveredValue = lastRawValue
                         onValueChange(lastRawValue)
                         haptics.gestureEnd()
@@ -312,19 +332,18 @@ fun ArborSlider(
                         modifier = Modifier.fillMaxWidth(),
                         enabled = enabled,
                         colors = colors,
-                        drawStopIndicator = null,
-                        drawTick = { _, _ -> },
                     )
-                    val activeDotColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = if (enabled) 0.86f else 0.38f)
-                    val inactiveDotColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 0.76f else 0.32f)
+                    val activeDotColor = if (enabled) colors.activeTickColor else colors.disabledActiveTickColor
+                    val inactiveDotColor = if (enabled) colors.inactiveTickColor else colors.disabledInactiveTickColor
                     Canvas(Modifier.fillMaxSize()) {
-                        val radius = 1.7.dp.toPx()
-                        val usableWidth = (size.width - radius * 2f).coerceAtLeast(0f)
+                        // Match Material's ordinary discrete-slider ticks: tiny marks
+                        // centered inside the track, with no custom endpoint dots.
+                        val radius = 1.dp.toPx()
                         anchorFractions.forEach { fraction ->
                             drawCircle(
                                 color = if (fraction <= visibleValueFraction) activeDotColor else inactiveDotColor,
                                 radius = radius,
-                                center = Offset(radius + usableWidth * fraction, size.height / 2f),
+                                center = Offset(size.width * fraction, size.height / 2f),
                             )
                         }
                     }

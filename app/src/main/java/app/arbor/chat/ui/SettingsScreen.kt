@@ -542,14 +542,14 @@ private fun AppearanceSettingsPage(
             CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT,
         ),
         attractionRadiusFraction = 0.14f,
-        pullStrength = 0.98f,
+        pullStrength = 0.992f,
         snapRange = CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT..CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT,
         liveMagnetism = true,
         snapToNearestOnRelease = true,
         showSnapPointDots = true,
     )
     Text(
-        "The two dots are hard-edge positions: rounded first, flat second. Values between them change only the corner shape. Edge softness starts after the second dot and then rises from 1% to 100%.",
+        "The rounded track start and the small in-track flat-edge tick are the two hard-edge positions. Values between them change only the corner shape. Edge softness starts after the flat-edge tick and then rises from 1% to 100%.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -891,6 +891,34 @@ private fun DeveloperSettingsPage(
         } else {
             "Compact mode shows FPS, average frame time, and jank percentage."
         },
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    HorizontalDivider()
+    SectionTitle(
+        "Blur boundary diagnostics",
+        "Draws explicit debug guides at the top and bottom panel boundaries. Normal UI no longer draws a boundary highlight.",
+    )
+    SettingsSwitch(
+        label = "Show blur boundary guides",
+        checked = settings.blurBoundaryDebugEnabled,
+        onCheckedChange = { enabled -> viewModel.updateDeveloperSettings { it.copy(blurBoundaryDebugEnabled = enabled) } },
+        enabled = settings.enabled,
+    )
+    Text(
+        "Guide thickness • ${settings.blurBoundaryDebugThicknessDp.roundToInt()} dp",
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+    )
+    ArborSlider(
+        value = settings.blurBoundaryDebugThicknessDp,
+        onValueChange = { value -> viewModel.updateDeveloperSettings { it.copy(blurBoundaryDebugThicknessDp = value) } },
+        valueRange = 1f..8f,
+        enabled = settings.enabled && settings.blurBoundaryDebugEnabled,
+    )
+    Text(
+        "Guides are bright red and diagnostic-only. They are never shown unless both Developer settings and this toggle are enabled.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

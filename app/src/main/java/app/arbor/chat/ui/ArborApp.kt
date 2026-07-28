@@ -64,6 +64,10 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
 
     SideEffect {
         ArborRenderProfiler.setScreen(screen.name)
+        ArborBackdropDebugOverlay.update(
+            enabled = developerSettings.enabled && developerSettings.blurBoundaryDebugEnabled,
+            thicknessDp = developerSettings.blurBoundaryDebugThicknessDp,
+        )
         if (developerSettings.diagnosticProfilerEnabled) ArborRenderProfiler.recordAppRecomposition()
     }
 

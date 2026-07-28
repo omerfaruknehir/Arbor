@@ -139,6 +139,17 @@ class BackdropBlurTest {
         assertFalse(source.contains("coerceIn(1f, size.height"))
     }
 
+
+    @Test fun blurBoundaryIsPixelStableAndNormalChromeHasNoEdgeLine() {
+        val source = blurSource()
+        assertTrue(source.contains("val stableTop = round(topInRootPx)"))
+        assertTrue(source.contains("val start = round(minOf(startInRootPx, endInRootPx))"))
+        assertTrue(source.contains("smoothstep(end - 0.5, end + 0.5, coord.y)"))
+        assertTrue(source.contains("private const val DEFAULT_EDGE_HIGHLIGHT = 0f"))
+        assertTrue(source.contains("ArborBackdropDebugOverlay"))
+        assertTrue(source.contains("color = Color.Red"))
+    }
+
     @Test fun profilerRemainsWiredToTheGaussianRenderer() {
         val source = blurSource()
         assertTrue(source.contains("recordBlurEffectBuild(panels.size * 6 + 5)"))

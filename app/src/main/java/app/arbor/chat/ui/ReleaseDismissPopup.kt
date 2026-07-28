@@ -69,17 +69,18 @@ internal fun ArborDropdownMenu(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
+    dismissOnClickOutside: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    ReleaseDismissOutsideLayer(expanded, onDismissRequest)
+    if (!dismissOnClickOutside) ReleaseDismissOutsideLayer(expanded, onDismissRequest)
     MaterialDropdownMenu(
         expanded = expanded,
-        onDismissRequest = {},
+        onDismissRequest = if (dismissOnClickOutside) onDismissRequest else ({}),
         modifier = modifier,
         properties = PopupProperties(
-            focusable = false,
-            dismissOnBackPress = false,
-            dismissOnClickOutside = false,
+            focusable = dismissOnClickOutside,
+            dismissOnBackPress = dismissOnClickOutside,
+            dismissOnClickOutside = dismissOnClickOutside,
         ),
         content = content,
     )

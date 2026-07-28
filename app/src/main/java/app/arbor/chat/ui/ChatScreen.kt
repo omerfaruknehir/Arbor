@@ -2321,6 +2321,7 @@ private fun ThinkingComposerChip(
             expanded = menu,
             onDismissRequest = { menu = false },
             modifier = Modifier.width(304.dp),
+            dismissOnClickOutside = true,
         ) {
             if (options.isNotEmpty()) {
                 val preview = options[sliderValue.roundToInt().coerceIn(options.indices)]

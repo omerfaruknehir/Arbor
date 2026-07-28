@@ -1,3 +1,14 @@
+## 0.19.12
+
+- Separate the slider's local visual spring from preference persistence so post-release snapping animates smoothly and commits only the final endpoint instead of writing every animation frame.
+- Increase magnetic attraction and use a lower-stiffness damped spring for a stronger but visibly continuous settle after release.
+- Render Edge Smoothness and Thinking anchors with Material's normal active/inactive tick colors, tiny in-track marks, and no custom endpoint dots.
+- Dismiss the Thinking effort popup when tapping outside it while preserving slider interaction inside the popup.
+- Pixel-lock shared blur/tint panel bounds and antialias the hard mask boundary over one physical pixel to prevent edge coverage flicker while scrolling.
+- Remove the normal white top/bottom boundary highlight and add an opt-in Developer Settings diagnostic guide with bright-red color and adjustable 1–8 dp thickness.
+- Preserve native Gaussian composition, the two hard-edge anchor lane, free post-flat softness values, slider priority over drawer gestures, package identity, signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
+- Add regression coverage for Material-style interior ticks, local-only spring frames, outside-tap popup dismissal, pixel-stable blur boundaries, and debug-only boundary guides.
+
 ## 0.19.11
 
 - Restrict edge-softness snapping to the physical lane between rounded-hard 0% and flat-hard 0%; values after the flat anchor, including the first 0–5% of real feathering, never snap back to **Hard edges**.

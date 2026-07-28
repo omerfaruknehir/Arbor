@@ -70,9 +70,11 @@ class ArborSliderTest {
         values.zipWithNext().forEach { (a, b) -> assertTrue("$a > $b", b >= a) }
     }
 
-    @Test fun explicitSnapDotsUseTheExactAnchorPositions() {
+    @Test fun explicitSnapTicksUseMaterialStyleInteriorPositions() {
         assertEquals(listOf(0f, 0.2f, 1f), sliderAnchorFractions(0f..1f, listOf(0f, 0.2f, 1f)))
         assertEquals(listOf(0f, 0.5f, 1f), sliderAnchorFractions(10f..20f, listOf(10f, 15f, 20f)))
+        assertEquals(listOf(0.2f), sliderInteriorAnchorFractions(0f..1f, listOf(0f, 0.2f, 1f)))
+        assertEquals(listOf(0.25f, 0.5f, 0.75f), sliderInteriorAnchorFractions(0f..4f, listOf(0f, 1f, 2f, 3f, 4f)))
     }
 
     @Test fun discreteSliderAnchorsIncludeBothEndpointsAndAllSteps() {
@@ -93,6 +95,7 @@ class ArborSliderTest {
         assertTrue(thinkingBlock.contains("liveMagnetism = false"))
         assertTrue(thinkingBlock.contains("snapToNearestOnRelease = true"))
         assertTrue(thinkingBlock.contains("showSnapPointDots = true"))
+        assertTrue(thinkingBlock.contains("dismissOnClickOutside = true"))
         assertFalse(thinkingBlock.contains("steps = (options.size - 2)"))
         assertTrue(thinkingBlock.contains("var sliderValue by remember(options)"))
         assertFalse(thinkingBlock.contains("remember(options, selectedIndex, menu)"))
@@ -113,6 +116,11 @@ class ArborSliderTest {
         assertTrue(slider.contains("track = { sliderState ->"))
         assertTrue(slider.contains("SliderDefaults.Track("))
         assertTrue(slider.contains("Canvas(Modifier.fillMaxSize())"))
+        assertTrue(slider.contains("sliderInteriorAnchorFractions"))
+        assertTrue(slider.contains("visualValue = value"))
+        assertTrue(slider.contains("onValueChange(target)"))
+        assertTrue(slider.contains("springDampingRatio: Float = 0.64f"))
+        assertTrue(slider.contains("springStiffness: Float = 850f"))
         assertTrue(slider.contains("visibleValueFraction"))
         assertTrue(haptics.contains("view.isHapticFeedbackEnabled"))
         assertTrue(haptics.contains("SEGMENT_TICK"))
@@ -128,7 +136,7 @@ class ArborSliderTest {
         assertFalse(edgeBlock.contains("Shape transition"))
         assertTrue(edgeBlock.contains("showSnapPointDots = true"))
         assertTrue(edgeBlock.contains("snapRange = CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT..CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT"))
-        assertTrue(edgeBlock.contains("pullStrength = 0.98f"))
+        assertTrue(edgeBlock.contains("pullStrength = 0.992f"))
     }
 
     @Test fun continuousAppearanceAndOverlayControlsDoNotInventSnapPoints() {

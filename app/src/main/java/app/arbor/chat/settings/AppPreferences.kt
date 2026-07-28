@@ -67,11 +67,14 @@ data class DeveloperSettings(
     val performanceOverlayPosition: PerformanceOverlayPosition = PerformanceOverlayPosition.TOP_END,
     val performanceOverlayBackgroundOpacity: Float = 0.86f,
     val performanceOverlayTextOpacity: Float = 1f,
+    val blurBoundaryDebugEnabled: Boolean = false,
+    val blurBoundaryDebugThicknessDp: Float = 3f,
 ) {
     fun normalized() = copy(
         performanceUpdateIntervalMs = performanceUpdateIntervalMs.coerceIn(250, 2_000),
         performanceOverlayBackgroundOpacity = performanceOverlayBackgroundOpacity.coerceIn(0f, 1f),
         performanceOverlayTextOpacity = performanceOverlayTextOpacity.coerceIn(0f, 1f),
+        blurBoundaryDebugThicknessDp = blurBoundaryDebugThicknessDp.coerceIn(1f, 8f),
     )
 }
 
@@ -284,6 +287,8 @@ class AppPreferences(context: Context) {
             putString(KEY_PERFORMANCE_OVERLAY_POSITION, normalized.performanceOverlayPosition.name)
             putFloat(KEY_PERFORMANCE_OVERLAY_BACKGROUND_OPACITY, normalized.performanceOverlayBackgroundOpacity)
             putFloat(KEY_PERFORMANCE_OVERLAY_TEXT_OPACITY, normalized.performanceOverlayTextOpacity)
+            putBoolean(KEY_BLUR_BOUNDARY_DEBUG_ENABLED, normalized.blurBoundaryDebugEnabled)
+            putFloat(KEY_BLUR_BOUNDARY_DEBUG_THICKNESS_DP, normalized.blurBoundaryDebugThicknessDp)
         }
     }
 
@@ -334,6 +339,8 @@ class AppPreferences(context: Context) {
         performanceOverlayPosition = enumValue(KEY_PERFORMANCE_OVERLAY_POSITION, PerformanceOverlayPosition.TOP_END),
         performanceOverlayBackgroundOpacity = preferences.getFloat(KEY_PERFORMANCE_OVERLAY_BACKGROUND_OPACITY, 0.86f),
         performanceOverlayTextOpacity = preferences.getFloat(KEY_PERFORMANCE_OVERLAY_TEXT_OPACITY, 1f),
+        blurBoundaryDebugEnabled = preferences.getBoolean(KEY_BLUR_BOUNDARY_DEBUG_ENABLED, false),
+        blurBoundaryDebugThicknessDp = preferences.getFloat(KEY_BLUR_BOUNDARY_DEBUG_THICKNESS_DP, 3f),
     ).normalized()
 
     private fun readNewChatDefaults() = NewChatDefaults(
@@ -400,5 +407,7 @@ class AppPreferences(context: Context) {
         const val KEY_PERFORMANCE_OVERLAY_POSITION = "performance_overlay_position"
         const val KEY_PERFORMANCE_OVERLAY_BACKGROUND_OPACITY = "performance_overlay_background_opacity"
         const val KEY_PERFORMANCE_OVERLAY_TEXT_OPACITY = "performance_overlay_text_opacity"
+        const val KEY_BLUR_BOUNDARY_DEBUG_ENABLED = "blur_boundary_debug_enabled"
+        const val KEY_BLUR_BOUNDARY_DEBUG_THICKNESS_DP = "blur_boundary_debug_thickness_dp"
     }
 }

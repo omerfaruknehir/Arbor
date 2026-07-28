@@ -40,9 +40,21 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.round
 
 /** Which chrome edge owns a backdrop panel. */
 enum class ArborBlurEdge { TOP, BOTTOM }
+
+/** Runtime-only developer visualization. Normal chrome never draws boundary lines. */
+internal object ArborBackdropDebugOverlay {
+    var enabled by mutableStateOf(false)
+    var thicknessDp by mutableFloatStateOf(3f)
+
+    fun update(enabled: Boolean, thicknessDp: Float) {
+        this.enabled = enabled
+        this.thicknessDp = thicknessDp.coerceIn(1f, 8f)
+    }
+}
 
 /**
  * Shared backdrop state. Panel bounds are stored in root coordinates and then
@@ -128,12 +140,16 @@ class ArborBackdropBlurState internal constructor() {
     }
 
     internal fun updateSource(topInRootPx: Float) {
-        if (abs(sourceTopInRootPx - topInRootPx) >= 0.5f) sourceTopInRootPx = topInRootPx
+        val stableTop = round(topInRootPx)
+        if (abs(sourceTopInRootPx - stableTop) >= 0.5f) sourceTopInRootPx = stableTop
     }
 
     internal fun updatePanelBounds(edge: ArborBlurEdge, startInRootPx: Float, endInRootPx: Float) {
-        val start = minOf(startInRootPx, endInRootPx)
-        val end = maxOf(startInRootPx, endInRootPx)
+        // Keep the blur/tint boundary on physical pixel centers. Fractional
+        // layout coordinates can alternate coverage while scrolling and show
+        // up as a one-pixel flicker at the panel edge.
+        val start = round(minOf(startInRootPx, endInRootPx))
+        val end = round(maxOf(startInRootPx, endInRootPx))
         when (edge) {
             ArborBlurEdge.TOP -> {
                 if (!topPanelStartInRootPx.isFinite() || abs(topPanelStartInRootPx - start) >= 0.5f) topPanelStartInRootPx = start
@@ -183,8 +199,10 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
     val topBlurActive = topRadiusPx >= MIN_VISIBLE_RADIUS_PX
     val bottomBlurActive = bottomRadiusPx >= MIN_VISIBLE_RADIUS_PX
     val blurActive = topBlurActive || bottomBlurActive
+    val debugBoundaryEnabled = ArborBackdropDebugOverlay.enabled
+    val debugBoundaryThicknessDp = ArborBackdropDebugOverlay.thicknessDp
     val visualsActive = blurActive || state.topTint.alpha > 0f || state.bottomTint.alpha > 0f ||
-        state.topEdgeHighlight > 0f || state.bottomEdgeHighlight > 0f
+        state.topEdgeHighlight > 0f || state.bottomEdgeHighlight > 0f || debugBoundaryEnabled
 
     var contentWidthPx by remember { mutableFloatStateOf(0f) }
     var contentHeightPx by remember { mutableFloatStateOf(0f) }
@@ -322,6 +340,8 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
             cornerRadius = state.topCornerRadiusDp * density,
             tint = state.topTint,
             highlightAlpha = state.topEdgeHighlight,
+            debugBoundary = debugBoundaryEnabled,
+            debugThickness = debugBoundaryThicknessDp * density,
         )
         drawPanelOverlay(
             edge = ArborBlurEdge.BOTTOM,
@@ -332,6 +352,8 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
             cornerRadius = state.bottomCornerRadiusDp * density,
             tint = state.bottomTint,
             highlightAlpha = state.bottomEdgeHighlight,
+            debugBoundary = debugBoundaryEnabled,
+            debugThickness = debugBoundaryThicknessDp * density,
         )
         if (blurActive && ArborRenderProfiler.enabled) {
             ArborRenderProfiler.recordBlurFrame(
@@ -497,6 +519,8 @@ private fun DrawScope.drawPanelOverlay(
     cornerRadius: Float,
     tint: Color,
     highlightAlpha: Float,
+    debugBoundary: Boolean,
+    debugThickness: Float,
 ) {
     if (end <= start) return
     val softnessActive = softness > 0f && mergeDistance > 0f
@@ -573,6 +597,15 @@ private fun DrawScope.drawPanelOverlay(
             strokeWidth = 1.dp.toPx(),
         )
     }
+    if (debugBoundary) {
+        val y = if (edge == ArborBlurEdge.TOP) end else start
+        drawLine(
+            color = Color.Red,
+            start = Offset(0f, y),
+            end = Offset(size.width, y),
+            strokeWidth = debugThickness.coerceAtLeast(1f),
+        )
+    }
 }
 
 /** Overlay opacity is absolute: 0% is transparent and 100% is fully opaque. */
@@ -590,7 +623,7 @@ private const val DEFAULT_BOTTOM_PANEL_HEIGHT_DP = 208f
 private const val DEFAULT_GLASS_SATURATION = 1.10f
 private const val DEFAULT_GLASS_CONTRAST = 1.025f
 private const val DEFAULT_GLASS_BRIGHTNESS = 1.008f
-private const val DEFAULT_EDGE_HIGHLIGHT = 0.035f
+private const val DEFAULT_EDGE_HIGHLIGHT = 0f
 
 private val PANEL_ALPHA_MASK_SHADER = """
     uniform float2 uSize;
@@ -606,35 +639,39 @@ private val PANEL_ALPHA_MASK_SHADER = """
     }
 
     float roundedTopPanelMask(float2 coord, float start, float end, float radius) {
-        if (coord.y < start || coord.y > end) return 0.0;
+        float vertical = smoothstep(start - 0.5, start + 0.5, coord.y) *
+            (1.0 - smoothstep(end - 0.5, end + 0.5, coord.y));
+        if (vertical <= 0.0) return 0.0;
         float extent = end - start;
         radius = clamp(radius, 0.0, min(uSize.x * 0.5, extent * 0.5));
-        if (radius < 0.5 || coord.y <= end - radius) return 1.0;
+        if (radius < 0.5 || coord.y <= end - radius) return vertical;
         if (coord.x < radius) {
             float d = length(coord - float2(radius, end - radius));
-            return 1.0 - smoothstep(radius - 0.75, radius + 0.75, d);
+            return vertical * (1.0 - smoothstep(radius - 0.75, radius + 0.75, d));
         }
         if (coord.x > uSize.x - radius) {
             float d = length(coord - float2(uSize.x - radius, end - radius));
-            return 1.0 - smoothstep(radius - 0.75, radius + 0.75, d);
+            return vertical * (1.0 - smoothstep(radius - 0.75, radius + 0.75, d));
         }
-        return 1.0;
+        return vertical;
     }
 
     float roundedBottomPanelMask(float2 coord, float start, float end, float radius) {
-        if (coord.y < start || coord.y > end) return 0.0;
+        float vertical = smoothstep(start - 0.5, start + 0.5, coord.y) *
+            (1.0 - smoothstep(end - 0.5, end + 0.5, coord.y));
+        if (vertical <= 0.0) return 0.0;
         float extent = end - start;
         radius = clamp(radius, 0.0, min(uSize.x * 0.5, extent * 0.5));
-        if (radius < 0.5 || coord.y >= start + radius) return 1.0;
+        if (radius < 0.5 || coord.y >= start + radius) return vertical;
         if (coord.x < radius) {
             float d = length(coord - float2(radius, start + radius));
-            return 1.0 - smoothstep(radius - 0.75, radius + 0.75, d);
+            return vertical * (1.0 - smoothstep(radius - 0.75, radius + 0.75, d));
         }
         if (coord.x > uSize.x - radius) {
             float d = length(coord - float2(uSize.x - radius, start + radius));
-            return 1.0 - smoothstep(radius - 0.75, radius + 0.75, d);
+            return vertical * (1.0 - smoothstep(radius - 0.75, radius + 0.75, d));
         }
-        return 1.0;
+        return vertical;
     }
 
     half4 main(float2 coord) {
@@ -645,7 +682,7 @@ private val PANEL_ALPHA_MASK_SHADER = """
             } else {
                 float halfSpan = uMerge * 0.5;
                 mask = 1.0 - smoother((coord.y - (uBounds.y - halfSpan)) / max(uMerge, 1.0));
-                mask *= step(uBounds.x - 0.5, coord.y);
+                mask *= smoothstep(uBounds.x - 0.5, uBounds.x + 0.5, coord.y);
             }
         } else {
             if (uSoftness <= 0.0 || uMerge <= 0.0) {
@@ -653,7 +690,7 @@ private val PANEL_ALPHA_MASK_SHADER = """
             } else {
                 float halfSpan = uMerge * 0.5;
                 mask = smoother((coord.y - (uBounds.x - halfSpan)) / max(uMerge, 1.0));
-                mask *= 1.0 - step(uBounds.y + 0.5, coord.y);
+                mask *= 1.0 - smoothstep(uBounds.y - 0.5, uBounds.y + 0.5, coord.y);
             }
         }
         mask = saturate(mask);
