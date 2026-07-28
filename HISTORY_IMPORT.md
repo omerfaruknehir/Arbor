@@ -159,3 +159,5 @@ No source commit was fabricated from checksum, verification, release-note, or sk
 | 0.19.13 | `Arbor-0.19.13-source.zip` | `541582bade9682bce91a848518bc637f7ec6a862bce629fe3f844dac718cf18b` | `4bd2b42` | `v0.19.13` | 2026-07-28T03:31:00Z | canonical | `main` |
 
 | 0.19.14 | `Arbor-0.19.14-source.zip` | `3013326a41e3e0289028c1e506929f7f6e69e6c3dbd16b623bff8017d480a368` | `b38e7e9` | `v0.19.14` | 2026-07-28T04:31:34Z | canonical | `main` |
+
+| 0.19.15 | `Arbor-0.19.15-source.zip` | `c55826e7177c102e47d3b1d28999851c11bcf0585d273f9dd176103200a55368` | `ad8a26e` | `v0.19.15` | 2026-07-28T05:32:44Z | canonical | `main` |
