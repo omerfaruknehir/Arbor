@@ -1,3 +1,13 @@
+## 0.19.15
+
+- Replace Arbor's layered Material-slider wrapper with one custom slider engine that owns pointer tracking, magnetic hysteresis, velocity, haptics, spring settling, accessibility, external-state synchronization, and rendering.
+- Remove the hidden Material Slider state machine that could override Arbor's release animation, duplicate ticks, jump values, or race preference updates.
+- Draw every Arbor slider with the same 48 dp touch target, 16 dp rounded track, Material-style interior ticks, and 44 dp pill thumb; range endpoints are represented only by the track caps.
+- Keep continuous controls completely free of snap behavior, make stepped controls and Thinking move continuously under the finger and spring only after release, and retain the bounded rounded-hard/flat-hard lane for Edge Smoothness.
+- Add stable magnetic-well selection with hysteresis so adjacent anchors cannot flicker or fight around their midpoint, plus a single final value commit after the visual spring completes.
+- Preserve slider priority over drawer gestures, live setting previews during drag, system-respecting haptics, RTL mapping, accessibility progress actions, package identity, signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
+- Replace the old source-string regression checks with behavioral coverage for anchor normalization, non-overlapping wells, monotonic force mapping, hysteresis, bounded edge snapping, raw-value restoration, release velocity, interior ticks, and the single-state-machine architecture.
+
 ## 0.19.14
 
 - Replace RenderEffect-on-root blur composition with a complete-frame GraphicsLayer capture and two replays—normal plus native-Gaussian masked—so scrolling cannot expose partially invalidated blur tiles without reducing blur radius, strength, quality, or update frequency.

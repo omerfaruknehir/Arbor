@@ -7,85 +7,87 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ArborSliderTest {
-    @Test fun magneticForceLeavesValuesOutsideTheCaptureRadiusUntouched() {
-        val result = applyMagneticSliderForce(.40f, 0f..1f, listOf(0f, .5f, 1f), attractionRadiusFraction = .03f)
-        assertEquals(.40f, result.value, .0001f)
-        assertNull(result.anchor)
-        assertFalse(result.captured)
+    @Test fun anchorsAreNormalizedOnceAndRemainOrdered() {
+        assertEquals(listOf(0f, .5f, 1f), normalizedSliderAnchors(0f..1f, listOf(1f, .5f, .5f, -1f, 2f)))
+        assertEquals(listOf(1f, 2f, 3f, 4f, 5f), sliderStepAnchors(1f..5f, 3))
     }
 
-    @Test fun magneticForceFeelsLikeAStrongContinuousSpringWithoutTeleporting() {
-        val result = applyMagneticSliderForce(0.46f, 0f..1f, listOf(0.5f), attractionRadiusFraction = 0.07f, pullStrength = 0.78f)
-        assertTrue(result.value > 0.46f)
-        assertTrue(result.value < 0.5f)
-        assertTrue(result.value > 0.47f)
-        assertEquals(0.5f, result.anchor!!, 0f)
+    @Test fun magneticWellsNeverExceedHalfTheSmallestAnchorSpacing() {
+        assertEquals(.1f, sliderMagneticRadius(0f..1f, listOf(0f, .2f), .4f), .0001f)
+        assertEquals(.08f, sliderMagneticRadius(0f..1f, listOf(.5f), .08f), .0001f)
+    }
+
+    @Test fun magneticForceIsStrongContinuousAndDoesNotTeleport() {
+        val result = applyMagneticSliderForce(
+            rawValue = .46f,
+            valueRange = 0f..1f,
+            anchors = listOf(.5f),
+            attractionRadiusFraction = .10f,
+            pullStrength = .95f,
+            maximumLivePull = .90f,
+        )
         assertTrue(result.captured)
+        assertEquals(.5f, result.anchor!!, 0f)
+        assertTrue(result.value > .46f)
+        assertTrue(result.value < .5f)
+        assertTrue(result.value >= .49f)
     }
 
-    @Test fun liveMagnetismIsMonotonicAcrossAnAnchor() {
-        val rawValues = (450..550).map { it / 1000f }
-        val values = rawValues.map {
-            applyMagneticSliderForce(it, 0f..1f, listOf(.5f), attractionRadiusFraction = .06f).value
+    @Test fun magneticMappingIsMonotonicAcrossAnAnchor() {
+        val values = (400..600).map { it / 1000f }.map {
+            applyMagneticSliderForce(
+                rawValue = it,
+                valueRange = 0f..1f,
+                anchors = listOf(.5f),
+                attractionRadiusFraction = .12f,
+            ).value
         }
-        values.zipWithNext().forEach { (a, b) -> assertTrue("$a > $b", b >= a) }
-        assertEquals(.5f, values[50], 0f)
+        values.zipWithNext().forEach { (first, second) ->
+            assertTrue("$first > $second", second + .000001f >= first)
+        }
     }
 
-    @Test fun releaseSnappingUsesAUsableExplicitSpringWell() {
-        assertEquals(0.5f, releaseSnapAnchor(0.455f, 0f..1f, listOf(0.5f), 0.05f, false)!!, 0f)
-        assertNull(releaseSnapAnchor(0.44f, 0f..1f, listOf(0.5f), 0.05f, false))
-        assertEquals(0f, releaseSnapAnchor(0.12f, 0f..1f, listOf(0f, 0.5f, 1f), 0.05f, true)!!, 0f)
+    @Test fun capturedAnchorUsesHysteresisInsteadOfFlappingAtTheMidpoint() {
+        val anchors = listOf(0f, .2f)
+        assertEquals(0f, selectMagneticSliderAnchor(.095f, 0f..1f, anchors, .20f)!!, 0f)
+        assertEquals(0f, selectMagneticSliderAnchor(.105f, 0f..1f, anchors, .20f, currentAnchor = 0f)!!, 0f)
+        assertEquals(.2f, selectMagneticSliderAnchor(.13f, 0f..1f, anchors, .20f, currentAnchor = 0f)!!, 0f)
     }
 
-    @Test fun boundedSnapLaneChoosesOnlyItsTwoEndpointsAndNeverCapturesSoftness() {
+    @Test fun edgeSnapLaneChoosesOnlyRoundedOrFlatAndNeverCapturesSoftness() {
         val anchors = listOf(0f, .2f)
         val lane = 0f..0.2f
         assertEquals(0f, releaseSnapAnchor(.07f, 0f..1f, anchors, .25f, true, lane)!!, 0f)
         assertEquals(.2f, releaseSnapAnchor(.13f, 0f..1f, anchors, .25f, true, lane)!!, 0f)
         assertNull(releaseSnapAnchor(.2001f, 0f..1f, anchors, .25f, true, lane))
-        assertNull(releaseSnapAnchor(.24f, 0f..1f, anchors, .25f, true, lane))
+        assertNull(selectMagneticSliderAnchor(.24f, 0f..1f, anchors, .20f, snapRange = lane))
+    }
 
-        val outside = applyMagneticSliderForce(
-            rawValue = .24f,
+    @Test fun releaseDecisionRestoresRawValueWhenLeavingAMagnetWithoutSnapping() {
+        val decision = sliderReleaseDecision(
+            rawValue = .30f,
+            displayedValue = .27f,
             valueRange = 0f..1f,
-            anchors = anchors,
-            attractionRadiusFraction = .14f,
-            pullStrength = .98f,
-            snapRange = lane,
+            anchors = listOf(.2f),
+            radiusFraction = .03f,
+            alwaysNearest = false,
+            snapRange = null,
+            liveMagnetism = true,
         )
-        assertEquals(.24f, outside.value, 0f)
-        assertNull(outside.anchor)
-
-        val values = (0..200).map { it / 1000f }.map {
-            applyMagneticSliderForce(
-                rawValue = it,
-                valueRange = 0f..1f,
-                anchors = anchors,
-                attractionRadiusFraction = .14f,
-                pullStrength = .98f,
-                snapRange = lane,
-            ).value
-        }
-        values.zipWithNext().forEach { (a, b) -> assertTrue("$a > $b", b >= a) }
+        assertNull(decision.target)
+        assertTrue(decision.shouldRestoreRawValue)
     }
 
-    @Test fun explicitSnapTicksUseMaterialStyleInteriorPositions() {
-        assertEquals(listOf(0f, 0.2f, 1f), sliderAnchorFractions(0f..1f, listOf(0f, 0.2f, 1f)))
-        assertEquals(listOf(0f, 0.5f, 1f), sliderAnchorFractions(10f..20f, listOf(10f, 15f, 20f)))
-        assertEquals(listOf(0.2f), sliderInteriorAnchorFractions(0f..1f, listOf(0f, 0.2f, 1f)))
-        assertEquals(listOf(0.25f, 0.5f, 0.75f), sliderInteriorAnchorFractions(0f..4f, listOf(0f, 1f, 2f, 3f, 4f)))
-    }
-
-    @Test fun discreteSliderAnchorsIncludeBothEndpointsAndAllSteps() {
-        assertEquals(listOf(1f, 2f, 3f, 4f, 5f), sliderStepAnchors(1f..5f, 3))
-        assertEquals(listOf(0f, .5f, 1f), sliderStepAnchors(0f..1f, 1))
-    }
-
-    @Test fun fastFlicksHaveAWeakerReleaseCaptureThanSlowDrags() {
+    @Test fun fastFlicksNarrowOnlyOptionalCaptureWells() {
         assertEquals(1f, magneticReleaseRadiusMultiplier(.2f), 0f)
-        assertEquals(.70f, magneticReleaseRadiusMultiplier(1.5f), 0f)
-        assertEquals(.40f, magneticReleaseRadiusMultiplier(-3f), 0f)
+        assertEquals(.78f, magneticReleaseRadiusMultiplier(1.5f), 0f)
+        assertEquals(.55f, magneticReleaseRadiusMultiplier(-3f), 0f)
+    }
+
+    @Test fun trackTicksUseOnlyInteriorMaterialPositions() {
+        assertEquals(listOf(0f, .2f, 1f), sliderAnchorFractions(0f..1f, listOf(0f, .2f, 1f)))
+        assertEquals(listOf(.2f), sliderInteriorAnchorFractions(0f..1f, listOf(0f, .2f, 1f)))
+        assertEquals(listOf(.25f, .5f, .75f), sliderInteriorAnchorFractions(0f..4f, listOf(0f, 1f, 2f, 3f, 4f)))
     }
 
     @Test fun thinkingSliderMovesContinuouslyAndSnapsOnlyOnRelease() {
@@ -97,53 +99,46 @@ class ArborSliderTest {
         assertTrue(thinkingBlock.contains("showSnapPointDots = true"))
         assertTrue(thinkingBlock.contains("dismissOnClickOutside = true"))
         assertFalse(thinkingBlock.contains("steps = (options.size - 2)"))
-        assertTrue(thinkingBlock.contains("var sliderValue by remember(options)"))
-        assertFalse(thinkingBlock.contains("remember(options, selectedIndex, menu)"))
     }
 
-    @Test fun implementationProvidesGestureTicksSnapAndSystemRespectingHaptics() {
+    @Test fun implementationHasOneStateMachineOneRendererAndNoHiddenMaterialSlider() {
         val slider = java.io.File("src/main/java/app/arbor/chat/ui/ArborSlider.kt").readText()
         val priority = java.io.File("src/main/java/app/arbor/chat/ui/HorizontalGesturePriority.kt").readText()
         val haptics = java.io.File("src/main/java/app/arbor/chat/ui/ArborHaptics.kt").readText()
-        assertTrue(slider.contains("modifier.horizontalGesturePriority(enabled)"))
-        assertTrue(priority.contains("fun Modifier.horizontalGesturePriority"))
+
+        assertTrue(slider.contains(".horizontalGesturePriority(enabled)"))
+        assertTrue(slider.contains("awaitEachGesture"))
+        assertTrue(slider.contains("VelocityTracker()"))
+        assertTrue(slider.contains("selectMagneticSliderAnchor"))
+        assertTrue(slider.contains("MagneticExitRadiusMultiplier"))
+        assertTrue(slider.contains("settleAnimation.animateTo"))
+        assertTrue(slider.contains("settling = true\n        settleJob = scope.launch"))
+        assertTrue(slider.contains("currentOnValueChange(target)"))
+        assertTrue(slider.contains("drawArborSliderTrack"))
+        assertTrue(slider.contains("trackHeightPx = with(density) { 16.dp.toPx() }"))
+        assertTrue(slider.contains("sliderInteriorAnchorFractions"))
+        assertFalse(slider.contains("androidx.compose.material3.Slider\n"))
+        assertFalse(slider.contains("SliderDefaults.Track("))
+        assertFalse(slider.contains("onValueChange(target)\n                            haptics"))
+
         assertTrue(priority.contains("registry?.update(owner, coordinates.boundsInRoot())"))
-        assertTrue(slider.contains("haptics.gestureStart()"))
-        assertTrue(slider.contains("haptics.frequentTick()"))
-        assertTrue(slider.contains("haptics.snap()"))
-        assertTrue(slider.contains("settleAnim.animateTo"))
-        assertTrue(slider.contains("animationSpec = spring("))
-        assertTrue(slider.contains("track = { sliderState ->"))
-        assertTrue(slider.contains("SliderDefaults.Track("))
-        assertTrue(slider.contains(".height(SliderDefaults.TickSize)"))
-        assertTrue(slider.contains("sliderAnchorFractions"))
-        assertTrue(slider.contains("coerceIn(radius, size.width - radius)"))
-        assertFalse(slider.contains("Canvas(Modifier.fillMaxSize())"))
-        assertTrue(slider.contains("visualValue = value"))
-        assertTrue(slider.contains("onValueChange(target)"))
-        assertTrue(slider.contains("springDampingRatio: Float = 0.72f"))
-        assertTrue(slider.contains("springStiffness: Float = 420f"))
-        assertTrue(slider.contains("visibleValueFraction"))
         assertTrue(haptics.contains("view.isHapticFeedbackEnabled"))
         assertTrue(haptics.contains("SEGMENT_TICK"))
         assertTrue(haptics.contains("CONFIRM"))
-        assertTrue(haptics.contains("REJECT"))
     }
-    @Test fun edgeSoftnessUsesHardEdgesWithoutTransitionPercentText() {
+
+    @Test fun edgeSoftnessKeepsTheTwoHardEdgeAnchorsAndNoFakePercent() {
         val settings = java.io.File("src/main/java/app/arbor/chat/ui/SettingsScreen.kt").readText()
-        val edgeBlock = settings
-            .substringAfter("Text(\"Edge softness\"")
-            .substringBefore("Text(\"Overlay opacity\"")
+        val edgeBlock = settings.substringAfter("Text(\"Edge softness\"").substringBefore("Text(\"Overlay opacity\"")
         assertTrue(edgeBlock.contains("\"Hard edges\""))
         assertFalse(edgeBlock.contains("Shape transition"))
         assertTrue(edgeBlock.contains("showSnapPointDots = true"))
         assertTrue(edgeBlock.contains("snapRange = CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT..CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT"))
-        assertTrue(edgeBlock.contains("pullStrength = 0.998f"))
-        assertTrue(edgeBlock.contains("maximumLivePull = 0.84f"))
-        assertTrue(sliderSource().contains("maximumLivePull: Float = 0.80f"))
+        assertTrue(edgeBlock.contains("pullStrength = 0.97f"))
+        assertTrue(edgeBlock.contains("maximumLivePull = 0.91f"))
     }
 
-    @Test fun continuousAppearanceAndOverlayControlsDoNotInventSnapPoints() {
+    @Test fun continuousControlsDoNotInventSnapPoints() {
         val settings = java.io.File("src/main/java/app/arbor/chat/ui/SettingsScreen.kt").readText()
         listOf(
             "value = chromeBlurStrength",
@@ -155,8 +150,4 @@ class ArborSliderTest {
             assertFalse("Unexpected snap points after $marker", block.contains("snapPoints"))
         }
     }
-
-
-    private fun sliderSource(): String =
-        java.io.File("src/main/java/app/arbor/chat/ui/ArborSlider.kt").readText()
 }
