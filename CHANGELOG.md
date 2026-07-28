@@ -1,3 +1,13 @@
+## 0.19.13
+
+- Force native Gaussian backdrop rendering through a complete offscreen source layer and widen the pixel-locked mask transition to reduce the remaining boundary shimmer during fast scrolling.
+- Add a persistent 96–320 dp bottom-panel height setting, apply it live to the chat composer, and show an exact-height native-blur preview during slider movement.
+- Strengthen slider magnetic wells while capping live pull short of the anchor so post-release snapping has visible travel through a lower-stiffness damped spring instead of appearing instantaneous.
+- Carry a bounded fraction of drawer release velocity into the open/close spring so fast pulls preserve momentum while slow drags retain positional-threshold behavior.
+- Move the collapsed chat model tag 5 dp closer to the title while preserving the existing expanded 108 dp baseline.
+- Preserve slider priority over drawer gestures, native Gaussian composition, package identity, signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
+- Add regression coverage for bottom-panel persistence/live preview, offscreen blur capture, stronger non-teleporting magnetism, drawer momentum, and collapsed header spacing.
+
 ## 0.19.12
 
 - Separate the slider's local visual spring from preference persistence so post-release snapping animates smoothly and commits only the final endpoint instead of writing every animation frame.

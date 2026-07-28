@@ -87,23 +87,33 @@ internal class InteractiveDrawerState(private val scope: CoroutineScope) {
             velocityPxPerSecond = velocityPxPerSecond,
             velocityThresholdPxPerSecond = velocityThresholdPxPerSecond,
         )
-        animateTo(target)
+        animateTo(
+            anchor = target,
+            initialVelocityPxPerSecond = DrawerPhysics.carriedSettleVelocity(
+                velocityPxPerSecond = velocityPxPerSecond,
+                drawerWidthPx = widthPx,
+            ),
+        )
     }
 
     fun open() = animateTo(DrawerAnchor.OPEN)
     fun close() = animateTo(DrawerAnchor.CLOSED)
 
-    private fun animateTo(anchor: DrawerAnchor) {
+    private fun animateTo(
+        anchor: DrawerAnchor,
+        initialVelocityPxPerSecond: Float = 0f,
+    ) {
         stop()
         animationRunning = true
         animationJob = scope.launch {
             try {
-                Animatable(offsetPx).animateTo(
+                Animatable(offsetPx).apply { updateBounds(0f, widthPx) }.animateTo(
                     targetValue = if (anchor == DrawerAnchor.OPEN) widthPx else 0f,
                     animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        dampingRatio = 0.84f,
                         stiffness = Spring.StiffnessMediumLow,
                     ),
+                    initialVelocity = initialVelocityPxPerSecond,
                 ) { updateOffset(value) }
             } finally {
                 animationRunning = false

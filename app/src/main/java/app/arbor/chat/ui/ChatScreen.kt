@@ -1912,6 +1912,7 @@ private fun Composer(
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsStateWithLifecycle()
     val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsStateWithLifecycle()
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsStateWithLifecycle()
+    val chromeBottomPanelHeightDp by viewModel.chromeBottomPanelHeightDp.collectAsStateWithLifecycle()
     val draft by viewModel.draft.collectAsState()
     val staged by viewModel.stagedAttachments.collectAsState()
     val importing by viewModel.importing.collectAsState()
@@ -1957,7 +1958,7 @@ private fun Composer(
                     overlayOpacity = chromeOverlayOpacity,
                     tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.46f),
                     edge = ArborBlurEdge.BOTTOM,
-                    panelHeight = 208.dp,
+                    panelHeight = chromeBottomPanelHeightDp.dp,
                 ),
         ) {
             Column(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp)) {

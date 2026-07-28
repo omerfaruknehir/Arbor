@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -83,6 +84,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -163,6 +165,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsState()
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsState()
     val chromeTopPanelHeightDp by viewModel.chromeTopPanelHeightDp.collectAsState()
+    val chromeBottomPanelHeightDp by viewModel.chromeBottomPanelHeightDp.collectAsState()
     val renderSafeMode by viewModel.renderSafeMode.collectAsState()
     val generatedRepairMaxAttempts by viewModel.generatedRepairMaxAttempts.collectAsState()
     val developerSettings by viewModel.developerSettings.collectAsState()
@@ -228,6 +231,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             chromeEdgeSoftness = chromeEdgeSoftness,
                             chromeOverlayOpacity = chromeOverlayOpacity,
                             chromeTopPanelHeightDp = chromeTopPanelHeightDp,
+                            chromeBottomPanelHeightDp = chromeBottomPanelHeightDp,
                             viewModel = viewModel,
                         )
                         SettingsRoute.PRIVACY -> PrivacySettingsPage(renderSafeMode, generatedRepairMaxAttempts, viewModel)
@@ -459,6 +463,7 @@ private fun AppearanceSettingsPage(
     chromeEdgeSoftness: Float,
     chromeOverlayOpacity: Float,
     chromeTopPanelHeightDp: Float,
+    chromeBottomPanelHeightDp: Float,
     viewModel: ChatViewModel,
 ) = SettingsPage {
     val appName = stringResource(R.string.app_name)
@@ -541,8 +546,9 @@ private fun AppearanceSettingsPage(
             CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT,
             CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT,
         ),
-        attractionRadiusFraction = 0.14f,
-        pullStrength = 0.992f,
+        attractionRadiusFraction = 0.18f,
+        pullStrength = 0.998f,
+        maximumLivePull = 0.84f,
         snapRange = CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT..CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT,
         liveMagnetism = true,
         snapToNearestOnRelease = true,
@@ -582,7 +588,99 @@ private fun AppearanceSettingsPage(
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+
+
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text("Bottom panel height", modifier = Modifier.weight(1f))
+        Text("${chromeBottomPanelHeightDp.roundToInt()} dp", color = MaterialTheme.colorScheme.primary)
+    }
+    ArborSlider(
+        value = chromeBottomPanelHeightDp,
+        onValueChange = viewModel::setChromeBottomPanelHeightDp,
+        valueRange = 96f..320f,
+    )
+    Text(
+        "Controls the shared composer blur and tint height. The preview below updates on every slider movement.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    BottomPanelHeightPreview(
+        heightDp = chromeBottomPanelHeightDp,
+        blurStrength = chromeBlurStrength,
+        edgeSoftness = chromeEdgeSoftness,
+        overlayOpacity = chromeOverlayOpacity,
+    )
     Spacer(Modifier.padding(bottom = 24.dp))
+}
+
+@Composable
+private fun BottomPanelHeightPreview(
+    heightDp: Float,
+    blurStrength: Float,
+    edgeSoftness: Float,
+    overlayOpacity: Float,
+) {
+    val previewState = rememberArborBackdropBlurState()
+    val exactHeight = heightDp.coerceIn(96f, 320f).dp
+    val shape = MaterialTheme.shapes.large
+    Box(
+        Modifier
+            .padding(top = 10.dp)
+            .fillMaxWidth()
+            .height(336.dp)
+            .clip(shape),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = .42f),
+                            MaterialTheme.colorScheme.surfaceContainerLow,
+                            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = .36f),
+                        ),
+                    ),
+                )
+                .arborBackdropSource(previewState),
+        ) {
+            Column(
+                Modifier.fillMaxSize().padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                repeat(7) { index ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = .54f),
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier
+                            .fillMaxWidth(if (index % 2 == 0) .84f else .66f)
+                            .height(24.dp),
+                    ) {}
+                }
+            }
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(exactHeight)
+                    .arborBackdropBlur(
+                        state = previewState,
+                        strength = blurStrength,
+                        edgeSoftness = edgeSoftness,
+                        overlayOpacity = overlayOpacity,
+                        tint = MaterialTheme.colorScheme.surface.copy(alpha = .46f),
+                        edge = ArborBlurEdge.BOTTOM,
+                        panelHeight = exactHeight,
+                    ),
+            )
+        }
+        Text(
+            "Live bottom-panel preview · ${heightDp.roundToInt()} dp",
+            modifier = Modifier.align(Alignment.BottomCenter).padding(14.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
 }
 
 @Composable

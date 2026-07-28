@@ -119,8 +119,8 @@ class ArborSliderTest {
         assertTrue(slider.contains("sliderInteriorAnchorFractions"))
         assertTrue(slider.contains("visualValue = value"))
         assertTrue(slider.contains("onValueChange(target)"))
-        assertTrue(slider.contains("springDampingRatio: Float = 0.64f"))
-        assertTrue(slider.contains("springStiffness: Float = 850f"))
+        assertTrue(slider.contains("springDampingRatio: Float = 0.72f"))
+        assertTrue(slider.contains("springStiffness: Float = 420f"))
         assertTrue(slider.contains("visibleValueFraction"))
         assertTrue(haptics.contains("view.isHapticFeedbackEnabled"))
         assertTrue(haptics.contains("SEGMENT_TICK"))
@@ -136,7 +136,9 @@ class ArborSliderTest {
         assertFalse(edgeBlock.contains("Shape transition"))
         assertTrue(edgeBlock.contains("showSnapPointDots = true"))
         assertTrue(edgeBlock.contains("snapRange = CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT..CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT"))
-        assertTrue(edgeBlock.contains("pullStrength = 0.992f"))
+        assertTrue(edgeBlock.contains("pullStrength = 0.998f"))
+        assertTrue(edgeBlock.contains("maximumLivePull = 0.84f"))
+        assertTrue(sliderSource().contains("maximumLivePull: Float = 0.80f"))
     }
 
     @Test fun continuousAppearanceAndOverlayControlsDoNotInventSnapPoints() {
@@ -145,6 +147,7 @@ class ArborSliderTest {
             "value = chromeBlurStrength",
             "value = chromeOverlayOpacity",
             "value = chromeTopPanelHeightDp",
+            "value = chromeBottomPanelHeightDp",
             "value = settings.performanceOverlayBackgroundOpacity",
             "value = settings.performanceOverlayTextOpacity",
         ).forEach { marker ->
@@ -153,4 +156,7 @@ class ArborSliderTest {
         }
     }
 
+
+    private fun sliderSource(): String =
+        java.io.File("src/main/java/app/arbor/chat/ui/ArborSlider.kt").readText()
 }

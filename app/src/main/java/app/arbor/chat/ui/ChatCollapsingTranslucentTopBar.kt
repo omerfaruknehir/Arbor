@@ -103,11 +103,13 @@ fun ChatCollapsingTranslucentTopBar(
                 overflow = TextOverflow.Ellipsis,
             )
 
-            val modelTranslationY = with(density) { (66.dp * (1f - travel)).toPx() }
+            // Keep the expanded pill at the same 108 dp baseline, but tuck
+            // the collapsed pill 5 dp closer to the compact title.
+            val modelTranslationY = with(density) { (71.dp * (1f - travel)).toPx() }
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .offset(y = 42.dp)
+                    .offset(y = 37.dp)
                     .graphicsLayer { translationY = modelTranslationY }
                     .zIndex(3f),
             ) {

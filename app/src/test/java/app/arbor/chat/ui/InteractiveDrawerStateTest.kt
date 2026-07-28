@@ -35,6 +35,14 @@ class InteractiveDrawerStateTest {
         assertEquals(DrawerAnchor.CLOSED, DrawerPhysics.settleTarget(800f, width, -1_200f, 950f))
     }
 
+    @Test fun settleCarriesABoundedFractionOfReleaseMomentum() {
+        assertEquals(576f, DrawerPhysics.carriedSettleVelocity(1_200f, width), .001f)
+        assertEquals(-5_000f, DrawerPhysics.carriedSettleVelocity(-20_000f, width), .001f)
+        assertEquals(0f, DrawerPhysics.carriedSettleVelocity(0f, width), .001f)
+        val drawer = java.io.File("src/main/java/app/arbor/chat/ui/InteractiveNavigationDrawer.kt").readText()
+        assertTrue(drawer.contains("initialVelocity = initialVelocityPxPerSecond"))
+    }
+
     @Test fun verticalEdgeDragPassesToChat() {
         assertEquals(DrawerGestureIntent.PASS_TO_CONTENT, DrawerPhysics.gestureIntent(7f, 20f, 6f))
     }

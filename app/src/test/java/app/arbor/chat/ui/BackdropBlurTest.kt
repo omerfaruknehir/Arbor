@@ -87,7 +87,8 @@ class BackdropBlurTest {
             "halfBlurD",
             "resolveKawasePanelPlan",
         ).forEach { token -> assertFalse("Unexpected later blur token: $token", source.contains(token)) }
-        assertTrue(source.contains("decorated.graphicsLayer { renderEffect = composeEffect }"))
+        assertTrue(source.contains("compositingStrategy = CompositingStrategy.Offscreen"))
+        assertTrue(source.contains("renderEffect = composeEffect"))
     }
 
     @Test fun firstRangeMorphsRoundedToFlatAndSecondRangeAddsSymmetricFeather() {
@@ -144,7 +145,7 @@ class BackdropBlurTest {
         val source = blurSource()
         assertTrue(source.contains("val stableTop = round(topInRootPx)"))
         assertTrue(source.contains("val start = round(minOf(startInRootPx, endInRootPx))"))
-        assertTrue(source.contains("smoothstep(end - 0.5, end + 0.5, coord.y)"))
+        assertTrue(source.contains("smoothstep(end - 1.0, end + 1.0, coord.y)"))
         assertTrue(source.contains("private const val DEFAULT_EDGE_HIGHLIGHT = 0f"))
         assertTrue(source.contains("ArborBackdropDebugOverlay"))
         assertTrue(source.contains("color = Color.Red"))

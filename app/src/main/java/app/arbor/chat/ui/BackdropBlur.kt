@@ -28,6 +28,7 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -367,7 +368,14 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
             )
         }
     }
-    if (composeEffect == null) decorated else decorated.graphicsLayer { renderEffect = composeEffect }
+    if (composeEffect == null) decorated else decorated.graphicsLayer {
+        // Force one complete offscreen source capture per frame. Without this,
+        // some devices can reuse partially invalidated tiles while a LazyColumn
+        // scrolls, showing a brief shimmer at the Gaussian mask boundary.
+        compositingStrategy = CompositingStrategy.Offscreen
+        clip = false
+        renderEffect = composeEffect
+    }
 }
 
 internal fun arborBlurProgress(progress: Float): Float {
@@ -639,8 +647,8 @@ private val PANEL_ALPHA_MASK_SHADER = """
     }
 
     float roundedTopPanelMask(float2 coord, float start, float end, float radius) {
-        float vertical = smoothstep(start - 0.5, start + 0.5, coord.y) *
-            (1.0 - smoothstep(end - 0.5, end + 0.5, coord.y));
+        float vertical = smoothstep(start - 1.0, start + 1.0, coord.y) *
+            (1.0 - smoothstep(end - 1.0, end + 1.0, coord.y));
         if (vertical <= 0.0) return 0.0;
         float extent = end - start;
         radius = clamp(radius, 0.0, min(uSize.x * 0.5, extent * 0.5));
@@ -657,8 +665,8 @@ private val PANEL_ALPHA_MASK_SHADER = """
     }
 
     float roundedBottomPanelMask(float2 coord, float start, float end, float radius) {
-        float vertical = smoothstep(start - 0.5, start + 0.5, coord.y) *
-            (1.0 - smoothstep(end - 0.5, end + 0.5, coord.y));
+        float vertical = smoothstep(start - 1.0, start + 1.0, coord.y) *
+            (1.0 - smoothstep(end - 1.0, end + 1.0, coord.y));
         if (vertical <= 0.0) return 0.0;
         float extent = end - start;
         radius = clamp(radius, 0.0, min(uSize.x * 0.5, extent * 0.5));
@@ -682,7 +690,7 @@ private val PANEL_ALPHA_MASK_SHADER = """
             } else {
                 float halfSpan = uMerge * 0.5;
                 mask = 1.0 - smoother((coord.y - (uBounds.y - halfSpan)) / max(uMerge, 1.0));
-                mask *= smoothstep(uBounds.x - 0.5, uBounds.x + 0.5, coord.y);
+                mask *= smoothstep(uBounds.x - 1.0, uBounds.x + 1.0, coord.y);
             }
         } else {
             if (uSoftness <= 0.0 || uMerge <= 0.0) {
@@ -690,7 +698,7 @@ private val PANEL_ALPHA_MASK_SHADER = """
             } else {
                 float halfSpan = uMerge * 0.5;
                 mask = smoother((coord.y - (uBounds.x - halfSpan)) / max(uMerge, 1.0));
-                mask *= 1.0 - smoothstep(uBounds.y - 0.5, uBounds.y + 0.5, coord.y);
+                mask *= 1.0 - smoothstep(uBounds.y - 1.0, uBounds.y + 1.0, coord.y);
             }
         }
         mask = saturate(mask);

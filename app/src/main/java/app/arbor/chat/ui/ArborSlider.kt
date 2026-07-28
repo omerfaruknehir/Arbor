@@ -47,7 +47,8 @@ internal fun applyMagneticSliderForce(
     valueRange: ClosedFloatingPointRange<Float>,
     anchors: List<Float>,
     attractionRadiusFraction: Float = 0.07f,
-    pullStrength: Float = 0.90f,
+    pullStrength: Float = 0.96f,
+    maximumLivePull: Float = 0.80f,
     snapRange: ClosedFloatingPointRange<Float>? = null,
 ): MagneticSliderResult {
     val start = valueRange.start
@@ -90,7 +91,13 @@ internal fun applyMagneticSliderForce(
     // teleports onto the anchor while the pointer is down.
     val springInfluence = 1f - normalizedDistance * normalizedDistance *
         normalizedDistance * normalizedDistance * normalizedDistance * normalizedDistance
-    val resistance = pullStrength.coerceIn(0f, 0.992f) * springInfluence
+    // Keep some visible displacement while the pointer is down. This makes
+    // the post-release spring travel perceptible instead of appearing instant,
+    // while the wider well still feels stronger and harder to pull away from.
+    val resistance = min(
+        pullStrength.coerceIn(0f, 0.998f) * springInfluence,
+        maximumLivePull.coerceIn(0f, 0.92f),
+    )
     val attracted = raw + (anchor - raw) * resistance
     return MagneticSliderResult(attracted.coerceIn(start, end), anchor, true)
 }
@@ -157,15 +164,16 @@ fun ArborSlider(
     valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
     steps: Int = 0,
     snapPoints: List<Float> = emptyList(),
-    attractionRadiusFraction: Float = 0.08f,
-    pullStrength: Float = 0.985f,
+    attractionRadiusFraction: Float = 0.11f,
+    pullStrength: Float = 0.995f,
+    maximumLivePull: Float = 0.80f,
     releaseSnapRadiusFraction: Float = 0.065f,
     snapRange: ClosedFloatingPointRange<Float>? = null,
     liveMagnetism: Boolean = snapPoints.isNotEmpty(),
     snapToNearestOnRelease: Boolean = false,
     showSnapPointDots: Boolean = true,
-    springDampingRatio: Float = 0.64f,
-    springStiffness: Float = 850f,
+    springDampingRatio: Float = 0.72f,
+    springStiffness: Float = 420f,
     onValueChangeFinished: (() -> Unit)? = null,
     colors: SliderColors = SliderDefaults.colors(),
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
@@ -231,6 +239,7 @@ fun ArborSlider(
                     anchors = anchors,
                     attractionRadiusFraction = attractionRadiusFraction,
                     pullStrength = pullStrength,
+                    maximumLivePull = maximumLivePull,
                     snapRange = snapRange,
                 )
             } else {
@@ -276,7 +285,7 @@ fun ArborSlider(
                     target != null && abs(target - lastDeliveredValue) > 0.00001f -> {
                         val startValue = lastDeliveredValue.coerceIn(valueRange.start, valueRange.endInclusive)
                         val valueSpan = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0f)
-                        val initialVelocity = (normalizedVelocityPerSecond * valueSpan * 0.35f)
+                        val initialVelocity = (normalizedVelocityPerSecond * valueSpan * 0.18f)
                             .coerceIn(-valueSpan * 2f, valueSpan * 2f)
                         settleJob?.cancel()
                         settleJob = scope.launch {

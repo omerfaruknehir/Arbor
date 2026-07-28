@@ -28,6 +28,15 @@ internal object DrawerPhysics {
         else -> DrawerAnchor.CLOSED
     }
 
+    fun carriedSettleVelocity(
+        velocityPxPerSecond: Float,
+        drawerWidthPx: Float,
+        carryFraction: Float = 0.48f,
+    ): Float {
+        val limit = drawerWidthPx.coerceAtLeast(1f) * 5f
+        return (velocityPxPerSecond * carryFraction.coerceIn(0f, 1f)).coerceIn(-limit, limit)
+    }
+
     fun gestureIntent(
         accumulatedX: Float,
         accumulatedY: Float,
