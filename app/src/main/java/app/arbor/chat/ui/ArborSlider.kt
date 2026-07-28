@@ -5,8 +5,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Slider
@@ -20,9 +20,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -198,7 +198,7 @@ fun ArborSlider(
     var normalizedVelocityPerSecond by remember { mutableStateOf(0f) }
 
     val anchorFractions = remember(valueRange.start, valueRange.endInclusive, anchors) {
-        sliderInteriorAnchorFractions(valueRange, anchors)
+        sliderAnchorFractions(valueRange, anchors)
     }
     val visibleValueFraction = remember(visualValue, valueRange.start, valueRange.endInclusive) {
         val span = valueRange.endInclusive - valueRange.start
@@ -344,15 +344,23 @@ fun ArborSlider(
                     )
                     val activeDotColor = if (enabled) colors.activeTickColor else colors.disabledActiveTickColor
                     val inactiveDotColor = if (enabled) colors.inactiveTickColor else colors.disabledInactiveTickColor
-                    Canvas(Modifier.fillMaxSize()) {
-                        // Match Material's ordinary discrete-slider ticks: tiny marks
-                        // centered inside the track, with no custom endpoint dots.
-                        val radius = 1.dp.toPx()
+                    Canvas(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(SliderDefaults.TickSize)
+                            .align(Alignment.Center),
+                    ) {
+                        // Use Material's own tick diameter and keep endpoint
+                        // anchors fully inside the rounded track caps. The old
+                        // fillMaxSize overlay inherited the whole slider slot
+                        // height and could place/scale the dots inconsistently.
+                        val radius = SliderDefaults.TickSize.toPx() / 2f
                         anchorFractions.forEach { fraction ->
+                            val x = (size.width * fraction).coerceIn(radius, size.width - radius)
                             drawCircle(
                                 color = if (fraction <= visibleValueFraction) activeDotColor else inactiveDotColor,
                                 radius = radius,
-                                center = Offset(size.width * fraction, size.height / 2f),
+                                center = Offset(x, size.height / 2f),
                             )
                         }
                     }

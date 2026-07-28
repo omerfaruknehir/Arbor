@@ -115,8 +115,10 @@ class ArborSliderTest {
         assertTrue(slider.contains("animationSpec = spring("))
         assertTrue(slider.contains("track = { sliderState ->"))
         assertTrue(slider.contains("SliderDefaults.Track("))
-        assertTrue(slider.contains("Canvas(Modifier.fillMaxSize())"))
-        assertTrue(slider.contains("sliderInteriorAnchorFractions"))
+        assertTrue(slider.contains(".height(SliderDefaults.TickSize)"))
+        assertTrue(slider.contains("sliderAnchorFractions"))
+        assertTrue(slider.contains("coerceIn(radius, size.width - radius)"))
+        assertFalse(slider.contains("Canvas(Modifier.fillMaxSize())"))
         assertTrue(slider.contains("visualValue = value"))
         assertTrue(slider.contains("onValueChange(target)"))
         assertTrue(slider.contains("springDampingRatio: Float = 0.72f"))
@@ -146,8 +148,6 @@ class ArborSliderTest {
         listOf(
             "value = chromeBlurStrength",
             "value = chromeOverlayOpacity",
-            "value = chromeTopPanelHeightDp",
-            "value = chromeBottomPanelHeightDp",
             "value = settings.performanceOverlayBackgroundOpacity",
             "value = settings.performanceOverlayTextOpacity",
         ).forEach { marker ->

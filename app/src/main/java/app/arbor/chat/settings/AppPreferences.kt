@@ -162,14 +162,6 @@ class AppPreferences(context: Context) {
     private val _chromeBlurStrength = MutableStateFlow(readChromeBlurStrength())
     private val _chromeEdgeSoftness = MutableStateFlow(readChromeEdgeSoftness())
     private val _chromeOverlayOpacity = MutableStateFlow(preferences.getFloat(KEY_CHROME_OVERLAY_OPACITY, 1f).coerceIn(0f, 1f))
-    private val _chromeTopPanelHeightDp = MutableStateFlow(
-        preferences.getFloat(KEY_CHROME_TOP_PANEL_HEIGHT_DP, DEFAULT_CHROME_TOP_PANEL_HEIGHT_DP)
-            .coerceIn(MIN_CHROME_TOP_PANEL_HEIGHT_DP, MAX_CHROME_TOP_PANEL_HEIGHT_DP),
-    )
-    private val _chromeBottomPanelHeightDp = MutableStateFlow(
-        preferences.getFloat(KEY_CHROME_BOTTOM_PANEL_HEIGHT_DP, DEFAULT_CHROME_BOTTOM_PANEL_HEIGHT_DP)
-            .coerceIn(MIN_CHROME_BOTTOM_PANEL_HEIGHT_DP, MAX_CHROME_BOTTOM_PANEL_HEIGHT_DP),
-    )
     private val _newChatDefaults = MutableStateFlow(readNewChatDefaults())
     private val _generatedRepairMaxAttempts = MutableStateFlow(preferences.getInt(KEY_GENERATED_REPAIR_ATTEMPTS, 3).coerceIn(1, 5))
     private val _developerSettings = MutableStateFlow(readDeveloperSettings())
@@ -180,8 +172,6 @@ class AppPreferences(context: Context) {
     val chromeBlurStrength: StateFlow<Float> = _chromeBlurStrength.asStateFlow()
     val chromeEdgeSoftness: StateFlow<Float> = _chromeEdgeSoftness.asStateFlow()
     val chromeOverlayOpacity: StateFlow<Float> = _chromeOverlayOpacity.asStateFlow()
-    val chromeTopPanelHeightDp: StateFlow<Float> = _chromeTopPanelHeightDp.asStateFlow()
-    val chromeBottomPanelHeightDp: StateFlow<Float> = _chromeBottomPanelHeightDp.asStateFlow()
     val newChatDefaults: StateFlow<NewChatDefaults> = _newChatDefaults.asStateFlow()
     val generatedRepairMaxAttempts: StateFlow<Int> = _generatedRepairMaxAttempts.asStateFlow()
     val developerSettings: StateFlow<DeveloperSettings> = _developerSettings.asStateFlow()
@@ -266,18 +256,6 @@ class AppPreferences(context: Context) {
         val normalized = value.coerceIn(0f, 1f)
         _chromeOverlayOpacity.value = normalized
         preferences.edit { putFloat(KEY_CHROME_OVERLAY_OPACITY, normalized) }
-    }
-
-    fun setChromeTopPanelHeightDp(value: Float) {
-        val normalized = value.coerceIn(MIN_CHROME_TOP_PANEL_HEIGHT_DP, MAX_CHROME_TOP_PANEL_HEIGHT_DP)
-        _chromeTopPanelHeightDp.value = normalized
-        preferences.edit { putFloat(KEY_CHROME_TOP_PANEL_HEIGHT_DP, normalized) }
-    }
-
-    fun setChromeBottomPanelHeightDp(value: Float) {
-        val normalized = value.coerceIn(MIN_CHROME_BOTTOM_PANEL_HEIGHT_DP, MAX_CHROME_BOTTOM_PANEL_HEIGHT_DP)
-        _chromeBottomPanelHeightDp.value = normalized
-        preferences.edit { putFloat(KEY_CHROME_BOTTOM_PANEL_HEIGHT_DP, normalized) }
     }
 
     fun setGeneratedRepairMaxAttempts(value: Int) {
@@ -386,16 +364,8 @@ class AppPreferences(context: Context) {
         const val KEY_CHROME_EDGE_SOFTNESS = "chrome_edge_softness"
         const val KEY_CHROME_EDGE_CONTROL_REVISION = "chrome_edge_control_revision"
         const val KEY_CHROME_OVERLAY_OPACITY = "chrome_overlay_opacity"
-        const val KEY_CHROME_TOP_PANEL_HEIGHT_DP = "chrome_top_panel_height_dp"
-        const val KEY_CHROME_BOTTOM_PANEL_HEIGHT_DP = "chrome_bottom_panel_height_dp"
         const val CHROME_EDGE_CONTROL_REVISION = 2
         const val DEFAULT_CHROME_EDGE_SOFTNESS = 0.6f // 50% semantic feather after the flat 0% anchor.
-        const val DEFAULT_CHROME_TOP_PANEL_HEIGHT_DP = 128f
-        const val MIN_CHROME_TOP_PANEL_HEIGHT_DP = 64f
-        const val MAX_CHROME_TOP_PANEL_HEIGHT_DP = 240f
-        const val DEFAULT_CHROME_BOTTOM_PANEL_HEIGHT_DP = 208f
-        const val MIN_CHROME_BOTTOM_PANEL_HEIGHT_DP = 96f
-        const val MAX_CHROME_BOTTOM_PANEL_HEIGHT_DP = 320f
         const val KEY_DEFAULT_PROVIDER = "new_chat_provider"
         const val KEY_DEFAULT_MODEL = "new_chat_model"
         const val KEY_DEFAULT_PAIRS = "new_chat_context_pairs"

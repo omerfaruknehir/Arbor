@@ -358,6 +358,7 @@ internal fun calculateVisibleChatViewportEndPx(viewportEndPx: Int, obscuredBotto
 private const val ChatFollowMaxSpeedPxPerSecond = 48_000f
 private const val ChatFollowSeekMinSpeedPxPerSecond = 6_000f
 private const val ChatFollowSeekMaxSpeedPxPerSecond = 72_000f
+private const val STREAM_HAPTIC_CHARACTER_INTERVAL = 32
 
 private suspend fun snapChatToBottom(
     state: androidx.compose.foundation.lazy.LazyListState,
@@ -396,7 +397,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsStateWithLifecycle()
     val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsStateWithLifecycle()
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsStateWithLifecycle()
-    val chromeTopPanelHeightDp by viewModel.chromeTopPanelHeightDp.collectAsStateWithLifecycle()
     val models by viewModel.models.collectAsStateWithLifecycle()
     val allProviders by viewModel.providers.collectAsStateWithLifecycle()
     val credentialRevision by viewModel.credentialRevision.collectAsStateWithLifecycle()
@@ -416,6 +416,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val userDraggingMessageList by messageListState.interactionSource.collectIsDraggedAsState()
     val listScope = rememberCoroutineScope()
     val blurState = rememberArborBackdropBlurState()
+    val streamHaptics = rememberArborHaptics()
     val density = LocalDensity.current
     val topAppBarState = rememberTopAppBarState()
     val topAppBarScrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(topAppBarState)
@@ -458,6 +459,49 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     stableMessageKeysByUiIndex.keys.removeAll { it !in nodeIds.indices }
                 }
             }
+    }
+
+    // Streaming haptics are intentionally sparse: one subtle pulse per visible
+    // text chunk, not per token/database update. Initial paging hydration only
+    // establishes a baseline and never vibrates.
+    LaunchedEffect(paging, conversation?.id) {
+        var activeNodeId: String? = null
+        var lastLength = 0
+        var pendingCharacters = 0
+        snapshotFlow {
+            paging.itemSnapshotList.items
+                .lastOrNull { it.role == MessageRole.ASSISTANT && it.status == MessageStatus.STREAMING }
+                ?.let { it.nodeId to (it.content.length + it.reasoning.length) }
+        }
+            .distinctUntilChanged()
+            .collect { sample ->
+                if (sample == null) {
+                    activeNodeId = null
+                    lastLength = 0
+                    pendingCharacters = 0
+                    return@collect
+                }
+                val (nodeId, length) = sample
+                if (nodeId != activeNodeId) {
+                    activeNodeId = nodeId
+                    lastLength = length
+                    pendingCharacters = 0
+                    return@collect
+                }
+                val delta = (length - lastLength).coerceAtLeast(0)
+                lastLength = length
+                pendingCharacters += delta
+                if (pendingCharacters >= STREAM_HAPTIC_CHARACTER_INTERVAL) {
+                    pendingCharacters %= STREAM_HAPTIC_CHARACTER_INTERVAL
+                    streamHaptics.streamTick()
+                }
+            }
+    }
+
+    var previousGeneratingForHaptics by remember(conversation?.id) { mutableStateOf(false) }
+    LaunchedEffect(generating, conversation?.id) {
+        if (previousGeneratingForHaptics && !generating) streamHaptics.streamComplete()
+        previousGeneratingForHaptics = generating
     }
 
     val applyWorkingCardMutation = remember(messageListState, listScope, conversation?.id) {
@@ -809,7 +853,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 blurStrength = chromeBlurStrength,
                 edgeSoftness = chromeEdgeSoftness,
                 overlayOpacity = chromeOverlayOpacity,
-                topPanelHeight = chromeTopPanelHeightDp.dp,
+                topPanelHeight = CHAT_TOP_PANEL_HEIGHT_DP.dp,
                 navigationIcon = {
                     if (openDrawer != null) {
                         IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Conversations") }
@@ -1912,7 +1956,6 @@ private fun Composer(
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsStateWithLifecycle()
     val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsStateWithLifecycle()
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsStateWithLifecycle()
-    val chromeBottomPanelHeightDp by viewModel.chromeBottomPanelHeightDp.collectAsStateWithLifecycle()
     val draft by viewModel.draft.collectAsState()
     val staged by viewModel.stagedAttachments.collectAsState()
     val importing by viewModel.importing.collectAsState()
@@ -1958,7 +2001,8 @@ private fun Composer(
                     overlayOpacity = chromeOverlayOpacity,
                     tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.46f),
                     edge = ArborBlurEdge.BOTTOM,
-                    panelHeight = chromeBottomPanelHeightDp.dp,
+                    panelHeight = CHAT_COMPOSER_MIN_PANEL_HEIGHT_DP.dp,
+                    expandToMeasuredHeight = true,
                 ),
         ) {
             Column(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp)) {

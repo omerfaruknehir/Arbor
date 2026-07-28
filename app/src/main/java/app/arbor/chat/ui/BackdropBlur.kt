@@ -28,20 +28,23 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.layer.CompositingStrategy
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.round
+import kotlin.math.roundToInt
 
 /** Which chrome edge owns a backdrop panel. */
 enum class ArborBlurEdge { TOP, BOTTOM }
@@ -298,40 +301,61 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
         )
     } else null
 
-    val composeEffect = remember(topPanelEffects, bottomPanelEffects) {
+    val panelEffect = remember(topPanelEffects, bottomPanelEffects) {
         val panels = listOfNotNull(topPanelEffects, bottomPanelEffects)
         if (panels.isEmpty()) return@remember null
-
-        // A backdrop blur must replace the source inside its mask. Drawing the
-        // blurred pixels over an untouched identity layer doubles bright areas
-        // and looks like bloom. Mask the identity out first, then fill those
-        // exact pixels with the Gaussian result.
-        val unionMask = panels.map { it.mask }.reduce { background, panelMask ->
-            RenderEffect.createBlendModeEffect(background, panelMask, BlendMode.SRC_OVER)
-        }
-        val identity = RenderEffect.createOffsetEffect(0f, 0f)
-        val identityOutsidePanels = RenderEffect.createBlendModeEffect(identity, unionMask, BlendMode.DST_OUT)
         val blurredPanels = panels.map { it.replacement }.reduce { background, panel ->
             RenderEffect.createBlendModeEffect(background, panel, BlendMode.SRC_OVER)
         }
-
-        // The two branches are complementary premultiplied images:
-        // original * (1 - mask) and Gaussian * mask. PLUS combines them once,
-        // avoiding both the old source-over bloom and a double attenuation at
-        // partially feathered mask pixels. Top/bottom overlap is resolved in
-        // blurredPanels before the complementary branches are added.
-        val replacement = RenderEffect.createBlendModeEffect(
-            identityOutsidePanels,
-            blurredPanels,
-            BlendMode.PLUS,
-        )
-        ArborRenderProfiler.recordBlurEffectBuild(panels.size * 6 + 5)
-        replacement.asComposeRenderEffect()
+        ArborRenderProfiler.recordBlurEffectBuild(panels.size * 4 + 1)
+        blurredPanels.asComposeRenderEffect()
     }
 
-    val decorated = measured.drawWithContent {
+    // Capture the complete source display list on every draw, replay it once
+    // normally, and replay the same immutable frame through the Gaussian panel
+    // effect. Applying RenderEffect directly to a scrolling LazyColumn layer can
+    // reuse partially invalidated render tiles on some Android devices, which
+    // presents as shimmer/flicker even though the mask itself is pixel-locked.
+    val sourceLayer = rememberGraphicsLayer()
+    val filteredLayer = rememberGraphicsLayer()
+
+    measured.drawWithContent {
         val started = if (blurActive && ArborRenderProfiler.enabled) System.nanoTime() else 0L
-        drawContent()
+        if (panelEffect != null) {
+            val frameSize = IntSize(
+                width = size.width.roundToInt().coerceAtLeast(1),
+                height = size.height.roundToInt().coerceAtLeast(1),
+            )
+            sourceLayer.compositingStrategy = CompositingStrategy.Offscreen
+            sourceLayer.clip = false
+            sourceLayer.renderEffect = null
+            sourceLayer.record(
+                density = this,
+                layoutDirection = layoutDirection,
+                size = frameSize,
+            ) {
+                this@drawWithContent.drawContent()
+            }
+
+            filteredLayer.compositingStrategy = CompositingStrategy.Offscreen
+            filteredLayer.clip = false
+            filteredLayer.renderEffect = panelEffect
+            filteredLayer.record(
+                density = this,
+                layoutDirection = layoutDirection,
+                size = frameSize,
+            ) {
+                drawLayer(sourceLayer)
+            }
+
+            drawLayer(sourceLayer)
+            drawLayer(filteredLayer)
+        } else {
+            drawContent()
+        }
+
+        // Tint/debug overlays are intentionally drawn after the filtered replay
+        // so they remain sharp and cannot be folded into the Gaussian capture.
         drawPanelOverlay(
             edge = ArborBlurEdge.TOP,
             start = normalizedTopStart,
@@ -361,20 +385,12 @@ fun Modifier.arborBackdropSource(state: ArborBackdropBlurState): Modifier = comp
                 cpuNanos = System.nanoTime() - started,
                 processedPixels = (size.width.toLong() * size.height.toLong() * 2L).coerceAtLeast(0L),
                 sourceTraversals = 1,
-                layerReplays = 0,
+                layerReplays = if (panelEffect != null) 2 else 0,
                 downsampleLevels = 0,
                 upsampleLevels = 0,
-                captureUpdates = 0,
+                captureUpdates = if (panelEffect != null) 1 else 0,
             )
         }
-    }
-    if (composeEffect == null) decorated else decorated.graphicsLayer {
-        // Force one complete offscreen source capture per frame. Without this,
-        // some devices can reuse partially invalidated tiles while a LazyColumn
-        // scrolls, showing a brief shimmer at the Gaussian mask boundary.
-        compositingStrategy = CompositingStrategy.Offscreen
-        clip = false
-        renderEffect = composeEffect
     }
 }
 
@@ -482,6 +498,7 @@ fun Modifier.arborBackdropBlur(
     contrast: Float = DEFAULT_GLASS_CONTRAST,
     brightness: Float = DEFAULT_GLASS_BRIGHTNESS,
     edgeHighlight: Float = DEFAULT_EDGE_HIGHLIGHT,
+    expandToMeasuredHeight: Boolean = false,
 ): Modifier = composed {
     val normalizedSoftness = snapChromeEdgeSoftness(edgeSoftness)
     val radiusDp = calculateBlurRadiusDp(strength = strength, maxRadiusDp = maxRadius.value)
@@ -511,9 +528,15 @@ fun Modifier.arborBackdropBlur(
 
     this.onGloballyPositioned { coordinates ->
         val bounds = coordinates.boundsInRoot()
+        val measuredHeightPx = (bounds.bottom - bounds.top).coerceAtLeast(1f)
+        val effectiveHeightPx = if (expandToMeasuredHeight) {
+            max(panelHeightPx, measuredHeightPx)
+        } else {
+            panelHeightPx
+        }
         when (edge) {
-            ArborBlurEdge.TOP -> state.updatePanelBounds(edge, bounds.top, bounds.top + panelHeightPx)
-            ArborBlurEdge.BOTTOM -> state.updatePanelBounds(edge, bounds.bottom - panelHeightPx, bounds.bottom)
+            ArborBlurEdge.TOP -> state.updatePanelBounds(edge, bounds.top, bounds.top + effectiveHeightPx)
+            ArborBlurEdge.BOTTOM -> state.updatePanelBounds(edge, bounds.bottom - effectiveHeightPx, bounds.bottom)
         }
     }
 }
@@ -626,8 +649,11 @@ private const val MIN_VISIBLE_RADIUS_PX = 0.0001f
 private const val DEFAULT_MAX_RADIUS_DP = 56f
 private const val DEFAULT_PANEL_CORNER_RADIUS_DP = 28f
 private const val MAXIMUM_MERGE_DISTANCE_DP = 68f
-private const val DEFAULT_TOP_PANEL_HEIGHT_DP = 128f
-private const val DEFAULT_BOTTOM_PANEL_HEIGHT_DP = 208f
+internal const val CHAT_TOP_PANEL_HEIGHT_DP = 120f
+internal const val STANDARD_TOP_PANEL_HEIGHT_DP = 100f
+internal const val CHAT_COMPOSER_MIN_PANEL_HEIGHT_DP = 120f
+private const val DEFAULT_TOP_PANEL_HEIGHT_DP = STANDARD_TOP_PANEL_HEIGHT_DP
+private const val DEFAULT_BOTTOM_PANEL_HEIGHT_DP = CHAT_COMPOSER_MIN_PANEL_HEIGHT_DP
 private const val DEFAULT_GLASS_SATURATION = 1.10f
 private const val DEFAULT_GLASS_CONTRAST = 1.025f
 private const val DEFAULT_GLASS_BRIGHTNESS = 1.008f

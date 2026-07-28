@@ -44,7 +44,7 @@ fun ChatCollapsingTranslucentTopBar(
     blurStrength: Float = 0.7f,
     edgeSoftness: Float = 0.5f,
     overlayOpacity: Float = 1f,
-    topPanelHeight: Dp = 128.dp,
+    topPanelHeight: Dp = CHAT_TOP_PANEL_HEIGHT_DP.dp,
 ) {
     val collapse = scrollBehavior.state.collapsedFraction.coerceIn(0f, 1f)
     val travel = arborBlurProgress(collapse)

@@ -63,23 +63,30 @@ class BackdropBlurTest {
         assertTrue(source.contains("Shader.TileMode.CLAMP"))
         assertTrue(source.contains("RenderEffect.createBlendModeEffect"))
         assertTrue(source.contains("BlendMode.SRC_OVER"))
-        assertTrue(source.contains("BlendMode.PLUS"))
         assertTrue(source.contains("BlendMode.DST_IN"))
-        assertTrue(source.contains("BlendMode.DST_OUT"))
-        assertTrue(source.contains("identityOutsidePanels"))
         assertTrue(source.contains("RenderEffect.createShaderEffect(maskShader)"))
         assertTrue(source.contains("PANEL_ALPHA_MASK_SHADER"))
+        assertFalse(source.contains("BlendMode.PLUS"))
+        assertFalse(source.contains("BlendMode.DST_OUT"))
+        assertFalse(source.contains("identityOutsidePanels"))
         assertFalse(source.contains("sampleStep *"))
         assertFalse(source.contains("uDirection"))
         assertFalse(source.contains("createRuntimeShaderEffect"))
         assertFalse(source.contains("createChainEffect"))
     }
 
-    @Test fun brokenCaptureAndHalfResolutionCompositorIsGone() {
+    @Test fun scrollingBlurUsesOneCompleteCapturedFrameForNormalAndFilteredReplays() {
         val source = blurSource()
+        assertTrue(source.contains("rememberGraphicsLayer"))
+        assertTrue(source.contains("sourceLayer.record"))
+        assertTrue(source.contains("filteredLayer.record"))
+        assertTrue(source.contains("this@drawWithContent.drawContent()"))
+        assertTrue(source.contains("filteredLayer.renderEffect = panelEffect"))
+        assertTrue(source.contains("drawLayer(sourceLayer)"))
+        assertTrue(source.contains("drawLayer(filteredLayer)"))
+        assertTrue(source.contains("compositingStrategy = CompositingStrategy.Offscreen"))
+        assertFalse(source.contains("renderEffect = composeEffect"))
         listOf(
-            "rememberGraphicsLayer",
-            "sourceLayer.record",
             "recordKawasePanelChain",
             "halfBlurA",
             "halfBlurB",
@@ -87,8 +94,6 @@ class BackdropBlurTest {
             "halfBlurD",
             "resolveKawasePanelPlan",
         ).forEach { token -> assertFalse("Unexpected later blur token: $token", source.contains(token)) }
-        assertTrue(source.contains("compositingStrategy = CompositingStrategy.Offscreen"))
-        assertTrue(source.contains("renderEffect = composeEffect"))
     }
 
     @Test fun firstRangeMorphsRoundedToFlatAndSecondRangeAddsSymmetricFeather() {
@@ -153,9 +158,11 @@ class BackdropBlurTest {
 
     @Test fun profilerRemainsWiredToTheGaussianRenderer() {
         val source = blurSource()
-        assertTrue(source.contains("recordBlurEffectBuild(panels.size * 6 + 5)"))
+        assertTrue(source.contains("recordBlurEffectBuild(panels.size * 4 + 1)"))
         assertTrue(source.contains("recordBlurFrame("))
         assertTrue(source.contains("sourceTraversals = 1"))
+        assertTrue(source.contains("layerReplays = if (panelEffect != null) 2 else 0"))
+        assertTrue(source.contains("captureUpdates = if (panelEffect != null) 1 else 0"))
         assertTrue(source.contains("downsampleLevels = 0"))
         assertTrue(source.contains("upsampleLevels = 0"))
     }

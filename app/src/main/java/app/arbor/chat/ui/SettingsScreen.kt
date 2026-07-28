@@ -164,8 +164,6 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
     val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsState()
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsState()
-    val chromeTopPanelHeightDp by viewModel.chromeTopPanelHeightDp.collectAsState()
-    val chromeBottomPanelHeightDp by viewModel.chromeBottomPanelHeightDp.collectAsState()
     val renderSafeMode by viewModel.renderSafeMode.collectAsState()
     val generatedRepairMaxAttempts by viewModel.generatedRepairMaxAttempts.collectAsState()
     val developerSettings by viewModel.developerSettings.collectAsState()
@@ -196,7 +194,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     blurStrength = chromeBlurStrength,
                     edgeSoftness = chromeEdgeSoftness,
                     overlayOpacity = chromeOverlayOpacity,
-                    blurArea = chromeTopPanelHeightDp.dp,
+                    blurArea = STANDARD_TOP_PANEL_HEIGHT_DP.dp,
                     navigationIcon = {
                         IconButton(onClick = {
                             haptics.selection()
@@ -230,8 +228,6 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             chromeBlurStrength = chromeBlurStrength,
                             chromeEdgeSoftness = chromeEdgeSoftness,
                             chromeOverlayOpacity = chromeOverlayOpacity,
-                            chromeTopPanelHeightDp = chromeTopPanelHeightDp,
-                            chromeBottomPanelHeightDp = chromeBottomPanelHeightDp,
                             viewModel = viewModel,
                         )
                         SettingsRoute.PRIVACY -> PrivacySettingsPage(renderSafeMode, generatedRepairMaxAttempts, viewModel)
@@ -462,8 +458,6 @@ private fun AppearanceSettingsPage(
     chromeBlurStrength: Float,
     chromeEdgeSoftness: Float,
     chromeOverlayOpacity: Float,
-    chromeTopPanelHeightDp: Float,
-    chromeBottomPanelHeightDp: Float,
     viewModel: ChatViewModel,
 ) = SettingsPage {
     val appName = stringResource(R.string.app_name)
@@ -574,113 +568,7 @@ private fun AppearanceSettingsPage(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text("Top panel height", modifier = Modifier.weight(1f))
-        Text("${chromeTopPanelHeightDp.roundToInt()} dp", color = MaterialTheme.colorScheme.primary)
-    }
-    ArborSlider(
-        value = chromeTopPanelHeightDp,
-        onValueChange = viewModel::setChromeTopPanelHeightDp,
-        valueRange = 64f..240f,
-    )
-    Text(
-        "Controls the exact shared height of the top blur and tint geometry. This is temporary tuning control; the selected value is preserved across restarts.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-
-
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text("Bottom panel height", modifier = Modifier.weight(1f))
-        Text("${chromeBottomPanelHeightDp.roundToInt()} dp", color = MaterialTheme.colorScheme.primary)
-    }
-    ArborSlider(
-        value = chromeBottomPanelHeightDp,
-        onValueChange = viewModel::setChromeBottomPanelHeightDp,
-        valueRange = 96f..320f,
-    )
-    Text(
-        "Controls the shared composer blur and tint height. The preview below updates on every slider movement.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    BottomPanelHeightPreview(
-        heightDp = chromeBottomPanelHeightDp,
-        blurStrength = chromeBlurStrength,
-        edgeSoftness = chromeEdgeSoftness,
-        overlayOpacity = chromeOverlayOpacity,
-    )
     Spacer(Modifier.padding(bottom = 24.dp))
-}
-
-@Composable
-private fun BottomPanelHeightPreview(
-    heightDp: Float,
-    blurStrength: Float,
-    edgeSoftness: Float,
-    overlayOpacity: Float,
-) {
-    val previewState = rememberArborBackdropBlurState()
-    val exactHeight = heightDp.coerceIn(96f, 320f).dp
-    val shape = MaterialTheme.shapes.large
-    Box(
-        Modifier
-            .padding(top = 10.dp)
-            .fillMaxWidth()
-            .height(336.dp)
-            .clip(shape),
-    ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = .42f),
-                            MaterialTheme.colorScheme.surfaceContainerLow,
-                            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = .36f),
-                        ),
-                    ),
-                )
-                .arborBackdropSource(previewState),
-        ) {
-            Column(
-                Modifier.fillMaxSize().padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                repeat(7) { index ->
-                    Surface(
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = .54f),
-                        shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier
-                            .fillMaxWidth(if (index % 2 == 0) .84f else .66f)
-                            .height(24.dp),
-                    ) {}
-                }
-            }
-            Box(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(exactHeight)
-                    .arborBackdropBlur(
-                        state = previewState,
-                        strength = blurStrength,
-                        edgeSoftness = edgeSoftness,
-                        overlayOpacity = overlayOpacity,
-                        tint = MaterialTheme.colorScheme.surface.copy(alpha = .46f),
-                        edge = ArborBlurEdge.BOTTOM,
-                        panelHeight = exactHeight,
-                    ),
-            )
-        }
-        Text(
-            "Live bottom-panel preview · ${heightDp.roundToInt()} dp",
-            modifier = Modifier.align(Alignment.BottomCenter).padding(14.dp),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
 }
 
 @Composable

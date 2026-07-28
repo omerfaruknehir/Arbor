@@ -1,3 +1,14 @@
+## 0.19.14
+
+- Replace RenderEffect-on-root blur composition with a complete-frame GraphicsLayer capture and two replays—normal plus native-Gaussian masked—so scrolling cannot expose partially invalidated blur tiles without reducing blur radius, strength, quality, or update frequency.
+- Draw tint and diagnostic overlays after the filtered replay so overlay pixels stay sharp and do not enter the Gaussian source.
+- Remove the temporary top- and bottom-panel height preferences and Appearance sliders; use a fixed 120 dp chat top panel and 100 dp top panels on Settings, Search, Sandbox, and Linux terminal screens.
+- Make the composer blur use its measured height with a 120 dp minimum, so multiline prompts, chips, queues, and attachments expand the bottom panel and Scaffold inset together.
+- Restore Material-sized snap dots inside the slider track, including endpoint anchors constrained within the rounded caps, for Edge Smoothness and Thinking.
+- Add subtle rate-limited streaming chunk haptics plus a distinct completion pulse without vibrating for every token.
+- Preserve native Gaussian blur strength/quality, hard-edge anchor semantics, free post-flat softness values, drawer momentum, slider priority, package identity, signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
+- Add regression coverage for complete-frame blur replay, fixed panel heights, measured composer expansion, in-track ticks, removed height settings, and streaming haptics.
+
 ## 0.19.13
 
 - Force native Gaussian backdrop rendering through a complete offscreen source layer and widen the pixel-locked mask transition to reduce the remaining boundary shimmer during fast scrolling.

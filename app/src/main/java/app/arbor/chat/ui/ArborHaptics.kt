@@ -41,6 +41,18 @@ class ArborHapticController internal constructor(private val view: View) {
         50L,
     )
 
+    fun streamTick() = perform(
+        if (Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.SEGMENT_FREQUENT_TICK
+        else HapticFeedbackConstants.CLOCK_TICK,
+        140L,
+    )
+
+    fun streamComplete() = perform(
+        if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM
+        else HapticFeedbackConstants.CONTEXT_CLICK,
+        180L,
+    )
+
     fun toggle(enabled: Boolean) = perform(
         if (enabled && Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM
         else HapticFeedbackConstants.KEYBOARD_TAP,

@@ -19,6 +19,11 @@ class ArborHapticsIntegrationTest {
         assertTrue(drawer.contains("haptics.snap()"))
         assertTrue(sidebar.contains("haptics.confirm()"))
         assertTrue(sidebar.contains("haptics.selection()"))
+        assertTrue(chat.contains("streamHaptics.streamTick()"))
+        assertTrue(chat.contains("streamHaptics.streamComplete()"))
+        assertTrue(source("ArborHaptics.kt").contains("fun streamTick()"))
+        assertTrue(source("ArborHaptics.kt").contains("fun streamComplete()"))
+        assertTrue(chat.contains("STREAM_HAPTIC_CHARACTER_INTERVAL = 32"))
     }
 
     private fun source(name: String) = java.io.File("src/main/java/app/arbor/chat/ui/$name").readText()

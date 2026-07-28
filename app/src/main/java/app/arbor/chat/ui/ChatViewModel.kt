@@ -127,8 +127,6 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     val chromeBlurStrength: StateFlow<Float> = container.appPreferences.chromeBlurStrength
     val chromeEdgeSoftness: StateFlow<Float> = container.appPreferences.chromeEdgeSoftness
     val chromeOverlayOpacity: StateFlow<Float> = container.appPreferences.chromeOverlayOpacity
-    val chromeTopPanelHeightDp: StateFlow<Float> = container.appPreferences.chromeTopPanelHeightDp
-    val chromeBottomPanelHeightDp: StateFlow<Float> = container.appPreferences.chromeBottomPanelHeightDp
     val generatedRepairMaxAttempts: StateFlow<Int> = container.appPreferences.generatedRepairMaxAttempts
     val developerSettings: StateFlow<app.arbor.chat.settings.DeveloperSettings> = container.appPreferences.developerSettings
     val palette = container.appPreferences.palette
@@ -725,8 +723,6 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     fun setChromeBlurStrength(value: Float) = container.appPreferences.setChromeBlurStrength(value)
     fun setChromeEdgeSoftness(value: Float) = container.appPreferences.setChromeEdgeSoftness(value)
     fun setChromeOverlayOpacity(value: Float) = container.appPreferences.setChromeOverlayOpacity(value)
-    fun setChromeTopPanelHeightDp(value: Float) = container.appPreferences.setChromeTopPanelHeightDp(value)
-    fun setChromeBottomPanelHeightDp(value: Float) = container.appPreferences.setChromeBottomPanelHeightDp(value)
     fun setGeneratedRepairMaxAttempts(value: Int) = container.appPreferences.setGeneratedRepairMaxAttempts(value)
     fun updateDeveloperSettings(transform: (app.arbor.chat.settings.DeveloperSettings) -> app.arbor.chat.settings.DeveloperSettings) =
         container.appPreferences.updateDeveloperSettings(transform)
