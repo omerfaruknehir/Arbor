@@ -155,3 +155,5 @@ No source commit was fabricated from checksum, verification, release-note, or sk
 ## Excluded generated/private files
 
 `.gradle/`, `.kotlin/`, every `build/` directory, APK/AAB outputs, `.git/`, `local.properties`, IDE workspace/cache state, `.jks`, `.keystore`, and temporary extraction files.
+
+| 0.19.13 | `Arbor-0.19.13-source.zip` | `541582bade9682bce91a848518bc637f7ec6a862bce629fe3f844dac718cf18b` | `4bd2b42` | `v0.19.13` | 2026-07-28T03:31:00Z | canonical | `main` |
