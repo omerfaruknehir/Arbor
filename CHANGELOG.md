@@ -1,3 +1,14 @@
+## 0.20.6
+
+- Add a repository-owned `licenses/` catalog with one metadata record per bundled runtime component, local icons, useful descriptions, official source links, SPDX expressions where applicable, and complete checked-in license documents.
+- Generate the in-app catalog deterministically from local paths only; no legal text or metadata is fetched from the network at build time or runtime.
+- Fail the build when component metadata is malformed, referenced local files are missing, IDs are duplicated, paths escape the catalog, or an `implementation` dependency has no catalog coverage.
+- Replace the duplicate web-only license and third-party notice rows in About Arbor with one searchable **Licenses & notices** destination that works fully offline.
+- Add a component detail sheet with version, included Maven modules, attribution notes, official project link, and selectable full license text.
+- Classify PRoot as GPL-2.0-or-later, keep talloc correctly classified as LGPL-3.0-or-later, and retain the GPL v3 companion text without mislabeling talloc itself as GPL.
+- Keep Google ML Kit vendor terms distinct from Apache-2.0 documentation sample licensing.
+- Preserve package identity, debug signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, attachments, and Linux workspace data.
+
 ## 0.20.5
 
 - Correct the packaged talloc 2.4.3 shared library's license classification from the retained Termux package-level GPL-3.0 label to the library's upstream LGPL-3.0-or-later license.
