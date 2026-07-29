@@ -26,9 +26,11 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Install Android 16 SDK
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - name: Verify debug build
         run: ./gradlew --no-daemon --stacktrace testDebugUnitTest lintDebug assembleDebug bundleDebug assembleDebugAndroidTest
       - uses: actions/upload-artifact@v4
@@ -52,8 +54,10 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
-      - name: Install Android 16 SDK
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
       - uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -73,8 +77,10 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
-      - name: Install Android 16 SDK
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
       - name: Restore release keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.ARBOR_KEYSTORE_BASE64 }}
