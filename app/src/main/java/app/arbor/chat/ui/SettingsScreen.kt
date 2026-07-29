@@ -76,6 +76,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -122,6 +123,7 @@ import app.arbor.chat.settings.DeveloperSettings
 import app.arbor.chat.settings.PerformanceOverlayPosition
 import app.arbor.chat.settings.NewChatDefaults
 import app.arbor.chat.settings.ThemeMode
+import app.arbor.chat.settings.chromeEdgeControlPositionForSoftness
 import app.arbor.chat.settings.displayedChromeEdgeSoftness
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -507,65 +509,63 @@ private fun AppearanceSettingsPage(
     Text("AMOLED black only changes dark mode surfaces.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
     HorizontalDivider()
-    SectionTitle("Interface panels", "Use exact sliders for blur, edge softness, and tint opacity.")
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text("Blur amount", modifier = Modifier.weight(1f))
-        Text("${(chromeBlurStrength * 100).toInt()}%", color = MaterialTheme.colorScheme.primary)
-    }
-    ArborSlider(
+    SectionTitle("Interface panels", "Panel shape is a choice. Blur, softness, and tint remain continuous controls.")
+    SettingSlider(
+        label = "Blur",
+        valueLabel = "${(chromeBlurStrength * 100).roundToInt()}%",
         value = chromeBlurStrength,
         onValueChange = viewModel::setChromeBlurStrength,
         valueRange = 0f..1f,
+        supportingText = "0% disables blur. Higher values increase the panel-local native blur radius.",
     )
-    Text(
-        "0% disables blur exactly. Nonzero values use a native Gaussian blur with the current continuous 0-56 dp control, avoiding sparse-sample patterns at high strength.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text("Edge softness", modifier = Modifier.weight(1f))
-        val displayedSoftness = displayedChromeEdgeSoftness(chromeEdgeSoftness)
-        val edgeLabel = if (displayedSoftness <= 0f) {
-            "Hard edges"
-        } else {
-            "${(displayedSoftness * 100).roundToInt()}%"
-        }
-        Text(edgeLabel, color = MaterialTheme.colorScheme.primary)
+
+    val displayedSoftness = displayedChromeEdgeSoftness(chromeEdgeSoftness)
+    val flatEdges = chromeEdgeSoftness >= CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT / 2f
+    Text("Panel shape", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        AssistChip(
+            onClick = { viewModel.setChromeEdgeSoftness(CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT) },
+            label = { Text("Rounded") },
+            leadingIcon = if (!flatEdges) {
+                { Icon(Icons.Outlined.CheckCircle, null, Modifier.size(18.dp)) }
+            } else null,
+        )
+        AssistChip(
+            onClick = {
+                viewModel.setChromeEdgeSoftness(
+                    chromeEdgeControlPositionForSoftness(displayedSoftness),
+                )
+            },
+            label = { Text("Flat") },
+            leadingIcon = if (flatEdges) {
+                { Icon(Icons.Outlined.CheckCircle, null, Modifier.size(18.dp)) }
+            } else null,
+        )
     }
-    ArborSlider(
-        value = chromeEdgeSoftness,
-        onValueChange = viewModel::setChromeEdgeSoftness,
+
+    SettingSlider(
+        label = "Edge softness",
+        valueLabel = if (!flatEdges || displayedSoftness <= 0f) "Hard" else "${(displayedSoftness * 100).roundToInt()}%",
+        value = displayedSoftness,
+        onValueChange = {
+            viewModel.setChromeEdgeSoftness(chromeEdgeControlPositionForSoftness(it))
+        },
         valueRange = 0f..1f,
-        snapPoints = listOf(
-            CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT,
-            CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT,
-        ),
-        attractionRadiusFraction = 0.16f,
-        pullStrength = 0.97f,
-        maximumLivePull = 0.91f,
-        snapRange = CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT..CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT,
-        liveMagnetism = true,
-        snapToNearestOnRelease = true,
-        showSnapPointDots = true,
+        enabled = flatEdges,
+        supportingText = if (flatEdges) {
+            "Softens the boundary where flat panels merge into the page."
+        } else {
+            "Rounded panels use a hard, rounded boundary. Choose Flat to adjust softness."
+        },
     )
-    Text(
-        "The rounded track start and the small in-track flat-edge tick are the two hard-edge positions. Values between them change only the corner shape. Edge softness starts after the flat-edge tick and then rises from 1% to 100%.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text("Overlay opacity", modifier = Modifier.weight(1f))
-        Text("${(chromeOverlayOpacity * 100).toInt()}%", color = MaterialTheme.colorScheme.primary)
-    }
-    ArborSlider(
+
+    SettingSlider(
+        label = "Tint opacity",
+        valueLabel = "${(chromeOverlayOpacity * 100).roundToInt()}%",
         value = chromeOverlayOpacity,
         onValueChange = viewModel::setChromeOverlayOpacity,
         valueRange = 0f..1f,
-    )
-    Text(
-        "0% removes the tint; 100% makes the panel tint fully opaque.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        supportingText = "0% is transparent. 100% is a fully opaque panel tint.",
     )
 
     Spacer(Modifier.padding(bottom = 24.dp))
@@ -584,17 +584,15 @@ private fun PrivacySettingsPage(
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text("Automatic repair attempts", Modifier.weight(1f))
-        Text(generatedRepairMaxAttempts.toString(), color = MaterialTheme.colorScheme.primary)
-    }
-    ArborSlider(
+    SettingSlider(
+        label = "Automatic repair attempts",
+        valueLabel = generatedRepairMaxAttempts.toString(),
         value = generatedRepairMaxAttempts.toFloat(),
         onValueChange = { viewModel.setGeneratedRepairMaxAttempts(it.toInt().coerceIn(1, 5)) },
         valueRange = 1f..5f,
         steps = 3,
+        supportingText = "Invalid completed widgets, charts, and diagrams are repaired in place up to this limit.",
     )
-    Text("Invalid completed widgets, charts, and diagrams are repaired in place up to this limit.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Security, null)
@@ -804,15 +802,17 @@ private fun DeveloperSettingsPage(
         enabled = settings.enabled && settings.performanceOverlayEnabled,
     )
 
-    Text("Panel opacity • ${(settings.performanceOverlayBackgroundOpacity * 100).roundToInt()}%", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-    ArborSlider(
+    SettingSlider(
+        label = "Panel opacity",
+        valueLabel = "${(settings.performanceOverlayBackgroundOpacity * 100).roundToInt()}%",
         value = settings.performanceOverlayBackgroundOpacity,
         onValueChange = { value -> viewModel.updateDeveloperSettings { it.copy(performanceOverlayBackgroundOpacity = value) } },
         valueRange = 0f..1f,
         enabled = settings.enabled && settings.performanceOverlayEnabled,
     )
-    Text("Text opacity • ${(settings.performanceOverlayTextOpacity * 100).roundToInt()}%", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-    ArborSlider(
+    SettingSlider(
+        label = "Text opacity",
+        valueLabel = "${(settings.performanceOverlayTextOpacity * 100).roundToInt()}%",
         value = settings.performanceOverlayTextOpacity,
         onValueChange = { value -> viewModel.updateDeveloperSettings { it.copy(performanceOverlayTextOpacity = value) } },
         valueRange = 0f..1f,
@@ -892,12 +892,9 @@ private fun DeveloperSettingsPage(
         onCheckedChange = { enabled -> viewModel.updateDeveloperSettings { it.copy(blurBoundaryDebugEnabled = enabled) } },
         enabled = settings.enabled,
     )
-    Text(
-        "Guide thickness • ${settings.blurBoundaryDebugThicknessDp.roundToInt()} dp",
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-    )
-    ArborSlider(
+    SettingSlider(
+        label = "Guide thickness",
+        valueLabel = "${settings.blurBoundaryDebugThicknessDp.roundToInt()} dp",
         value = settings.blurBoundaryDebugThicknessDp,
         onValueChange = { value -> viewModel.updateDeveloperSettings { it.copy(blurBoundaryDebugThicknessDp = value) } },
         valueRange = 1f..8f,
@@ -1723,7 +1720,7 @@ private fun UsageWindowRow(
             modifier = Modifier.fillMaxWidth(),
         )
         val resetAt = window.resetsAtEpochSeconds
-        var nowEpochSeconds by remember(resetAt) { mutableStateOf(System.currentTimeMillis() / 1_000L) }
+        var nowEpochSeconds by remember(resetAt) { mutableLongStateOf(System.currentTimeMillis() / 1_000L) }
         LaunchedEffect(resetAt) {
             if (resetAt != null) {
                 while (true) {
@@ -2088,6 +2085,55 @@ private fun defaultBaseUrl(kind: ProviderKind): String = when (kind) {
 @Composable
 private fun SectionTitle(title: String, subtitle: String) {
     Column { Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold); Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+}
+
+@Composable
+private fun SettingSlider(
+    label: String,
+    valueLabel: String,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    steps: Int = 0,
+    supportingText: String = "",
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                label,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurface.copy(alpha = .38f),
+            )
+            Text(
+                valueLabel,
+                style = MaterialTheme.typography.labelLarge,
+                color = if (enabled) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurface.copy(alpha = .38f),
+            )
+        }
+        ArborSlider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = valueRange,
+            enabled = enabled,
+            steps = steps,
+        )
+        if (supportingText.isNotBlank()) {
+            Text(
+                supportingText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 @Composable

@@ -4,6 +4,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.relocation.BringIntoViewModifierNode
 
 /** Prevents child TextViews, selection handles, and expanding rich blocks from
@@ -19,6 +20,9 @@ private class NoOpBringIntoViewNode : Modifier.Node(), BringIntoViewModifierNode
 private class NoOpBringIntoViewElement : ModifierNodeElement<NoOpBringIntoViewNode>() {
     override fun create(): NoOpBringIntoViewNode = NoOpBringIntoViewNode()
     override fun update(node: NoOpBringIntoViewNode) = Unit
+    override fun InspectorInfo.inspectableProperties() {
+        name = "noOpBringIntoView"
+    }
     override fun equals(other: Any?): Boolean = other is NoOpBringIntoViewElement
     override fun hashCode(): Int = javaClass.hashCode()
 }

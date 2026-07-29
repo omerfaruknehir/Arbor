@@ -1,7 +1,6 @@
 package app.arbor.chat.ui
 
 import android.content.Intent
-import android.net.Uri
 import android.text.Html
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -45,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
@@ -107,7 +107,7 @@ internal fun LinkPreviewDetails(
     val openable = reference.kind != LinkReferenceKind.FILE &&
         (reference.target.startsWith("https://") || reference.target.startsWith("http://"))
     val host = remember(reference.target) {
-        runCatching { Uri.parse(reference.target).host }.getOrNull().orEmpty().removePrefix("www.")
+        runCatching { reference.target.toUri().host }.getOrNull().orEmpty().removePrefix("www.")
     }
     var metadata by remember(reference.target) { mutableStateOf<RemoteLinkMetadata?>(null) }
     var loading by remember(reference.target) { mutableStateOf(openable) }
@@ -182,7 +182,7 @@ internal fun LinkPreviewDetails(
                 Button(onClick = {
                     val target = reference.target
                     onDismiss()
-                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target))) }
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, target.toUri())) }
                 }) {
                     Icon(Icons.AutoMirrored.Outlined.OpenInNew, null, Modifier.size(17.dp))
                     Text("Open", Modifier.padding(start = 6.dp))

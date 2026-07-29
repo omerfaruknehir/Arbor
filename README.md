@@ -2,7 +2,7 @@
 
 Arbor is a fully native Android BYOK chat client built with Kotlin, Jetpack Compose, and Material 3. It has no WebView, hosted account, telemetry, ads, or application backend. API keys and chat data stay on the device; requests go directly to the endpoints configured by the user.
 
-This repository is version `0.19.2`, an installable and deliberately honest foundation for a larger agent client.
+This repository is version `0.20.0`, an installable and deliberately honest foundation for a larger agent client.
 
 ## Included
 
@@ -31,7 +31,7 @@ This repository is version `0.19.2`, an installable and deliberately honest foun
 - Unified pip/apt/apk preflight cards which detect already-satisfied packages, show installs/upgrades and dependencies in one transaction, and disable installation when there is nothing to change.
 - Configurable package policies: always ask, auto-approve a trusted package list, ask a separately selected approval model, or auto-approve every valid plan. Strict package-source restrictions can be explicitly relaxed in Settings.
 - Model-driven agent loops for direct Python execution, DuckDuckGo HTML search, and public HTTP(S) page reading, with per-conversation allow/deny controls and private-address fetch blocking. Tool protocol is removed from the transcript and results are retained in the encrypted Working trace.
-- An ordered response timeline which groups only adjacent reasoning, search, and Python events into animated **Working** cards. Normal assistant text splits groups in its original position. Cards are never removed: options are **Always expanded**, **Expanded while working**, and **Always collapsed**.
+- An ordered response timeline which groups adjacent reasoning and tool events into clear activity cards. The card names the current action, gives every step an explicit status, expands active and failed details automatically, and honors **Always expanded**, **Expanded while working**, and **Always collapsed**.
 - Language-aware native syntax coloring for assistant Markdown code and Python/Ubuntu Working steps, with code, result, stdout, stderr, and changed files kept in distinct panels. Active responses use a subtle staggered fading token pulse.
 - Separate native interaction surfaces: `arbor-ui` is always conversation-only for questions, requirements, forms, previews, and other transient interaction. `arbor-widget` can offer launcher pinning only when an explicitly requested definition also declares `surface: "home"` or `"both"`; Home eligibility defaults off.
 - Recoverable streaming auto-scroll: browsing older messages pauses following, returning near the latest response resumes it, and a floating button jumps directly to the bottom.
@@ -43,7 +43,7 @@ This repository is version `0.19.2`, an installable and deliberately honest foun
 - Context compression for messages outside the verbatim pair/token window. It can be off, deterministic/local with no API call, or driven by a separately selected provider/model. Summaries are persisted, inspectable by size/count, and can be cleared.
 - Separate automation policies and model selectors for evolving chat titles and context compression, plus an editable model catalog for context/output limits, capability flags, and pricing.
 - Phone/tablet adaptive Compose UI, edge-to-edge layout, a calmer Arbor green-neutral palette, optional Material You or graphite palettes, optional AMOLED surfaces, revised Material 3 hierarchy, and a remastered adaptive/themed launcher mark.
-- Composer-first persistent controls: thinking and effort sit beside the input, while a `+` sheet handles files, photos, camera capture, Web search, Deep Research, Python, and Linux. Global Settings is available from the navigation drawer as a categorized home with **Providers & models**, **New chat defaults**, **Automation**, **Appearance**, and **Privacy & safety**; the chat overflow contains only compact advanced context/output/system-prompt configuration. Per-chat choices become defaults for subsequently created chats without rewriting existing conversations. Unsaved empty chats stay in memory and never clutter the sidebar.
+- Composer-first persistent controls: Thinking, Search, and Tools sit beside the input; Thinking effort and tool choices use explicit menus, while `+` is reserved for files, photos, and camera capture. While Arbor works, the composer shows background status, queued-message count, a separate **Stop** action, and a visible menu for **Queue**, **Steer**, or **Separate turn**. Global Settings is available from the navigation drawer as a categorized home with **Providers & models**, **New chat defaults**, **Automation**, **Appearance**, and **Privacy & safety**; the chat overflow contains only compact advanced context/output/system-prompt configuration. Per-chat choices become defaults for subsequently created chats without rewriting existing conversations. Unsaved empty chats stay in memory and never clutter the sidebar.
 - Optional per-chat Deep Research mode with explicit planning in Working, iterative search/fetch rounds, source verification, file-aware research, steering-safe persisted state, and structured sourced reports.
 - Optional hybrid preflight token counting. Anthropic and Gemini can use exact provider count endpoints; OpenAI-compatible and recognized local model families use local family-aware estimates, with the generic estimator as the non-blocking final fallback. Provider-reported post-response usage remains authoritative.
 
@@ -61,8 +61,8 @@ The supplied APK/AAB are debug-signed so they are immediately testable. Use your
 
 1. Install the APK on Android 8.0 or later (`arm64-v8a` and `x86_64` are packaged).
 2. Open the left navigation drawer → **Settings** → **Providers & models**, tap **Add provider**, choose its protocol, give it a name, and enter its endpoint and key. Tap **Connect & fetch models**, select the models to register, then save it securely. Manual model IDs are available only as a fallback for endpoints without model discovery.
-3. Choose a model from the chat header and send a message. Tap the composer Thinking chip to toggle it; use its arrow menu to choose effort; open `+` for attachments, camera, Web search, Deep Research, Python, or Linux.
-4. Hold the Send button while a response is running to stop, queue, steer, or start a separate turn. A normal tap with drafted text queues safely while the current turn is working.
+3. Choose a model from the chat header and send a message. Tap the Thinking, Search, or Tools chips beside the message box to configure the chat; open `+` for attachments, photos, or camera capture.
+4. While a response is running, tap **Stop** to stop it, tap Send to queue drafted text safely, or open the visible overflow menu to choose **Queue**, **Steer**, or **Separate turn**.
 5. Open **Tool workspaces**, choose Ubuntu, Debian, or Alpine, and install it when broader Linux tools are useful; the layer is optional and does not inflate first-launch data.
 
 Local servers use `http://127.0.0.1:11434/v1` by default. On a physical phone, `127.0.0.1` is the phone itself. Arbor permits cleartext HTTP only for loopback and the Android emulator host alias; use HTTPS for a server on another machine.

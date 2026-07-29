@@ -9,7 +9,6 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.RectF
 import android.graphics.Color as AndroidColor
-import android.net.Uri
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.Spanned
@@ -66,13 +65,15 @@ import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.net.toUri
 import app.arbor.chat.sandbox.ExecutionResult
 import app.arbor.chat.sandbox.ExecutionProgress
 import app.arbor.chat.sandbox.PackageInstallResult
@@ -663,7 +664,9 @@ internal fun MarkdownBlock(
             StreamingTablePreviewText(markdown = markdown, streaming = false)
         }
         horizontallyScrollable -> {
-            val tableViewportDp = (LocalConfiguration.current.screenWidthDp - 48).coerceAtLeast(240)
+            val tableViewportDp = with(LocalDensity.current) {
+                LocalWindowInfo.current.containerSize.width.toDp().value.roundToInt()
+            }.minus(48).coerceAtLeast(240)
             val tableWidth = remember(markdown, tableViewportDp) {
                 estimateMarkdownTableWidthDp(markdown, tableViewportDp).dp
             }
@@ -945,7 +948,9 @@ private fun StreamingTablePreviewText(
     val rendered = remember(markdown, startOffset, maxChars, maxLines) {
         renderStreamingTableGrid(markdown, startOffset, maxChars, maxLines)
     }
-    val viewportDp = (LocalConfiguration.current.screenWidthDp - 48).coerceAtLeast(240)
+    val viewportDp = with(LocalDensity.current) {
+        LocalWindowInfo.current.containerSize.width.toDp().value.roundToInt()
+    }.minus(48).coerceAtLeast(240)
     val widthDp = (rendered.widestLineCharacters * 8 + 20).coerceIn(viewportDp, 2_400)
     val color = MaterialTheme.colorScheme.onSurface.toArgbCompat()
     val background = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .34f).toArgbCompat()
@@ -1290,7 +1295,7 @@ private fun installReferenceSpans(
         val end = text.getSpanEnd(span)
         if (start < 0 || end <= start) return@forEach
         val raw = span.url.orEmpty()
-        val parsed = Uri.parse(raw)
+        val parsed = raw.toUri()
         val kind = when (parsed.scheme?.lowercase()) {
             "arbor-source" -> LinkReferenceKind.SOURCE
             "arbor-file" -> LinkReferenceKind.FILE

@@ -1,3 +1,15 @@
+## 0.20.0
+
+- Replace the custom magnetic slider engine with Material 3's maintained slider interaction model, preserving Arbor haptics, semantic progress, RTL behavior, and drawer-gesture priority while removing pointer, spring, and state synchronization races.
+- Replace Thinking effort's misleading discrete slider with explicit named choices and descriptions.
+- Split Appearance edge geometry into a clear **Rounded / Flat** choice and an independently labeled **Edge softness** control without changing stored settings or the Room schema.
+- Make Working cards honor their visibility setting, name the current action, summarize steps and failures, auto-open active/error details, and keep completed steps compact.
+- Give search, source reading, code execution, and Linux work consistent human-readable running, completed, and failed statuses.
+- Make background generation obvious in the composer, with queued-message status, a separate **Stop** action, explicit send-to-queue behavior, and a visible **Queue / Steer / Separate turn** menu.
+- Keep Thinking, Search, and Tools visible beside the message box, and reserve `+` for attachments, photos, and camera capture.
+- Clear the existing UI lint backlog for full-window popup sizing, width measurement, primitive state, URI parsing, modifier ordering, and inspector metadata.
+- Preserve package identity, debug signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
+
 ## 0.19.15
 
 - Replace Arbor's layered Material-slider wrapper with one custom slider engine that owns pointer tracking, magnetic hysteresis, velocity, haptics, spring settling, accessibility, external-state synchronization, and rendering.

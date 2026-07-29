@@ -627,9 +627,9 @@ private fun averageMetricMs(totalNanos: Long, count: Long): Double =
 internal fun ArborPerformanceOverlay(
     snapshot: PerformanceSnapshot,
     detailed: Boolean,
+    modifier: Modifier = Modifier,
     backgroundOpacity: Float = 0.86f,
     textOpacity: Float = 1f,
-    modifier: Modifier = Modifier,
 ) {
     val panelAlpha = backgroundOpacity.coerceIn(0f, 1f)
     Surface(

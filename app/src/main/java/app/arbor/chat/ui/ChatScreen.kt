@@ -60,7 +60,6 @@ import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
@@ -89,6 +88,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
@@ -97,7 +97,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.SideEffect
@@ -118,7 +117,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
-import kotlin.math.roundToInt
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInRoot
@@ -130,6 +128,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
 import app.arbor.chat.R
@@ -314,6 +313,65 @@ internal enum class WorkingCardViewportAnchor {
     TOP,
     BOTTOM,
     LATEST,
+}
+
+internal fun workingBlockDefaultExpanded(
+    visibility: ReasoningVisibility,
+    active: Boolean,
+): Boolean = when (visibility) {
+    ReasoningVisibility.ALWAYS -> true
+    ReasoningVisibility.SHOW_WHILE_WORKING -> active
+    ReasoningVisibility.COLLAPSED -> false
+}
+
+internal fun workEventTitle(event: MessageTimelineEvent): String =
+    event.label.takeIf(String::isNotBlank) ?: when (event.kind) {
+        "reasoning" -> "Reasoning"
+        "search" -> "Web search"
+        "fetch" -> "Reading source"
+        "script", "python" -> "Code execution"
+        "ubuntu" -> "Linux command"
+        "file_send" -> "Preparing file"
+        else -> event.kind.replace('_', ' ').replaceFirstChar(Char::uppercase)
+    }
+
+internal fun workEventStateLabel(event: MessageTimelineEvent): String = when (event.status) {
+    "preparing" -> "Preparing"
+    "prepared" -> "Ready"
+    "running" -> "Running"
+    "error" -> "Failed"
+    "complete" -> event.finishedAt?.let { finished ->
+        "${(finished - event.startedAt).coerceAtLeast(0)} ms"
+    } ?: "Done"
+    else -> event.status.replace('_', ' ').replaceFirstChar(Char::uppercase)
+}
+
+internal fun workingBlockHeadline(events: List<MessageTimelineEvent>, active: Boolean): String {
+    val latest = events.lastOrNull()
+    return when {
+        latest == null -> if (active) "Working" else "Activity"
+        active -> workEventTitle(latest)
+        events.any { it.status == "error" } -> "Finished with an error"
+        events.size == 1 && latest.kind == "reasoning" -> "Reasoning"
+        else -> "Work complete"
+    }
+}
+
+internal fun workingBlockSummary(events: List<MessageTimelineEvent>, active: Boolean): String {
+    val latest = events.lastOrNull()
+    if (active && latest != null) {
+        return when {
+            latest.status in setOf("preparing", "prepared", "running", "error") -> workEventStateLabel(latest)
+            latest.finishedAt == null && latest.kind == "reasoning" -> "Thinking"
+            latest.finishedAt == null -> "Working"
+            else -> workEventStateLabel(latest)
+        }
+    }
+    val errors = events.count { it.status == "error" }
+    return buildString {
+        append(events.size).append(if (events.size == 1) " step" else " steps")
+        if (errors > 0) append(" • ").append(errors).append(if (errors == 1) " error" else " errors")
+    }
 }
 
 internal fun chooseWorkingCardViewportAnchor(
@@ -1084,10 +1142,13 @@ internal fun normalModelPickerModels(models: List<ModelEntity>): List<ModelEntit
 @Composable
 private fun EmptyConversation(modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Text(stringResource(R.string.app_name), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-        Text("One native workspace for every model.", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("What are we working on?", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.size(12.dp))
-        Text("Attach files, run local code, branch long chats, or hold Send to queue and steer.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            "Ask a question, attach a file, or enable Search and Tools beside the message box.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -1195,6 +1256,7 @@ private fun MessageCard(
                         toolTraceJson = message.toolTraceJson,
                         working = working,
                         animateStreaming = animateStreaming,
+                        visibility = reasoningVisibility,
                         workingCardViewport = workingCardViewport,
                     )
                     if (displayContent.isNotBlank()) RichMessage(
@@ -1214,7 +1276,13 @@ private fun MessageCard(
                         workingCardViewport = workingCardViewport,
                     )
                 }
-                if (animateStreaming && message.content.isBlank()) {
+                if (
+                    animateStreaming &&
+                    message.content.isBlank() &&
+                    timeline.isEmpty() &&
+                    displayReasoning.isBlank() &&
+                    message.toolTraceJson.isBlank()
+                ) {
                     StreamingTokenPulse(visible = true, label = "Working")
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
@@ -1408,31 +1476,32 @@ private fun TimelineWorkingBlock(
     events: List<MessageTimelineEvent>,
     active: Boolean,
     animateStreaming: Boolean,
-    @Suppress("UNUSED_PARAMETER") visibility: ReasoningVisibility,
+    visibility: ReasoningVisibility,
     usedSourceUrls: Set<String>,
     viewModel: ChatViewModel,
     workingCardViewport: WorkingCardViewportController,
 ) {
     if (events.isEmpty()) return
-    // Expansion belongs to this working block, not to chat scroll position or the
-    // message-wide streaming flag. A block opens when it becomes the active work,
-    // closes once that work finishes, and remains freely user-toggleable between
-    // those state transitions.
-    var expanded by rememberSaveable("working-expanded-$stateKey") { mutableStateOf(active) }
-    var previousActive by rememberSaveable("working-active-$stateKey") { mutableStateOf(active) }
+    val defaultExpanded = workingBlockDefaultExpanded(visibility, active)
+    var expanded by rememberSaveable("working-expanded-$stateKey") {
+        mutableStateOf(defaultExpanded)
+    }
+    var previousDefaultExpanded by rememberSaveable("working-default-$stateKey") {
+        mutableStateOf(defaultExpanded)
+    }
     var cardBounds by remember(stateKey) { mutableStateOf<Rect?>(null) }
     var animateVisibility by remember(stateKey) { mutableStateOf(true) }
     val cardVisible = workingCardViewport.isVisible(cardBounds)
-    LaunchedEffect(active, cardVisible, workingCardViewport.listScrolling) {
-        if (previousActive != active) {
+    LaunchedEffect(defaultExpanded, cardVisible, workingCardViewport.listScrolling) {
+        if (previousDefaultExpanded != defaultExpanded) {
             animateVisibility = cardVisible && !workingCardViewport.listScrolling
             workingCardViewport.applyMutation(
-                if (active) WorkingCardMutation.AUTO_EXPAND else WorkingCardMutation.AUTO_COLLAPSE,
+                if (defaultExpanded) WorkingCardMutation.AUTO_EXPAND else WorkingCardMutation.AUTO_COLLAPSE,
                 { cardBounds },
             ) {
-                expanded = active
+                expanded = defaultExpanded
             }
-            previousActive = active
+            previousDefaultExpanded = defaultExpanded
             if (!animateVisibility) {
                 androidx.compose.runtime.withFrameNanos { }
                 animateVisibility = true
@@ -1456,63 +1525,171 @@ private fun TimelineWorkingBlock(
             Column(Modifier.padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (active) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    else Icon(Icons.Outlined.Psychology, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-                    Text(
-                        if (events.size == 1 && events.first().kind == "reasoning") "Working" else "Working • ${events.size} steps",
-                        Modifier.padding(start = 8.dp).weight(1f),
-                        fontWeight = FontWeight.Medium,
+                    else if (events.any { it.status == "error" }) {
+                        Icon(Icons.Outlined.Close, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
+                    } else {
+                        Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                    }
+                    Column(Modifier.padding(start = 9.dp).weight(1f)) {
+                        Text(
+                            workingBlockHeadline(events, active),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            workingBlockSummary(events, active),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Icon(
+                        if (expanded) Icons.Filled.KeyboardArrowDown else Icons.Outlined.ChevronRight,
+                        if (expanded) "Collapse work details" else "Expand work details",
+                        Modifier.size(20.dp),
                     )
-                    Text(if (expanded) "Collapse" else "Expand", style = MaterialTheme.typography.labelMedium)
                 }
                 AnimatedVisibility(
                     visible = expanded,
                     enter = if (animateVisibility) workingCardExpandIn() else EnterTransition.None,
                     exit = if (animateVisibility) workingCardCollapseOut() else ExitTransition.None,
                 ) {
-                    Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         events.forEachIndexed { index, event ->
                             val activeEvent = animateStreaming && index == events.lastIndex
-                            StreamingFade(transitionKey = "working-event:${event.id}", enabled = activeEvent) {
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    val duration = event.finishedAt?.let { (it - event.startedAt).coerceAtLeast(0) }
-                                    Text(
-                                        buildString {
-                                            append(index + 1).append(". ")
-                                            append(event.label.ifBlank { if (event.kind == "reasoning") "Reasoning" else event.kind.replaceFirstChar(Char::uppercase) })
-                                            if (duration != null) append(" • ").append(duration).append(" ms")
-                                            when (event.status) {
-                                                "preparing" -> append(" • streaming call")
-                                                "prepared" -> append(" • ready")
-                                                "running" -> append(" • running")
-                                                "error" -> append(" • error")
-                                            }
-                                        },
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = if (event.status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            val runId = if (event.kind == "script") scriptRunId(event.output) else null
+                            val superseded = runId != null &&
+                                events.drop(index + 1).any { later -> scriptRunId(later.output) == runId }
+                            TimelineWorkStep(
+                                stateKey = "$stateKey:${event.id}",
+                                index = index,
+                                event = event,
+                                active = activeEvent,
+                                superseded = superseded,
+                                usedSourceUrls = usedSourceUrls,
+                                viewModel = viewModel,
+                                workingCardViewport = workingCardViewport,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+}
+
+@Composable
+private fun TimelineWorkStep(
+    stateKey: String,
+    index: Int,
+    event: MessageTimelineEvent,
+    active: Boolean,
+    superseded: Boolean,
+    usedSourceUrls: Set<String>,
+    viewModel: ChatViewModel,
+    workingCardViewport: WorkingCardViewportController,
+) {
+    val hasDetails = event.content.isNotBlank() || event.input.isNotBlank() ||
+        event.output.isNotBlank() || active || superseded
+    var expanded by rememberSaveable("work-step-$stateKey") {
+        mutableStateOf(active || event.status == "error")
+    }
+    var previouslyActive by rememberSaveable("work-step-active-$stateKey") {
+        mutableStateOf(active)
+    }
+    LaunchedEffect(active) {
+        if (active != previouslyActive) {
+            expanded = active || event.status == "error"
+            previouslyActive = active
+        }
+    }
+
+    StreamingFade(transitionKey = "working-event:${event.id}", enabled = active) {
+        Surface(
+            onClick = { if (hasDetails) expanded = !expanded },
+            enabled = hasDetails,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(horizontal = 11.dp, vertical = 9.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    when {
+                        active || event.status in setOf("preparing", "prepared", "running") ->
+                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 1.8.dp)
+                        event.status == "error" ->
+                            Icon(Icons.Outlined.Close, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
+                        else ->
+                            Icon(Icons.Outlined.Check, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                    }
+                    Column(Modifier.padding(start = 9.dp).weight(1f)) {
+                        Text(
+                            "${index + 1}. ${workEventTitle(event)}",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                            color = if (event.status == "error") MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            workEventStateLabel(event),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (event.status == "error") MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (hasDetails) {
+                        Icon(
+                            if (expanded) Icons.Filled.KeyboardArrowDown else Icons.Outlined.ChevronRight,
+                            if (expanded) "Collapse step" else "Expand step",
+                            Modifier.size(18.dp),
+                        )
+                    }
+                }
+                AnimatedVisibility(
+                    visible = expanded && hasDetails,
+                    enter = workingCardExpandIn(),
+                    exit = workingCardCollapseOut(),
+                ) {
+                    Column(
+                        Modifier.padding(top = 9.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (event.content.isNotBlank()) {
+                            DisplayOnlyMarkdown(
+                                operationScope = "reasoning:${event.id}",
+                                text = event.content,
+                                streaming = active,
+                                workingCardViewport = workingCardViewport,
+                            )
+                        }
+                        when {
+                            superseded -> Text(
+                                "This attempt continued in the newer step below.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            event.kind in setOf("script", "python", "ubuntu", "search", "fetch") ->
+                                ToolStepDetails(
+                                    event.kind,
+                                    event.input,
+                                    event.output,
+                                    event.status,
+                                    usedSourceUrls,
+                                    viewModel,
+                                    workingCardViewport,
+                                )
+                            else -> {
+                                if (event.input.isNotBlank()) {
+                                    HighlightedCodeText(
+                                        language = event.kind,
+                                        code = event.input,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        softWrap = true,
                                     )
-                                    if (event.content.isNotBlank()) DisplayOnlyMarkdown(
-                                        operationScope = "reasoning:${event.id}",
-                                        text = event.content,
-                                        streaming = activeEvent,
-                                        workingCardViewport = workingCardViewport,
+                                }
+                                if (event.output.isNotBlank()) {
+                                    GenericToolOutputCard(
+                                        event.output,
+                                        failed = event.status == "error",
                                     )
-                                    val runId = if (event.kind == "script") scriptRunId(event.output) else null
-                                    val supersededScriptActivity = runId != null && events.drop(index + 1).any { later -> scriptRunId(later.output) == runId }
-                                    if (event.kind in setOf("script", "python", "ubuntu", "search", "fetch") && !supersededScriptActivity) {
-                                        ToolStepDetails(event.kind, event.input, event.output, event.status, usedSourceUrls, viewModel, workingCardViewport)
-                                    } else if (supersededScriptActivity) {
-                                        Text("Continued in the latest attempt below.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    } else {
-                                        if (event.input.isNotBlank()) HighlightedCodeText(
-                                            language = event.kind,
-                                            code = event.input,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            softWrap = true,
-                                        )
-                                        if (event.output.isNotBlank()) {
-                                            GenericToolOutputCard(event.output, failed = event.status == "error")
-                                        }
-                                    }
                                 }
                             }
                         }
@@ -1520,6 +1697,7 @@ private fun TimelineWorkingBlock(
                 }
             }
         }
+    }
 }
 
 internal fun scriptRunId(output: String): String? = output.takeIf(String::isNotBlank)?.let {
@@ -1533,6 +1711,7 @@ private fun LegacyWorkingBlock(
     toolTraceJson: String,
     working: Boolean,
     animateStreaming: Boolean,
+    visibility: ReasoningVisibility,
     workingCardViewport: WorkingCardViewportController,
 ) {
     val traces = remember(toolTraceJson) {
@@ -1540,21 +1719,26 @@ private fun LegacyWorkingBlock(
     }
     val hasContent = text.isNotBlank() || traces.isNotEmpty()
     if (!hasContent) return
-    var expanded by rememberSaveable("legacy-working-$messageKey") { mutableStateOf(working) }
-    var previousActive by rememberSaveable("legacy-working-active-$messageKey") { mutableStateOf(working) }
+    val defaultExpanded = workingBlockDefaultExpanded(visibility, working)
+    var expanded by rememberSaveable("legacy-working-$messageKey") {
+        mutableStateOf(defaultExpanded)
+    }
+    var previousDefaultExpanded by rememberSaveable("legacy-working-default-$messageKey") {
+        mutableStateOf(defaultExpanded)
+    }
     var cardBounds by remember(messageKey) { mutableStateOf<Rect?>(null) }
     var animateVisibility by remember(messageKey) { mutableStateOf(true) }
     val cardVisible = workingCardViewport.isVisible(cardBounds)
-    LaunchedEffect(working, cardVisible, workingCardViewport.listScrolling) {
-        if (previousActive != working) {
+    LaunchedEffect(defaultExpanded, cardVisible, workingCardViewport.listScrolling) {
+        if (previousDefaultExpanded != defaultExpanded) {
             animateVisibility = cardVisible && !workingCardViewport.listScrolling
             workingCardViewport.applyMutation(
-                if (working) WorkingCardMutation.AUTO_EXPAND else WorkingCardMutation.AUTO_COLLAPSE,
+                if (defaultExpanded) WorkingCardMutation.AUTO_EXPAND else WorkingCardMutation.AUTO_COLLAPSE,
                 { cardBounds },
             ) {
-                expanded = working
+                expanded = defaultExpanded
             }
-            previousActive = working
+            previousDefaultExpanded = defaultExpanded
             if (!animateVisibility) {
                 androidx.compose.runtime.withFrameNanos { }
                 animateVisibility = true
@@ -1578,9 +1762,32 @@ private fun LegacyWorkingBlock(
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (working) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                else Icon(Icons.Outlined.Psychology, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-                Text("Working", Modifier.padding(start = 8.dp).weight(1f), fontWeight = FontWeight.Medium)
-                Text(if (expanded) "Collapse" else "Expand", style = MaterialTheme.typography.labelMedium)
+                else if (traces.any { it.status == "error" }) {
+                    Icon(Icons.Outlined.Close, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
+                } else {
+                    Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                }
+                Column(Modifier.padding(start = 9.dp).weight(1f)) {
+                    Text(
+                        when {
+                            working -> traces.lastOrNull()?.label?.takeIf(String::isNotBlank) ?: "Reasoning"
+                            traces.any { it.status == "error" } -> "Finished with an error"
+                            else -> "Work complete"
+                        },
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        if (working) "Running" else "${traces.size + if (text.isNotBlank()) 1 else 0} steps",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Icon(
+                    if (expanded) Icons.Filled.KeyboardArrowDown else Icons.Outlined.ChevronRight,
+                    if (expanded) "Collapse work details" else "Expand work details",
+                    Modifier.size(20.dp),
+                )
             }
             AnimatedVisibility(
                 visible = expanded,
@@ -1765,11 +1972,11 @@ private fun ScriptRunActivityCard(initial: ScriptRunResult, viewModel: ChatViewM
 @Composable
 private fun CompactSearchToolCard(query: String, output: String, status: String, usedSourceUrls: Set<String>) {
     val parsed = remember(output) { runCatching { ChatMessageJson.decodeFromString<WebSearchResponse>(output) }.getOrNull() }
-    val usedHosts = remember(usedSourceUrls) { usedSourceUrls.mapNotNull { runCatching { Uri.parse(it).host }.getOrNull() }.toSet() }
+    val usedHosts = remember(usedSourceUrls) { usedSourceUrls.mapNotNull { runCatching { it.toUri().host }.getOrNull() }.toSet() }
     val sites = remember(parsed, usedHosts) {
         parsed?.results.orEmpty()
-            .filter { result -> usedHosts.isNotEmpty() && runCatching { Uri.parse(result.url).host }.getOrNull() in usedHosts }
-            .distinctBy { runCatching { Uri.parse(it.url).host }.getOrNull() }
+            .filter { result -> usedHosts.isNotEmpty() && runCatching { result.url.toUri().host }.getOrNull() in usedHosts }
+            .distinctBy { runCatching { it.url.toUri().host }.getOrNull() }
             .take(8)
     }
     var selectedUrl by remember { mutableStateOf<String?>(null) }
@@ -1788,7 +1995,8 @@ private fun CompactSearchToolCard(query: String, output: String, status: String,
                         "preparing" -> "Writing query…"
                         "prepared" -> "Ready"
                         "running" -> "Searching…"
-                        else -> if (sites.isEmpty()) "No opened sources" else "${sites.size} used"
+                        "error" -> "Search failed"
+                        else -> if (sites.isEmpty()) "No sources used" else "${sites.size} used"
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1799,7 +2007,7 @@ private fun CompactSearchToolCard(query: String, output: String, status: String,
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(sites.size) { index ->
                         val result = sites[index]
-                        val host = runCatching { Uri.parse(result.url).host }.getOrNull().orEmpty().removePrefix("www.")
+                        val host = runCatching { result.url.toUri().host }.getOrNull().orEmpty().removePrefix("www.")
                         Box {
                             AssistChip(
                                 onClick = { selectedUrl = result.url },
@@ -1852,12 +2060,13 @@ private fun CompactFetchToolCard(url: String, output: String, status: String) {
                             "preparing" -> "Writing source request…"
                             "prepared" -> "Source request ready"
                             "running" -> "Reading source…"
+                            "error" -> "Source failed"
                             else -> "Source read"
                         },
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold,
                     )
-                    Text(runCatching { Uri.parse(target).host }.getOrNull().orEmpty().removePrefix("www.").ifBlank { target }, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(runCatching { target.toUri().host }.getOrNull().orEmpty().removePrefix("www.").ifBlank { target }, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -2006,12 +2215,49 @@ private fun Composer(
                 ),
         ) {
             Column(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp)) {
-            if (pending.isNotEmpty()) Text(
-                "${pending.size} message${if (pending.size == 1) "" else "s"} queued",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
+            if (generating || pending.isNotEmpty()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .72f),
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp),
+                ) {
+                    Row(
+                        Modifier.padding(start = 12.dp, end = 4.dp, top = 5.dp, bottom = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (generating) {
+                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 1.8.dp)
+                        } else {
+                            Icon(Icons.Outlined.Schedule, null, Modifier.size(17.dp))
+                        }
+                        Column(Modifier.padding(start = 9.dp).weight(1f)) {
+                            Text(
+                                if (generating) "Arbor is working in the background" else "Messages queued",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                when {
+                                    generating && pending.isNotEmpty() ->
+                                        "${pending.size} queued • Send queues another message"
+                                    generating -> "Send queues a message; use ⋮ for Steer"
+                                    else -> "${pending.size} waiting"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                        }
+                        if (generating) {
+                            TextButton(onClick = {
+                                haptics.reject()
+                                viewModel.stop()
+                            }) {
+                                Text("Stop")
+                            }
+                        }
+                    }
+                }
+            }
             if (staged.isNotEmpty()) {
                 LazyRow(
                     modifier = Modifier.fillMaxWidth().heightIn(max = 96.dp),
@@ -2066,6 +2312,18 @@ private fun Composer(
                             },
                         )
                     }
+                    item {
+                        ToolComposerChip(
+                            pythonEnabled = current.agentPythonEnabled,
+                            linuxEnabled = current.agentUbuntuEnabled,
+                            onPythonEnabled = { enabled ->
+                                viewModel.updateConversation { it.copy(agentPythonEnabled = enabled) }
+                            },
+                            onLinuxEnabled = { enabled ->
+                                viewModel.updateConversation { it.copy(agentUbuntuEnabled = enabled) }
+                            },
+                        )
+                    }
                 }
             }
 
@@ -2074,7 +2332,7 @@ private fun Composer(
                     haptics.tap()
                     plusMenu = true
                 }, enabled = !importing) {
-                    Icon(Icons.Outlined.Add, "Add files, images, camera, or tools")
+                    Icon(Icons.Outlined.Add, "Attach files, images, or a photo")
                 }
                 OutlinedTextField(
                     value = draft,
@@ -2093,20 +2351,26 @@ private fun Composer(
                     maxLines = 7,
                 )
                 Spacer(Modifier.width(6.dp))
+                if (generating) {
+                    IconButton(onClick = {
+                        haptics.tap()
+                        sendMenu = true
+                    }) {
+                        Icon(Icons.Outlined.MoreVert, "Choose Queue, Steer, or separate turn")
+                    }
+                }
                 Surface(
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    color = if (hasPayload && !importing) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = if (hasPayload && !importing) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(48.dp).combinedClickable(
+                        enabled = hasPayload && !importing,
                         onClick = {
-                            if (generating && draft.isBlank() && staged.isEmpty()) {
-                                haptics.reject()
-                                viewModel.stop()
-                            } else {
-                                haptics.confirm()
-                                onImmediateSend()
-                                viewModel.send()
-                            }
+                            haptics.confirm()
+                            onImmediateSend()
+                            viewModel.send(if (generating) SendMode.QUEUE else SendMode.SEND_NOW)
                         },
                         onLongClick = {
                             haptics.longPress()
@@ -2116,8 +2380,8 @@ private fun Composer(
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Icon(
-                            if (generating && draft.isBlank() && staged.isEmpty()) Icons.Filled.Stop else Icons.Filled.ArrowUpward,
-                            if (generating) "Stop or send" else "Send",
+                            if (generating) Icons.Outlined.Schedule else Icons.Filled.ArrowUpward,
+                            if (generating) "Queue after current response" else "Send",
                         )
                     }
                 }
@@ -2130,7 +2394,7 @@ private fun Composer(
     if (plusMenu) {
         ModalBottomSheet(onDismissRequest = { plusMenu = false }) {
             Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                Text("Add and use tools", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
+                Text("Attach", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
                 ComposerActionRow(Icons.Outlined.AttachFile, "Files", "Documents, archives, code, audio, and other supported files") {
                     plusMenu = false
                     filePicker.launch(arrayOf("*/*"))
@@ -2142,21 +2406,6 @@ private fun Composer(
                 ComposerActionRow(Icons.Outlined.CameraAlt, "Camera", "Take a photo and attach it") {
                     plusMenu = false
                     takePhoto()
-                }
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                conversation?.let { current ->
-                    ComposerToggleRow(Icons.Outlined.Search, "Web search", "Search and fetch public web sources", current.webSearchEnabled) { enabled ->
-                        viewModel.updateConversation { it.copy(webSearchEnabled = enabled, deepResearchEnabled = it.deepResearchEnabled && enabled) }
-                    }
-                    ComposerToggleRow(Icons.Outlined.TravelExplore, "Deep Research", "Plan, search repeatedly, verify sources, and write a cited report", current.deepResearchEnabled) { enabled ->
-                        viewModel.updateConversation { it.copy(deepResearchEnabled = enabled, webSearchEnabled = it.webSearchEnabled || enabled) }
-                    }
-                    ComposerToggleRow(Icons.Outlined.Code, "Local Code Execution", "Run Python locally in this chat's persistent workspace", current.agentPythonEnabled) { enabled ->
-                        viewModel.updateConversation { it.copy(agentPythonEnabled = enabled) }
-                    }
-                    ComposerToggleRow(Icons.Outlined.Terminal, "Linux", "Use the selected Linux tooling workspace", current.agentUbuntuEnabled) { enabled ->
-                        viewModel.updateConversation { it.copy(agentUbuntuEnabled = enabled) }
-                    }
                 }
             }
         }
@@ -2324,10 +2573,6 @@ private fun ThinkingComposerChip(
             if (!enabled) !option.enabled else option.enabled && option.effort == effort
         }.takeIf { it >= 0 } ?: options.indexOfFirst { it.enabled }.coerceAtLeast(0)
     }
-    // Keep the physical thumb continuous while the menu is open. Re-keying
-    // this state with selectedIndex used to teleport the thumb to an integer
-    // as soon as the selected effort propagated back from the ViewModel.
-    var sliderValue by remember(options) { mutableFloatStateOf(selectedIndex.toFloat()) }
     val selected = options.getOrNull(selectedIndex)
 
     Box {
@@ -2335,7 +2580,6 @@ private fun ThinkingComposerChip(
             onClick = {
                 if (options.isNotEmpty()) {
                     haptics.tap()
-                    sliderValue = selectedIndex.toFloat()
                     menu = true
                 }
             },
@@ -2359,49 +2603,44 @@ private fun ThinkingComposerChip(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Icon(Icons.Outlined.ExpandLess, "Choose thinking level", Modifier.size(19.dp))
+                Icon(Icons.Filled.KeyboardArrowDown, "Choose thinking level", Modifier.size(19.dp))
             }
         }
         ArborDropdownMenu(
             expanded = menu,
             onDismissRequest = { menu = false },
-            modifier = Modifier.width(304.dp),
+            modifier = Modifier.width(320.dp),
             dismissOnClickOutside = true,
         ) {
-            if (options.isNotEmpty()) {
-                val preview = options[sliderValue.roundToInt().coerceIn(options.indices)]
-                Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Think", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                        Text(preview.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                    }
-                    ArborSlider(
-                        value = sliderValue,
-                        onValueChange = { sliderValue = it },
-                        onValueChangeFinished = {
-                            val option = options[sliderValue.roundToInt().coerceIn(options.indices)]
-                            haptics.selection()
-                            onSelection(option.enabled, option.effort)
-                        },
-                        valueRange = 0f..options.lastIndex.toFloat().coerceAtLeast(1f),
-                        snapPoints = options.indices.map(Int::toFloat),
-                        liveMagnetism = false,
-                        snapToNearestOnRelease = true,
-                        showSnapPointDots = true,
-                        enabled = options.size > 1,
-                    )
-                    Row(Modifier.fillMaxWidth()) {
-                        Text(options.first().label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.weight(1f))
-                        Text(options.last().label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Text(
-                        preview.description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
+            options.forEachIndexed { index, option ->
+                val optionSelected = index == selectedIndex
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(
+                                option.label,
+                                fontWeight = if (optionSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            )
+                            Text(
+                                option.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    onClick = {
+                        haptics.selection()
+                        onSelection(option.enabled, option.effort)
+                        menu = false
+                    },
+                    leadingIcon = {
+                        if (optionSelected) {
+                            Icon(Icons.Outlined.Check, "Selected")
+                        } else {
+                            Spacer(Modifier.size(24.dp))
+                        }
+                    },
+                )
             }
         }
     }
@@ -2472,7 +2711,7 @@ private fun SearchComposerChip(
             ) {
                 Icon(icon, null, Modifier.size(17.dp))
                 Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Icon(Icons.Outlined.ExpandLess, "Choose search mode", Modifier.size(19.dp))
+                Icon(Icons.Filled.KeyboardArrowDown, "Choose search mode", Modifier.size(19.dp))
             }
         }
         ArborDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -2490,6 +2729,73 @@ private fun SearchComposerChip(
                 text = { Text("Deep Research") },
                 onClick = { haptics.selection(); onSelection(true, true); menu = false },
                 leadingIcon = { Icon(Icons.Outlined.TravelExplore, null) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ToolComposerChip(
+    pythonEnabled: Boolean,
+    linuxEnabled: Boolean,
+    onPythonEnabled: (Boolean) -> Unit,
+    onLinuxEnabled: (Boolean) -> Unit,
+) {
+    var menu by remember { mutableStateOf(false) }
+    val haptics = rememberArborHaptics()
+    val enabledCount = listOf(pythonEnabled, linuxEnabled).count { it }
+    val label = when {
+        pythonEnabled && linuxEnabled -> "Tools · 2"
+        pythonEnabled -> "Tools · Code"
+        linuxEnabled -> "Tools · Linux"
+        else -> "Tools off"
+    }
+    Box {
+        Surface(
+            onClick = {
+                haptics.tap()
+                menu = true
+            },
+            color = if (enabledCount > 0) MaterialTheme.colorScheme.secondaryContainer
+            else MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = if (enabledCount > 0) MaterialTheme.colorScheme.onSecondaryContainer
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            shape = CircleShape,
+        ) {
+            Row(
+                Modifier.padding(start = 12.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(Icons.Outlined.Code, null, Modifier.size(17.dp))
+                Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                Icon(Icons.Filled.KeyboardArrowDown, "Choose chat tools", Modifier.size(19.dp))
+            }
+        }
+        ArborDropdownMenu(
+            expanded = menu,
+            onDismissRequest = { menu = false },
+            modifier = Modifier.width(340.dp),
+        ) {
+            Text(
+                "Tools available to Arbor in this chat",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            ComposerToggleRow(
+                icon = Icons.Outlined.Code,
+                title = "Local Code Execution",
+                subtitle = "Run Python in this chat's persistent workspace",
+                checked = pythonEnabled,
+                onCheckedChange = onPythonEnabled,
+            )
+            ComposerToggleRow(
+                icon = Icons.Outlined.Terminal,
+                title = "Linux",
+                subtitle = "Use the selected Linux tooling workspace",
+                checked = linuxEnabled,
+                onCheckedChange = onLinuxEnabled,
             )
         }
     }

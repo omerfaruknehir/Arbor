@@ -52,15 +52,15 @@ fun CodeSourcePanel(
 
 @Composable
 fun LiveExecutionCard(progress: ExecutionProgress, title: String = "Code execution") {
-    ExecutionFrame(title, "RUNNING", "${progress.elapsedMs} ms", failed = false) {
+    ExecutionFrame(title, "Running", formatExecutionDuration(progress.elapsedMs), failed = false) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-            Text("Process is running. Output updates as it is printed.", style = MaterialTheme.typography.bodySmall)
+            Text("Live output updates as the process prints.", style = MaterialTheme.typography.bodySmall)
         }
-        progress.stdoutTail.takeIf(String::isNotBlank)?.let { LiveOutputSection("STDOUT • LIVE", it) }
-        progress.stderrTail.takeIf(String::isNotBlank)?.let { LiveOutputSection("STDERR • LIVE", it, error = true) }
+        progress.stdoutTail.takeIf(String::isNotBlank)?.let { LiveOutputSection("Output", it) }
+        progress.stderrTail.takeIf(String::isNotBlank)?.let { LiveOutputSection("Errors", it, error = true) }
         if (progress.stdoutTail.isBlank() && progress.stderrTail.isBlank()) {
-            OutputSection("OUTPUT", "Waiting for the process to print output…")
+            OutputSection("Output", "Waiting for output…")
         }
     }
 }
@@ -98,45 +98,65 @@ private fun LiveOutputSection(label: String, text: String, error: Boolean = fals
 @Composable
 fun PythonExecutionCard(output: ExecutionResult, title: String = "Python result") {
     val failed = output.stderr.isNotBlank() || output.timedOut
-    ExecutionFrame(title, if (failed) "FAILED" else "COMPLETE", "${output.elapsedMs} ms", failed) {
-        output.result?.takeIf(String::isNotBlank)?.let { OutputSection("RESULT", it) }
-        output.stdout.takeIf(String::isNotBlank)?.let { OutputSection("STDOUT", it) }
-        output.stderr.takeIf(String::isNotBlank)?.let { OutputSection("STDERR", it, error = true) }
-        if (output.timedOut) OutputSection("TIMEOUT", "Execution exceeded its configured deadline.", error = true)
-        if (output.files.isNotEmpty()) OutputSection("CHANGED FILES", output.files.joinToString("\n") { "• $it" })
-        if (output.result.isNullOrBlank() && output.stdout.isBlank() && output.stderr.isBlank() && output.files.isEmpty()) OutputSection("OUTPUT", "Command completed without output.")
+    ExecutionFrame(title, if (failed) "Failed" else "Complete", formatExecutionDuration(output.elapsedMs), failed) {
+        output.result?.takeIf(String::isNotBlank)?.let { OutputSection("Result", it) }
+        output.stdout.takeIf(String::isNotBlank)?.let { OutputSection("Output", it) }
+        output.stderr.takeIf(String::isNotBlank)?.let { OutputSection("Errors", it, error = true) }
+        if (output.timedOut) OutputSection("Timed out", "Execution exceeded its configured deadline.", error = true)
+        if (output.files.isNotEmpty()) OutputSection("Changed files", output.files.joinToString("\n") { "• $it" })
+        if (output.result.isNullOrBlank() && output.stdout.isBlank() && output.stderr.isBlank() && output.files.isEmpty()) OutputSection("Output", "Completed without output.")
     }
 }
 
 @Composable
 fun UbuntuExecutionCard(output: UbuntuExecutionResult, title: String = "Ubuntu result") {
     val failed = output.exitCode != 0 || output.timedOut
-    ExecutionFrame(title, if (output.timedOut) "TIMED OUT" else "EXIT ${output.exitCode}", "${output.elapsedMs} ms", failed) {
-        output.stdout.takeIf(String::isNotBlank)?.let { OutputSection("STDOUT", it) }
-        output.stderr.takeIf(String::isNotBlank)?.let { OutputSection("STDERR", it, error = true) }
-        if (output.files.isNotEmpty()) OutputSection("CHANGED FILES", output.files.joinToString("\n") { "• $it" })
-        if (output.stdout.isBlank() && output.stderr.isBlank() && output.files.isEmpty()) OutputSection("OUTPUT", "Command completed without output.")
+    ExecutionFrame(title, if (output.timedOut) "Timed out" else "Exit ${output.exitCode}", formatExecutionDuration(output.elapsedMs), failed) {
+        output.stdout.takeIf(String::isNotBlank)?.let { OutputSection("Output", it) }
+        output.stderr.takeIf(String::isNotBlank)?.let { OutputSection("Errors", it, error = true) }
+        if (output.files.isNotEmpty()) OutputSection("Changed files", output.files.joinToString("\n") { "• $it" })
+        if (output.stdout.isBlank() && output.stderr.isBlank() && output.files.isEmpty()) OutputSection("Output", "Completed without output.")
     }
 }
 
 @Composable
 fun GenericToolOutputCard(output: String, failed: Boolean = false) {
-    ExecutionFrame("Tool output", if (failed) "FAILED" else "COMPLETE", "", failed) {
-        OutputSection(if (failed) "ERROR" else "OUTPUT", output.ifBlank { "No output." }, error = failed)
+    ExecutionFrame("Tool output", if (failed) "Failed" else "Complete", "", failed) {
+        OutputSection(if (failed) "Error" else "Output", output.ifBlank { "No output." }, error = failed)
     }
 }
 
 @Composable
 private fun ExecutionFrame(title: String, state: String, detail: String, failed: Boolean, content: @Composable ColumnScope.() -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(title, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-                Text(listOf(state, detail).filter(String::isNotBlank).joinToString(" • "), style = MaterialTheme.typography.labelMedium, color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                Surface(
+                    color = if (failed) MaterialTheme.colorScheme.errorContainer
+                    else MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = if (failed) MaterialTheme.colorScheme.onErrorContainer
+                    else MaterialTheme.colorScheme.onPrimaryContainer,
+                    shape = MaterialTheme.shapes.extraLarge,
+                ) {
+                    Text(
+                        listOf(state, detail).filter(String::isNotBlank).joinToString(" • "),
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
             }
             content()
         }
     }
+}
+
+internal fun formatExecutionDuration(elapsedMs: Long): String = when {
+    elapsedMs <= 0L -> ""
+    elapsedMs < 1_000L -> "$elapsedMs ms"
+    elapsedMs < 10_000L -> "${elapsedMs / 100 / 10.0} s"
+    else -> "${elapsedMs / 1_000} s"
 }
 
 @Composable

@@ -5,15 +5,13 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.DropdownMenu as MaterialDropdownMenu
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 
@@ -33,7 +31,6 @@ internal fun ReleaseDismissOutsideLayer(
     if (!visible) return
 
     BackHandler(enabled = true, onBack = onDismissRequest)
-    val configuration = LocalConfiguration.current
     Popup(
         alignment = Alignment.TopStart,
         properties = PopupProperties(
@@ -45,7 +42,7 @@ internal fun ReleaseDismissOutsideLayer(
     ) {
         Box(
             Modifier
-                .requiredSize(configuration.screenWidthDp.dp, configuration.screenHeightDp.dp)
+                .fillMaxSize()
                 .pointerInput(onDismissRequest) {
                     awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
