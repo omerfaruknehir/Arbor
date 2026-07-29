@@ -1,3 +1,8 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import org.gradle.api.artifacts.ExternalModuleDependency
+import java.io.File
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -12,6 +17,135 @@ val releaseStorePassword = providers.gradleProperty("ARBOR_KEYSTORE_PASSWORD").o
 val releaseKeyAlias = providers.gradleProperty("ARBOR_KEY_ALIAS").orNull ?: System.getenv("ARBOR_KEY_ALIAS")
 val releaseKeyPassword = providers.gradleProperty("ARBOR_KEY_PASSWORD").orNull ?: System.getenv("ARBOR_KEY_PASSWORD")
 
+val licenseCatalogRoot = rootProject.file("licenses")
+val generatedLicenseAssets = layout.buildDirectory.dir("generated/offlineLicenses/assets")
+
+val generateOfflineLicenseCatalog by tasks.registering {
+    group = "verification"
+    description = "Validates the local licenses catalog and embeds it as deterministic offline assets."
+    inputs.dir(licenseCatalogRoot)
+    outputs.dir(generatedLicenseAssets)
+
+    doLast {
+        val componentsDir = licenseCatalogRoot.resolve("components")
+        require(componentsDir.isDirectory) {
+            "Missing licenses/components. See licenses/README.md for the catalog format."
+        }
+
+        fun requiredString(map: Map<*, *>, field: String, source: File): String =
+            (map[field] as? String)?.trim()?.takeIf { it.isNotEmpty() }
+                ?: error("${source.path}: '$field' must be a non-empty string")
+
+        fun requiredStringList(map: Map<*, *>, field: String, source: File): List<String> =
+            (map[field] as? List<*>)
+                ?.map { it as? String ?: error("${source.path}: '$field' must contain only strings") }
+                ?.map { it.trim() }
+                ?.filter { it.isNotEmpty() }
+                ?: error("${source.path}: '$field' must be an array")
+
+        val canonicalRoot = licenseCatalogRoot.canonicalFile
+        fun checkedCatalogFile(relativePath: String, source: File): File {
+            require(!File(relativePath).isAbsolute && relativePath.split('/').none { it == ".." }) {
+                "${source.path}: catalog paths must be relative and may not escape licenses/"
+            }
+            val resolved = canonicalRoot.resolve(relativePath).canonicalFile
+            require(resolved.toPath().startsWith(canonicalRoot.toPath()) && resolved.isFile) {
+                "${source.path}: local catalog file '$relativePath' does not exist"
+            }
+            return resolved
+        }
+
+        val ids = mutableSetOf<String>()
+        val coveredModules = mutableSetOf<String>()
+        val referencedFiles = linkedSetOf<String>()
+        val normalizedComponents = componentsDir
+            .listFiles { file -> file.isFile && file.extension == "json" }
+            .orEmpty()
+            .sortedBy { it.name }
+            .map { source ->
+                val parsed = JsonSlurper().parse(source) as? Map<*, *>
+                    ?: error("${source.path}: component metadata must be a JSON object")
+                val id = requiredString(parsed, "id", source)
+                require(ids.add(id)) { "${source.path}: duplicate component id '$id'" }
+                val icon = requiredString(parsed, "icon", source)
+                checkedCatalogFile(icon, source)
+                referencedFiles += icon
+
+                val coordinates = requiredStringList(parsed, "coordinates", source)
+                coordinates.forEach { coordinate ->
+                    val parts = coordinate.split(':')
+                    require(parts.size >= 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) {
+                        "${source.path}: invalid Maven coordinate '$coordinate'"
+                    }
+                    coveredModules += "${parts[0]}:${parts[1]}"
+                }
+
+                val licenses = (parsed["licenses"] as? List<*>)
+                    ?.mapIndexed { index, value ->
+                        val license = value as? Map<*, *>
+                            ?: error("${source.path}: licenses[$index] must be a JSON object")
+                        val file = requiredString(license, "file", source)
+                        checkedCatalogFile(file, source)
+                        referencedFiles += file
+                        linkedMapOf(
+                            "name" to requiredString(license, "name", source),
+                            "spdx" to (license["spdx"] as? String)?.trim()?.takeIf { it.isNotEmpty() },
+                            "file" to file,
+                        ).filterValues { it != null }
+                    }
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: error("${source.path}: 'licenses' must contain at least one license document")
+
+                linkedMapOf(
+                    "id" to id,
+                    "name" to requiredString(parsed, "name", source),
+                    "version" to requiredString(parsed, "version", source),
+                    "category" to requiredString(parsed, "category", source),
+                    "description" to requiredString(parsed, "description", source),
+                    "projectUrl" to requiredString(parsed, "projectUrl", source),
+                    "icon" to icon,
+                    "coordinates" to coordinates,
+                    "licenses" to licenses,
+                    "notice" to (parsed["notice"] as? String)?.trim()?.takeIf { it.isNotEmpty() },
+                ).filterValues { it != null }
+            }
+            .sortedBy { it["name"].toString().lowercase() }
+
+        require(normalizedComponents.isNotEmpty()) {
+            "licenses/components must contain at least one component JSON file"
+        }
+
+        val declaredModules = configurations.getByName("implementation").dependencies
+            .filterIsInstance<ExternalModuleDependency>()
+            .mapNotNull { dependency ->
+                dependency.group?.let { "$it:${dependency.name}" }
+            }
+            .toSortedSet()
+        val undocumentedModules = declaredModules - coveredModules
+        require(undocumentedModules.isEmpty()) {
+            "Missing offline license metadata for runtime dependencies: ${undocumentedModules.joinToString()}"
+        }
+
+        val outputRoot = generatedLicenseAssets.get().asFile
+        outputRoot.deleteRecursively()
+        val outputLicenses = outputRoot.resolve("licenses").apply { mkdirs() }
+        referencedFiles.forEach { relativePath ->
+            val source = checkedCatalogFile(relativePath, canonicalRoot)
+            val destination = outputLicenses.resolve(relativePath)
+            destination.parentFile.mkdirs()
+            source.copyTo(destination, overwrite = true)
+        }
+
+        val catalog = linkedMapOf(
+            "schemaVersion" to 1,
+            "components" to normalizedComponents,
+        )
+        outputLicenses.resolve("catalog.json").writeText(
+            JsonOutput.prettyPrint(JsonOutput.toJson(catalog)) + "\n",
+        )
+    }
+}
+
 android {
     namespace = "app.arbor.chat"
     compileSdk = 36
@@ -21,8 +155,8 @@ android {
         applicationId = "app.arbor.chat"
         minSdk = 26
         targetSdk = 36
-        versionCode = 131
-        versionName = "0.20.5"
+        versionCode = 132
+        versionName = "0.20.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -89,6 +223,7 @@ android {
             "/META-INF/NOTICE*"
         )
     }
+    sourceSets.getByName("main").assets.srcDir(generatedLicenseAssets)
 }
 
 chaquopy {
@@ -129,6 +264,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("io.coil-kt:coil-svg:2.7.0")
     implementation("com.google.mlkit:text-recognition:16.0.1")
 
     implementation("io.noties.markwon:core:4.6.2")
@@ -146,4 +282,8 @@ dependencies {
 
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(generateOfflineLicenseCatalog)
 }
