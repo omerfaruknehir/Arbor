@@ -2,9 +2,11 @@ package app.arbor.chat.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -40,7 +42,9 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import coil.decode.SvgDecoder
+import coil.request.ImageRequest
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -94,10 +98,12 @@ internal fun LicenseCatalogSettingsPage() {
 
     SettingsPage {
         Text(
-            "Everything listed here is bundled in this build and available without a network connection.",
+            "Everything listed here is embedded in this build and available without a network connection.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        DevelopmentDisclosureCard()
 
         if (catalog == null) {
             LicenseCatalogError()
@@ -169,6 +175,36 @@ internal fun LicenseCatalogSettingsPage() {
 }
 
 @Composable
+private fun DevelopmentDisclosureCard() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "Development disclosure & disclaimer",
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Text(
+                "Arbor was made with full vibe coding: features and changes were primarily directed in natural language and implemented with AI-assisted coding tools. It may contain serious defects.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Text(
+                "The app is provided “AS IS”, without warranties. Use it at your own risk. To the maximum extent permitted by applicable law, the author and contributors are not responsible for data loss, device damage, account loss, charges, security incidents, or other consequences arising from its use, modification, or distribution. Review the source and keep backups before relying on it.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+        }
+    }
+}
+
+@Composable
 private fun LicenseComponentRow(
     component: OfflineLicenseComponent,
     onClick: () -> Unit,
@@ -218,16 +254,46 @@ private fun LicenseComponentRow(
 
 @Composable
 private fun LicenseIcon(component: OfflineLicenseComponent, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val request = remember(context, component.icon) {
+        ImageRequest.Builder(context)
+            .data("file:///android_asset/$LICENSE_ASSET_ROOT/${component.icon}")
+            .apply {
+                if (component.icon.endsWith(".svg", ignoreCase = true)) {
+                    decoderFactory(SvgDecoder.Factory())
+                }
+            }
+            .crossfade(false)
+            .build()
+    }
+
     Surface(
         modifier = modifier.size(48.dp),
         shape = RoundedCornerShape(15.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
-        AsyncImage(
-            model = "file:///android_asset/$LICENSE_ASSET_ROOT/${component.icon}",
+        SubcomposeAsyncImage(
+            model = request,
             contentDescription = null,
-            modifier = Modifier.padding(9.dp),
+            modifier = Modifier.fillMaxSize().padding(9.dp),
             contentScale = ContentScale.Fit,
+            loading = { LicenseIconFallback(component.name) },
+            error = { LicenseIconFallback(component.name) },
+        )
+    }
+}
+
+@Composable
+private fun LicenseIconFallback(componentName: String) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = componentName.firstOrNull()?.uppercase() ?: "?",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
         )
     }
 }
