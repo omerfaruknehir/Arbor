@@ -1,0 +1,17 @@
+{
+  "id": "cpython",
+  "name": "CPython",
+  "version": "3.12",
+  "category": "Python runtime",
+  "description": "The embedded Python interpreter used by Arbor's local execution tools.",
+  "projectUrl": "https://github.com/python/cpython",
+  "icon": "icons/python.svg",
+  "coordinates": [],
+  "licenses": [
+    {
+      "name": "Python Software Foundation License",
+      "spdx": "PSF-2.0",
+      "file": "texts/PSF-2.0.txt"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "kotlin",
+  "name": "Kotlin & kotlinx.serialization",
+  "version": "Serialization 1.8.1",
+  "category": "Language runtime",
+  "description": "Kotlin runtime support and JSON serialization used throughout Arbor.",
+  "projectUrl": "https://github.com/Kotlin/kotlinx.serialization",
+  "icon": "icons/kotlin.svg",
+  "coordinates": [
+    "org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1"
+  ],
+  "licenses": [
+    {
+      "name": "Apache License 2.0",
+      "spdx": "Apache-2.0",
+      "file": "texts/Apache-2.0.txt"
+    }
+  ]
+}

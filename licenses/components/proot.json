@@ -1,0 +1,18 @@
+{
+  "id": "proot",
+  "name": "PRoot (Termux fork)",
+  "version": "5.1.107.84",
+  "category": "Local tools",
+  "description": "Native user-space launcher used to run the selected Linux filesystem without root.",
+  "projectUrl": "https://github.com/termux/proot",
+  "icon": "icons/terminal.svg",
+  "coordinates": [],
+  "licenses": [
+    {
+      "name": "GNU General Public License v2 or later",
+      "spdx": "GPL-2.0-or-later",
+      "file": "texts/GPL-2.0.txt"
+    }
+  ],
+  "notice": "Arbor ships the corresponding Termux source archive and build recipe under third_party/. The packaged launcher only changes its talloc dependency filename for Android extraction."
+}

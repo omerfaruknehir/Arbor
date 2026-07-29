@@ -1,0 +1,23 @@
+{
+  "id": "markwon",
+  "name": "Markwon",
+  "version": "4.6.2",
+  "category": "Chat rendering",
+  "description": "Markdown, tables, task lists, strikethrough, and math rendering for assistant messages.",
+  "projectUrl": "https://github.com/noties/Markwon",
+  "icon": "icons/document.svg",
+  "coordinates": [
+    "io.noties.markwon:core:4.6.2",
+    "io.noties.markwon:ext-strikethrough:4.6.2",
+    "io.noties.markwon:ext-tables:4.6.2",
+    "io.noties.markwon:ext-tasklist:4.6.2",
+    "io.noties.markwon:ext-latex:4.6.2"
+  ],
+  "licenses": [
+    {
+      "name": "Apache License 2.0",
+      "spdx": "Apache-2.0",
+      "file": "texts/Apache-2.0.txt"
+    }
+  ]
+}

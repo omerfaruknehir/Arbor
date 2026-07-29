@@ -1,0 +1,17 @@
+{
+  "id": "pip",
+  "name": "pip",
+  "version": "24.3.1",
+  "category": "Python runtime",
+  "description": "Python package installer used by Arbor's local tool environment.",
+  "projectUrl": "https://github.com/pypa/pip",
+  "icon": "icons/python.svg",
+  "coordinates": [],
+  "licenses": [
+    {
+      "name": "MIT License",
+      "spdx": "MIT",
+      "file": "texts/MIT-pip.txt"
+    }
+  ]
+}

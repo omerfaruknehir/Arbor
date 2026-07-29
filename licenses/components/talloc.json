@@ -1,0 +1,23 @@
+{
+  "id": "talloc",
+  "name": "talloc",
+  "version": "2.4.3",
+  "category": "Local tools",
+  "description": "Hierarchical memory allocator linked dynamically by Arbor's packaged PRoot launcher.",
+  "projectUrl": "https://talloc.samba.org/",
+  "icon": "icons/terminal.svg",
+  "coordinates": [],
+  "licenses": [
+    {
+      "name": "GNU Lesser General Public License v3 or later",
+      "spdx": "LGPL-3.0-or-later",
+      "file": "texts/LGPL-3.0-or-later.txt"
+    },
+    {
+      "name": "GNU General Public License v3 companion text",
+      "spdx": "GPL-3.0-only",
+      "file": "texts/GPL-3.0.txt"
+    }
+  ],
+  "notice": "The packaged libtalloc.so is LGPL-3.0-or-later. GPL-3.0 is included only because LGPL v3 requires the GPL v3 companion text; it does not reclassify the library as GPL."
+}

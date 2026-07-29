@@ -1,0 +1,16 @@
+Google ML Kit Text Recognition
+
+Arbor uses the on-device Google ML Kit Text Recognition Android library.
+Use of the library and its binary components is governed by Google's ML Kit
+terms and the terms distributed with the Android artifact.
+
+Official terms:
+https://developers.google.com/ml-kit/terms
+
+Product documentation:
+https://developers.google.com/ml-kit/vision/text-recognition/v2/android
+
+This entry is intentionally classified as "Google terms", not Apache-2.0.
+The Apache-2.0 footer on Google documentation pages applies to sample code and
+does not relicense the ML Kit binary distributed through Google's Maven
+repository.

@@ -37,6 +37,9 @@ jobs:
       - name: Verify third-party licenses
         run: ./ci/verify-third-party-licenses.sh
 
+      - name: Verify offline license catalog
+        run: ./gradlew --no-daemon :app:generateOfflineLicenseCatalog
+
       - name: Match tag to app version
         shell: bash
         run: |

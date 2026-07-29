@@ -1,0 +1,17 @@
+{
+  "id": "arbor",
+  "name": "Arbor",
+  "version": "0.20.6",
+  "category": "Application",
+  "description": "The local-first Android AI chat client itself.",
+  "projectUrl": "https://github.com/omerfaruknehir/Arbor",
+  "icon": "icons/arbor.svg",
+  "coordinates": [],
+  "licenses": [
+    {
+      "name": "Apache License 2.0",
+      "spdx": "Apache-2.0",
+      "file": "texts/Apache-2.0.txt"
+    }
+  ]
+}

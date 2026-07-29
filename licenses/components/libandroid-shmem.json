@@ -1,0 +1,17 @@
+{
+  "id": "libandroid-shmem",
+  "name": "libandroid-shmem",
+  "version": "0.7",
+  "category": "Local tools",
+  "description": "Android shared-memory compatibility library bundled for Arbor's PRoot launcher.",
+  "projectUrl": "https://github.com/termux/libandroid-shmem",
+  "icon": "icons/terminal.svg",
+  "coordinates": [],
+  "licenses": [
+    {
+      "name": "BSD 3-Clause License",
+      "spdx": "BSD-3-Clause",
+      "file": "texts/BSD-3-Clause-libandroid-shmem.txt"
+    }
+  ]
+}

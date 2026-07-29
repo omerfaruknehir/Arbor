@@ -1,0 +1,20 @@
+{
+  "id": "sqlcipher",
+  "name": "SQLCipher for Android",
+  "version": "4.6.1",
+  "category": "Encrypted storage",
+  "description": "Encrypted SQLite runtime used for Arbor's local chat database.",
+  "projectUrl": "https://github.com/sqlcipher/sqlcipher-android",
+  "icon": "icons/lock.svg",
+  "coordinates": [
+    "net.zetetic:sqlcipher-android:4.6.1"
+  ],
+  "licenses": [
+    {
+      "name": "SQLCipher Community Edition License",
+      "spdx": "BSD-3-Clause",
+      "file": "texts/SQLCipher-Community.txt"
+    }
+  ],
+  "notice": "Copyright (c) 2008–2023 ZETETIC LLC. Binary redistribution requires this notice and license to remain accessible."
+}
