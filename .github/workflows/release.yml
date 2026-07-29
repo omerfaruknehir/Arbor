@@ -2,8 +2,9 @@ name: Release APK
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -13,9 +14,48 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  detect_version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      should_release: ${{ steps.version.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect unpublished app version
+        id: version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          app_version="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          if [[ -z "$app_version" ]]; then
+            echo "Could not read versionName from app/build.gradle.kts" >&2
+            exit 1
+          fi
+          release_tag="v${app_version}"
+          echo "version=$app_version" >> "$GITHUB_OUTPUT"
+          echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/$release_tag" >/dev/null \
+            || gh release view "$release_tag" >/dev/null 2>&1; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "$release_tag already exists; nothing to publish."
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "$release_tag is new and will be built."
+          fi
+
   release:
+    needs: detect_version
+    if: needs.detect_version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 50
+    env:
+      ARBOR_VERSION: ${{ needs.detect_version.outputs.version }}
+      ARBOR_TAG: ${{ needs.detect_version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,17 +80,6 @@ jobs:
       - name: Verify offline license catalog
         run: ./gradlew --no-daemon :app:generateOfflineLicenseCatalog
 
-      - name: Match tag to app version
-        shell: bash
-        run: |
-          tag_version="${GITHUB_REF_NAME#v}"
-          app_version="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
-          if [[ "$tag_version" != "$app_version" ]]; then
-            echo "Tag $GITHUB_REF_NAME does not match app version $app_version" >&2
-            exit 1
-          fi
-          echo "ARBOR_VERSION=$app_version" >> "$GITHUB_ENV"
-
       - name: Verify and build
         run: ./gradlew --no-daemon --stacktrace testDebugUnitTest lintDebug assembleDebug bundleDebug assembleDebugAndroidTest
 
@@ -68,7 +97,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Arbor-${{ github.ref_name }}-Android
+          name: Arbor-${{ env.ARBOR_TAG }}-Android
           if-no-files-found: error
           path: release/*
 
@@ -81,11 +110,11 @@ jobs:
           if [[ ! -f "$notes" ]]; then
             notes="CHANGELOG.md"
           fi
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" release/* --clobber
+          if gh release view "$ARBOR_TAG" >/dev/null 2>&1; then
+            gh release upload "$ARBOR_TAG" release/* --clobber
           else
-            gh release create "$GITHUB_REF_NAME" release/* \
-              --verify-tag \
+            gh release create "$ARBOR_TAG" release/* \
+              --target "$GITHUB_SHA" \
               --title "Arbor ${ARBOR_VERSION}" \
               --notes-file "$notes"
           fi
