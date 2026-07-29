@@ -164,8 +164,9 @@ fun rememberArborBackdropBlurState(): ArborBackdropBlurState = remember { ArborB
 
 /**
  * Applies Arbor's device-proven three-axis edge blur directly to the content
- * layer. This is the same RenderEffect path that remained visibly reliable on
- * physical devices in 0.17.8, adapted to the current shared panel geometry.
+ * layer. The graph keeps the physical-device-reliable RenderEffect path from
+ * 0.17.8, while each axis uses the denser direct-sample kernel from 0.17.12 so
+ * large radii do not expose the gaps between bilinear-paired taps.
  *
  * The panel tint is an outer draw modifier, so it stays sharp while the content
  * below it receives the chained blur effect.
@@ -641,16 +642,25 @@ private val PANEL_EDGE_BLUR_SHADER = """
         );
         if (radius < 0.35) return content.eval(coord);
 
-        float2 sampleStep = uDirection * (radius / 8.0);
-        half4 accum = half4(content.eval(coord)) * 0.103152619;
-        accum += half4(content.eval(coord + sampleStep * 1.476579653)) * 0.191010813;
-        accum += half4(content.eval(coord - sampleStep * 1.476579653)) * 0.191010813;
-        accum += half4(content.eval(coord + sampleStep * 3.445529534)) * 0.140428908;
-        accum += half4(content.eval(coord - sampleStep * 3.445529534)) * 0.140428908;
-        accum += half4(content.eval(coord + sampleStep * 5.414898846)) * 0.080715462;
-        accum += half4(content.eval(coord - sampleStep * 5.414898846)) * 0.080715462;
-        accum += half4(content.eval(coord + sampleStep * 7.384912150)) * 0.036268507;
-        accum += half4(content.eval(coord - sampleStep * 7.384912150)) * 0.036268507;
+        // Direct, evenly spaced taps keep the maximum sampling gap bounded.
+        // The former bilinear-paired offsets were cheaper, but at a 56 dp
+        // radius their wide gaps became visible as repeating bands/lattices.
+        float2 sampleStep = uDirection * (radius / 7.5);
+        half4 accum = half4(content.eval(coord)) * 0.117695797;
+        accum += half4(content.eval(coord + sampleStep * 1.0)) * 0.112988605;
+        accum += half4(content.eval(coord - sampleStep * 1.0)) * 0.112988605;
+        accum += half4(content.eval(coord + sampleStep * 2.0)) * 0.099966786;
+        accum += half4(content.eval(coord - sampleStep * 2.0)) * 0.099966786;
+        accum += half4(content.eval(coord + sampleStep * 3.0)) * 0.081512498;
+        accum += half4(content.eval(coord - sampleStep * 3.0)) * 0.081512498;
+        accum += half4(content.eval(coord + sampleStep * 4.0)) * 0.061254792;
+        accum += half4(content.eval(coord - sampleStep * 4.0)) * 0.061254792;
+        accum += half4(content.eval(coord + sampleStep * 5.0)) * 0.042423190;
+        accum += half4(content.eval(coord - sampleStep * 5.0)) * 0.042423190;
+        accum += half4(content.eval(coord + sampleStep * 6.0)) * 0.027077836;
+        accum += half4(content.eval(coord - sampleStep * 6.0)) * 0.027077836;
+        accum += half4(content.eval(coord + sampleStep * 7.0)) * 0.015928394;
+        accum += half4(content.eval(coord - sampleStep * 7.0)) * 0.015928394;
         return accum;
     }
 """.trimIndent()

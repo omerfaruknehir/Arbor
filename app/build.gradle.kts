@@ -20,8 +20,8 @@ android {
         applicationId = "app.arbor.chat"
         minSdk = 26
         targetSdk = 35
-        versionCode = 128
-        versionName = "0.20.2"
+        versionCode = 129
+        versionName = "0.20.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -31,6 +31,14 @@ android {
     }
 
     signingConfigs {
+        getByName("debug") {
+            // Public test key: reproducible GitHub/local debug APK updates only.
+            // Production releases must use the separate protected release key.
+            storeFile = rootProject.file("ci/arbor-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         if (!releaseStoreFile.isNullOrBlank()) {
             create("release") {
                 storeFile = file(releaseStoreFile)
@@ -58,6 +66,7 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 

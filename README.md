@@ -1,86 +1,119 @@
-# Arbor
+<p align="center">
+  <img src="branding/arbor-banner.png" alt="Arbor — Native Android. Private by design." width="100%">
+</p>
 
-Arbor is a fully native Android BYOK chat client built with Kotlin, Jetpack Compose, and Material 3. It has no WebView, hosted account, telemetry, ads, or application backend. API keys and chat data stay on the device; requests go directly to the endpoints configured by the user.
+<p align="center">
+  A fully native, local-first Android client for private AI chat and agent work.
+</p>
 
-This repository is version `0.20.2`, an installable and deliberately honest foundation for a larger agent client.
+<p align="center">
+  <a href="https://github.com/omerfaruknehir/Arbor/releases/latest"><strong>Download the latest APK</strong></a>
+  ·
+  <a href="BUILDING.md">Build from source</a>
+  ·
+  <a href="https://github.com/omerfaruknehir/Arbor/issues">Report an issue</a>
+</p>
 
-## Included
+<p align="center">
+  <a href="https://github.com/omerfaruknehir/Arbor/actions/workflows/android.yml"><img alt="Android checks" src="https://github.com/omerfaruknehir/Arbor/actions/workflows/android.yml/badge.svg"></a>
+  <a href="https://github.com/omerfaruknehir/Arbor/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/omerfaruknehir/Arbor?display_name=tag&sort=semver"></a>
+  <img alt="Android 8+" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white">
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white">
+</p>
 
-- A real finger-tracked left drawer: the sheet, scrim, and lightweight content translation share one clamped offset while dragging, reverse immediately with the finger, and settle with positional and velocity thresholds.
-- Durable `.arbor/runs` records for every model Python/Linux call, with bounded line reads, atomic SHA-256-guarded unified patches, source revisions, and source-free reruns in one Working activity.
-- An authoritative `GeneratedContentCapabilityRegistry` used by model prompts and validation for `arbor-ui`, `arbor-widget`, `arbor-chart`, and the native Mermaid/DOT subset.
-- Bounded in-place AI repair for invalid completed generated blocks. Repairs preserve surrounding prose and timeline order, persist across navigation/recreation, and default to three attempts (configurable from one to five).
+Arbor connects directly to the model providers you configure. There is no WebView, hosted Arbor account, application backend, telemetry, or advertising. API keys are protected by Android Keystore-backed encryption, chats live in a local SQLCipher database, and imported files remain in the app's private storage.
 
-- Concurrent streaming conversations backed by WorkManager foreground jobs, with stop, queue, steer, interrupted-response recovery, and notification controls.
-- Typed transactional message creation, Android 14+ foreground-service declarations, visible action errors, and crash-loop recovery which pauses generated renderers without deleting chats or app data.
-- Provider adapters for OpenAI-compatible APIs (DeepSeek, OpenAI, OpenRouter, xAI, local servers, and custom endpoints), Anthropic Messages, and Gemini GenerateContent. Provider setup validates the endpoint and credentials, fetches the provider's current model catalog, lets the user select from a searchable list, and retains manual entry only as a fallback. Existing providers can refresh their catalog at any time.
-- Encrypted local storage: SQLCipher/Room for chats and Android Keystore-backed encrypted preferences for API keys.
-- Long-chat paging, SQLite FTS5 search, message DAG metadata, token/cost totals, context-pair and token ceilings, and per-response output limits.
-- Global title/message/reasoning search plus responding, attention, and unread badges in the conversation list.
-- Native long-press chat management with pin, rename, project assignment, archive/unarchive, and confirmed deletion. Projects can be created, renamed, filtered, and removed without deleting their chats.
-- Automatic titles which evolve from recent user requests, with an explicit **Regenerate chat name** action.
-- DeepSeek V4 Flash and V4 Pro defaults. The prices in `DefaultCatalog.kt` are USD per million tokens and distinguish cache-hit input, cache-miss input, and output.
-- Native rendering for CommonMark-style Markdown, tables, tasks, strikethrough, LaTeX, fenced code with copy/run actions, Mermaid-style flow/sequence diagrams, and bar/line/area/scatter/pie/donut charts. Diagrams and charts have larger native previews and never use a WebView.
-- Expandable streamed reasoning, provider usage accounting, native file cards placed at their real response-timeline position, full-width inline raster images, pinch-zoom/pan image preview, PDF/text preview, saving, sharing, and user attachments above message text. AI-created images stay clean; user-photo OCR is a disclosed fallback layer for models without vision and is hidden until requested.
-- On-device ML Kit OCR for images and the first 12 PDF pages. OCR JSON includes page text, element coordinates, block/line indices, and confidence where supplied.
-- Embedded Python 3.12 with a persistent private directory per conversation. Imported files are mirrored under `incoming/` in that workspace.
-- Policy-gated runtime Python package installation with live importer-cache refresh, Android native dependency preloading, post-install import verification, and distribution-to-module mappings such as `Pillow → PIL`. Agents request packages using a `python-requirements` fence; Arbor preflights it before applying the user's ask/trusted/model/auto policy. Pure-Python and compatible Chaquopy Android wheels are supported.
-- Managed per-chat Python environments with serialized interpreter activation, persistent variables, execution deadlines, transactional install verification, package inventory/removal, repair, and session reset. A failed install leaves the previous environment intact.
-- Optional selectable Ubuntu 26.04, Debian 13, or Alpine 3.24.1 tooling for arm64-v8a phones and x86_64 emulators. Arbor downloads only the chosen rootfs, verifies a pinned publisher SHA-256, self-tests PRoot, refreshes apt/apk metadata, keeps distributions isolated, persists the selection, and mounts the current chat at `/workspace`.
-- Agent and tap-to-run Linux shell commands for broader third-party command-line tools. Manual runs continue while navigating, have configurable hard deadlines, show an app-wide running indicator and ten-second warning, and can be stopped. An agent returns a created file with an explicit `send_file` tool at its correct response-timeline position.
-- Unified pip/apt/apk preflight cards which detect already-satisfied packages, show installs/upgrades and dependencies in one transaction, and disable installation when there is nothing to change.
-- Configurable package policies: always ask, auto-approve a trusted package list, ask a separately selected approval model, or auto-approve every valid plan. Strict package-source restrictions can be explicitly relaxed in Settings.
-- Model-driven agent loops for direct Python execution, DuckDuckGo HTML search, and public HTTP(S) page reading, with per-conversation allow/deny controls and private-address fetch blocking. Tool protocol is removed from the transcript and results are retained in the encrypted Working trace.
-- An ordered response timeline which groups adjacent reasoning and tool events into clear activity cards. The card names the current action, gives every step an explicit status, expands active and failed details automatically, and honors **Always expanded**, **Expanded while working**, and **Always collapsed**.
-- Language-aware native syntax coloring for assistant Markdown code and Python/Ubuntu Working steps, with code, result, stdout, stderr, and changed files kept in distinct panels. Active responses use a subtle staggered fading token pulse.
-- Separate native interaction surfaces: `arbor-ui` is always conversation-only for questions, requirements, forms, previews, and other transient interaction. `arbor-widget` can offer launcher pinning only when an explicitly requested definition also declares `surface: "home"` or `"both"`; Home eligibility defaults off.
-- Recoverable streaming auto-scroll: browsing older messages pauses following, returning near the latest response resumes it, and a floating button jumps directly to the bottom.
-- A general native mini-app runtime. Models can compose up to eight screens from text, metrics, inputs, sliders, toggles, choices, button grids, progress, lists, tables, charts, timers, dividers, live bindings, and conditional elements. Persistent state, templates, safe formulas, navigation, and ordered action chains enable calculators, trackers, quizzes, dashboards, scoreboards, budgeting tools, schedules, and other designs without adding a hardcoded UI type. Chat definitions render with Compose; explicitly Home-eligible definitions can additionally render as dynamically assembled `RemoteViews`.
-- Convenience widget definitions remain available for choices, checklists, converters, calculators, stocks/live JSON, and schedule/prayer-time views. Live definitions use explicit JSON-path bindings, HTTPS-only public endpoints, response limits, cached last-good values, manual refresh, and 15-minute-or-longer WorkManager refresh policies.
-- User-message editing and assistant retry. Replaced paths are superseded rather than deleted, preserving the complete revision/branch history in the encrypted database.
-- An in-app edited-message history viewer for those saved superseded branches.
-- Agent-created or modified files are listed in tool output; only files explicitly returned with the `send_file` tool appear as native preview/share cards, at the exact position where the agent sent them.
-- Context compression for messages outside the verbatim pair/token window. It can be off, deterministic/local with no API call, or driven by a separately selected provider/model. Summaries are persisted, inspectable by size/count, and can be cleared.
-- Separate automation policies and model selectors for evolving chat titles and context compression, plus an editable model catalog for context/output limits, capability flags, and pricing.
-- Phone/tablet adaptive Compose UI, edge-to-edge layout, a calmer Arbor green-neutral palette, optional Material You or graphite palettes, optional AMOLED surfaces, revised Material 3 hierarchy, and a remastered adaptive/themed launcher mark.
-- Composer-first persistent controls: Thinking, Search, and Tools sit beside the input; Thinking effort uses a continuous finger-tracked slider which springs to the nearest named level on release, while tool choices use an explicit menu and `+` is reserved for files, photos, and camera capture. While Arbor works, the composer shows background status, queued-message count, a separate **Stop** action, and a visible menu for **Queue**, **Steer**, or **Separate turn**. Global Settings is available from the navigation drawer as a categorized home with **Providers & models**, **New chat defaults**, **Automation**, **Appearance**, and **Privacy & safety**; the chat overflow contains only compact advanced context/output/system-prompt configuration. Per-chat choices become defaults for subsequently created chats without rewriting existing conversations. Unsaved empty chats stay in memory and never clutter the sidebar.
-- Optional per-chat Deep Research mode with explicit planning in Working, iterative search/fetch rounds, source verification, file-aware research, steering-safe persisted state, and structured sourced reports.
-- Optional hybrid preflight token counting. Anthropic and Gemini can use exact provider count endpoints; OpenAI-compatible and recognized local model families use local family-aware estimates, with the generic estimator as the non-blocking final fallback. Provider-reported post-response usage remains authoritative.
+Current version: **0.20.3**
 
-## Important boundaries
+## Why Arbor
 
-Arbor's Python and Linux workspaces are private application storage, not operating-system security boundaries. Python executes inside the app process, while PRoot provides Linux path/syscall compatibility under the same Android app UID. Both can access resources available to Arbor. Deadlines reliably interrupt Python bytecode, but a blocking native extension may return later. Do not run untrusted code.
+### Native, private, and yours
 
-Strict runtime Python installation accepts names and version constraints; Settings can allow direct PEP 508 references. Pip command-line options remain blocked. Not every PyPI project publishes an Android-compatible wheel, so packages with unsupported native extensions fail transactionally. The selectable apt/apk Linux layer is the broader compatibility route for Linux tools and libraries.
+- Kotlin, Jetpack Compose, and Material 3 from edge to edge—no wrapped website.
+- Bring your own keys for OpenAI-compatible endpoints, Anthropic, Gemini, DeepSeek, OpenRouter, xAI, local servers, and custom providers.
+- Encrypted local credentials and chat storage, with Android backup disabled.
+- No Arbor server between your device and the provider you choose.
 
-A full Mermaid grammar, visual Office-document rendering, Android system image descriptions, bundled exact tokenizers for every proprietary model family, Bedrock/Azure signing adapters, and Play production signing are not implemented yet. DOCX, PPTX, and XLSX text is extracted locally with bounded OOXML parsing. Native structured tool calls are implemented for OpenAI-compatible, Anthropic, and Gemini providers, with the portable fenced protocol retained as a fallback. The native diagram renderer intentionally supports the most useful flow and sequence subset. Android launchers render `RemoteViews`, not arbitrary generated Compose/custom views, so Home-screen mini-apps dynamically assemble audited native primitives from a safe declarative state machine; they cannot run model-written UI code. Home-screen text fields are read-only and should be paired with generated choices/keypads because launchers do not provide arbitrary text entry. Home-screen timers update when the widget is refreshed or interacted with, not every second. Live widgets require a compatible public JSON API and do not embed provider credentials. Arbor uses native structured tool calls where the included provider protocol supports them and falls back to its portable fenced protocol when an endpoint or model does not. Unsupported images are represented to text-only models through OCR/extracted data; no local captioning model is bundled.
+### A serious chat client
 
-The supplied APK/AAB are debug-signed so they are immediately testable. Use your own protected release key before publishing. API behavior changes over time; provider defaults may need editing when vendors change endpoints or schemas.
+- Concurrent streaming chats with stop, queue, steer, retry, branch history, unread state, pinning, archiving, projects, and full-text search.
+- Per-chat Thinking, Search, and Tools controls beside the composer, plus configurable context, output, system prompts, and automation models.
+- Native Markdown, tables, LaTeX, syntax-highlighted code, diagrams, charts, image/PDF/text previews, attachments, OCR, token counts, and cost totals.
+- Long-chat paging, context compression, automatic titles, response usage accounting, and provider-specific token estimation.
 
-## Quick start
+### Agent work without hiding the work
 
-1. Install the APK on Android 8.0 or later (`arm64-v8a` and `x86_64` are packaged).
-2. Open the left navigation drawer → **Settings** → **Providers & models**, tap **Add provider**, choose its protocol, give it a name, and enter its endpoint and key. Tap **Connect & fetch models**, select the models to register, then save it securely. Manual model IDs are available only as a fallback for endpoints without model discovery.
-3. Choose a model from the chat header and send a message. Tap the Thinking, Search, or Tools chips beside the message box to configure the chat; open `+` for attachments, photos, or camera capture.
-4. While a response is running, tap **Stop** to stop it, tap Send to queue drafted text safely, or open the visible overflow menu to choose **Queue**, **Steer**, or **Separate turn**.
-5. Open **Tool workspaces**, choose Ubuntu, Debian, or Alpine, and install it when broader Linux tools are useful; the layer is optional and does not inflate first-launch data.
+- Durable Working timelines for Python, Linux, search, page reading, package installation, file changes, and reruns.
+- Embedded Python 3.12 with a persistent private workspace per conversation.
+- Optional Ubuntu, Debian, or Alpine PRoot environments for broader command-line tooling.
+- Explicit package and tool policies: ask, trusted-list approval, approval-model review, or user-selected automation.
+- Generated native mini-apps and widgets built from an audited declarative component registry—never model-written Android code.
 
-Local servers use `http://127.0.0.1:11434/v1` by default. On a physical phone, `127.0.0.1` is the phone itself. Arbor permits cleartext HTTP only for loopback and the Android emulator host alias; use HTTPS for a server on another machine.
+## Install
+
+1. Download `Arbor-0.20.3-debug.apk` from the [latest GitHub Release](https://github.com/omerfaruknehir/Arbor/releases/latest).
+2. Allow installation from your browser or file manager when Android asks.
+3. Open Arbor → **Settings** → **Providers & models**.
+4. Add a provider, connect and fetch its models, then select one in a chat.
+
+The downloadable APK uses package ID `app.arbor.chat.debug` and Arbor's public, reproducible debug signer. It is suitable for direct testing and can update earlier GitHub/local debug builds signed with the same key. It is not Play-production-signed.
+
+Local OpenAI-compatible servers default to `http://127.0.0.1:11434/v1`. On a physical phone, `127.0.0.1` means the phone itself. Arbor permits cleartext HTTP only for loopback and the Android emulator host alias; remote machines require HTTPS.
 
 ## Build
 
-See [BUILDING.md](BUILDING.md). The project requires JDK 17 and Android SDK 35. The companion build-tools archive contains the exact JDK, Gradle, SDK, and populated dependency cache used for the supplied artifacts.
+Requirements:
 
-## Privacy and security notes
+- JDK 17
+- Android SDK 35 and Build Tools 35.0.0
+- Linux, macOS, or Windows with Android Studio support
 
-- Android backup is disabled.
-- API keys are encrypted with an Android Keystore master key.
-- The database passphrase is randomly created and Keystore-encrypted.
-- Cleartext HTTP is restricted to loopback and the Android emulator host alias; every non-local endpoint must use HTTPS.
-- File imports are copied into private app storage. Deleting a conversation deletes its database attachment records; secure deletion of flash blocks cannot be guaranteed by Android storage.
+```bash
+./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
+```
+
+The APK is written to `app/build/outputs/apk/debug/app-debug.apk`. See [BUILDING.md](BUILDING.md) for the full APK/AAB/instrumentation command, ABI details, offline toolchain, verification, and protected release signing.
+
+## Releases and CI
+
+Every push and pull request runs unit tests, Android lint, APK/AAB compilation, and an Android 35 emulator smoke test through [Android CI](.github/workflows/android.yml).
+
+Pushing a version tag such as `v0.20.3` runs the [release workflow](.github/workflows/release.yml). It checks that the tag matches the app version, repeats verification, builds the reproducibly signed debug APK, AAB, and instrumentation APK, generates SHA-256 checksums, uploads the build set, and creates the GitHub Release automatically.
+
+Production distribution deliberately requires your own protected signing key. No production private key is stored in this repository.
+
+## Architecture at a glance
+
+| Area | Implementation |
+|---|---|
+| UI | Jetpack Compose + Material 3 |
+| Storage | Room + SQLCipher |
+| Credentials | Android Keystore-backed encrypted preferences |
+| Networking | OkHttp with provider-specific adapters |
+| Background work | WorkManager foreground jobs |
+| Python | Embedded CPython 3.12 via Chaquopy |
+| Linux tools | Optional per-chat PRoot distributions |
+| Generated UI | Native Compose / audited `RemoteViews` primitives |
+| Minimum Android | Android 8.0 / API 26 |
+| Packaged ABIs | `arm64-v8a`, `x86_64` |
+
+## Security boundaries
+
+Arbor's Python and Linux workspaces are private app storage, not operating-system sandboxes. Python runs inside the Arbor process. PRoot supplies Linux path and syscall compatibility under the same Android app UID; it is not a VM or privilege boundary. Do not run untrusted code.
+
+Runtime package installation blocks unsafe command-line options by default and may reject packages without compatible Android wheels. Optional Linux distributions are downloaded only when selected, checked against pinned publisher SHA-256 values, and kept isolated from one another.
+
+For dependency sources, bundled native component notices, hashes, and build recipes, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and `third_party/`.
+
+## Project
+
+Arbor is created by [@omerfaruknehir](https://github.com/omerfaruknehir).
+
+- [Changelog](CHANGELOG.md)
+- [Latest release notes](RELEASE_NOTES_0.20.3.md)
+- [Source repository](https://github.com/omerfaruknehir/Arbor)
+- [Issue tracker](https://github.com/omerfaruknehir/Arbor/issues)
 
 ## License
 
-No license grant is implied by this delivery. Add the license you want before redistributing the source.
-
-Bundled runtime components retain their own licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); complete corresponding source archives and Termux build recipes are included under `third_party/`.
+No license grant is implied by this repository. Add an explicit project license before redistributing Arbor. Bundled third-party components retain their own licenses as documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

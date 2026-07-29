@@ -102,13 +102,16 @@ class BackdropBlurTest {
         assertFalse(source.contains("PANEL_OPACITY_BOOST"))
     }
 
-    @Test fun blurKernelKeepsTheKnownGoodNineTapWeightsOnThreeAxes() {
+    @Test fun blurKernelUsesDenseDirectSamplesAtHighStrength() {
         val source = blurSource()
         assertTrue(source.contains("content.eval(coord)"))
-        assertTrue(source.contains("1.476579653"))
-        assertTrue(source.contains("3.445529534"))
-        assertTrue(source.contains("5.414898846"))
-        assertTrue(source.contains("7.384912150"))
+        assertTrue(source.contains("radius / 7.5"))
+        (1..7).forEach { tap ->
+            assertTrue(source.contains("sampleStep * $tap.0"))
+        }
+        assertFalse(source.contains("1.476579653"))
+        assertFalse(source.contains("3.445529534"))
+        assertTrue(source.contains("gaps became visible as repeating bands/lattices"))
         assertTrue(source.contains("RenderEffect.createChainEffect(second, first)"))
     }
 

@@ -1,3 +1,11 @@
+## 0.20.3
+
+- Replace the high-radius bilinear-paired backdrop kernel with 15 evenly spaced direct Gaussian samples per axis, removing the visible bands and lattice pattern that appeared near maximum blur strength.
+- Keep the physical-device-proven three-axis RuntimeShader/RenderEffect path, exact shared panel bounds, seamless tint feather, rounded/flat geometry, and continuous 0–100% control.
+- Add a branded repository banner, a concise feature-led README, current build instructions, and direct release/issue links.
+- Add tag-driven GitHub Actions release automation that verifies tests and lint, builds installable debug APK/AAB artifacts, and publishes them to GitHub Releases.
+- Preserve package identity, debug signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
+
 ## 0.20.2
 
 - Expand the Thinking, Search, and Tools pill row's horizontal gesture viewport to the full composer width while preserving the requested 36 dp initial alignment.

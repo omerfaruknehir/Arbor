@@ -1,6 +1,6 @@
 # Building Arbor
 
-These instructions build Arbor 0.19.4 (`versionCode 114`). The debug variant has application ID `app.arbor.chat.debug` and version name `0.19.4-debug`; its signing setup is unchanged from prior Arbor debug builds.
+These instructions build Arbor 0.20.3 (`versionCode 129`). The debug variant has application ID `app.arbor.chat.debug` and version name `0.20.3-debug`; its signing setup is unchanged from prior Arbor debug builds.
 
 ## Requirements
 
@@ -28,6 +28,8 @@ app/build/outputs/bundle/debug/app-debug.aab
 The app packages Python for `arm64-v8a` and `x86_64`. Change `abiFilters` in `app/build.gradle.kts` if another ABI is required.
 
 The same ABI folders contain the PRoot launcher, loader, talloc, and libandroid-shmem. They use legacy native-library packaging so Android extracts executable APK-embedded code, as required for target SDK 35. Exact corresponding sources, build recipes, license texts, and hashes are under `third_party/`; see `THIRD_PARTY_NOTICES.md` before replacing any binary.
+
+Debug builds use the intentionally public key documented in [`ci/README.md`](ci/README.md). Its stable signer lets APKs from local builds and GitHub Releases update each other. It is never used for the production package.
 
 ## Release signing
 
