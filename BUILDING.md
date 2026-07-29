@@ -1,6 +1,6 @@
 # Building Arbor
 
-These instructions build Arbor 0.20.5 (`versionCode 131`). The debug variant has application ID `app.arbor.chat.debug` and version name `0.20.5-debug`; its signing setup is unchanged from prior Arbor debug builds.
+These instructions build Arbor 0.20.6 (`versionCode 132`). The debug variant has application ID `app.arbor.chat.debug` and version name `0.20.6-debug`; its signing setup is unchanged from prior Arbor debug builds.
 
 ## Requirements
 
@@ -17,6 +17,10 @@ Set `sdk.dir` in `local.properties` or export `ANDROID_HOME`, then run:
 ```bash
 ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug bundleDebug assembleDebugAndroidTest
 ```
+
+The normal build runs `:app:generateOfflineLicenseCatalog` automatically.
+Run it directly when editing `licenses/`; it validates the local catalog,
+referenced icons and documents, and coverage of every app runtime dependency.
 
 Outputs:
 
