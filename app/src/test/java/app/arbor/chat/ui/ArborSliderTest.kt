@@ -96,12 +96,17 @@ class ArborSliderTest {
     }
 
     @Test
-    fun composerPillsStartSlightlyLeftOfTheTextFieldEdge() {
+    fun composerPillsUseTheFullWidthAsTheirHorizontalGestureViewport() {
         val chat = java.io.File("src/main/java/app/arbor/chat/ui/ChatScreen.kt").readText()
         val composer = chat.substringAfter("private fun Composer(").substringBefore("private fun StagedAttachmentPreview")
+        val pillRow = composer.substringAfter("conversation?.let { current ->").substringBefore("ThinkingComposerChip(")
 
-        assertTrue(composer.contains(".padding(start = 36.dp, end = 8.dp, bottom = 6.dp)"))
-        assertFalse(composer.contains(".padding(start = 48.dp, end = 8.dp, bottom = 6.dp)"))
+        assertTrue(pillRow.contains(".fillMaxWidth()"))
+        assertTrue(pillRow.contains(".padding(bottom = 6.dp)"))
+        assertTrue(pillRow.contains("start = 36.dp"))
+        assertTrue(pillRow.contains("end = 56.dp"))
+        assertFalse(pillRow.contains(".padding(start = 36.dp"))
+        assertFalse(pillRow.contains(".padding(start = 48.dp"))
     }
 
     @Test

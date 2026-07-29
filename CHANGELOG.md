@@ -1,3 +1,14 @@
+## 0.20.2
+
+- Expand the Thinking, Search, and Tools pill row's horizontal gesture viewport to the full composer width while preserving the requested 36 dp initial alignment.
+- Keep horizontal pill scrolling isolated from the message field and vertical chat gestures.
+- Keep completed and failed Working steps compact instead of auto-expanding raw code, output, and diagnostics.
+- Replace the oversized nested script-run card with a concise failure summary and compact Retry action.
+- Hide raw tool inputs, outputs, source paths, and copyable diagnostics unless both Developer settings and the new Tool diagnostics toggle are enabled.
+- Move Developer settings out of the main Settings categories and place its entry at the bottom of About Arbor.
+- Rebuild About Arbor with creator, source, issue, version, build, package, Android SDK, runtime, ABI, and privacy information.
+- Preserve package identity, debug signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
+
 ## 0.20.1
 
 - Replace the invisible complete-frame blur replay with Arbor's physical-device-proven direct RenderEffect path from 0.17.8, adapted to the current top/bottom panel bounds, rounded/flat geometry, and symmetric softness.

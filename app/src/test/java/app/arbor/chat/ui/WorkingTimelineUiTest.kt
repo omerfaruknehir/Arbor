@@ -2,6 +2,8 @@ package app.arbor.chat.ui
 
 import app.arbor.chat.agent.MessageTimelineEvent
 import app.arbor.chat.data.ReasoningVisibility
+import app.arbor.chat.sandbox.ScriptRunResult
+import app.arbor.chat.sandbox.ScriptRuntime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -80,6 +82,48 @@ class WorkingTimelineUiTest {
         assertEquals("640 ms", formatExecutionDuration(640))
         assertEquals("1.2 s", formatExecutionDuration(1_240))
         assertEquals("12 s", formatExecutionDuration(12_400))
+    }
+
+    @Test
+    fun failedScriptSummaryKeepsOnlyTheUsefulErrorLine() {
+        val result = ScriptRunResult(
+            runId = "run-1",
+            revision = 1,
+            attempt = 1,
+            runtime = ScriptRuntime.PYTHON,
+            scriptPath = ".arbor/runs/run-1/main.py",
+            sourceSha256 = "abc",
+            exitCode = 1,
+            timedOut = false,
+            cancelled = false,
+            elapsedMs = 952,
+            diagnostic = """
+                Traceback (most recent call last):
+                  File "main.py", line 20
+                urllib.error.HTTPError: HTTP Error 404: Not Found
+            """.trimIndent(),
+        )
+
+        assertEquals(
+            "urllib.error.HTTPError: HTTP Error 404: Not Found",
+            scriptRunSummary(result),
+        )
+    }
+
+    @Test
+    fun completedAndFailedStepsStayCompactAndDiagnosticsRequireDeveloperMode() {
+        val chat = java.io.File("src/main/java/app/arbor/chat/ui/ChatScreen.kt").readText()
+        val step = chat.substringAfter("private fun TimelineWorkStep").substringBefore("internal fun scriptRunId")
+        val toolDetails = chat.substringAfter("private fun ToolStepDetails").substringBefore("internal fun scriptRunSummary")
+
+        assertTrue(step.contains("mutableStateOf(active)"))
+        assertTrue(step.contains("expanded = active"))
+        assertFalse(step.contains("active || event.status == \"error\""))
+        assertTrue(toolDetails.contains("developerSettings.enabled && developerSettings.toolDiagnosticsEnabled"))
+        assertTrue(toolDetails.contains("if (showDiagnostics && input.isNotBlank())"))
+        assertTrue(toolDetails.contains("if (showDiagnostics && detailsOpen)"))
+        assertFalse(toolDetails.contains("Text(\"Copy path\")"))
+        assertFalse(toolDetails.contains("Text(\"Copy diagnostics\")"))
     }
 
     private fun event(

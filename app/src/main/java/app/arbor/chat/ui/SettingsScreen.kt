@@ -1,5 +1,6 @@
 package app.arbor.chat.ui
 
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -88,6 +89,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -147,7 +149,7 @@ private enum class SettingsRoute(val title: String) {
     DEVELOPER("Developer settings"),
     SYSTEM_PROMPTS("Custom instructions"),
     PROVIDERS("Providers & models"),
-    ABOUT("About"),
+    ABOUT("About Arbor"),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -176,9 +178,19 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
 
     PredictiveNavigationHost(
         targetState = route,
-        backTarget = SettingsRoute.HOME.takeIf { route != SettingsRoute.HOME },
+        backTarget = when (route) {
+            SettingsRoute.HOME -> null
+            SettingsRoute.DEVELOPER -> SettingsRoute.ABOUT
+            else -> SettingsRoute.HOME
+        },
         onBack = { route = it },
-        depth = { if (it == SettingsRoute.HOME) 0 else 1 },
+        depth = {
+            when (it) {
+                SettingsRoute.HOME -> 0
+                SettingsRoute.DEVELOPER -> 2
+                else -> 1
+            }
+        },
         modifier = Modifier.fillMaxSize(),
         label = "SettingsPageNavigation",
     ) { currentRoute ->
@@ -200,7 +212,8 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     navigationIcon = {
                         IconButton(onClick = {
                             haptics.selection()
-                            if (currentRoute != SettingsRoute.HOME) route = SettingsRoute.HOME
+                            if (currentRoute == SettingsRoute.DEVELOPER) route = SettingsRoute.ABOUT
+                            else if (currentRoute != SettingsRoute.HOME) route = SettingsRoute.HOME
                             else if (openDrawer != null) openDrawer()
                             else viewModel.screen.value = Screen.CHAT
                         }) {
@@ -218,7 +231,6 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     when (currentRoute) {
                         SettingsRoute.HOME -> SettingsHome(
                             providerCount = registeredProviders.size,
-                            developerEnabled = developerSettings.enabled,
                             onOpen = { route = it },
                         )
                         SettingsRoute.DEFAULTS -> NewChatDefaultsSettings(defaults, configuredProviders, viewModel)
@@ -244,7 +256,10 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             openAiOAuthUsageStates = openAiOAuthUsageStates,
                             viewModel = viewModel,
                         )
-                        SettingsRoute.ABOUT -> AboutSettingsPage()
+                        SettingsRoute.ABOUT -> AboutSettingsPage(
+                            developerEnabled = developerSettings.enabled,
+                            onOpenDeveloper = { route = SettingsRoute.DEVELOPER },
+                        )
                     }
                 }
             }
@@ -253,7 +268,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
 }
 
 @Composable
-private fun SettingsHome(providerCount: Int, developerEnabled: Boolean, onOpen: (SettingsRoute) -> Unit) = SettingsPage {
+private fun SettingsHome(providerCount: Int, onOpen: (SettingsRoute) -> Unit) = SettingsPage {
     SettingsGroup("AI & models") {
         SettingsDestination(
             icon = Icons.Outlined.Cloud,
@@ -298,12 +313,6 @@ private fun SettingsHome(providerCount: Int, developerEnabled: Boolean, onOpen: 
             title = "Local Code Execution",
             subtitle = "Python, Linux tooling, packages, and workspace",
             onClick = { onOpen(SettingsRoute.LOCAL_EXECUTION) },
-        )
-        SettingsDestination(
-            icon = Icons.Outlined.DeveloperMode,
-            title = "Developer settings",
-            subtitle = if (developerEnabled) "Performance overlay and diagnostics enabled" else "Performance overlay and diagnostics",
-            onClick = { onOpen(SettingsRoute.DEVELOPER) },
         )
     }
     SettingsGroup("About") {
@@ -769,6 +778,25 @@ private fun DeveloperSettingsPage(
 
     HorizontalDivider()
     SectionTitle(
+        "Tool diagnostics",
+        "Shows raw tool inputs, outputs, source paths, and copyable failure diagnostics inside Working.",
+    )
+    SettingsSwitch(
+        label = "Show tool diagnostics",
+        checked = settings.toolDiagnosticsEnabled,
+        onCheckedChange = { enabled ->
+            viewModel.updateDeveloperSettings { it.copy(toolDiagnosticsEnabled = enabled) }
+        },
+        enabled = settings.enabled,
+    )
+    Text(
+        "Off by default. Normal chats show only a concise failure summary and Retry.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    HorizontalDivider()
+    SectionTitle(
         "Performance counter",
         "Shows live frame timing without forcing continuous animation. The monitor observes frames already rendered by Android.",
     )
@@ -926,18 +954,103 @@ private val PerformanceOverlayPosition.displayName: String
     }
 
 @Composable
-private fun AboutSettingsPage() = SettingsPage {
+private fun AboutSettingsPage(
+    developerEnabled: Boolean,
+    onOpenDeveloper: () -> Unit,
+) = SettingsPage {
     val appName = stringResource(R.string.app_name)
+    val uriHandler = LocalUriHandler.current
     SectionTitle("$appName ${BuildConfig.VERSION_NAME}", "Native Android BYOK model workspace.")
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge) {
+
+    SettingsGroup("Project") {
+        ListItem(
+            headlineContent = { Text("Created by @omerfaruknehir", fontWeight = FontWeight.SemiBold) },
+            supportingContent = { Text("Open the creator's GitHub profile") },
+            leadingContent = { Icon(Icons.Outlined.AccountCircle, null, tint = MaterialTheme.colorScheme.primary) },
+            trailingContent = { Icon(Icons.Outlined.ChevronRight, null) },
+            modifier = Modifier.clickable {
+                uriHandler.openUri("https://github.com/omerfaruknehir")
+            },
+            colors = androidx.compose.material3.ListItemDefaults.colors(
+                containerColor = Color.Transparent,
+            ),
+        )
+        HorizontalDivider()
+        SettingsDestination(
+            icon = Icons.Outlined.Code,
+            title = "Source code",
+            subtitle = "github.com/omerfaruknehir/Arbor",
+            onClick = { uriHandler.openUri("https://github.com/omerfaruknehir/Arbor") },
+        )
+        HorizontalDivider()
+        SettingsDestination(
+            icon = Icons.Outlined.Info,
+            title = "Report an issue",
+            subtitle = "Bugs, regressions, and feature requests",
+            onClick = { uriHandler.openUri("https://github.com/omerfaruknehir/Arbor/issues") },
+        )
+    }
+
+    SettingsGroup("Build information") {
+        AboutInfoRow("Version", BuildConfig.VERSION_NAME)
+        AboutInfoRow("Build", "${BuildConfig.VERSION_CODE} · ${BuildConfig.BUILD_TYPE}")
+        AboutInfoRow("Package", BuildConfig.APPLICATION_ID)
+        AboutInfoRow("Android support", "SDK 26–35")
+        AboutInfoRow("Running on", "Android ${Build.VERSION.RELEASE} · API ${Build.VERSION.SDK_INT}")
+        AboutInfoRow("Device ABI", Build.SUPPORTED_ABIS.firstOrNull() ?: "Unknown")
+    }
+
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.extraLarge,
+    ) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Built for long-running, tool-using chats", fontWeight = FontWeight.SemiBold)
-            Text("On-device encrypted history, provider-native tool calls, persistent local code/Linux workspaces, Deep Research, and per-chat generation controls.", style = MaterialTheme.typography.bodySmall)
-            HorizontalDivider()
-            Text("Debug builds use Android's debug certificate and are not production releases.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Private by design", fontWeight = FontWeight.SemiBold)
+            Text(
+                "Chats, credentials, and workspaces stay on your device. Arbor connects directly to providers you configure and has no application backend, ads, or telemetry.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (BuildConfig.DEBUG) {
+                HorizontalDivider()
+                Text(
+                    "This is a debug-signed development build.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
+
+    TextButton(onClick = onOpenDeveloper) {
+        Icon(Icons.Outlined.DeveloperMode, null, Modifier.size(18.dp))
+        Text(
+            if (developerEnabled) "Developer options · enabled" else "Developer options",
+            Modifier.padding(start = 8.dp),
+        )
+    }
     Spacer(Modifier.padding(bottom = 24.dp))
+}
+
+@Composable
+private fun AboutInfoRow(label: String, value: String) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 11.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+        )
+    }
 }
 
 private val ThemeMode.displayName: String

@@ -14,6 +14,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
@@ -158,7 +160,6 @@ import app.arbor.chat.sandbox.ExecutionProgress
 import coil.compose.AsyncImage
 import app.arbor.chat.sandbox.UbuntuExecutionResult
 import app.arbor.chat.sandbox.AppliedPatchResult
-import app.arbor.chat.sandbox.ScriptRunMetadata
 import app.arbor.chat.sandbox.ScriptRunResult
 import app.arbor.chat.sandbox.WorkspaceReadResult
 import kotlinx.serialization.decodeFromString
@@ -1262,6 +1263,7 @@ private fun MessageCard(
                         working = working,
                         animateStreaming = animateStreaming,
                         visibility = reasoningVisibility,
+                        viewModel = viewModel,
                         workingCardViewport = workingCardViewport,
                     )
                     if (displayContent.isNotBlank()) RichMessage(
@@ -1595,14 +1597,14 @@ private fun TimelineWorkStep(
     val hasDetails = event.content.isNotBlank() || event.input.isNotBlank() ||
         event.output.isNotBlank() || active || superseded
     var expanded by rememberSaveable("work-step-$stateKey") {
-        mutableStateOf(active || event.status == "error")
+        mutableStateOf(active)
     }
     var previouslyActive by rememberSaveable("work-step-active-$stateKey") {
         mutableStateOf(active)
     }
     LaunchedEffect(active) {
         if (active != previouslyActive) {
-            expanded = active || event.status == "error"
+            expanded = active
             previouslyActive = active
         }
     }
@@ -1717,8 +1719,11 @@ private fun LegacyWorkingBlock(
     working: Boolean,
     animateStreaming: Boolean,
     visibility: ReasoningVisibility,
+    viewModel: ChatViewModel,
     workingCardViewport: WorkingCardViewportController,
 ) {
+    val developerSettings by viewModel.developerSettings.collectAsStateWithLifecycle()
+    val showDiagnostics = developerSettings.enabled && developerSettings.toolDiagnosticsEnabled
     val traces = remember(toolTraceJson) {
         runCatching { ChatMessageJson.decodeFromString<List<ToolTraceEvent>>(toolTraceJson) }.getOrDefault(emptyList())
     }
@@ -1813,8 +1818,20 @@ private fun LegacyWorkingBlock(
                         ) {
                             Column {
                                 Text("${event.label} • ${event.status}", style = MaterialTheme.typography.labelMedium, color = if (event.status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                                if (event.input.isNotBlank()) CodeSourcePanel(if (event.type.contains("python", true)) "python" else if (event.type.contains("ubuntu", true) || event.type.contains("shell", true)) "bash" else "input", event.input.take(4_000))
-                                if (event.output.isNotBlank()) GenericToolOutputCard(event.output.take(12_000), failed = event.status == "error")
+                                if (showDiagnostics && event.input.isNotBlank()) {
+                                    CodeSourcePanel(
+                                        if (event.type.contains("python", true)) "python"
+                                        else if (event.type.contains("ubuntu", true) || event.type.contains("shell", true)) "bash"
+                                        else "input",
+                                        event.input.take(4_000),
+                                    )
+                                }
+                                if (showDiagnostics && event.output.isNotBlank()) {
+                                    GenericToolOutputCard(
+                                        event.output.take(12_000),
+                                        failed = event.status == "error",
+                                    )
+                                }
                             }
                         }
                     }
@@ -1834,12 +1851,14 @@ private fun ToolStepDetails(
     viewModel: ChatViewModel,
     workingCardViewport: WorkingCardViewportController,
 ) {
+    val developerSettings by viewModel.developerSettings.collectAsStateWithLifecycle()
+    val showDiagnostics = developerSettings.enabled && developerSettings.toolDiagnosticsEnabled
     val language = if (kind == "python") "python" else if (kind == "ubuntu") "bash" else "text"
     when (kind) {
         "search" -> CompactSearchToolCard(input, output, status, usedSourceUrls)
         "fetch" -> CompactFetchToolCard(input, output, status)
         else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (input.isNotBlank()) CodeSourcePanel(
+            if (showDiagnostics && input.isNotBlank()) CodeSourcePanel(
                 language,
                 input,
                 when (kind) {
@@ -1870,15 +1889,53 @@ private fun ToolStepDetails(
                         val read = runCatching { json.decodeFromString<WorkspaceReadResult>(output) }.getOrNull()
                         when {
                             run != null -> ScriptRunActivityCard(run, viewModel, workingCardViewport)
-                            patch != null -> GenericToolOutputCard("${patch.summary}\nRevision ${patch.revision ?: "workspace"} · ${patch.sourceSha256}", failed = false)
-                            read != null -> CodeSourcePanel("text", read.text, "${read.path} • lines ${read.startLine}–${read.endLine}")
-                            kind == "python" -> runCatching { json.decodeFromString<ExecutionResult>(output) }.getOrNull()?.let { PythonExecutionCard(it, "Python tool result") }
-                                ?: GenericToolOutputCard(output, failed = status == "error")
-                            else -> runCatching { json.decodeFromString<UbuntuExecutionResult>(output) }.getOrNull()?.let { UbuntuExecutionCard(it, "Ubuntu tool result") }
-                                ?: GenericToolOutputCard(output, failed = status == "error")
+                            patch != null -> GenericToolOutputCard(
+                                if (showDiagnostics) {
+                                    "${patch.summary}\nRevision ${patch.revision ?: "workspace"} · ${patch.sourceSha256}"
+                                } else {
+                                    patch.summary
+                                },
+                                failed = false,
+                            )
+                            read != null -> if (showDiagnostics) {
+                                CodeSourcePanel(
+                                    "text",
+                                    read.text,
+                                    "${read.path} • lines ${read.startLine}–${read.endLine}",
+                                )
+                            } else {
+                                Text(
+                                    "Source read completed",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            kind == "python" && showDiagnostics ->
+                                runCatching { json.decodeFromString<ExecutionResult>(output) }.getOrNull()
+                                    ?.let { PythonExecutionCard(it, "Python tool result") }
+                                    ?: GenericToolOutputCard(output, failed = status == "error")
+                            kind == "ubuntu" && showDiagnostics ->
+                                runCatching { json.decodeFromString<UbuntuExecutionResult>(output) }.getOrNull()
+                                    ?.let { UbuntuExecutionCard(it, "Ubuntu tool result") }
+                                    ?: GenericToolOutputCard(output, failed = status == "error")
+                            else -> Text(
+                                if (status == "error") "Execution failed" else "Execution completed",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (status == "error") MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     }
-                    else -> GenericToolOutputCard(output, failed = status == "error")
+                    else -> if (showDiagnostics) {
+                        GenericToolOutputCard(output, failed = status == "error")
+                    } else {
+                        Text(
+                            if (status == "error") "Tool failed" else "Tool completed",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (status == "error") MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }
@@ -1889,89 +1946,199 @@ private fun ToolStepDetails(
 private fun ScriptRunActivityCard(initial: ScriptRunResult, viewModel: ChatViewModel, workingCardViewport: WorkingCardViewportController) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val developerSettings by viewModel.developerSettings.collectAsStateWithLifecycle()
+    val showDiagnostics = developerSettings.enabled && developerSettings.toolDiagnosticsEnabled
     var results by remember(initial.runId) { mutableStateOf(listOf(initial)) }
-    var metadata by remember(initial.runId) { mutableStateOf<ScriptRunMetadata?>(null) }
     var source by remember(initial.runId) { mutableStateOf<String?>(null) }
     var error by remember(initial.runId) { mutableStateOf("") }
     var rerunJob by remember(initial.runId) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var detailsOpen by rememberSaveable("script-details-${initial.runId}") { mutableStateOf(false) }
     var cardBounds by remember(initial.runId) { mutableStateOf<Rect?>(null) }
-    LaunchedEffect(initial.runId, results.size) {
-        runCatching { viewModel.scriptRunMetadata(initial.runId) }.getOrNull()?.let { loaded ->
-            workingCardViewport.applyMutation(WorkingCardMutation.AUTO_EXPAND, { cardBounds }) { metadata = loaded }
-        }
-    }
     val latest = results.last()
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = MaterialTheme.shapes.large,
-        modifier = Modifier.fillMaxWidth().noOpBringIntoView().onGloballyPositioned { cardBounds = it.boundsInRoot() },
+    val failed = latest.exitCode != 0 || latest.timedOut || latest.cancelled
+    val diagnostics = latest.diagnostic.ifBlank { latest.stderrTail }.takeLast(4_000)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .noOpBringIntoView()
+            .onGloballyPositioned { cardBounds = it.boundsInRoot() },
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.Code, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-                Column(Modifier.padding(start = 7.dp).weight(1f)) {
-                    Text("Script run", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                    Text("${latest.runtime.name.lowercase()} · ${latest.scriptPath}", style = MaterialTheme.typography.labelSmall)
-                }
-                if (rerunJob?.isActive == true) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp)
-            }
-            (metadata?.attempts.orEmpty()).forEach { attempt ->
-                val changed = metadata?.patches?.filter { it.revision == attempt.revision }?.sumOf { it.changedLines } ?: 0
-                Text(
-                    "Revision ${attempt.revision} · ${if (attempt.exitCode == 0 && !attempt.timedOut && !attempt.cancelled) "succeeded" else "failed"}" +
-                        (if (changed > 0) " · $changed lines changed" else "") + " · attempt ${attempt.attempt}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (attempt.exitCode == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                )
-            }
-            val diagnostics = latest.diagnostic.ifBlank { latest.stderrTail }.takeLast(4_000)
-            if (diagnostics.isNotBlank()) CodeSourcePanel("text", diagnostics, "DIAGNOSTICS")
-            if (latest.stdoutTail.isNotBlank()) CodeSourcePanel("text", latest.stdoutTail.takeLast(4_000), "OUTPUT")
-            if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                AssistChip(onClick = {
-                    scope.launch {
-                        runCatching { viewModel.readScriptSource(latest.scriptPath).text }
-                            .onSuccess { source = it }
-                            .onFailure { error = it.message.orEmpty() }
-                    }
-                }, label = { Text("Open source") })
-                AssistChip(onClick = {
-                    context.getSystemService(android.content.ClipboardManager::class.java)
-                        .setPrimaryClip(android.content.ClipData.newPlainText("script path", latest.scriptPath))
-                }, label = { Text("Copy path") })
-                AssistChip(onClick = {
-                    context.getSystemService(android.content.ClipboardManager::class.java)
-                        .setPrimaryClip(android.content.ClipData.newPlainText("script diagnostics", diagnostics))
-                }, label = { Text("Copy diagnostics") })
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Button(onClick = {
-                    error = ""
-                    rerunJob = scope.launch {
-                        runCatching { viewModel.rerunRecordedScript(initial.runId) }
-                            .onSuccess { completed ->
-                                workingCardViewport.applyMutation(WorkingCardMutation.AUTO_EXPAND, { cardBounds }) { results = results + completed }
-                            }
-                            .onFailure { failure ->
-                                if (failure !is CancellationException) workingCardViewport.applyMutation(WorkingCardMutation.AUTO_EXPAND, { cardBounds }) {
-                                    error = failure.message.orEmpty()
+        Text(
+            scriptRunSummary(latest),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (failed) MaterialTheme.colorScheme.error
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (error.isNotBlank()) {
+            Text(
+                error,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Button(
+                onClick = {
+                        error = ""
+                        rerunJob = scope.launch {
+                            runCatching { viewModel.rerunRecordedScript(initial.runId) }
+                                .onSuccess { completed ->
+                                    workingCardViewport.applyMutation(WorkingCardMutation.AUTO_EXPAND, { cardBounds }) {
+                                        results = results + completed
+                                    }
                                 }
-                            }
-                    }
-                }, enabled = rerunJob?.isActive != true) { Icon(Icons.Outlined.Refresh, null); Text("Rerun") }
-                if (rerunJob?.isActive == true) Button(onClick = { rerunJob?.cancel() }) { Icon(Icons.Filled.Stop, null); Text("Stop") }
+                                .onFailure { failure ->
+                                    if (failure !is CancellationException) {
+                                        workingCardViewport.applyMutation(
+                                            WorkingCardMutation.AUTO_EXPAND,
+                                            { cardBounds },
+                                        ) {
+                                            error = failure.message.orEmpty()
+                                        }
+                                    }
+                                }
+                        }
+                    },
+                enabled = rerunJob?.isActive != true,
+                modifier = Modifier.heightIn(min = 40.dp),
+            ) {
+                if (rerunJob?.isActive == true) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Outlined.Refresh, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Retry")
+                }
+            }
+            if (showDiagnostics) {
+                TextButton(onClick = { detailsOpen = true }) {
+                    Text("Details")
+                }
+            }
+            if (rerunJob?.isActive == true) {
+                TextButton(onClick = { rerunJob?.cancel() }) {
+                    Text("Stop")
+                }
             }
         }
     }
-    source?.let { text ->
+    if (showDiagnostics && detailsOpen) {
+        AlertDialog(
+            onDismissRequest = { detailsOpen = false },
+            title = { Text(if (failed) "Run failed" else "Run details") },
+            text = {
+                Column(
+                    Modifier
+                        .heightIn(max = 480.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "${latest.runtime.name.lowercase()} · attempt ${latest.attempt} · revision ${latest.revision}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        latest.scriptPath,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (diagnostics.isNotBlank()) {
+                        CodeSourcePanel("text", diagnostics, "ERROR")
+                    }
+                    if (latest.stdoutTail.isNotBlank()) {
+                        CodeSourcePanel("text", latest.stdoutTail.takeLast(4_000), "OUTPUT")
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { detailsOpen = false }) {
+                    Text("Close")
+                }
+            },
+            dismissButton = {
+                Row {
+                    if (diagnostics.isNotBlank()) {
+                        TextButton(onClick = {
+                            context.getSystemService(android.content.ClipboardManager::class.java)
+                                .setPrimaryClip(
+                                    android.content.ClipData.newPlainText(
+                                        "script diagnostics",
+                                        diagnostics,
+                                    ),
+                                )
+                        }) {
+                            Icon(Icons.Outlined.ContentCopy, null, Modifier.size(17.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text("Copy")
+                        }
+                    }
+                    TextButton(onClick = {
+                        detailsOpen = false
+                        scope.launch {
+                            runCatching { viewModel.readScriptSource(latest.scriptPath).text }
+                                .onSuccess { source = it }
+                                .onFailure { error = it.message.orEmpty() }
+                        }
+                    }) {
+                        Text("Source")
+                    }
+                }
+            },
+        )
+    }
+    if (showDiagnostics) source?.let { text ->
         AlertDialog(
             onDismissRequest = { source = null },
             title = { Text(latest.scriptPath) },
-            text = { CodeSourcePanel(if (latest.runtime.name == "PYTHON") "python" else "bash", text, "BOUNDED WORKSPACE SOURCE") },
-            confirmButton = { Button(onClick = { source = null }) { Text("Close") } },
+            text = {
+                CodeSourcePanel(
+                    if (latest.runtime.name == "PYTHON") "python" else "bash",
+                    text,
+                    "SOURCE",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { source = null }) {
+                    Text("Close")
+                }
+            },
         )
     }
+}
+
+internal fun scriptRunSummary(result: ScriptRunResult): String {
+    if (result.cancelled) return "Cancelled"
+    if (result.timedOut) return "Timed out"
+    if (result.exitCode == 0) {
+        return formatExecutionDuration(result.elapsedMs)
+            .takeIf(String::isNotBlank)
+            ?.let { "Completed in $it" }
+            ?: "Completed"
+    }
+    val lines = result.diagnostic
+        .ifBlank { result.stderrTail }
+        .ifBlank { result.stdoutTail }
+        .lineSequence()
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .toList()
+    val useful = lines.lastOrNull { line ->
+        listOf("error", "failed", "exception", "not found").any {
+            line.contains(it, ignoreCase = true)
+        }
+    } ?: lines.lastOrNull()
+    return useful?.take(240) ?: "Run failed with exit code ${result.exitCode}"
 }
 
 @Composable
@@ -2282,10 +2449,15 @@ private fun Composer(
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 36.dp, end = 8.dp, bottom = 6.dp),
+                        .padding(bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(end = 48.dp),
+                    // Keep the first pill aligned while leaving the LazyRow's
+                    // gesture viewport edge-to-edge across the composer.
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        start = 36.dp,
+                        end = 56.dp,
+                    ),
                 ) {
                     item {
                         ThinkingComposerChip(
