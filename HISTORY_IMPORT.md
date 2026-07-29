@@ -161,3 +161,9 @@ No source commit was fabricated from checksum, verification, release-note, or sk
 | 0.19.14 | `Arbor-0.19.14-source.zip` | `3013326a41e3e0289028c1e506929f7f6e69e6c3dbd16b623bff8017d480a368` | `b38e7e9` | `v0.19.14` | 2026-07-28T04:31:34Z | canonical | `main` |
 
 | 0.19.15 | `Arbor-0.19.15-source.zip` | `c55826e7177c102e47d3b1d28999851c11bcf0585d273f9dd176103200a55368` | `ad8a26e` | `v0.19.15` | 2026-07-28T05:32:44Z | canonical | `main` |
+
+| 0.20.0 | `Arbor-0.20.0-source.zip` | `e71a5f14510b8d5f3e2c4a7e7ae78643cc01ed26b46243c9aebe4edfb199e0ba` | `ca4e212` | `v0.20.0` | 2026-07-29T18:23:20Z | canonical | `main` |
+
+| 0.20.1 | `Arbor-0.20.1-source.zip` | `03314520ffa3e332b2fe2424dfd77752a2c4a1c1b0fb9bb6c35c5ffcfeb8ac29` | `5d88d02` | `v0.20.1` | 2026-07-29T18:23:27Z | canonical | `main` |
+
+| 0.20.2 | `Arbor-0.20.2-source.zip` | `8d561bb54929d1dcf4cf77b7ea23da6ba5ed6afcfac9d56d9f597abe1be36c8d` | `ad16a0f` | `v0.20.2` | 2026-07-29T18:24:00Z | canonical | `main` |
