@@ -7,6 +7,7 @@ cd "$repo_root"
 talloc_archive="third_party/sources/talloc-2.4.3.tar.gz"
 talloc_license="third_party/licenses/LGPL-3.0-or-later.txt"
 asset_license="app/src/main/assets/licenses/LGPL-3.0-or-later.txt"
+catalog_license="licenses/texts/LGPL-3.0-or-later.txt"
 expected_archive_sha256="dc46c40b9f46bb34dd97fe41f548b0e8b247b77a918576733c528e83abd854dd"
 
 actual_archive_sha256="$(sha256sum "$talloc_archive" | cut -d ' ' -f 1)"
@@ -22,6 +23,21 @@ tar -xOf "$talloc_archive" talloc-2.4.3/LICENSE | cmp -s - "$talloc_license" || 
 
 cmp -s "$talloc_license" "$asset_license" || {
   echo "APK-facing talloc license differs from the verified repository copy" >&2
+  exit 1
+}
+
+cmp -s "$talloc_license" "$catalog_license" || {
+  echo "Offline catalog talloc license differs from the verified repository copy" >&2
+  exit 1
+}
+
+grep -Fq '"spdx": "LGPL-3.0-or-later"' licenses/components/talloc.json || {
+  echo "Offline catalog does not classify talloc as LGPL-3.0-or-later" >&2
+  exit 1
+}
+
+grep -Fq '"spdx": "GPL-2.0-or-later"' licenses/components/proot.json || {
+  echo "Offline catalog does not classify PRoot as GPL-2.0-or-later" >&2
   exit 1
 }
 
