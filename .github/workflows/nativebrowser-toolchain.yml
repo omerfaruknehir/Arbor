@@ -1,12 +1,8 @@
 name: NativeBrowser toolchain
 
 on:
-  push:
-    branches: [nativebrowser-ci]
-    paths: [.github/workflows/nativebrowser-toolchain.yml]
   pull_request:
     branches: [main]
-    paths: [.github/workflows/nativebrowser-toolchain.yml]
   workflow_dispatch:
 
 jobs:
@@ -69,10 +65,8 @@ jobs:
           set -euo pipefail
           GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
           GRADLE_HOME="$(dirname "$(dirname "$GRADLE_BIN")")"
-          JAVA_HOME_REAL="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
-          mkdir -p /tmp/nativebrowser-toolchain/gradle /tmp/nativebrowser-toolchain/android-sdk /tmp/nativebrowser-toolchain/gradle-cache /tmp/nativebrowser-toolchain/jdk17
+          mkdir -p /tmp/nativebrowser-toolchain/gradle /tmp/nativebrowser-toolchain/android-sdk /tmp/nativebrowser-toolchain/gradle-cache
           cp -a "$GRADLE_HOME"/. /tmp/nativebrowser-toolchain/gradle/
-          cp -a "$JAVA_HOME_REAL"/. /tmp/nativebrowser-toolchain/jdk17/
           cp -a "$ANDROID_HOME/build-tools/35.0.0" /tmp/nativebrowser-toolchain/android-sdk/build-tools/
           cp -a "$ANDROID_HOME/platforms/android-35" /tmp/nativebrowser-toolchain/android-sdk/platforms/
           cp -a "$ANDROID_HOME/platform-tools" /tmp/nativebrowser-toolchain/android-sdk/
@@ -81,23 +75,38 @@ jobs:
           cp -a "$HOME/.gradle/caches/8.13" /tmp/nativebrowser-toolchain/gradle-cache/ || true
           cat > /tmp/nativebrowser-toolchain/env.sh <<'EOF'
           ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-          export JAVA_HOME="$ROOT/jdk17"
           export ANDROID_HOME="$ROOT/android-sdk"
           export ANDROID_SDK_ROOT="$ROOT/android-sdk"
           export GRADLE_USER_HOME="$ROOT/gradle-user-home"
-          export PATH="$ROOT/gradle/bin:$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/35.0.0:$PATH"
+          export PATH="$ROOT/gradle/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/35.0.0:$PATH"
           mkdir -p "$GRADLE_USER_HOME/caches"
           cp -a "$ROOT/gradle-cache/." "$GRADLE_USER_HOME/caches/" 2>/dev/null || true
           EOF
           tar --zstd -cf nativebrowser-offline-toolchain.tar.zst -C /tmp nativebrowser-toolchain
           sha256sum nativebrowser-offline-toolchain.tar.zst > nativebrowser-offline-toolchain.sha256
-          ls -lh nativebrowser-offline-toolchain.tar.zst
+          split -b 200M -d -a 2 nativebrowser-offline-toolchain.tar.zst nativebrowser-offline-toolchain.part-
+          ls -lh nativebrowser-offline-toolchain.tar.zst nativebrowser-offline-toolchain.part-*
 
       - uses: actions/upload-artifact@v4
         with:
-          name: nativebrowser-offline-toolchain
+          name: nativebrowser-offline-toolchain-part-00
           path: |
-            nativebrowser-offline-toolchain.tar.zst
+            nativebrowser-offline-toolchain.part-00
             nativebrowser-offline-toolchain.sha256
+          compression-level: 0
+          retention-days: 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nativebrowser-offline-toolchain-part-01
+          path: nativebrowser-offline-toolchain.part-01
+          compression-level: 0
+          retention-days: 1
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('nativebrowser-offline-toolchain.part-02') != '' }}
+        with:
+          name: nativebrowser-offline-toolchain-part-02
+          path: nativebrowser-offline-toolchain.part-02
           compression-level: 0
           retention-days: 1
