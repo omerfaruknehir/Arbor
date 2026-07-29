@@ -1,0 +1,99 @@
+name: NativeBrowser toolchain
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Populate Gradle and dependency caches
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/cache-seed
+          cat > /tmp/cache-seed/settings.gradle <<'EOF'
+          pluginManagement {
+            repositories { google(); mavenCentral(); gradlePluginPortal() }
+          }
+          dependencyResolutionManagement {
+            repositories { google(); mavenCentral() }
+          }
+          rootProject.name = 'cache-seed'
+          EOF
+          cat > /tmp/cache-seed/build.gradle <<'EOF'
+          buildscript {
+            repositories { google(); mavenCentral(); gradlePluginPortal() }
+            dependencies { classpath 'com.android.tools.build:gradle:8.9.1' }
+          }
+          configurations { seed }
+          repositories { google(); mavenCentral() }
+          dependencies {
+            seed 'junit:junit:4.13.2'
+            seed 'org.hamcrest:hamcrest-core:1.3'
+          }
+          tasks.register('resolveSeed') {
+            doLast { configurations.seed.resolve() }
+          }
+          EOF
+          gradle -p /tmp/cache-seed --no-daemon help resolveSeed
+
+      - name: Pack reusable offline toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
+          GRADLE_HOME="$(dirname "$(dirname "$GRADLE_BIN")")"
+          JAVA_HOME_REAL="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
+          mkdir -p /tmp/nativebrowser-toolchain/gradle /tmp/nativebrowser-toolchain/android-sdk /tmp/nativebrowser-toolchain/gradle-cache /tmp/nativebrowser-toolchain/jdk17
+          cp -a "$GRADLE_HOME"/. /tmp/nativebrowser-toolchain/gradle/
+          cp -a "$JAVA_HOME_REAL"/. /tmp/nativebrowser-toolchain/jdk17/
+          cp -a "$ANDROID_HOME/build-tools/35.0.0" /tmp/nativebrowser-toolchain/android-sdk/build-tools/
+          cp -a "$ANDROID_HOME/platforms/android-35" /tmp/nativebrowser-toolchain/android-sdk/platforms/
+          cp -a "$ANDROID_HOME/platform-tools" /tmp/nativebrowser-toolchain/android-sdk/
+          cp -a "$ANDROID_HOME/licenses" /tmp/nativebrowser-toolchain/android-sdk/ || true
+          cp -a "$HOME/.gradle/caches/modules-2" /tmp/nativebrowser-toolchain/gradle-cache/
+          cp -a "$HOME/.gradle/caches/8.13" /tmp/nativebrowser-toolchain/gradle-cache/ || true
+          cat > /tmp/nativebrowser-toolchain/env.sh <<'EOF'
+          ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          export JAVA_HOME="$ROOT/jdk17"
+          export ANDROID_HOME="$ROOT/android-sdk"
+          export ANDROID_SDK_ROOT="$ROOT/android-sdk"
+          export GRADLE_USER_HOME="$ROOT/gradle-user-home"
+          export PATH="$ROOT/gradle/bin:$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/35.0.0:$PATH"
+          mkdir -p "$GRADLE_USER_HOME/caches"
+          cp -a "$ROOT/gradle-cache/." "$GRADLE_USER_HOME/caches/" 2>/dev/null || true
+          EOF
+          tar --zstd -cf nativebrowser-offline-toolchain.tar.zst -C /tmp nativebrowser-toolchain
+          sha256sum nativebrowser-offline-toolchain.tar.zst > nativebrowser-offline-toolchain.sha256
+          ls -lh nativebrowser-offline-toolchain.tar.zst
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nativebrowser-offline-toolchain
+          path: |
+            nativebrowser-offline-toolchain.tar.zst
+            nativebrowser-offline-toolchain.sha256
+          compression-level: 0
+          retention-days: 1
