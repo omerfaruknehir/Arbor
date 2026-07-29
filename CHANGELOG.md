@@ -1,3 +1,12 @@
+## 0.20.5
+
+- Correct the packaged talloc 2.4.3 shared library's license classification from the retained Termux package-level GPL-3.0 label to the library's upstream LGPL-3.0-or-later license.
+- Add the exact upstream LGPL v3 text to repository and APK assets while retaining the GPL v3 text required by the LGPL v3 distribution terms.
+- Explain the distinction between the packaged library and GPL-only ancillary Python/test material in the corresponding source archive.
+- Add a directly accessible Third-party notices entry to About Arbor.
+- Add CI provenance checks for the talloc source hash, upstream license headers, mirrored notices, packaged ABI libraries, and shared-library boundary.
+- Preserve package identity, debug signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, attachments, and Linux workspace data.
+
 ## 0.20.4
 
 - Replace the misleading hard-coded `SDK 26–35` About row with separate minimum and target Android rows derived from the installed app metadata.

@@ -990,6 +990,15 @@ private fun AboutSettingsPage(
         )
         HorizontalDivider()
         SettingsDestination(
+            icon = Icons.Outlined.Security,
+            title = "Third-party notices",
+            subtitle = "PRoot, talloc, and bundled runtime components",
+            onClick = {
+                uriHandler.openUri("https://github.com/omerfaruknehir/Arbor/blob/main/THIRD_PARTY_NOTICES.md")
+            },
+        )
+        HorizontalDivider()
+        SettingsDestination(
             icon = Icons.Outlined.Info,
             title = "Report an issue",
             subtitle = "Bugs, regressions, and feature requests",

@@ -1,6 +1,6 @@
 # Building Arbor
 
-These instructions build Arbor 0.20.4 (`versionCode 130`). The debug variant has application ID `app.arbor.chat.debug` and version name `0.20.4-debug`; its signing setup is unchanged from prior Arbor debug builds.
+These instructions build Arbor 0.20.5 (`versionCode 131`). The debug variant has application ID `app.arbor.chat.debug` and version name `0.20.5-debug`; its signing setup is unchanged from prior Arbor debug builds.
 
 ## Requirements
 
@@ -27,7 +27,7 @@ app/build/outputs/bundle/debug/app-debug.aab
 
 The app packages Python for `arm64-v8a` and `x86_64`. Change `abiFilters` in `app/build.gradle.kts` if another ABI is required.
 
-The same ABI folders contain the PRoot launcher, loader, talloc, and libandroid-shmem. Arbor keeps legacy native-library packaging so Android extracts the APK-embedded launcher components used by its target-SDK 36 runtime path. Exact corresponding sources, build recipes, license texts, and hashes are under `third_party/`; see `THIRD_PARTY_NOTICES.md` before replacing any binary.
+The same ABI folders contain the PRoot launcher, loader, talloc, and libandroid-shmem. Arbor keeps legacy native-library packaging so Android extracts the APK-embedded launcher components used by its target-SDK 36 runtime path. The packaged talloc shared library is LGPL-3.0-or-later; the retained historical Termux recipe uses an over-broad GPL-3.0 package label that does not override the license headers and `LICENSE` file in the exact talloc source archive. Exact corresponding sources, build recipes, license texts, and hashes are under `third_party/`; see `THIRD_PARTY_NOTICES.md` before replacing any binary.
 
 Debug builds use the intentionally public key documented in [`ci/README.md`](ci/README.md). Its stable signer lets APKs from local builds and GitHub Releases update each other. It is never used for the production package.
 

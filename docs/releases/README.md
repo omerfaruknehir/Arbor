@@ -4,4 +4,4 @@ Version-specific release notes live here so the repository root stays focused on
 
 For a chronological summary, see the root [CHANGELOG.md](../../CHANGELOG.md). For downloadable APKs and checksums, use [GitHub Releases](https://github.com/omerfaruknehir/Arbor/releases).
 
-The current notes are [Arbor 0.20.4](RELEASE_NOTES_0.20.4.md).
+The current notes are [Arbor 0.20.5](RELEASE_NOTES_0.20.5.md).

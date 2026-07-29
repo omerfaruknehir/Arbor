@@ -17,9 +17,17 @@ Arbor's packaged launcher changes the dynamic dependency string `libtalloc.so.2`
 
 - Version: `2.4.3`
 - Project: <https://talloc.samba.org/>
-- License: GPL-3.0 in the Termux package metadata
+- Packaged library license: LGPL-3.0-or-later
 - Package SHA-256: `ac81ad623d74c209718b9f3acb2dd702cc8a88c431e820d212229910b4db29da` (aarch64), `7ca2eaae2e53b28228a01301bc410b62845403d6317c25b8e0a7f40681de0628` (x86_64)
 - Corresponding source: `third_party/sources/talloc-2.4.3.tar.gz` (`dc46c40b9f46bb34dd97fe41f548b0e8b247b77a918576733c528e83abd854dd`)
+
+The exact upstream archive's `LICENSE`, `talloc.c`, and `talloc.h` identify the
+library as LGPL-3.0-or-later. The retained historical Termux recipe labels the
+whole source package GPL-3.0 because the archive also contains GPL-only
+ancillary Python/test material; that material is not part of Arbor's packaged
+`libtalloc.so`. The GNU GPL v3 text remains alongside the LGPL v3 text because
+LGPL v3 sections 3 and 4 require distributors of linked object code to
+accompany it with both documents. This does not relicense talloc as GPL-3.0.
 
 ## libandroid-shmem
 
@@ -29,7 +37,7 @@ Arbor's packaged launcher changes the dynamic dependency string `libtalloc.so.2`
 - Package SHA-256: `0da3a24d558b93c92bcf8d611e0826a99ff96e396b148e6cdf33b47c47c57ff6` (aarch64), `ffa9e4c87467b158b148d0ff92dda796aa038276c2075af3269cdcdb06f25797` (x86_64)
 - Corresponding source: `third_party/sources/libandroid-shmem-v0.7.tar.gz` (`1e5ff8459bc0a8c229dd8a94b27d119987e09ef3414331c2b5ebfff20b98e867`)
 
-Complete license texts are under `third_party/licenses/` and are also embedded in the APK assets.
+Complete license texts are under `third_party/licenses/` and are also embedded in the APK assets. `ci/verify-third-party-licenses.sh` checks the talloc source hash, upstream license, packaged notices, and APK-facing license copies on every verified build.
 
 ## Ubuntu Base 26.04
 
