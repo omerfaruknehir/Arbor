@@ -510,13 +510,18 @@ private fun AppearanceSettingsPage(
 
     HorizontalDivider()
     SectionTitle("Interface panels", "Panel shape is a choice. Blur, softness, and tint remain continuous controls.")
+    val blurHiddenByTint = chromeBlurStrength > 0f && chromeOverlayOpacity >= .999f
     SettingSlider(
         label = "Blur",
-        valueLabel = "${(chromeBlurStrength * 100).roundToInt()}%",
+        valueLabel = if (blurHiddenByTint) "Hidden by tint" else "${(chromeBlurStrength * 100).roundToInt()}%",
         value = chromeBlurStrength,
         onValueChange = viewModel::setChromeBlurStrength,
         valueRange = 0f..1f,
-        supportingText = "0% disables blur. Higher values increase the panel-local native blur radius.",
+        supportingText = if (blurHiddenByTint) {
+            "Tint is fully opaque and covers the blurred background. Lower Tint opacity to reveal blur."
+        } else {
+            "0% disables blur. Higher values increase the panel-local blur radius."
+        },
     )
 
     val displayedSoftness = displayedChromeEdgeSoftness(chromeEdgeSoftness)
@@ -565,7 +570,11 @@ private fun AppearanceSettingsPage(
         value = chromeOverlayOpacity,
         onValueChange = viewModel::setChromeOverlayOpacity,
         valueRange = 0f..1f,
-        supportingText = "0% is transparent. 100% is a fully opaque panel tint.",
+        supportingText = if (chromeOverlayOpacity >= .999f) {
+            "100% is fully opaque and hides background blur."
+        } else {
+            "0% is transparent. 100% is a fully opaque panel tint."
+        },
     )
 
     Spacer(Modifier.padding(bottom = 24.dp))

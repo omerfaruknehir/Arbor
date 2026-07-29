@@ -24,6 +24,15 @@ class ArborSliderTest {
     }
 
     @Test
+    fun releaseSnapSupportsTwoOrMoreNamedAnchors() {
+        assertEquals(0, sliderSnapIndex(.2f, 0f..1f, 2))
+        assertEquals(1, sliderSnapIndex(.8f, 0f..1f, 2))
+        assertEquals(0, sliderSnapIndex(0f, 0f..4f, 5))
+        assertEquals(2, sliderSnapIndex(2.2f, 0f..4f, 5))
+        assertEquals(4, sliderSnapIndex(4f, 0f..4f, 5))
+    }
+
+    @Test
     fun implementationDelegatesGestureAndAccessibilityBehaviorToMaterial() {
         val slider = java.io.File("src/main/java/app/arbor/chat/ui/ArborSlider.kt").readText()
 
@@ -31,26 +40,29 @@ class ArborSliderTest {
         assertTrue(slider.contains(".horizontalGesturePriority(enabled)"))
         assertTrue(slider.contains("ProgressBarRangeInfo"))
         assertTrue(slider.contains("collectIsDraggedAsState"))
+        assertTrue(slider.contains(".background(thumbColor, CircleShape)"))
+        assertTrue(slider.contains("steps = if (snapOnRelease) 0"))
+        assertTrue(slider.contains("if (steps > 0 || snapOnRelease) haptics.snap()"))
         assertFalse(slider.contains("pointerInput("))
         assertFalse(slider.contains("Animatable"))
         assertFalse(slider.contains("VelocityTracker"))
         assertFalse(slider.contains("Magnetic"))
-        assertFalse(slider.contains("snapPoints"))
     }
 
     @Test
-    fun namedThinkingChoicesUseAReadableMenuInsteadOfASlider() {
+    fun thinkingUsesAContinuousTrackingSliderWithVisibleReleaseSnap() {
         val chat = java.io.File("src/main/java/app/arbor/chat/ui/ChatScreen.kt").readText()
         val thinkingBlock = chat
             .substringAfter("private fun ThinkingComposerChip")
             .substringBefore("private val ThinkingEffort.effortDescription")
 
-        assertTrue(thinkingBlock.contains("options.forEachIndexed"))
-        assertTrue(thinkingBlock.contains("DropdownMenuItem("))
-        assertTrue(thinkingBlock.contains("option.description"))
+        assertTrue(thinkingBlock.contains("ArborSlider("))
+        assertTrue(thinkingBlock.contains("snapOnRelease = true"))
+        assertTrue(thinkingBlock.contains("spring(dampingRatio = .72f, stiffness = 430f)"))
+        assertTrue(thinkingBlock.contains("Release to snap to the nearest supported level"))
+        assertTrue(thinkingBlock.contains("preview?.description"))
         assertTrue(thinkingBlock.contains("dismissOnClickOutside = true"))
-        assertFalse(thinkingBlock.contains("ArborSlider("))
-        assertFalse(thinkingBlock.contains("sliderValue"))
+        assertFalse(thinkingBlock.contains("options.forEachIndexed"))
     }
 
     @Test
@@ -81,5 +93,22 @@ class ArborSliderTest {
             val block = settings.substringAfter(marker).substringBefore(")\n")
             assertFalse("Unexpected snap points after $marker", block.contains("snapPoints"))
         }
+    }
+
+    @Test
+    fun composerPillsStartSlightlyLeftOfTheTextFieldEdge() {
+        val chat = java.io.File("src/main/java/app/arbor/chat/ui/ChatScreen.kt").readText()
+        val composer = chat.substringAfter("private fun Composer(").substringBefore("private fun StagedAttachmentPreview")
+
+        assertTrue(composer.contains(".padding(start = 36.dp, end = 8.dp, bottom = 6.dp)"))
+        assertFalse(composer.contains(".padding(start = 48.dp, end = 8.dp, bottom = 6.dp)"))
+    }
+
+    @Test
+    fun opaqueTintExplainsWhyBlurCannotBeVisible() {
+        val settings = java.io.File("src/main/java/app/arbor/chat/ui/SettingsScreen.kt").readText()
+
+        assertTrue(settings.contains("\"Hidden by tint\""))
+        assertTrue(settings.contains("\"100% is fully opaque and hides background blur.\""))
     }
 }

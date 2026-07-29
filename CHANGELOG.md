@@ -1,3 +1,13 @@
+## 0.20.1
+
+- Replace the invisible complete-frame blur replay with Arbor's physical-device-proven direct RenderEffect path from 0.17.8, adapted to the current top/bottom panel bounds, rounded/flat geometry, and symmetric softness.
+- Remove the one-pixel join between the solid and feathered panel regions by drawing each soft tint as one continuous gradient.
+- Make fully opaque tint explain that it hides background blur instead of presenting a working blur control with no visible result.
+- Replace Material 3's vertical bar thumb with a circular Arbor thumb while keeping Material gesture, accessibility, keyboard, RTL, cancellation, and drawer-priority behavior.
+- Restore Thinking effort as a continuous finger-tracked slider with visible level marks, boundary haptics, and a damped nearest-level spring only after release.
+- Shift the Thinking, Search, and Tools pill row 12 dp left in the composer.
+- Preserve package identity, debug signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
+
 ## 0.20.0
 
 - Replace the custom magnetic slider engine with Material 3's maintained slider interaction model, preserving Arbor haptics, semantic progress, RTL behavior, and drawer-gesture priority while removing pointer, spring, and state synchronization races.

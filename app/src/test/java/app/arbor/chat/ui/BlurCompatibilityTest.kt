@@ -21,18 +21,15 @@ class BlurCompatibilityTest {
         assertFalse(prefs.contains("remove(KEY_CHROME_OVERLAY_OPACITY"))
     }
 
-    @Test fun nativeBlurUsesACompleteFrameReplayAndPixelLockedEdges() {
+    @Test fun blurUsesTheReliableDirectLayerPathAndPixelLockedEdges() {
         val blur = java.io.File("src/main/java/app/arbor/chat/ui/BackdropBlur.kt").readText()
-        assertTrue(blur.contains("rememberGraphicsLayer()"))
-        assertTrue(blur.contains("sourceLayer.record("))
-        assertTrue(blur.contains("filteredLayer.record("))
-        assertTrue(blur.contains("drawLayer(sourceLayer)"))
-        assertTrue(blur.contains("drawLayer(filteredLayer)"))
-        assertTrue(blur.contains("filteredLayer.renderEffect = panelEffect"))
-        assertTrue(blur.contains("CompositingStrategy.Offscreen"))
+        assertTrue(blur.contains("RenderEffect.createRuntimeShaderEffect"))
+        assertTrue(blur.contains("RenderEffect.createChainEffect"))
+        assertTrue(blur.contains("decorated.graphicsLayer { renderEffect = blurEffect }"))
         assertTrue(blur.contains("smoothstep(start - 1.0, start + 1.0"))
         assertTrue(blur.contains("smoothstep(end - 1.0, end + 1.0"))
-        assertFalse(blur.contains("decorated.graphicsLayer"))
+        assertFalse(blur.contains("rememberGraphicsLayer"))
+        assertFalse(blur.contains("sourceLayer.record"))
     }
 
     @Test fun panelHeightsAreFixedAndComposerExpandsWithMeasuredContent() {

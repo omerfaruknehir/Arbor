@@ -9,7 +9,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 @SdkSuppress(minSdkVersion = Build.VERSION_CODES.TIRAMISU)
-class NativeGaussianBlurEffectTest {
+class PanelEdgeBlurEffectTest {
     @Test
     fun directThreeAxisRuntimeShaderGraphConstructsOnDevice() {
         assertNotNull(

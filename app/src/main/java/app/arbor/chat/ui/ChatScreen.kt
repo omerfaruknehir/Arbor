@@ -8,6 +8,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -96,6 +99,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -169,6 +173,7 @@ import kotlinx.coroutines.flow.first
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.min
+import kotlin.math.roundToInt
 import java.io.File
 import java.util.UUID
 
@@ -2277,7 +2282,7 @@ private fun Composer(
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 48.dp, end = 8.dp, bottom = 6.dp),
+                        .padding(start = 36.dp, end = 8.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(end = 48.dp),
@@ -2574,6 +2579,31 @@ private fun ThinkingComposerChip(
         }.takeIf { it >= 0 } ?: options.indexOfFirst { it.enabled }.coerceAtLeast(0)
     }
     val selected = options.getOrNull(selectedIndex)
+    var sliderTarget by remember(options) { mutableFloatStateOf(selectedIndex.toFloat()) }
+    var settlingIndex by remember(options) { mutableIntStateOf(-1) }
+    val sliderValue by animateFloatAsState(
+        targetValue = sliderTarget,
+        animationSpec = if (settlingIndex >= 0) {
+            spring(dampingRatio = .72f, stiffness = 430f)
+        } else {
+            snap()
+        },
+        label = "ThinkingEffortSnap",
+        finishedListener = {
+            val index = settlingIndex
+            if (index >= 0) {
+                settlingIndex = -1
+                options.getOrNull(index)?.let { option ->
+                    onSelection(option.enabled, option.effort)
+                }
+            }
+        },
+    )
+    LaunchedEffect(selectedIndex, options, menu) {
+        if (settlingIndex < 0) sliderTarget = selectedIndex.toFloat()
+    }
+    val previewIndex = sliderValue.roundToInt().coerceIn(0, options.lastIndex.coerceAtLeast(0))
+    val preview = options.getOrNull(previewIndex) ?: selected
 
     Box {
         Surface(
@@ -2609,38 +2639,58 @@ private fun ThinkingComposerChip(
         ArborDropdownMenu(
             expanded = menu,
             onDismissRequest = { menu = false },
-            modifier = Modifier.width(320.dp),
+            modifier = Modifier.width(340.dp),
             dismissOnClickOutside = true,
         ) {
-            options.forEachIndexed { index, option ->
-                val optionSelected = index == selectedIndex
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(
-                                option.label,
-                                fontWeight = if (optionSelected) FontWeight.SemiBold else FontWeight.Normal,
-                            )
-                            Text(
-                                option.description,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    },
-                    onClick = {
-                        haptics.selection()
-                        onSelection(option.enabled, option.effort)
-                        menu = false
-                    },
-                    leadingIcon = {
-                        if (optionSelected) {
-                            Icon(Icons.Outlined.Check, "Selected")
-                        } else {
-                            Spacer(Modifier.size(24.dp))
-                        }
-                    },
+            Column(
+                Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text("Thinking effort", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    preview?.label.orEmpty(),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
                 )
+                Text(
+                    preview?.description.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (options.size > 1) {
+                    ArborSlider(
+                        value = sliderValue,
+                        onValueChange = { requested ->
+                            settlingIndex = -1
+                            sliderTarget = requested
+                        },
+                        valueRange = 0f..options.lastIndex.toFloat(),
+                        steps = (options.size - 2).coerceAtLeast(0),
+                        snapOnRelease = true,
+                        onValueChangeFinished = {
+                            val index = sliderTarget.roundToInt().coerceIn(options.indices)
+                            if (abs(sliderTarget - index.toFloat()) < .001f) {
+                                settlingIndex = -1
+                                options[index].let { option ->
+                                    onSelection(option.enabled, option.effort)
+                                }
+                            } else {
+                                settlingIndex = index
+                                sliderTarget = index.toFloat()
+                            }
+                        },
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(options.first().label, style = MaterialTheme.typography.labelSmall)
+                        Text(options.last().label, style = MaterialTheme.typography.labelSmall)
+                    }
+                    Text(
+                        "Release to snap to the nearest supported level",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

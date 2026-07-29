@@ -57,43 +57,28 @@ class BackdropBlurTest {
         assertEquals(68f, calculateMergeDistanceDp(1f), .0001f)
     }
 
-    @Test fun highStrengthBlurUsesPatternFreeNativeGaussianComposite() {
+    @Test fun blurUsesTheDeviceProvenDirectRuntimeShaderChain() {
         val source = blurSource()
-        assertTrue(source.contains("RenderEffect.createBlurEffect"))
-        assertTrue(source.contains("Shader.TileMode.CLAMP"))
-        assertTrue(source.contains("RenderEffect.createBlendModeEffect"))
-        assertTrue(source.contains("BlendMode.SRC_OVER"))
-        assertTrue(source.contains("BlendMode.DST_IN"))
-        assertTrue(source.contains("RenderEffect.createShaderEffect(maskShader)"))
-        assertTrue(source.contains("PANEL_ALPHA_MASK_SHADER"))
-        assertFalse(source.contains("BlendMode.PLUS"))
-        assertFalse(source.contains("BlendMode.DST_OUT"))
-        assertFalse(source.contains("identityOutsidePanels"))
-        assertFalse(source.contains("sampleStep *"))
-        assertFalse(source.contains("uDirection"))
-        assertFalse(source.contains("createRuntimeShaderEffect"))
-        assertFalse(source.contains("createChainEffect"))
+        assertTrue(source.contains("RenderEffect.createRuntimeShaderEffect"))
+        assertTrue(source.contains("RenderEffect.createChainEffect"))
+        assertTrue(source.contains("PANEL_EDGE_BLUR_SHADER"))
+        assertTrue(source.contains("uniform shader content"))
+        assertTrue(source.contains("uDirection"))
+        assertTrue(source.contains("BLUR_AXIS_A_X"))
+        assertTrue(source.contains("sampleStep *"))
+        assertFalse(source.contains("RenderEffect.createBlurEffect"))
+        assertFalse(source.contains("RenderEffect.createShaderEffect"))
+        assertFalse(source.contains("rememberGraphicsLayer"))
     }
 
-    @Test fun scrollingBlurUsesOneCompleteCapturedFrameForNormalAndFilteredReplays() {
+    @Test fun blurFiltersTheContentLayerAndKeepsTintOutsideTheEffect() {
         val source = blurSource()
-        assertTrue(source.contains("rememberGraphicsLayer"))
-        assertTrue(source.contains("sourceLayer.record"))
-        assertTrue(source.contains("filteredLayer.record"))
-        assertTrue(source.contains("this@drawWithContent.drawContent()"))
-        assertTrue(source.contains("filteredLayer.renderEffect = panelEffect"))
-        assertTrue(source.contains("drawLayer(sourceLayer)"))
-        assertTrue(source.contains("drawLayer(filteredLayer)"))
-        assertTrue(source.contains("compositingStrategy = CompositingStrategy.Offscreen"))
-        assertFalse(source.contains("renderEffect = composeEffect"))
-        listOf(
-            "recordKawasePanelChain",
-            "halfBlurA",
-            "halfBlurB",
-            "halfBlurC",
-            "halfBlurD",
-            "resolveKawasePanelPlan",
-        ).forEach { token -> assertFalse("Unexpected later blur token: $token", source.contains(token)) }
+        assertTrue(source.contains("val decorated = measured.drawWithContent"))
+        assertTrue(source.contains("drawPanelOverlay("))
+        assertTrue(source.contains("decorated.graphicsLayer { renderEffect = blurEffect }"))
+        assertFalse(source.contains("sourceLayer.record"))
+        assertFalse(source.contains("filteredLayer.record"))
+        assertFalse(source.contains("drawLayer(sourceLayer)"))
     }
 
     @Test fun firstRangeMorphsRoundedToFlatAndSecondRangeAddsSymmetricFeather() {
@@ -101,9 +86,9 @@ class BackdropBlurTest {
         assertTrue(source.contains("chromeEdgeCornerTransition(normalizedSoftness)"))
         assertTrue(source.contains("if (!softnessActive)"))
         assertTrue(source.contains("val half = mergeDistance * 0.5f"))
-        assertTrue(source.contains("uBounds.y - halfSpan"))
-        assertTrue(source.contains("uBounds.x - halfSpan"))
-        assertTrue(source.contains("uSoftness <= 0.0"))
+        assertTrue(source.contains("uTopBounds.y - halfSpan"))
+        assertTrue(source.contains("uBottomBounds.x - halfSpan"))
+        assertTrue(source.contains("uMerge.x <= 0.5"))
     }
 
     @Test fun overlayOpacityIsAbsoluteAndIndependentFromBlur() {
@@ -117,32 +102,36 @@ class BackdropBlurTest {
         assertFalse(source.contains("PANEL_OPACITY_BOOST"))
     }
 
-    @Test fun colorAdjustmentUsesAStableNativeColorFilterBeforeMasking() {
+    @Test fun blurKernelKeepsTheKnownGoodNineTapWeightsOnThreeAxes() {
         val source = blurSource()
-        assertTrue(source.contains("RenderEffect.createColorFilterEffect"))
-        assertTrue(source.contains("ColorMatrixColorFilter"))
-        assertTrue(source.contains("buildGlassColorMatrix"))
-        assertFalse(source.contains("content.eval(coord)"))
-
-        val identity = glassColorMatrixValues(1f, 1f, 1f)
-        assertEquals(20, identity.size)
-        assertEquals(1f, identity[0], .0001f)
-        assertEquals(1f, identity[6], .0001f)
-        assertEquals(1f, identity[12], .0001f)
-        assertEquals(1f, identity[18], .0001f)
-        listOf(1, 2, 4, 5, 7, 9, 10, 11, 14, 15, 16, 17, 19).forEach { index ->
-            assertEquals("identity[$index]", 0f, identity[index], .0001f)
-        }
+        assertTrue(source.contains("content.eval(coord)"))
+        assertTrue(source.contains("1.476579653"))
+        assertTrue(source.contains("3.445529534"))
+        assertTrue(source.contains("5.414898846"))
+        assertTrue(source.contains("7.384912150"))
+        assertTrue(source.contains("RenderEffect.createChainEffect(second, first)"))
     }
 
     @Test fun blurAndOverlayUseTheSameRootCoordinateBounds() {
         val source = blurSource()
         assertTrue(source.contains("updatePanelBounds"))
-        assertTrue(source.contains("setFloatUniform(\"uBounds\", startPx, endPx)"))
+        assertTrue(source.contains("topStartPx = normalizedTopStart"))
+        assertTrue(source.contains("bottomStartPx = normalizedBottomStart"))
+        assertTrue(source.contains("setFloatUniform(\"uTopBounds\", topStartPx, topEndPx)"))
+        assertTrue(source.contains("setFloatUniform(\"uBottomBounds\", bottomStartPx, bottomEndPx)"))
         assertTrue(source.contains("normalizedTopStart"))
         assertTrue(source.contains("normalizedTopEnd"))
         assertTrue(source.contains("drawPanelOverlay"))
         assertFalse(source.contains("coerceIn(1f, size.height"))
+    }
+
+    @Test fun softTintUsesOneContinuousGradientWithoutASolidGradientJoin() {
+        val source = blurSource()
+        assertTrue(source.contains("colorStops = arrayOf("))
+        assertTrue(source.contains("solidStop to tint"))
+        assertTrue(source.contains("middleStop to tint.copy(alpha = tint.alpha * 0.5f)"))
+        assertFalse(source.contains("if (solidEnd > start) drawRect(tint"))
+        assertFalse(source.contains("if (end > solidStart) drawRect(tint"))
     }
 
 
@@ -156,13 +145,13 @@ class BackdropBlurTest {
         assertTrue(source.contains("color = Color.Red"))
     }
 
-    @Test fun profilerRemainsWiredToTheGaussianRenderer() {
+    @Test fun profilerRemainsWiredToTheDirectRenderer() {
         val source = blurSource()
-        assertTrue(source.contains("recordBlurEffectBuild(panels.size * 4 + 1)"))
+        assertTrue(source.contains("recordBlurEffectBuild(3)"))
         assertTrue(source.contains("recordBlurFrame("))
         assertTrue(source.contains("sourceTraversals = 1"))
-        assertTrue(source.contains("layerReplays = if (panelEffect != null) 2 else 0"))
-        assertTrue(source.contains("captureUpdates = if (panelEffect != null) 1 else 0"))
+        assertTrue(source.contains("layerReplays = if (blurEffect != null) 1 else 0"))
+        assertTrue(source.contains("captureUpdates = 0"))
         assertTrue(source.contains("downsampleLevels = 0"))
         assertTrue(source.contains("upsampleLevels = 0"))
     }
