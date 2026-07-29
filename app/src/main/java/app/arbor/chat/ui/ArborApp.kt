@@ -21,7 +21,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -40,12 +43,40 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
     val pythonRun by viewModel.pythonRun.collectAsState()
     val linuxRun by viewModel.linuxRun.collectAsState()
     val developerSettings by viewModel.developerSettings.collectAsState()
+    val providers by viewModel.providers.collectAsState()
+    val credentialRevision by viewModel.credentialRevision.collectAsState()
+    val providerCatalogReady by viewModel.providerCatalogReady.collectAsState()
+    val configuredProviders = remember(providers, credentialRevision) {
+        viewModel.configuredProviders(providers)
+    }
+    var onboardingDismissedForSession by rememberSaveable { mutableStateOf(false) }
     val performanceMonitor = remember(activity) { ArborPerformanceMonitor(activity) }
     val showPerformanceOverlay = developerSettings.enabled &&
         (developerSettings.performanceOverlayEnabled || developerSettings.diagnosticProfilerEnabled)
     val drawerState = rememberInteractiveDrawerState()
     val snackbar = remember { SnackbarHostState() }
     val openDrawer = remember(drawerState) { { drawerState.open(); Unit } }
+
+    if (!providerCatalogReady) {
+        ArborStartupScreen()
+        return
+    }
+    if (
+        shouldShowProviderOnboarding(
+            catalogReady = providerCatalogReady,
+            hasConfiguredProvider = configuredProviders.isNotEmpty(),
+            dismissedForSession = onboardingDismissedForSession,
+        )
+    ) {
+        OnboardingScreen(
+            onOpenProviderSetup = {
+                onboardingDismissedForSession = true
+                viewModel.openProviderSetup()
+            },
+            onExplore = { onboardingDismissedForSession = true },
+        )
+        return
+    }
 
     DisposableEffect(
         performanceMonitor,
@@ -230,7 +261,8 @@ internal fun performanceOverlayAlignment(position: PerformanceOverlayPosition): 
 }
 
 internal fun backDestination(screen: Screen): Screen? = when (screen) {
-    Screen.SANDBOX, Screen.TERMINAL -> Screen.SETTINGS
+    Screen.SANDBOX -> Screen.SETTINGS
+    Screen.TERMINAL -> Screen.SANDBOX
     Screen.SEARCH, Screen.SETTINGS -> Screen.CHAT
     Screen.CHAT -> null
 }
@@ -238,7 +270,8 @@ internal fun backDestination(screen: Screen): Screen? = when (screen) {
 internal fun screenDepth(screen: Screen): Int = when (screen) {
     Screen.CHAT -> 0
     Screen.SEARCH, Screen.SETTINGS -> 1
-    Screen.SANDBOX, Screen.TERMINAL -> 2
+    Screen.SANDBOX -> 2
+    Screen.TERMINAL -> 3
 }
 
 internal fun drawerSwipeEnabled(screen: Screen): Boolean = screen == Screen.CHAT || screen == Screen.SETTINGS

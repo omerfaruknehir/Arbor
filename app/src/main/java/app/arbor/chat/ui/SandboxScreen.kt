@@ -18,6 +18,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -66,6 +67,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+private enum class WorkspaceSection { PYTHON, LINUX }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SandboxScreen(viewModel: ChatViewModel) {
@@ -92,8 +95,6 @@ fun SandboxScreen(viewModel: ChatViewModel) {
     var environmentBusy by remember { mutableStateOf(false) }
     var removePackage by remember { mutableStateOf<String?>(null) }
     var timeoutSeconds by remember { mutableStateOf("90") }
-    var linuxTimeoutSeconds by remember { mutableStateOf("180") }
-    var ubuntuCommand by remember { mutableStateOf("uname -a\npython3 --version || true\nls -la") }
     var ubuntuPackages by remember { mutableStateOf("") }
     var ubuntuReview by remember { mutableStateOf<PackageReview?>(null) }
     var confirmUbuntuInstall by remember { mutableStateOf(false) }
@@ -102,13 +103,14 @@ fun SandboxScreen(viewModel: ChatViewModel) {
     var ubuntuInstalling by remember { mutableStateOf(false) }
     var showUbuntuPlan by remember { mutableStateOf(false) }
     var showPythonPlan by remember { mutableStateOf(false) }
+    var confirmLinuxRemoval by remember { mutableStateOf(false) }
     val ubuntuStatus by viewModel.ubuntuStatus.collectAsState()
+    var workspaceSection by remember {
+        mutableStateOf(if (ubuntuStatus.installed) WorkspaceSection.PYTHON else WorkspaceSection.LINUX)
+    }
     val pythonRun by viewModel.pythonRun.collectAsState()
-    val linuxRun by viewModel.linuxRun.collectAsState()
     val running = pythonRun?.running == true
-    val ubuntuRunning = linuxRun?.running == true
     val result = pythonRun?.result ?: pythonRun?.error?.let { ExecutionResult(stderr = it) }
-    val ubuntuResult = linuxRun?.result ?: linuxRun?.error?.let { UbuntuExecutionResult(stderr = it) }
     val conversationId by viewModel.selectedConversationId.collectAsState()
     val scope = rememberCoroutineScope()
     var clock by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -140,8 +142,8 @@ fun SandboxScreen(viewModel: ChatViewModel) {
         ubuntuInstalling = false
     }
     LaunchedEffect(conversationId) { refreshEnvironment(); viewModel.refreshUbuntu() }
-    LaunchedEffect(running, ubuntuRunning) {
-        while (running || ubuntuRunning) {
+    LaunchedEffect(running) {
+        while (running) {
             clock = System.currentTimeMillis()
             delay(1_000)
         }
@@ -163,7 +165,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
         contentWindowInsets = WindowInsets(0),
         topBar = {
             CollapsingTranslucentTopBar(
-                title = "Local Code Execution",
+                title = "Tool workspace",
                 scrollBehavior = scrollBehavior,
                 blurState = blurState,
                 blurStrength = chromeBlurStrength,
@@ -191,8 +193,28 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                 ),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("Persistent local workspace", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Text("Python runs as root inside the selected Linux distribution. Each chat has a persistent /workspace and isolated .arbor-venv; Android still confines the whole app outside the PRoot distribution.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Manage local tools", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Python and Linux share this chat's private /workspace. Choose one area below; install and removal controls live only here.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = workspaceSection == WorkspaceSection.PYTHON,
+                    onClick = { workspaceSection = WorkspaceSection.PYTHON },
+                    label = { Text("Python") },
+                    modifier = Modifier.weight(1f),
+                )
+                FilterChip(
+                    selected = workspaceSection == WorkspaceSection.LINUX,
+                    onClick = { workspaceSection = WorkspaceSection.LINUX },
+                    label = { Text("Linux") },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            if (workspaceSection == WorkspaceSection.PYTHON) {
+            Text("Python workspace", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text("Each chat has a persistent environment and isolated .arbor-venv. Android still confines Arbor outside the selected PRoot distribution.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             environment?.let { info ->
                 Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -359,7 +381,8 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                 PythonExecutionCard(output)
             }
 
-            Text("Linux tool layer", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            } else {
+            Text("Linux workspace", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text("Choose a rootless user-space distribution for broader third-party CLIs and libraries. Each distribution keeps its own packages, shares this chat's files at /workspace, and is a compatibility layer—not a security boundary.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 LinuxDistribution.entries.forEach { option ->
@@ -393,41 +416,17 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                             enabled = ubuntuStatus.stage !in setOf(UbuntuStage.DOWNLOADING, UbuntuStage.VERIFYING, UbuntuStage.EXTRACTING, UbuntuStage.CONFIGURING),
                         ) { Text(if (ubuntuStatus.stage == UbuntuStage.ERROR) "Retry setup" else "Install ${ubuntuStatus.distribution.displayName}") }
                         else OutlinedButton(onClick = { scope.launch { viewModel.refreshUbuntu() } }) { Icon(Icons.Outlined.Refresh, null); Text("Refresh", Modifier.padding(start = 6.dp)) }
-                        if (ubuntuStatus.installed) OutlinedButton(onClick = { scope.launch { viewModel.removeUbuntu() } }) { Icon(Icons.Outlined.Delete, null); Text("Remove", Modifier.padding(start = 6.dp)) }
+                        if (ubuntuStatus.installed) OutlinedButton(onClick = { confirmLinuxRemoval = true }) { Icon(Icons.Outlined.Delete, null); Text("Remove", Modifier.padding(start = 6.dp)) }
                     }
                 }
             }
             if (ubuntuStatus.installed) {
-                OutlinedTextField(
-                    linuxTimeoutSeconds,
-                    { linuxTimeoutSeconds = it.filter(Char::isDigit).take(4) },
-                    label = { Text("Shell deadline (seconds)") },
-                    supportingText = { Text("1–3600 seconds. Long commands keep running while you browse; Arbor warns after 10 seconds and lets you stop them.") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    ubuntuCommand, { ubuntuCommand = it },
-                    label = { Text("${ubuntuStatus.distribution.displayName} shell command") },
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                    visualTransformation = rememberCodeVisualTransformation("bash"),
-                    minLines = 4,
-                    modifier = Modifier.fillMaxWidth(),
-                )
                 Button(
-                    onClick = { viewModel.startLinuxRun(ubuntuCommand, linuxTimeoutSeconds.toIntOrNull()?.coerceIn(1, 3_600) ?: 180) },
-                    enabled = ubuntuCommand.isNotBlank() && !ubuntuRunning,
-                ) { Icon(Icons.Outlined.PlayArrow, null); Text(if (ubuntuRunning) "Running…" else "Run in ${ubuntuStatus.distribution.displayName}", Modifier.padding(start = 8.dp)) }
-                if (ubuntuRunning) {
-                    Text(
-                        "Running in the background • ${(clock - (linuxRun?.startedAt ?: clock)) / 1_000}s • safe to leave this screen",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    LiveExecutionCard(linuxRun?.progress ?: app.arbor.chat.sandbox.ExecutionProgress(), "Linux execution")
-                }
-                ubuntuResult?.let { output ->
-                    UbuntuExecutionCard(output)
+                    onClick = { viewModel.screen.value = Screen.TERMINAL },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Outlined.Terminal, null)
+                    Text("Open ${ubuntuStatus.distribution.displayName} terminal", Modifier.padding(start = 8.dp))
                 }
                 Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -520,6 +519,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                     }
                 }
             }
+            }
         }
     }
     if (confirmInstall) AlertDialog(
@@ -576,22 +576,38 @@ fun SandboxScreen(viewModel: ChatViewModel) {
             },
         )
     }
+    if (confirmLinuxRemoval) {
+        AlertDialog(
+            onDismissRequest = { confirmLinuxRemoval = false },
+            title = { Text("Remove ${ubuntuStatus.distribution.displayName}?") },
+            text = {
+                Text("This removes the selected Linux root filesystem and its installed packages. Chat files in /workspace are kept.")
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { confirmLinuxRemoval = false }) { Text("Cancel") }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    confirmLinuxRemoval = false
+                    scope.launch { viewModel.removeUbuntu() }
+                }) { Text("Remove Linux workspace") }
+            },
+        )
+    }
     val longPython = pythonRun?.takeIf { it.running && clock - it.startedAt >= 10_000 && dismissedLongRun != it.startedAt }
-    val longLinux = linuxRun?.takeIf { it.running && clock - it.startedAt >= 10_000 && dismissedLongRun != it.startedAt }
-    if (longPython != null || longLinux != null) {
-        val isPython = longPython != null
-        val startedAt = longPython?.startedAt ?: longLinux!!.startedAt
+    if (longPython != null) {
+        val startedAt = longPython.startedAt
         val seconds = ((clock - startedAt) / 1_000).coerceAtLeast(10)
         AlertDialog(
             onDismissRequest = { dismissedLongRun = startedAt },
-            title = { Text("${if (isPython) "Python" else longLinux!!.distribution.displayName} is still running") },
+            title = { Text("Python is still running") },
             text = {
-                Text("This has taken $seconds seconds. It will keep running while you browse Arbor, up to its hard deadline. You can leave it in the background or stop it now.${if (isPython) " A blocking native Python extension may take a moment to return after Stop." else ""}")
+                Text("This has taken $seconds seconds. It will keep running while you browse Arbor, up to its hard deadline. You can leave it in the background or stop it now. A blocking native Python extension may take a moment to return after Stop.")
             },
             dismissButton = { OutlinedButton(onClick = { dismissedLongRun = startedAt }) { Text("Keep in background") } },
             confirmButton = {
                 Button(onClick = {
-                    if (isPython) viewModel.stopPythonRun() else viewModel.stopLinuxRun()
+                    viewModel.stopPythonRun()
                     dismissedLongRun = startedAt
                 }) { Text("Stop") }
             },

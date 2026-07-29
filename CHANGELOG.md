@@ -1,3 +1,18 @@
+## 0.20.4
+
+- Replace the misleading hard-coded `SDK 26–35` About row with separate minimum and target Android rows derived from the installed app metadata.
+- Show Android 8.0 / API 26 as an open-ended minimum instead of implying that newer Android releases are unsupported.
+- Update Arbor's compile and target SDK from Android 15 / API 35 to Android 16 / API 36, while retaining Android 8.0 / API 26 as the minimum.
+- Keep Android 17 / API 37 as a deliberate future compatibility migration because it changes local-network permissions and native dynamic-code loading behavior relevant to Arbor.
+- Add a two-step first-run welcome and provider setup flow that reappears when the app has no usable provider, with a session-only option to explore first.
+- Replace the generic empty chat with an actionable provider setup state and disable message controls until a usable provider is connected.
+- Warn inside the per-chat Tools menu when Linux is not installed and link directly to its workspace manager.
+- Consolidate Python and Linux management into a tabbed Tool workspace, remove distribution install/remove controls from the terminal, and remove the duplicate shell runner and duplicated new-chat tool toggles.
+- Make the Linux terminal execution-only, with workspace management as its stable parent in Back navigation.
+- Rewrite the README in clearer product language and document the new onboarding, Local tools path, Android 16 target, and release install flow.
+- Add the Apache License 2.0 with its explicit patent grant and attribution requirements.
+- Preserve package identity, debug signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
+
 ## 0.20.3
 
 - Replace the high-radius bilinear-paired backdrop kernel with 15 evenly spaced direct Gaussian samples per axis, removing the visible bands and lattice pattern that appeared near maximum blur strength.

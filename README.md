@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  A fully native, local-first Android client for private AI chat and agent work.
+  A native Android workspace for private AI chat, research, files, and local tools.
 </p>
 
 <p align="center">
@@ -19,31 +19,32 @@
   <a href="https://github.com/omerfaruknehir/Arbor/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/omerfaruknehir/Arbor?display_name=tag&sort=semver"></a>
   <img alt="Android 8+" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white">
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white">
+  <a href="LICENSE"><img alt="Apache License 2.0" src="https://img.shields.io/badge/License-Apache%202.0-blue"></a>
 </p>
 
-Arbor connects directly to the model providers you configure. There is no WebView, hosted Arbor account, application backend, telemetry, or advertising. API keys are protected by Android Keystore-backed encryption, chats live in a local SQLCipher database, and imported files remain in the app's private storage.
+Arbor is a bring-your-own-provider AI client. It connects your phone directly to the services you choose—without a WebView, hosted Arbor account, application backend, telemetry, or advertising. API keys are protected with Android Keystore-backed encryption, chats live in a local SQLCipher database, and imported files remain in app-private storage.
 
-Current version: **0.20.3**
+Current version: **0.20.4**
 
-## Why Arbor
+## What makes Arbor different
 
-### Native, private, and yours
+### Android-native and private by design
 
-- Kotlin, Jetpack Compose, and Material 3 from edge to edge—no wrapped website.
-- Bring your own keys for OpenAI-compatible endpoints, Anthropic, Gemini, DeepSeek, OpenRouter, xAI, local servers, and custom providers.
-- Encrypted local credentials and chat storage, with Android backup disabled.
-- No Arbor server between your device and the provider you choose.
+- Built with Kotlin, Jetpack Compose, and Material 3—never a wrapped website.
+- Connect ChatGPT, OpenAI-compatible APIs, Anthropic, Gemini, DeepSeek, OpenRouter, xAI, or a local model server.
+- Keep credentials, conversations, workspaces, and attachments on your device.
+- Talk directly to the selected provider; Arbor does not relay requests through its own server.
 
-### A serious chat client
+### A capable everyday chat client
 
-- Concurrent streaming chats with stop, queue, steer, retry, branch history, unread state, pinning, archiving, projects, and full-text search.
-- Per-chat Thinking, Search, and Tools controls beside the composer, plus configurable context, output, system prompts, and automation models.
+- Run concurrent streaming chats with stop, queue, steer, retry, branches, unread state, pinning, archiving, projects, and full-text search.
+- Adjust Thinking, Search, and Tools per chat, while keeping context, output, custom instructions, and automation defaults in Settings.
 - Native Markdown, tables, LaTeX, syntax-highlighted code, diagrams, charts, image/PDF/text previews, attachments, OCR, token counts, and cost totals.
 - Long-chat paging, context compression, automatic titles, response usage accounting, and provider-specific token estimation.
 
-### Agent work without hiding the work
+### Agent work you can inspect
 
-- Durable Working timelines for Python, Linux, search, page reading, package installation, file changes, and reruns.
+- Follow a durable Working timeline for Python, Linux, search, page reading, package installation, file changes, and reruns.
 - Embedded Python 3.12 with a persistent private workspace per conversation.
 - Optional Ubuntu, Debian, or Alpine PRoot environments for broader command-line tooling.
 - Explicit package and tool policies: ask, trusted-list approval, approval-model review, or user-selected automation.
@@ -51,12 +52,13 @@ Current version: **0.20.3**
 
 ## Install
 
-1. Download `Arbor-0.20.3-debug.apk` from the [latest GitHub Release](https://github.com/omerfaruknehir/Arbor/releases/latest).
+1. Download `Arbor-0.20.4-debug.apk` from the [latest GitHub Release](https://github.com/omerfaruknehir/Arbor/releases/latest).
 2. Allow installation from your browser or file manager when Android asks.
-3. Open Arbor → **Settings** → **Providers & models**.
-4. Add a provider, connect and fetch its models, then select one in a chat.
+3. Open Arbor and follow the welcome flow.
+4. Connect a ChatGPT account, API provider, or local model server.
+5. Start a chat. Optional Python and Linux tools can be prepared later from **Settings → Local tools**.
 
-The downloadable APK uses package ID `app.arbor.chat.debug` and Arbor's public, reproducible debug signer. It is suitable for direct testing and can update earlier GitHub/local debug builds signed with the same key. It is not Play-production-signed.
+The downloadable APK uses package ID `app.arbor.chat.debug` and Arbor's public, reproducible debug signer. It is intended for direct testing and can update earlier GitHub or local debug builds signed with the same key. It is not signed for production store distribution.
 
 Local OpenAI-compatible servers default to `http://127.0.0.1:11434/v1`. On a physical phone, `127.0.0.1` means the phone itself. Arbor permits cleartext HTTP only for loopback and the Android emulator host alias; remote machines require HTTPS.
 
@@ -65,7 +67,7 @@ Local OpenAI-compatible servers default to `http://127.0.0.1:11434/v1`. On a phy
 Requirements:
 
 - JDK 17
-- Android SDK 35 and Build Tools 35.0.0
+- Android SDK 36 and Build Tools 36.0.0
 - Linux, macOS, or Windows with Android Studio support
 
 ```bash
@@ -78,7 +80,7 @@ The APK is written to `app/build/outputs/apk/debug/app-debug.apk`. See [BUILDING
 
 Every push and pull request runs unit tests, Android lint, APK/AAB compilation, and an Android 35 emulator smoke test through [Android CI](.github/workflows/android.yml).
 
-Pushing a version tag such as `v0.20.3` runs the [release workflow](.github/workflows/release.yml). It checks that the tag matches the app version, repeats verification, builds the reproducibly signed debug APK, AAB, and instrumentation APK, generates SHA-256 checksums, uploads the build set, and creates the GitHub Release automatically.
+Pushing a version tag such as `v0.20.4` runs the [release workflow](.github/workflows/release.yml). It checks that the tag matches the app version, repeats verification, builds the reproducibly signed debug APK, AAB, and instrumentation APK, generates SHA-256 checksums, uploads the build set, and creates the GitHub Release automatically.
 
 Production distribution deliberately requires your own protected signing key. No production private key is stored in this repository.
 
@@ -95,6 +97,7 @@ Production distribution deliberately requires your own protected signing key. No
 | Linux tools | Optional per-chat PRoot distributions |
 | Generated UI | Native Compose / audited `RemoteViews` primitives |
 | Minimum Android | Android 8.0 / API 26 |
+| Target Android | Android 16 / API 36 |
 | Packaged ABIs | `arm64-v8a`, `x86_64` |
 
 ## Security boundaries
@@ -110,10 +113,10 @@ For dependency sources, bundled native component notices, hashes, and build reci
 Arbor is created by [@omerfaruknehir](https://github.com/omerfaruknehir).
 
 - [Changelog](CHANGELOG.md)
-- [Latest release notes](docs/releases/RELEASE_NOTES_0.20.3.md)
+- [Latest release notes](docs/releases/RELEASE_NOTES_0.20.4.md)
 - [Source repository](https://github.com/omerfaruknehir/Arbor)
 - [Issue tracker](https://github.com/omerfaruknehir/Arbor/issues)
 
 ## License
 
-No license grant is implied by this repository. Add an explicit project license before redistributing Arbor. Bundled third-party components retain their own licenses as documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Arbor is licensed under the [Apache License 2.0](LICENSE). Bundled third-party components retain their own licenses as documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -55,6 +55,7 @@ import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Description
@@ -73,6 +74,7 @@ import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
@@ -120,6 +122,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
@@ -465,6 +468,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val allProviders by viewModel.providers.collectAsStateWithLifecycle()
     val credentialRevision by viewModel.credentialRevision.collectAsStateWithLifecycle()
     val usableProviders = remember(allProviders, credentialRevision) { viewModel.configuredProviders(allProviders) }
+    val linuxStatus by viewModel.ubuntuStatus.collectAsStateWithLifecycle()
     val recoverable by viewModel.recoverable.collectAsStateWithLifecycle()
     val pending by viewModel.pending.collectAsStateWithLifecycle()
     val generating by viewModel.isGenerating.collectAsStateWithLifecycle()
@@ -938,7 +942,10 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 modelSelector = {
                     Box {
                         Surface(
-                            onClick = { modelMenu = true },
+                            onClick = {
+                                if (usableProviders.isEmpty()) viewModel.openProviderSetup()
+                                else modelMenu = true
+                            },
                             color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .78f),
                             shape = CircleShape,
                         ) {
@@ -946,6 +953,10 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                 Icon(Icons.Outlined.Psychology, null, Modifier.size(14.dp))
                                 Text(
                                     buildString {
+                                        if (usableProviders.isEmpty()) {
+                                            append("Set up provider")
+                                            return@buildString
+                                        }
                                         val provider = usableProviders.firstOrNull { it.id == conversation?.selectedProviderId }
                                         if (provider != null && usableProviders.size > 1) append(provider.displayName).append(" · ")
                                         append(models.firstOrNull { it.modelId == conversation?.selectedModelId }?.displayName ?: conversation?.selectedModelId ?: "Choose model")
@@ -978,7 +989,11 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     it.providerId == conversation?.selectedProviderId && it.modelId == conversation?.selectedModelId
                 },
                 generating = generating,
+                providerConfigured = usableProviders.isNotEmpty(),
+                linuxInstalled = linuxStatus.installed,
+                linuxDistributionName = linuxStatus.distribution.displayName,
                 blurState = blurState,
+                onOpenLinuxSetup = { viewModel.screen.value = Screen.SANDBOX },
                 onImmediateSend = {
                     manualFollowHold = false
                     followMode = ChatFollowMode.FOLLOWING
@@ -998,6 +1013,8 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             Box(Modifier.fillMaxSize().arborBackdropSource(blurState)) {
                 if (paging.itemCount == 0 && recoverable.isEmpty()) {
                     EmptyConversation(
+                        providerConfigured = usableProviders.isNotEmpty(),
+                        onSetUpProvider = viewModel::openProviderSetup,
                         modifier = Modifier.padding(
                             top = padding.calculateTopPadding(),
                             bottom = padding.calculateBottomPadding(),
@@ -1146,15 +1163,47 @@ internal fun normalModelPickerModels(models: List<ModelEntity>): List<ModelEntit
     models.sortedBy { it.displayName.lowercase() }
 
 @Composable
-private fun EmptyConversation(modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxSize().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Text("What are we working on?", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.size(12.dp))
+private fun EmptyConversation(
+    providerConfigured: Boolean,
+    onSetUpProvider: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier.fillMaxSize().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            if (providerConfigured) Icons.Outlined.Psychology else Icons.Outlined.Cloud,
+            null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(38.dp),
+        )
+        Spacer(Modifier.size(14.dp))
         Text(
-            "Ask a question, attach a file, or enable Search and Tools beside the message box.",
+            if (providerConfigured) "What are we working on?" else "Connect a model provider",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.size(10.dp))
+        Text(
+            if (providerConfigured) {
+                "Ask a question, attach a file, or choose Search and Tools beside the message box."
+            } else {
+                "Arbor cannot send messages until ChatGPT, an API provider, or a local model server is connected."
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
+        if (!providerConfigured) {
+            Spacer(Modifier.size(18.dp))
+            Button(onClick = onSetUpProvider) {
+                Text("Set up a provider")
+            }
+        }
     }
 }
 
@@ -2330,7 +2379,11 @@ private fun Composer(
     provider: ProviderEntity?,
     model: ModelEntity?,
     generating: Boolean,
+    providerConfigured: Boolean,
+    linuxInstalled: Boolean,
+    linuxDistributionName: String,
     blurState: ArborBackdropBlurState,
+    onOpenLinuxSetup: () -> Unit,
     onImmediateSend: () -> Unit,
 ) {
     val conversation by viewModel.conversation.collectAsStateWithLifecycle()
@@ -2445,7 +2498,7 @@ private fun Composer(
                     }
                 }
             }
-            conversation?.let { current ->
+            if (providerConfigured) conversation?.let { current ->
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2493,6 +2546,9 @@ private fun Composer(
                         ToolComposerChip(
                             pythonEnabled = current.agentPythonEnabled,
                             linuxEnabled = current.agentUbuntuEnabled,
+                            linuxInstalled = linuxInstalled,
+                            linuxDistributionName = linuxDistributionName,
+                            onOpenLinuxSetup = onOpenLinuxSetup,
                             onPythonEnabled = { enabled ->
                                 viewModel.updateConversation { it.copy(agentPythonEnabled = enabled) }
                             },
@@ -2508,15 +2564,17 @@ private fun Composer(
                 IconButton(onClick = {
                     haptics.tap()
                     plusMenu = true
-                }, enabled = !importing) {
+                }, enabled = !importing && providerConfigured) {
                     Icon(Icons.Outlined.Add, "Attach files, images, or a photo")
                 }
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { viewModel.draft.value = it },
+                    enabled = providerConfigured,
                     placeholder = {
                         Text(
-                            if (generating) "Steer or queue…"
+                            if (!providerConfigured) "Set up a provider to start"
+                            else if (generating) "Steer or queue…"
                             else if (conversation?.deepResearchEnabled == true) "Research request…"
                             else "Message Arbor…",
                             maxLines = 1,
@@ -2538,12 +2596,12 @@ private fun Composer(
                 }
                 Surface(
                     shape = CircleShape,
-                    color = if (hasPayload && !importing) MaterialTheme.colorScheme.primary
+                    color = if (providerConfigured && hasPayload && !importing) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.surfaceContainerHighest,
-                    contentColor = if (hasPayload && !importing) MaterialTheme.colorScheme.onPrimary
+                    contentColor = if (providerConfigured && hasPayload && !importing) MaterialTheme.colorScheme.onPrimary
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(48.dp).combinedClickable(
-                        enabled = hasPayload && !importing,
+                        enabled = providerConfigured && hasPayload && !importing,
                         onClick = {
                             haptics.confirm()
                             onImmediateSend()
@@ -2960,16 +3018,20 @@ private fun SearchComposerChip(
 private fun ToolComposerChip(
     pythonEnabled: Boolean,
     linuxEnabled: Boolean,
+    linuxInstalled: Boolean,
+    linuxDistributionName: String,
+    onOpenLinuxSetup: () -> Unit,
     onPythonEnabled: (Boolean) -> Unit,
     onLinuxEnabled: (Boolean) -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     val haptics = rememberArborHaptics()
-    val enabledCount = listOf(pythonEnabled, linuxEnabled).count { it }
+    val effectiveLinuxEnabled = linuxEnabled && linuxInstalled
+    val enabledCount = listOf(pythonEnabled, effectiveLinuxEnabled).count { it }
     val label = when {
-        pythonEnabled && linuxEnabled -> "Tools · 2"
+        pythonEnabled && effectiveLinuxEnabled -> "Tools · 2"
         pythonEnabled -> "Tools · Code"
-        linuxEnabled -> "Tools · Linux"
+        effectiveLinuxEnabled -> "Tools · Linux"
         else -> "Tools off"
     }
     Box {
@@ -3015,10 +3077,46 @@ private fun ToolComposerChip(
             ComposerToggleRow(
                 icon = Icons.Outlined.Terminal,
                 title = "Linux",
-                subtitle = "Use the selected Linux tooling workspace",
-                checked = linuxEnabled,
+                subtitle = if (linuxInstalled) {
+                    "Use the $linuxDistributionName tooling workspace"
+                } else {
+                    "Install a Linux workspace before enabling"
+                },
+                checked = effectiveLinuxEnabled,
+                enabled = linuxInstalled,
                 onCheckedChange = onLinuxEnabled,
             )
+            if (!linuxInstalled) {
+                Surface(
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                ) {
+                    Column(
+                        Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Outlined.WarningAmber, null, Modifier.size(20.dp))
+                            Text("Linux workspace not installed", fontWeight = FontWeight.SemiBold)
+                        }
+                        Text(
+                            "Install Ubuntu, Debian, or Alpine before Arbor can use Linux tools.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        TextButton(onClick = {
+                            menu = false
+                            onOpenLinuxSetup()
+                        }) {
+                            Text("Manage Linux workspace")
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -3053,6 +3151,7 @@ private fun ComposerToggleRow(
     title: String,
     subtitle: String,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     val haptics = rememberArborHaptics()
@@ -3068,13 +3167,14 @@ private fun ComposerToggleRow(
         trailingContent = {
             Switch(
                 checked = checked,
+                enabled = enabled,
                 onCheckedChange = { next ->
                     haptics.toggle(next)
                     onCheckedChange(next)
                 },
             )
         },
-        modifier = Modifier.combinedClickable(onClick = toggle, onLongClick = {
+        modifier = Modifier.combinedClickable(enabled = enabled, onClick = toggle, onLongClick = {
             haptics.longPress()
             onCheckedChange(!checked)
         }),

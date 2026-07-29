@@ -1,6 +1,6 @@
 # Arbor third-party runtime notices
 
-Arbor 0.11.0 embeds the Android launcher components below so a target-SDK 35 app can start a selected user-space Linux tooling environment without executing downloaded Android code. Linux root filesystems are **not** bundled in the APK: Arbor downloads the selected Ubuntu 26.04 archive from Canonical, Debian 13 PRoot-Distro artifact from Termux, or Alpine 3.24.1 minirootfs from Alpine Linux, and verifies a pinned published SHA-256 before extraction.
+Arbor embeds the Android launcher components below so its target-SDK 36 app can start a selected user-space Linux tooling environment without executing downloaded Android code. Linux root filesystems are **not** bundled in the APK: Arbor downloads the selected Ubuntu 26.04 archive from Canonical, Debian 13 PRoot-Distro artifact from Termux, or Alpine 3.24.1 minirootfs from Alpine Linux, and verifies a pinned published SHA-256 before extraction.
 
 ## PRoot (Termux fork)
 
@@ -46,4 +46,3 @@ Arbor 0.19.0 includes a clean-room Kotlin/Android implementation interoperable w
 The upstream project is Copyright 2026 Evan Zhou and OpenAI OAuth contributors and is
 licensed under the Apache License, Version 2.0. No JavaScript package or browser extension
 is bundled. See: https://github.com/EvanZhouDev/openai-oauth
-

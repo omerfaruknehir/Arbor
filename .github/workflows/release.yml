@@ -29,6 +29,9 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Install Android 16 SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
       - name: Match tag to app version
         shell: bash
         run: |

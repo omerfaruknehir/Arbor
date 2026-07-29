@@ -14,14 +14,15 @@ val releaseKeyPassword = providers.gradleProperty("ARBOR_KEY_PASSWORD").orNull ?
 
 android {
     namespace = "app.arbor.chat"
-    compileSdk = 35
+    compileSdk = 36
+    buildToolsVersion = "36.0.0"
 
     defaultConfig {
         applicationId = "app.arbor.chat"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 129
-        versionName = "0.20.3"
+        targetSdk = 36
+        versionCode = 130
+        versionName = "0.20.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

@@ -11,7 +11,7 @@ class NavigationBackTest {
         assertEquals(Screen.CHAT, backDestination(Screen.SEARCH))
         assertEquals(Screen.CHAT, backDestination(Screen.SETTINGS))
         assertEquals(Screen.SETTINGS, backDestination(Screen.SANDBOX))
-        assertEquals(Screen.SETTINGS, backDestination(Screen.TERMINAL))
+        assertEquals(Screen.SANDBOX, backDestination(Screen.TERMINAL))
     }
     @Test fun chatIsTheActivityRoot() { assertNull(backDestination(Screen.CHAT)) }
 
@@ -33,7 +33,7 @@ class NavigationBackTest {
         assertEquals(1, screenDepth(Screen.SEARCH))
         assertEquals(1, screenDepth(Screen.SETTINGS))
         assertEquals(2, screenDepth(Screen.SANDBOX))
-        assertEquals(2, screenDepth(Screen.TERMINAL))
+        assertEquals(3, screenDepth(Screen.TERMINAL))
     }
     @Test fun transitionStateDoesNotInvalidateKeptAlivePages() {
         val navigation = java.io.File("src/main/java/app/arbor/chat/ui/PredictiveNavigation.kt").readText()

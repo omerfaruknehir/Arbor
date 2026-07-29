@@ -231,6 +231,16 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
 
     val providers = container.repository.observeProviders()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    private val _providerCatalogReady = MutableStateFlow(false)
+    val providerCatalogReady: StateFlow<Boolean> = _providerCatalogReady
+    val providerSetupRequested = savedStateHandle.getMutableStateFlow("provider_setup_requested", false)
+
+    init {
+        viewModelScope.launch {
+            container.repository.observeProviders().first { it.isNotEmpty() }
+            _providerCatalogReady.value = true
+        }
+    }
 
     val models = conversation.flatMapLatest { current ->
         current?.selectedProviderId?.let(container.repository::observeModels) ?: flowOf(emptyList())
@@ -638,6 +648,15 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
                 ProviderCredentialPolicy.isUsable(provider, container.secureStore.apiKey(provider.id))
             }
         }
+
+    fun openProviderSetup() {
+        providerSetupRequested.value = true
+        screen.value = Screen.SETTINGS
+    }
+
+    fun consumeProviderSetupRequest() {
+        providerSetupRequested.value = false
+    }
 
     suspend fun discoverModels(kind: ProviderKind, baseUrl: String, apiKey: String, headers: String) =
         container.modelDiscovery.discover(kind, baseUrl, apiKey, headers)

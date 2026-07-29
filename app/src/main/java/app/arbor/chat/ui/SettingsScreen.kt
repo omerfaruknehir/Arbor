@@ -89,6 +89,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -145,7 +146,7 @@ private enum class SettingsRoute(val title: String) {
     AUTOMATION("Automation"),
     APPEARANCE("Appearance"),
     PRIVACY("Privacy & safety"),
-    LOCAL_EXECUTION("Local Code Execution"),
+    LOCAL_EXECUTION("Local tools"),
     DEVELOPER("Developer settings"),
     SYSTEM_PROMPTS("Custom instructions"),
     PROVIDERS("Providers & models"),
@@ -171,10 +172,18 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val renderSafeMode by viewModel.renderSafeMode.collectAsState()
     val generatedRepairMaxAttempts by viewModel.generatedRepairMaxAttempts.collectAsState()
     val developerSettings by viewModel.developerSettings.collectAsState()
+    val providerSetupRequested by viewModel.providerSetupRequested.collectAsState()
     val registeredProviders = remember(providers, credentialRevision) { viewModel.registeredProviders(providers) }
     val configuredProviders = remember(providers, credentialRevision) { viewModel.configuredProviders(providers) }
     var route by rememberSaveable { mutableStateOf(SettingsRoute.HOME) }
     val haptics = rememberArborHaptics()
+
+    LaunchedEffect(providerSetupRequested) {
+        if (providerSetupRequested) {
+            route = SettingsRoute.PROVIDERS
+            viewModel.consumeProviderSetupRequest()
+        }
+    }
 
     PredictiveNavigationHost(
         targetState = route,
@@ -310,8 +319,8 @@ private fun SettingsHome(providerCount: Int, onOpen: (SettingsRoute) -> Unit) = 
         )
         SettingsDestination(
             icon = Icons.Outlined.Code,
-            title = "Local Code Execution",
-            subtitle = "Python, Linux tooling, packages, and workspace",
+            title = "Local tools",
+            subtitle = "Defaults, workspace, and package approvals",
             onClick = { onOpen(SettingsRoute.LOCAL_EXECUTION) },
         )
     }
@@ -394,8 +403,6 @@ private fun NewChatDefaultsSettings(
         thinkingEnabled = defaults.thinkingEnabled,
         thinkingEffort = defaults.thinkingEffort,
         webEnabled = defaults.webSearchEnabled,
-        pythonEnabled = defaults.agentPythonEnabled,
-        linuxEnabled = defaults.agentUbuntuEnabled,
         deepResearchEnabled = defaults.deepResearchEnabled,
         hybridTokenCountingEnabled = defaults.hybridTokenCountingEnabled,
         contextPairs = defaults.contextPairs,
@@ -408,8 +415,6 @@ private fun NewChatDefaultsSettings(
         onThinkingEnabled = { enabled -> viewModel.updateNewChatDefaults { it.copy(thinkingEnabled = enabled) } },
         onThinkingEffort = { effort -> viewModel.updateNewChatDefaults { it.copy(thinkingEffort = effort) } },
         onWeb = { enabled -> viewModel.updateNewChatDefaults { it.copy(webSearchEnabled = enabled, deepResearchEnabled = it.deepResearchEnabled && enabled) } },
-        onPython = { enabled -> viewModel.updateNewChatDefaults { it.copy(agentPythonEnabled = enabled) } },
-        onLinux = { enabled -> viewModel.updateNewChatDefaults { it.copy(agentUbuntuEnabled = enabled) } },
         onDeepResearch = { enabled -> viewModel.updateNewChatDefaults { it.copy(deepResearchEnabled = enabled, webSearchEnabled = it.webSearchEnabled || enabled) } },
         onHybridTokenCounting = { enabled -> viewModel.updateNewChatDefaults { it.copy(hybridTokenCountingEnabled = enabled) } },
         onContextPairs = { value -> viewModel.updateNewChatDefaults { it.copy(contextPairs = value) } },
@@ -722,8 +727,8 @@ private fun LocalCodeExecutionSettingsPage(
     viewModel: ChatViewModel,
 ) = SettingsPage {
     SectionTitle(
-        "Local execution defaults",
-        "These settings apply to newly created chats. Existing chats keep their own tool permissions.",
+        "New-chat tool defaults",
+        "Set the starting tool state once here. Existing chats keep their own per-chat choices.",
     )
     SettingsSwitch(
         "Enable Local Code Execution for new chats",
@@ -736,7 +741,7 @@ private fun LocalCodeExecutionSettingsPage(
         { enabled -> viewModel.updateNewChatDefaults { it.copy(agentUbuntuEnabled = enabled) } },
     )
     Text(
-        "Local Python runs from a per-chat virtual environment inside the selected Linux distribution. Arbor and the AI execute as root (uid 0) inside that PRoot distribution; Android still confines the app outside it.",
+        "Local Python and Linux share each chat's private workspace. Linux setup and packages live in one manager; the terminal opens from there.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -745,14 +750,7 @@ private fun LocalCodeExecutionSettingsPage(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Icon(Icons.Outlined.Code, null)
-        Text("Open package manager & Python workspace", Modifier.padding(start = 8.dp))
-    }
-    OutlinedButton(
-        onClick = { viewModel.screen.value = Screen.TERMINAL },
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Icon(Icons.Outlined.Tune, null)
-        Text("Open advanced root terminal", Modifier.padding(start = 8.dp))
+        Text("Manage tool workspace", Modifier.padding(start = 8.dp))
     }
     SectionTitle(
         "Package installation",
@@ -959,6 +957,7 @@ private fun AboutSettingsPage(
     onOpenDeveloper: () -> Unit,
 ) = SettingsPage {
     val appName = stringResource(R.string.app_name)
+    val applicationInfo = LocalContext.current.applicationInfo
     val uriHandler = LocalUriHandler.current
     SectionTitle("$appName ${BuildConfig.VERSION_NAME}", "Native Android BYOK model workspace.")
 
@@ -984,6 +983,13 @@ private fun AboutSettingsPage(
         )
         HorizontalDivider()
         SettingsDestination(
+            icon = Icons.Outlined.PrivacyTip,
+            title = "Open-source license",
+            subtitle = "Apache License 2.0",
+            onClick = { uriHandler.openUri("https://github.com/omerfaruknehir/Arbor/blob/main/LICENSE") },
+        )
+        HorizontalDivider()
+        SettingsDestination(
             icon = Icons.Outlined.Info,
             title = "Report an issue",
             subtitle = "Bugs, regressions, and feature requests",
@@ -995,7 +1001,14 @@ private fun AboutSettingsPage(
         AboutInfoRow("Version", BuildConfig.VERSION_NAME)
         AboutInfoRow("Build", "${BuildConfig.VERSION_CODE} · ${BuildConfig.BUILD_TYPE}")
         AboutInfoRow("Package", BuildConfig.APPLICATION_ID)
-        AboutInfoRow("Android support", "SDK 26–35")
+        AboutInfoRow(
+            "Minimum Android",
+            androidVersionSummary(applicationInfo.minSdkVersion, isMinimum = true),
+        )
+        AboutInfoRow(
+            "Target Android",
+            androidVersionSummary(applicationInfo.targetSdkVersion),
+        )
         AboutInfoRow("Running on", "Android ${Build.VERSION.RELEASE} · API ${Build.VERSION.SDK_INT}")
         AboutInfoRow("Device ABI", Build.SUPPORTED_ABIS.firstOrNull() ?: "Unknown")
     }
@@ -1082,8 +1095,6 @@ private fun ChatOptionsEditor(
     thinkingEnabled: Boolean,
     thinkingEffort: ThinkingEffort,
     webEnabled: Boolean,
-    pythonEnabled: Boolean,
-    linuxEnabled: Boolean,
     deepResearchEnabled: Boolean,
     hybridTokenCountingEnabled: Boolean,
     contextPairs: Int,
@@ -1096,8 +1107,6 @@ private fun ChatOptionsEditor(
     onThinkingEnabled: (Boolean) -> Unit,
     onThinkingEffort: (ThinkingEffort) -> Unit,
     onWeb: (Boolean) -> Unit,
-    onPython: (Boolean) -> Unit,
-    onLinux: (Boolean) -> Unit,
     onDeepResearch: (Boolean) -> Unit,
     onHybridTokenCounting: (Boolean) -> Unit,
     onContextPairs: (Int) -> Unit,
@@ -1126,8 +1135,6 @@ private fun ChatOptionsEditor(
     SettingsSwitch("Web search", webEnabled, onWeb)
     SettingsSwitch("Deep Research", deepResearchEnabled, onDeepResearch, enabled = webEnabled || !deepResearchEnabled)
     Text("Deep Research plans, searches iteratively, verifies sources, and produces a cited report. Enabling it also enables web search.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    SettingsSwitch("Local Code Execution", pythonEnabled, onPython)
-    SettingsSwitch("Linux", linuxEnabled, onLinux)
 
     HorizontalDivider()
     SectionTitle("Token counting", "Optional hybrid preflight counting. Provider count endpoints are preferred; local model-family estimates and the generic estimator are fallbacks.")

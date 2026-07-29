@@ -17,10 +17,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -46,7 +46,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import app.arbor.chat.R
-import app.arbor.chat.sandbox.LinuxDistribution
 import app.arbor.chat.sandbox.UbuntuExecutionResult
 import app.arbor.chat.sandbox.UbuntuStage
 import kotlinx.coroutines.launch
@@ -65,7 +64,6 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel) {
     val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsState()
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsState()
     val status by viewModel.ubuntuStatus.collectAsState()
-    val selectedDistribution by viewModel.linuxDistribution.collectAsState()
     val scope = rememberCoroutineScope()
     val entries = remember { mutableStateListOf<TerminalEntry>() }
     var input by remember { mutableStateOf("") }
@@ -103,11 +101,14 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel) {
                 overlayOpacity = chromeOverlayOpacity,
                 blurArea = STANDARD_TOP_PANEL_HEIGHT_DP.dp,
                 navigationIcon = {
-                    IconButton(onClick = { viewModel.screen.value = Screen.SETTINGS }) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to Settings")
+                    IconButton(onClick = { viewModel.screen.value = Screen.SANDBOX }) {
+                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to Tool workspace")
                     }
                 },
                 actions = {
+                    IconButton(onClick = { viewModel.screen.value = Screen.SANDBOX }) {
+                        Icon(Icons.Outlined.Settings, "Manage Linux workspace")
+                    }
                     IconButton(onClick = { entries.clear() }) { Icon(Icons.Outlined.DeleteSweep, "Clear terminal") }
                 },
             )
@@ -125,15 +126,6 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel) {
                 ),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LinuxDistribution.entries.forEach { distribution ->
-                    FilterChip(
-                        selected = selectedDistribution == distribution,
-                        onClick = { if (!running) viewModel.selectLinuxDistribution(distribution) },
-                        label = { Text(distribution.displayName) },
-                    )
-                }
-            }
             Text(
                 when (status.stage) {
                     UbuntuStage.READY -> "Root shell • ${status.distribution.displayName} ${status.release} • /workspace"
@@ -143,12 +135,28 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel) {
                 color = if (status.installed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
             )
             if (!status.installed) {
-                Button(onClick = { scope.launch { viewModel.installUbuntu() } }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Install ${status.distribution.displayName}")
-                }
-            } else {
-                OutlinedButton(onClick = { scope.launch { viewModel.removeUbuntu() } }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Remove ${status.distribution.displayName}")
+                androidx.compose.material3.Surface(
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Outlined.WarningAmber, null)
+                            Text("Linux workspace not ready", fontWeight = FontWeight.SemiBold)
+                        }
+                        Text(
+                            "Distribution selection, installation, packages, and removal are managed in one place.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Button(onClick = { viewModel.screen.value = Screen.SANDBOX }) {
+                            Text("Manage Linux workspace")
+                        }
+                    }
                 }
             }
             LazyColumn(
@@ -169,7 +177,7 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel) {
                 items(entries) { entry ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            "root@arbor-${selectedDistribution.id}:/workspace#",
+                            "root@arbor-${status.distribution.id}:/workspace#",
                             color = Color(0xFF91A391),
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.labelSmall,
@@ -198,7 +206,7 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel) {
                 onValueChange = { input = it },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = status.installed && !running,
-                label = { Text("root@arbor-${selectedDistribution.id}:/workspace#") },
+                label = { Text("root@arbor-${status.distribution.id}:/workspace#") },
                 textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                 visualTransformation = rememberCodeVisualTransformation("bash"),
                 trailingIcon = { IconButton(onClick = ::submit, enabled = input.isNotBlank() && status.installed && !running) { Icon(Icons.Outlined.PlayArrow, "Run") } },
