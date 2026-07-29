@@ -6,7 +6,7 @@ Arbor embeds the Android launcher components below so its target-SDK 36 app can 
 
 - Version: `5.1.107.84`
 - Project: <https://github.com/termux/proot>
-- License: GPL-2.0
+- License: GPL-2.0-or-later
 - Packaged binaries: Termux main repository packages for `aarch64` and `x86_64`
 - Package SHA-256: `59ace3b02894a9b87348eb5ccf246ed52ec64465021839422a151d7128acfe97` (aarch64), `98f30502dcc3c455ed5562e7fe0b8c04619b2b08633b3701a7750a86c6287e5d` (x86_64)
 - Corresponding source: `third_party/sources/termux-proot-v5.1.107.84.zip` (`a44ddbf18bc72c9780d56948b03aeda6d285392503ece0cae17cfc02e7bc7928`)
@@ -37,7 +37,12 @@ accompany it with both documents. This does not relicense talloc as GPL-3.0.
 - Package SHA-256: `0da3a24d558b93c92bcf8d611e0826a99ff96e396b148e6cdf33b47c47c57ff6` (aarch64), `ffa9e4c87467b158b148d0ff92dda796aa038276c2075af3269cdcdb06f25797` (x86_64)
 - Corresponding source: `third_party/sources/libandroid-shmem-v0.7.tar.gz` (`1e5ff8459bc0a8c229dd8a94b27d119987e09ef3414331c2b5ebfff20b98e867`)
 
-Complete license texts are under `third_party/licenses/` and are also embedded in the APK assets.
+Verified native-source license texts remain under `third_party/licenses/`.
+The build-validated `licenses/` catalog combines those native notices with
+Android and Python runtime notices, local icons, descriptions, official source
+links, SPDX classifications where applicable, and complete license documents.
+It is generated into the APK for the offline **About Arbor → Licenses &
+notices** screen.
 
 ## Ubuntu Base 26.04
 
