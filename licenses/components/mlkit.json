@@ -1,0 +1,19 @@
+{
+  "id": "mlkit-text-recognition",
+  "name": "ML Kit Text Recognition",
+  "version": "16.0.1",
+  "category": "On-device vision",
+  "description": "On-device OCR used to extract selectable text from images.",
+  "projectUrl": "https://developers.google.com/ml-kit/vision/text-recognition/v2/android",
+  "icon": "icons/vision.svg",
+  "coordinates": [
+    "com.google.mlkit:text-recognition:16.0.1"
+  ],
+  "licenses": [
+    {
+      "name": "Google ML Kit terms and notices",
+      "file": "texts/ML-Kit-Notices.txt"
+    }
+  ],
+  "notice": "ML Kit is a Google-distributed binary. It is not classified as Apache-2.0 merely because its documentation samples use that license."
+}
