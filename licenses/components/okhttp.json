@@ -1,0 +1,19 @@
+{
+  "id": "okhttp",
+  "name": "OkHttp",
+  "version": "4.12.0",
+  "category": "Networking",
+  "description": "HTTP and streaming transport used for direct provider connections.",
+  "projectUrl": "https://github.com/square/okhttp",
+  "icon": "icons/network.svg",
+  "coordinates": [
+    "com.squareup.okhttp3:okhttp:4.12.0"
+  ],
+  "licenses": [
+    {
+      "name": "Apache License 2.0",
+      "spdx": "Apache-2.0",
+      "file": "texts/Apache-2.0.txt"
+    }
+  ]
+}
