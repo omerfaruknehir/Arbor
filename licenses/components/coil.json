@@ -1,0 +1,20 @@
+{
+  "id": "coil",
+  "name": "Coil",
+  "version": "2.7.0",
+  "category": "Media",
+  "description": "Coroutine-based image loading for chat attachments and local catalog icons.",
+  "projectUrl": "https://github.com/coil-kt/coil",
+  "icon": "icons/image.svg",
+  "coordinates": [
+    "io.coil-kt:coil-compose:2.7.0",
+    "io.coil-kt:coil-svg:2.7.0"
+  ],
+  "licenses": [
+    {
+      "name": "Apache License 2.0",
+      "spdx": "Apache-2.0",
+      "file": "texts/Apache-2.0.txt"
+    }
+  ]
+}
