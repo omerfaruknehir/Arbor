@@ -80,7 +80,7 @@ The APK is written to `app/build/outputs/apk/debug/app-debug.apk`. See [BUILDING
 
 Every push and pull request runs unit tests, Android lint, APK/AAB compilation, and an Android 35 emulator smoke test through [Android CI](.github/workflows/android.yml).
 
-Pushing a version tag such as `v0.20.6` runs the [release workflow](.github/workflows/release.yml). It checks that the tag matches the app version, verifies bundled third-party license provenance, validates the local offline license catalog, repeats Android verification, builds the reproducibly signed debug APK, AAB, and instrumentation APK, generates SHA-256 checksums, uploads the build set, and creates the GitHub Release automatically.
+When `main` introduces a new app version, the [release workflow](.github/workflows/release.yml) verifies bundled third-party license provenance, validates the local offline license catalog, repeats Android verification, builds the reproducibly signed debug APK, AAB, and instrumentation APK, generates SHA-256 checksums, creates the matching version tag, and publishes the GitHub Release automatically. Same-version commits are detected and skipped.
 
 Production distribution deliberately requires your own protected signing key. No production private key is stored in this repository.
 
