@@ -151,6 +151,7 @@ private enum class SettingsRoute(val title: String) {
     SYSTEM_PROMPTS("Custom instructions"),
     PROVIDERS("Providers & models"),
     ABOUT("About Arbor"),
+    LICENSES("Licenses & notices"),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -189,14 +190,14 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         targetState = route,
         backTarget = when (route) {
             SettingsRoute.HOME -> null
-            SettingsRoute.DEVELOPER -> SettingsRoute.ABOUT
+            SettingsRoute.DEVELOPER, SettingsRoute.LICENSES -> SettingsRoute.ABOUT
             else -> SettingsRoute.HOME
         },
         onBack = { route = it },
         depth = {
             when (it) {
                 SettingsRoute.HOME -> 0
-                SettingsRoute.DEVELOPER -> 2
+                SettingsRoute.DEVELOPER, SettingsRoute.LICENSES -> 2
                 else -> 1
             }
         },
@@ -221,7 +222,9 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     navigationIcon = {
                         IconButton(onClick = {
                             haptics.selection()
-                            if (currentRoute == SettingsRoute.DEVELOPER) route = SettingsRoute.ABOUT
+                            if (currentRoute == SettingsRoute.DEVELOPER || currentRoute == SettingsRoute.LICENSES) {
+                                route = SettingsRoute.ABOUT
+                            }
                             else if (currentRoute != SettingsRoute.HOME) route = SettingsRoute.HOME
                             else if (openDrawer != null) openDrawer()
                             else viewModel.screen.value = Screen.CHAT
@@ -268,7 +271,9 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         SettingsRoute.ABOUT -> AboutSettingsPage(
                             developerEnabled = developerSettings.enabled,
                             onOpenDeveloper = { route = SettingsRoute.DEVELOPER },
+                            onOpenLicenses = { route = SettingsRoute.LICENSES },
                         )
+                        SettingsRoute.LICENSES -> LicenseCatalogSettingsPage()
                     }
                 }
             }
@@ -369,7 +374,7 @@ private fun SettingsDestination(
 }
 
 @Composable
-private fun SettingsPage(content: @Composable ColumnScope.() -> Unit) {
+internal fun SettingsPage(content: @Composable ColumnScope.() -> Unit) {
     val scaffoldPadding = LocalSettingsScaffoldPadding.current
     Column(
         Modifier
@@ -955,6 +960,7 @@ private val PerformanceOverlayPosition.displayName: String
 private fun AboutSettingsPage(
     developerEnabled: Boolean,
     onOpenDeveloper: () -> Unit,
+    onOpenLicenses: () -> Unit,
 ) = SettingsPage {
     val appName = stringResource(R.string.app_name)
     val applicationInfo = LocalContext.current.applicationInfo
@@ -983,19 +989,10 @@ private fun AboutSettingsPage(
         )
         HorizontalDivider()
         SettingsDestination(
-            icon = Icons.Outlined.PrivacyTip,
-            title = "Open-source license",
-            subtitle = "Apache License 2.0",
-            onClick = { uriHandler.openUri("https://github.com/omerfaruknehir/Arbor/blob/main/LICENSE") },
-        )
-        HorizontalDivider()
-        SettingsDestination(
             icon = Icons.Outlined.Security,
-            title = "Third-party notices",
-            subtitle = "PRoot, talloc, and bundled runtime components",
-            onClick = {
-                uriHandler.openUri("https://github.com/omerfaruknehir/Arbor/blob/main/THIRD_PARTY_NOTICES.md")
-            },
+            title = "Licenses & notices",
+            subtitle = "Offline dependency catalog and full license texts",
+            onClick = onOpenLicenses,
         )
         HorizontalDivider()
         SettingsDestination(
