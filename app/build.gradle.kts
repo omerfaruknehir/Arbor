@@ -55,9 +55,11 @@ val generateOfflineLicenseCatalog by tasks.registering {
             return resolved
         }
 
+        val supportedIconExtensions = setOf("svg", "png", "webp", "jpg", "jpeg")
         val ids = mutableSetOf<String>()
         val coveredModules = mutableSetOf<String>()
         val referencedFiles = linkedSetOf<String>()
+        val referencedIcons = linkedSetOf<String>()
         val normalizedComponents = componentsDir
             .listFiles { file -> file.isFile && file.extension == "json" }
             .orEmpty()
@@ -68,7 +70,17 @@ val generateOfflineLicenseCatalog by tasks.registering {
                 val id = requiredString(parsed, "id", source)
                 require(ids.add(id)) { "${source.path}: duplicate component id '$id'" }
                 val icon = requiredString(parsed, "icon", source)
-                checkedCatalogFile(icon, source)
+                require(icon.startsWith("icons/")) {
+                    "${source.path}: 'icon' must point inside licenses/icons/"
+                }
+                val iconFile = checkedCatalogFile(icon, source)
+                require(iconFile.length() > 0L) {
+                    "${source.path}: local icon '$icon' is empty"
+                }
+                require(iconFile.extension.lowercase() in supportedIconExtensions) {
+                    "${source.path}: unsupported icon format '.${iconFile.extension}'"
+                }
+                referencedIcons += icon
                 referencedFiles += icon
 
                 val coordinates = requiredStringList(parsed, "coordinates", source)
@@ -134,6 +146,12 @@ val generateOfflineLicenseCatalog by tasks.registering {
             val destination = outputLicenses.resolve(relativePath)
             destination.parentFile.mkdirs()
             source.copyTo(destination, overwrite = true)
+            require(destination.isFile && source.readBytes().contentEquals(destination.readBytes())) {
+                "Failed to embed offline license asset '$relativePath'"
+            }
+        }
+        require(referencedIcons.all { outputLicenses.resolve(it).isFile }) {
+            "One or more offline license icons were not embedded into the generated APK assets"
         }
 
         val catalog = linkedMapOf(
@@ -142,6 +160,9 @@ val generateOfflineLicenseCatalog by tasks.registering {
         )
         outputLicenses.resolve("catalog.json").writeText(
             JsonOutput.prettyPrint(JsonOutput.toJson(catalog)) + "\n",
+        )
+        logger.lifecycle(
+            "Embedded ${normalizedComponents.size} offline license records and ${referencedIcons.size} local icons.",
         )
     }
 }
@@ -155,8 +176,8 @@ android {
         applicationId = "app.arbor.chat"
         minSdk = 26
         targetSdk = 36
-        versionCode = 132
-        versionName = "0.20.6"
+        versionCode = 133
+        versionName = "0.20.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
