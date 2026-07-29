@@ -7,6 +7,7 @@
 - Add a component detail sheet with version, included Maven modules, attribution notes, official project link, and selectable full license text.
 - Classify PRoot as GPL-2.0-or-later, keep talloc correctly classified as LGPL-3.0-or-later, and retain the GPL v3 companion text without mislabeling talloc itself as GPL.
 - Keep Google ML Kit vendor terms distinct from Apache-2.0 documentation sample licensing.
+- Publish a new app version from `main` through GitHub Actions, including its version tag, APK, AAB, instrumentation APK, checksums, and release notes; same-version commits safely skip publication.
 - Preserve package identity, debug signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, attachments, and Linux workspace data.
 
 ## 0.20.5
