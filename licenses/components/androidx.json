@@ -1,0 +1,36 @@
+{
+  "id": "androidx",
+  "name": "AndroidX & Jetpack Compose",
+  "version": "Compose BOM 2025.04.01",
+  "category": "Android framework",
+  "description": "UI, navigation, lifecycle, encrypted preferences, background work, paging, and Room database APIs.",
+  "projectUrl": "https://github.com/androidx/androidx",
+  "icon": "icons/android.svg",
+  "coordinates": [
+    "androidx.compose:compose-bom:2025.04.01",
+    "androidx.core:core-ktx:1.16.0",
+    "androidx.activity:activity-compose:1.10.1",
+    "androidx.lifecycle:lifecycle-runtime-ktx:2.9.0",
+    "androidx.lifecycle:lifecycle-runtime-compose:2.9.0",
+    "androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0",
+    "androidx.navigation:navigation-compose:2.9.0",
+    "androidx.compose.material3:material3",
+    "androidx.compose.material:material-icons-extended",
+    "androidx.compose.ui:ui",
+    "androidx.compose.ui:ui-tooling-preview",
+    "androidx.room:room-runtime:2.7.1",
+    "androidx.room:room-ktx:2.7.1",
+    "androidx.room:room-paging:2.7.1",
+    "androidx.paging:paging-runtime-ktx:3.3.6",
+    "androidx.paging:paging-compose:3.3.6",
+    "androidx.work:work-runtime-ktx:2.10.1",
+    "androidx.security:security-crypto:1.1.0-alpha06"
+  ],
+  "licenses": [
+    {
+      "name": "Apache License 2.0",
+      "spdx": "Apache-2.0",
+      "file": "texts/Apache-2.0.txt"
+    }
+  ]
+}
