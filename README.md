@@ -24,7 +24,7 @@
 
 Arbor is a bring-your-own-provider AI client. It connects your phone directly to the services you choose—without a WebView, hosted Arbor account, application backend, telemetry, or advertising. API keys are protected with Android Keystore-backed encryption, chats live in a local SQLCipher database, and imported files remain in app-private storage.
 
-Current version: **0.20.5**
+Current version: **0.20.6**
 
 ## What makes Arbor different
 
@@ -52,7 +52,7 @@ Current version: **0.20.5**
 
 ## Install
 
-1. Download `Arbor-0.20.5-debug.apk` from the [latest GitHub Release](https://github.com/omerfaruknehir/Arbor/releases/latest).
+1. Download `Arbor-0.20.6-debug.apk` from the [latest GitHub Release](https://github.com/omerfaruknehir/Arbor/releases/latest).
 2. Allow installation from your browser or file manager when Android asks.
 3. Open Arbor and follow the welcome flow.
 4. Connect a ChatGPT account, API provider, or local model server.
@@ -80,7 +80,7 @@ The APK is written to `app/build/outputs/apk/debug/app-debug.apk`. See [BUILDING
 
 Every push and pull request runs unit tests, Android lint, APK/AAB compilation, and an Android 35 emulator smoke test through [Android CI](.github/workflows/android.yml).
 
-Pushing a version tag such as `v0.20.5` runs the [release workflow](.github/workflows/release.yml). It checks that the tag matches the app version, verifies bundled third-party license provenance, repeats Android verification, builds the reproducibly signed debug APK, AAB, and instrumentation APK, generates SHA-256 checksums, uploads the build set, and creates the GitHub Release automatically.
+Pushing a version tag such as `v0.20.6` runs the [release workflow](.github/workflows/release.yml). It checks that the tag matches the app version, verifies bundled third-party license provenance, validates the local offline license catalog, repeats Android verification, builds the reproducibly signed debug APK, AAB, and instrumentation APK, generates SHA-256 checksums, uploads the build set, and creates the GitHub Release automatically.
 
 Production distribution deliberately requires your own protected signing key. No production private key is stored in this repository.
 
@@ -106,17 +106,17 @@ Arbor's Python and Linux workspaces are private app storage, not operating-syste
 
 Runtime package installation blocks unsafe command-line options by default and may reject packages without compatible Android wheels. Optional Linux distributions are downloaded only when selected, checked against pinned publisher SHA-256 values, and kept isolated from one another.
 
-For dependency sources, bundled native component notices, hashes, and build recipes, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and `third_party/`.
+For dependency sources, bundled native component notices, hashes, and build recipes, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), the build-validated [`licenses/`](licenses/) catalog, and `third_party/`. The same catalog and full texts are generated into Arbor's offline **About Arbor → Licenses & notices** screen.
 
 ## Project
 
 Arbor is created by [@omerfaruknehir](https://github.com/omerfaruknehir).
 
 - [Changelog](CHANGELOG.md)
-- [Latest release notes](docs/releases/RELEASE_NOTES_0.20.5.md)
+- [Latest release notes](docs/releases/RELEASE_NOTES_0.20.6.md)
 - [Source repository](https://github.com/omerfaruknehir/Arbor)
 - [Issue tracker](https://github.com/omerfaruknehir/Arbor/issues)
 
 ## License
 
-Arbor is licensed under the [Apache License 2.0](LICENSE). Bundled third-party components retain their own licenses as documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Arbor is licensed under the [Apache License 2.0](LICENSE). Bundled third-party components retain their own licenses as documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the local [`licenses/`](licenses/) catalog.
