@@ -66,7 +66,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          notes="RELEASE_NOTES_${ARBOR_VERSION}.md"
+          notes="docs/releases/RELEASE_NOTES_${ARBOR_VERSION}.md"
           if [[ ! -f "$notes" ]]; then
             notes="CHANGELOG.md"
           fi

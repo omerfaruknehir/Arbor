@@ -110,7 +110,7 @@ For dependency sources, bundled native component notices, hashes, and build reci
 Arbor is created by [@omerfaruknehir](https://github.com/omerfaruknehir).
 
 - [Changelog](CHANGELOG.md)
-- [Latest release notes](RELEASE_NOTES_0.20.3.md)
+- [Latest release notes](docs/releases/RELEASE_NOTES_0.20.3.md)
 - [Source repository](https://github.com/omerfaruknehir/Arbor)
 - [Issue tracker](https://github.com/omerfaruknehir/Arbor/issues)
 
