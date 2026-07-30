@@ -98,6 +98,18 @@ jobs:
               "Version name bump",
           )'''
           script = replace_labeled_call(script, 'Version bump', robust_version)
+          script = script.replace(
+              '              val corner = (10f * uiScale).dp',
+              '              val panelShape = RoundedCornerShape((10f * uiScale).dp)',
+          )
+          script = script.replace(
+              '.border((1f * uiScale).dp, Color.White.copy(alpha = 0.14f * panelAlpha), corner)',
+              '.border((1f * uiScale).dp, Color.White.copy(alpha = 0.14f * panelAlpha), panelShape)',
+          )
+          script = script.replace(
+              '                  shape = RoundedCornerShape(corner),',
+              '                  shape = panelShape,',
+          )
           Path('/tmp/apply-performance-overlay.py').write_text(script)
           PY
           python3 /tmp/apply-performance-overlay.py
