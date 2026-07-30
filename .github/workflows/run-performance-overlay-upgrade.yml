@@ -67,7 +67,21 @@ jobs:
                       inside_triple = False
                       string_trim = yaml_indent
 
-          Path('/tmp/apply-performance-overlay.py').write_text('\n'.join(output) + '\n')
+          script = '\n'.join(output) + '\n'
+          label = '"Scale normalization test",'
+          label_at = script.index(label)
+          block_start = script.rfind('text = replace_once(', 0, label_at)
+          block_end = script.index('\n)', label_at) + 2
+          robust_scale_test = '''text = replace_once(
+              text,
+              "        assertEquals(0f, defaults.copy(performanceOverlayTextOpacity = -1f).normalized().performanceOverlayTextOpacity)\\n",
+              "        assertEquals(0f, defaults.copy(performanceOverlayTextOpacity = -1f).normalized().performanceOverlayTextOpacity)\\n"
+              "        assertEquals(0.60f, defaults.copy(performanceOverlayScale = 0.1f).normalized().performanceOverlayScale)\\n"
+              "        assertEquals(2.00f, defaults.copy(performanceOverlayScale = 5f).normalized().performanceOverlayScale)\\n",
+              "Scale normalization test",
+          )'''
+          script = script[:block_start] + robust_scale_test + script[block_end:]
+          Path('/tmp/apply-performance-overlay.py').write_text(script)
           PY
           python3 /tmp/apply-performance-overlay.py
 
