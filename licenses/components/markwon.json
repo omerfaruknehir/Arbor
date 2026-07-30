@@ -5,7 +5,7 @@
   "category": "Chat rendering",
   "description": "Markdown, tables, task lists, strikethrough, and math rendering for assistant messages.",
   "projectUrl": "https://github.com/noties/Markwon",
-  "icon": "icons/document.svg",
+  "icon": "icons/markwon.png",
   "coordinates": [
     "io.noties.markwon:core:4.6.2",
     "io.noties.markwon:ext-strikethrough:4.6.2",

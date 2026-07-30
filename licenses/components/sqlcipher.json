@@ -5,7 +5,7 @@
   "category": "Encrypted storage",
   "description": "Encrypted SQLite runtime used for Arbor's local chat database.",
   "projectUrl": "https://github.com/sqlcipher/sqlcipher-android",
-  "icon": "icons/lock.svg",
+  "icon": "icons/sqlcipher.png",
   "coordinates": [
     "net.zetetic:sqlcipher-android:4.6.1"
   ],

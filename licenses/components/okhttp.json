@@ -5,7 +5,7 @@
   "category": "Networking",
   "description": "HTTP and streaming transport used for direct provider connections.",
   "projectUrl": "https://github.com/square/okhttp",
-  "icon": "icons/network.svg",
+  "icon": "icons/okhttp.png",
   "coordinates": [
     "com.squareup.okhttp3:okhttp:4.12.0"
   ],

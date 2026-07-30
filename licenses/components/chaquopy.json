@@ -5,7 +5,7 @@
   "category": "Python runtime",
   "description": "Build integration and Android bridge used to package and call Arbor's Python tools.",
   "projectUrl": "https://github.com/chaquo/chaquopy",
-  "icon": "icons/python.svg",
+  "icon": "icons/chaquopy.png",
   "coordinates": [],
   "licenses": [
     {
