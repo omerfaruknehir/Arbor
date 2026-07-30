@@ -1,0 +1,228 @@
+name: One-shot Settings drawer and source archive fix
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/one-shot-settings-drawer-source.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix-build-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Backfill explicit 0.20.12 source archives
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf source-backfill
+          mkdir -p source-backfill
+          git archive --format=zip --prefix='Arbor-0.20.12/' \
+            -o source-backfill/Arbor-0.20.12-source.zip v0.20.12
+          git archive --format=tar --prefix='Arbor-0.20.12/' v0.20.12 \
+            | gzip -n > source-backfill/Arbor-0.20.12-source.tar.gz
+          (
+            cd source-backfill
+            sha256sum Arbor-0.20.12-source.zip Arbor-0.20.12-source.tar.gz \
+              > Arbor-0.20.12-source-SHA256.txt
+          )
+          gh release upload v0.20.12 source-backfill/* --clobber
+
+      - name: Apply Settings gesture arbitration and prepare 0.20.13
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              if old not in text:
+                  raise SystemExit(f"Expected text not found in {path}: {old!r}")
+              file.write_text(text.replace(old, new, 1))
+
+          arbor = "app/src/main/java/app/arbor/chat/ui/ArborApp.kt"
+          replace_once(
+              arbor,
+              "import androidx.compose.foundation.layout.BoxWithConstraints\n",
+              "import androidx.compose.foundation.layout.Box\nimport androidx.compose.foundation.layout.BoxWithConstraints\n",
+          )
+          replace_once(
+              arbor,
+              "import androidx.compose.foundation.layout.fillMaxSize\n",
+              "import androidx.compose.foundation.layout.fillMaxHeight\nimport androidx.compose.foundation.layout.fillMaxSize\n",
+          )
+          replace_once(
+              arbor,
+              "                    Screen.SETTINGS -> SettingsScreen(viewModel, compactOpenDrawer)",
+              """                    Screen.SETTINGS -> Box(Modifier.fillMaxSize()) {
+                        SettingsScreen(viewModel, compactOpenDrawer)
+                        SettingsLeftBackEdgeGuard()
+                    }""",
+          )
+          replace_once(
+              arbor,
+              """                // Only Chat owns the left-edge drawer gesture. Settings uses both
+                // system back edges; its menu button remains the explicit drawer entry point.
+                gesturesEnabled = drawerSwipeEnabled(screen),""",
+              """                // Chat and Settings retain pull-to-open. In Settings, a narrow
+                // non-consuming priority strip reserves the actual system Back edge.
+                gesturesEnabled = drawerSwipeEnabled(screen),""",
+          )
+          replace_once(
+              arbor,
+              "internal fun drawerSwipeEnabled(screen: Screen): Boolean = screen == Screen.CHAT",
+              "internal fun drawerSwipeEnabled(screen: Screen): Boolean = screen == Screen.CHAT || screen == Screen.SETTINGS",
+          )
+          replace_once(
+              arbor,
+              "internal fun performanceOverlayAlignment(position: PerformanceOverlayPosition): Alignment = when (position) {",
+              """@Composable
+private fun SettingsLeftBackEdgeGuard() {
+    // The drawer can still be pulled from the Settings content, but the first
+    // 48 dp are owned by Android Back. This node only registers geometry; it
+    // consumes no pointer input and therefore cannot block taps or scrolling.
+    Box(
+        Modifier
+            .fillMaxHeight()
+            .width(48.dp)
+            .horizontalGesturePriority(),
+    )
+}
+
+internal fun performanceOverlayAlignment(position: PerformanceOverlayPosition): Alignment = when (position) {""",
+          )
+
+          test = "app/src/test/java/app/arbor/chat/ui/NavigationBackTest.kt"
+          replace_once(
+              test,
+              """    @Test fun drawerSwipeIsLimitedToChatSoSettingsCanUseBothBackEdges() {
+        assertTrue(drawerSwipeEnabled(Screen.CHAT))
+        assertFalse(drawerSwipeEnabled(Screen.SETTINGS))
+        assertFalse(drawerSwipeEnabled(Screen.SEARCH))
+        assertFalse(drawerSwipeEnabled(Screen.SANDBOX))
+        assertFalse(drawerSwipeEnabled(Screen.TERMINAL))
+    }
+""",
+              """    @Test fun drawerSwipeWorksAtChatAndSettingsRoots() {
+        assertTrue(drawerSwipeEnabled(Screen.CHAT))
+        assertTrue(drawerSwipeEnabled(Screen.SETTINGS))
+        assertFalse(drawerSwipeEnabled(Screen.SEARCH))
+        assertFalse(drawerSwipeEnabled(Screen.SANDBOX))
+        assertFalse(drawerSwipeEnabled(Screen.TERMINAL))
+    }
+
+    @Test fun settingsReservesOnlyTheRealLeftBackEdge() {
+        val root = java.io.File("src/main/java/app/arbor/chat/ui/ArborApp.kt").readText()
+        assertTrue(root.contains("SettingsLeftBackEdgeGuard"))
+        assertTrue(root.contains(".width(48.dp)"))
+        assertTrue(root.contains(".horizontalGesturePriority()"))
+    }
+""",
+          )
+
+          release = ".github/workflows/release.yml"
+          replace_once(
+              release,
+              """          cp app/build/outputs/apk/release/app-release.apk "release/Arbor-${ARBOR_VERSION}-release.apk"
+          cp app/build/outputs/bundle/release/app-release.aab "release/Arbor-${ARBOR_VERSION}-release.aab"
+          (
+            cd release
+            sha256sum * > "Arbor-${ARBOR_VERSION}-SHA256.txt"
+          )""",
+              """          cp app/build/outputs/apk/release/app-release.apk "release/Arbor-${ARBOR_VERSION}-release.apk"
+          cp app/build/outputs/bundle/release/app-release.aab "release/Arbor-${ARBOR_VERSION}-release.aab"
+          git archive --format=zip --prefix="Arbor-${ARBOR_VERSION}/" \\
+            -o "release/Arbor-${ARBOR_VERSION}-source.zip" "$GITHUB_SHA"
+          git archive --format=tar --prefix="Arbor-${ARBOR_VERSION}/" "$GITHUB_SHA" \\
+            | gzip -n > "release/Arbor-${ARBOR_VERSION}-source.tar.gz"
+          (
+            cd release
+            sha256sum * > "Arbor-${ARBOR_VERSION}-SHA256.txt"
+          )""",
+          )
+
+          replace_once("app/build.gradle.kts", "versionCode = 138", "versionCode = 139")
+          replace_once("app/build.gradle.kts", 'versionName = "0.20.12"', 'versionName = "0.20.13"')
+
+          changelog = Path("CHANGELOG.md")
+          text = changelog.read_text()
+          marker = "# Changelog\n"
+          section = """
+
+## 0.20.13 — 2026-07-30
+
+- Restore pull-to-open drawer gestures in Settings without stealing Android's left-edge Back gesture.
+- Reserve only a 48 dp non-consuming Back edge; drawer swipes still work from the Settings content area.
+- Attach explicit versioned source ZIP and TAR.GZ archives to releases and include them in SHA-256 checksums.
+"""
+          if "## 0.20.13 — 2026-07-30" not in text:
+              if marker not in text:
+                  raise SystemExit("CHANGELOG heading not found")
+              changelog.write_text(text.replace(marker, marker + section, 1))
+
+          readme = Path("README.md")
+          readme.write_text(readme.read_text().replace("0.20.12", "0.20.13"))
+
+          Path("docs/releases/RELEASE_NOTES_0.20.13.md").write_text("""# Arbor 0.20.13
+
+## Fixed
+
+- Pull-to-open drawer gestures work again from Settings.
+- Android Back still owns the actual left screen edge. Start a drawer swipe slightly inside the Settings content; start Back from the physical edge.
+- The edge reservation consumes no pointer input, so scrolling and taps remain unaffected.
+
+## Release assets
+
+- Optimized release APK
+- Release AAB
+- Explicit `Arbor-0.20.13-source.zip`
+- Explicit `Arbor-0.20.13-source.tar.gz`
+- SHA-256 checksums covering every attached asset
+
+Developer settings and the performance overlay remain available in the optimized release build.
+""")
+
+          workflow = Path(".github/workflows/one-shot-settings-drawer-source.yml")
+          if workflow.exists():
+              workflow.unlink()
+          PY
+
+      - name: Verify and build optimized release
+        shell: bash
+        run: ./gradlew --no-daemon --stacktrace testReleaseUnitTest lintRelease assembleRelease bundleRelease assembleDebugAndroidTest
+
+      - name: Verify release APK signature
+        shell: bash
+        run: "$ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk"
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Restore Settings drawer arbitration and release source archives"
+          git push origin HEAD:main
