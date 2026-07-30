@@ -60,7 +60,8 @@ jobs:
                       else:
                           string_trim = yaml_indent
               else:
-                  line = raw_line[string_trim:] if raw_line.startswith(' ' * string_trim) else raw_line
+                  leading = len(raw_line) - len(raw_line.lstrip(' '))
+                  line = raw_line[min(string_trim, leading):]
                   output.append(line)
                   if raw_line.count('"""') % 2 == 1:
                       inside_triple = False
