@@ -43,6 +43,8 @@ class PerformanceOverlayTest {
         assertEquals(0f, defaults.copy(performanceOverlayBackgroundOpacity = -1f).normalized().performanceOverlayBackgroundOpacity)
         assertEquals(1f, defaults.copy(performanceOverlayBackgroundOpacity = 2f).normalized().performanceOverlayBackgroundOpacity)
         assertEquals(0f, defaults.copy(performanceOverlayTextOpacity = -1f).normalized().performanceOverlayTextOpacity)
+        assertEquals(0.60f, defaults.copy(performanceOverlayScale = 0.1f).normalized().performanceOverlayScale)
+        assertEquals(2.00f, defaults.copy(performanceOverlayScale = 5f).normalized().performanceOverlayScale)
     }
 
     @Test
@@ -59,7 +61,8 @@ class PerformanceOverlayTest {
         assertTrue(settingsSource.contains("Show performance overlay"))
         assertTrue(settingsSource.contains("Detailed metrics"))
         assertTrue(settingsSource.contains("Panel opacity"))
-        assertTrue(settingsSource.contains("click-through"))
+        assertTrue(settingsSource.contains("Overlay scale"))
+        assertTrue(settingsSource.contains("shares pointer input"))
         assertTrue(rootSource.contains("ArborPerformanceOverlay"))
         assertTrue(rootSource.contains("PerformanceOverlayHost"))
         assertTrue(rootSource.contains("val snapshot by monitor.snapshot.collectAsState()"))
@@ -171,7 +174,8 @@ class PerformanceOverlayTest {
         assertTrue(blur.contains("recordBlurFrame"))
         assertTrue(blur.contains("recordBlurEffectBuild"))
         assertTrue(overlay.contains("FrameMetrics.LAYOUT_MEASURE_DURATION"))
-        assertTrue(overlay.contains("Likely:"))
+        assertTrue(overlay.contains("PerformanceCauseProfile"))
+        assertTrue(overlay.contains("profile.confidencePercent"))
     }
 
     @Test
@@ -215,8 +219,32 @@ class PerformanceOverlayTest {
         val function = source.substringAfter("internal fun ArborPerformanceOverlay(").substringBefore("private fun Double.f0")
         assertTrue(function.contains("backgroundOpacity"))
         assertTrue(function.contains("textOpacity"))
+        assertTrue(function.contains("scale: Float"))
+        assertTrue(function.contains("sharePointerInputWithSiblings(): Boolean = true"))
+        assertTrue(function.contains("onPointerEvent("))
         assertTrue(!function.contains(".clickable("))
         assertTrue(!function.contains(".pointerInput("))
+        assertTrue(!function.contains(".consume("))
+    }
+
+
+    @Test
+    fun causeProfileIncludesConfidenceSeverityAndEvidence() {
+        val profile = analyzePerformanceCause(
+            PerformanceCauseInput(
+                refreshRateHz = 120f, fps = 55.0, frameTotalMs = 17.0,
+                frameDurationP95Ms = 20.0, jankPercent = 10.0, gpuMs = 2.0,
+                inputMs = 0.2, animationMs = 0.2, layoutMs = 9.0, drawMs = 2.0,
+                syncMs = 0.3, commandMs = 1.0, swapMs = 0.5, blurCpuMs = 0.2,
+                blurFrames = 20, blurSourceDrawsPerFrame = 1.0,
+                appRecompositionsPerSecond = 10.0, chatRecompositionsPerSecond = 10.0,
+                allocationMbPerSecond = 2.0, blockingGcPerSecond = 0.0,
+            ),
+        )
+        assertEquals("Layout / measure", profile.primaryCause)
+        assertTrue(profile.confidencePercent in 40..99)
+        assertTrue(profile.severity != PerformanceSeverity.HEALTHY)
+        assertTrue(profile.evidence.contains("frame budget"))
     }
 
 }

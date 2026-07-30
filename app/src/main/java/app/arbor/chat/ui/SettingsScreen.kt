@@ -858,8 +858,16 @@ private fun DeveloperSettingsPage(
         valueRange = 0f..1f,
         enabled = settings.enabled && settings.performanceOverlayEnabled,
     )
+    SettingSlider(
+        label = "Overlay scale",
+        valueLabel = "${(settings.performanceOverlayScale * 100).roundToInt()}%",
+        value = settings.performanceOverlayScale,
+        onValueChange = { value -> viewModel.updateDeveloperSettings { it.copy(performanceOverlayScale = value) } },
+        valueRange = 0.60f..2.00f,
+        enabled = settings.enabled && settings.performanceOverlayEnabled,
+    )
     Text(
-        "The performance overlay is visual-only and click-through. It does not intercept taps, scrolling, drawer gestures, or back navigation.",
+        "The overlay explicitly shares pointer input with the content underneath and never consumes it. Taps, scrolling, drawer gestures, and back navigation continue through the panel.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -913,7 +921,7 @@ private fun DeveloperSettingsPage(
 
     Text(
         if (settings.detailedPerformanceOverlay) {
-            "Detailed mode shows Choreographer FPS, average/p95/p99 frame interval, jank against the current refresh budget, app CPU, PSS, Java heap, GPU duration when Android reports it, missed vsyncs per second, and total observed frames. Cause profiler also shows a likely bottleneck plus FrameMetrics, blur-strip, recomposition, allocation, and GC counters."
+            "Detailed mode shows Choreographer FPS, average/p95/p99 frame interval, jank against the current refresh budget, app CPU, PSS, Java heap, GPU duration when Android reports it, missed vsyncs per second, and total observed frames. Cause profiler ranks primary and secondary causes, reports confidence and severity, and shows the evidence used for attribution alongside FrameMetrics, blur, recomposition, allocation, and GC counters."
         } else {
             "Compact mode shows FPS, average frame time, and jank percentage."
         },

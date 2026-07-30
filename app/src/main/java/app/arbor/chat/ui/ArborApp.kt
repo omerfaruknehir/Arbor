@@ -249,6 +249,7 @@ private fun PerformanceOverlayHost(
         detailed = settings.detailedPerformanceOverlay || settings.diagnosticProfilerEnabled,
         backgroundOpacity = settings.performanceOverlayBackgroundOpacity,
         textOpacity = settings.performanceOverlayTextOpacity,
+        scale = settings.performanceOverlayScale,
         modifier = modifier,
     )
 }

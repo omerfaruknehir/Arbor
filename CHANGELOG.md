@@ -469,6 +469,12 @@
 
 # Changelog
 
+## 0.20.11 — 2026-07-30
+
+- Add a 60–200% scale control for the performance overlay.
+- Replace the single “Likely” label with a ranked cause profile containing primary and secondary causes, confidence, severity, and measured evidence.
+- Make the overlay explicitly share pointer input with the UI underneath while consuming nothing, so scrolling and taps work through it.
+
 ## 0.20.10 — 2026-07-30
 
 - Treat steering as an intentional hand-off instead of a resumable interruption.
