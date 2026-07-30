@@ -68,10 +68,13 @@ jobs:
                       string_trim = yaml_indent
 
           script = '\n'.join(output) + '\n'
-          label = '"Scale normalization test",'
-          label_at = script.index(label)
-          block_start = script.rfind('text = replace_once(', 0, label_at)
-          block_end = script.index('\n)', label_at) + 2
+
+          def replace_labeled_call(source: str, label: str, replacement: str) -> str:
+              label_at = source.index(f'"{label}",')
+              block_start = source.rfind('text = replace_once(', 0, label_at)
+              block_end = source.index('\n)', label_at) + 2
+              return source[:block_start] + replacement + source[block_end:]
+
           robust_scale_test = '''text = replace_once(
               text,
               "        assertEquals(0f, defaults.copy(performanceOverlayTextOpacity = -1f).normalized().performanceOverlayTextOpacity)\\n",
@@ -80,7 +83,21 @@ jobs:
               "        assertEquals(2.00f, defaults.copy(performanceOverlayScale = 5f).normalized().performanceOverlayScale)\\n",
               "Scale normalization test",
           )'''
-          script = script[:block_start] + robust_scale_test + script[block_end:]
+          script = replace_labeled_call(script, 'Scale normalization test', robust_scale_test)
+
+          robust_version = '''text = replace_once(
+              text,
+              "        versionCode = 136\\n",
+              "        versionCode = 137\\n",
+              "Version code bump",
+          )
+          text = replace_once(
+              text,
+              "        versionName = \\\"0.20.10\\\"\\n",
+              "        versionName = \\\"0.20.11\\\"\\n",
+              "Version name bump",
+          )'''
+          script = replace_labeled_call(script, 'Version bump', robust_version)
           Path('/tmp/apply-performance-overlay.py').write_text(script)
           PY
           python3 /tmp/apply-performance-overlay.py
