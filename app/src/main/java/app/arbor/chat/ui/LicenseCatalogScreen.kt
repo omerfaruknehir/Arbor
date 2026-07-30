@@ -1,5 +1,7 @@
 package app.arbor.chat.ui
 
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -255,16 +258,29 @@ private fun LicenseComponentRow(
 @Composable
 private fun LicenseIcon(component: OfflineLicenseComponent, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val request = remember(context, component.icon) {
-        ImageRequest.Builder(context)
-            .data("file:///android_asset/$LICENSE_ASSET_ROOT/${component.icon}")
-            .apply {
-                if (component.icon.endsWith(".svg", ignoreCase = true)) {
-                    decoderFactory(SvgDecoder.Factory())
-                }
-            }
-            .crossfade(false)
-            .build()
+    val iconBytes = remember(context, component.icon) {
+        runCatching {
+            context.assets.open("$LICENSE_ASSET_ROOT/${component.icon}").use { it.readBytes() }
+        }.getOrNull()
+    }
+    val isSvg = component.icon.endsWith(".svg", ignoreCase = true)
+    val rasterImage = remember(iconBytes, isSvg) {
+        if (!isSvg && iconBytes != null) {
+            BitmapFactory.decodeByteArray(iconBytes, 0, iconBytes.size)?.asImageBitmap()
+        } else {
+            null
+        }
+    }
+    val svgRequest = remember(context, component.icon, iconBytes, isSvg) {
+        if (isSvg && iconBytes != null) {
+            ImageRequest.Builder(context)
+                .data(iconBytes)
+                .decoderFactory(SvgDecoder.Factory())
+                .crossfade(false)
+                .build()
+        } else {
+            null
+        }
     }
 
     Surface(
@@ -272,14 +288,23 @@ private fun LicenseIcon(component: OfflineLicenseComponent, modifier: Modifier =
         shape = RoundedCornerShape(15.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
-        SubcomposeAsyncImage(
-            model = request,
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize().padding(9.dp),
-            contentScale = ContentScale.Fit,
-            loading = { LicenseIconFallback(component.name) },
-            error = { LicenseIconFallback(component.name) },
-        )
+        when {
+            svgRequest != null -> SubcomposeAsyncImage(
+                model = svgRequest,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize().padding(9.dp),
+                contentScale = ContentScale.Fit,
+                loading = {},
+                error = { LicenseIconFallback(component.name) },
+            )
+            rasterImage != null -> Image(
+                bitmap = rasterImage,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize().padding(9.dp),
+                contentScale = ContentScale.Fit,
+            )
+            else -> LicenseIconFallback(component.name)
+        }
     }
 }
 
