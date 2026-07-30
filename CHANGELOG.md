@@ -470,6 +470,16 @@
 # Changelog
 
 
+## 0.20.14 — 2026-07-31
+
+- Fix onboarding text contrast by giving the full setup surface an explicit theme-aware content color.
+- Add live System, Light, and Dark theme selection to initial setup.
+- Keep setup actions fixed and reachable while the page body scrolls on small screens.
+- Add Back handling, skip paths on every step, and clear recovery language so setup cannot trap the user.
+- Bound the provider-catalog startup wait to eight seconds and continue with a recoverable delayed-catalog state instead of an infinite spinner.
+- Preserve the existing provider-based onboarding rule; skipping never permanently hides setup when no provider is configured.
+
+
 ## 0.20.13 — 2026-07-30
 
 - Restore pull-to-open drawer gestures in Settings without stealing Android's left-edge Back gesture.

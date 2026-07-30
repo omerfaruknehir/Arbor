@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.arbor.chat.settings.DeveloperSettings
 import app.arbor.chat.settings.PerformanceOverlayPosition
+import kotlinx.coroutines.delay
 
 @Composable
 fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
@@ -48,10 +49,12 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
     val providers by viewModel.providers.collectAsState()
     val credentialRevision by viewModel.credentialRevision.collectAsState()
     val providerCatalogReady by viewModel.providerCatalogReady.collectAsState()
+    val themeMode by viewModel.themeMode.collectAsState()
     val configuredProviders = remember(providers, credentialRevision) {
         viewModel.configuredProviders(providers)
     }
     var onboardingDismissedForSession by rememberSaveable { mutableStateOf(false) }
+    var providerCatalogGraceExpired by rememberSaveable { mutableStateOf(false) }
     val performanceMonitor = remember(activity) { ArborPerformanceMonitor(activity) }
     val showPerformanceOverlay = developerSettings.enabled &&
         (developerSettings.performanceOverlayEnabled || developerSettings.diagnosticProfilerEnabled)
@@ -59,18 +62,30 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
     val snackbar = remember { SnackbarHostState() }
     val openDrawer = remember(drawerState) { { drawerState.open(); Unit } }
 
-    if (!providerCatalogReady) {
+    LaunchedEffect(providerCatalogReady) {
+        if (providerCatalogReady) {
+            providerCatalogGraceExpired = false
+        } else {
+            delay(8_000)
+            providerCatalogGraceExpired = true
+        }
+    }
+    if (shouldBlockForProviderCatalog(providerCatalogReady, providerCatalogGraceExpired)) {
         ArborStartupScreen()
         return
     }
+    val onboardingCatalogUsable = providerCatalogReady || providerCatalogGraceExpired
     if (
         shouldShowProviderOnboarding(
-            catalogReady = providerCatalogReady,
+            catalogReady = onboardingCatalogUsable,
             hasConfiguredProvider = configuredProviders.isNotEmpty(),
             dismissedForSession = onboardingDismissedForSession,
         )
     ) {
         OnboardingScreen(
+            currentThemeMode = themeMode,
+            providerCatalogDelayed = !providerCatalogReady,
+            onThemeModeChanged = viewModel::setThemeMode,
             onOpenProviderSetup = {
                 onboardingDismissedForSession = true
                 viewModel.openProviderSetup()
