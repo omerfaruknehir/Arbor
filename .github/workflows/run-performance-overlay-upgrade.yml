@@ -110,6 +110,7 @@ jobs:
               'shape = RoundedCornerShape(corner),',
               'shape = panelShape,',
           )
+          script = script.replace('val score = 2.8 +', 'val score = 6.0 +')
           Path('/tmp/apply-performance-overlay.py').write_text(script)
           PY
           python3 /tmp/apply-performance-overlay.py
