@@ -3,17 +3,22 @@ name: Apply UX hotfix
 on:
   push:
     branches: [ agent/ux-empty-response-hotfix ]
+  pull_request:
+    branches: [ main ]
 
 permissions:
   contents: write
 
 jobs:
   apply:
+    if: github.head_ref == '' || github.head_ref == 'agent/ux-empty-response-hotfix'
     runs-on: ubuntu-latest
+    env:
+      TARGET_BRANCH: ${{ github.head_ref || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ env.TARGET_BRANCH }}
           fetch-depth: 0
       - name: Apply source changes
         run: |
@@ -26,4 +31,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "Simplify active response UX and retry empty generations"
-          git push origin HEAD:${{ github.ref_name }}
+          git push origin HEAD:${TARGET_BRANCH}
