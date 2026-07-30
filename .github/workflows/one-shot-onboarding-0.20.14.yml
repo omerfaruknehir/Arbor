@@ -35,6 +35,18 @@ jobs:
       - name: Apply onboarding source changes
         run: python3 .github/scripts/apply_onboarding_0_20_14.py
 
+      - name: Normalize generated Kotlin source
+        shell: python
+        run: |
+          from pathlib import Path
+          screen = Path("app/src/main/java/app/arbor/chat/ui/OnboardingScreen.kt")
+          screen.write_text(screen.read_text().replace("import androidx.compose.foundation.layout.weight\n", ""))
+          test = Path("app/src/test/java/app/arbor/chat/ui/OnboardingFlowTest.kt")
+          test.write_text(test.read_text().replace(
+              'workspace.contains("Install ${ubuntuStatus.distribution.displayName}")',
+              'workspace.contains("Install \\${ubuntuStatus.distribution.displayName}")',
+          ))
+
       - name: Verify third-party licenses
         run: ./ci/verify-third-party-licenses.sh
 
