@@ -22,7 +22,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.PointerInputModifierNode
+import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.ArrayDeque
@@ -72,7 +78,7 @@ internal data class PerformanceSnapshot(
     val allocationMbPerSecond: Double = 0.0,
     val blockingGcPerSecond: Double = 0.0,
     val screenName: String = "UNKNOWN",
-    val likelyBottleneck: String = "Profiler disabled",
+    val causeProfile: PerformanceCauseProfile = PerformanceCauseProfile.disabled(),
 )
 
 internal data class RenderProfilerInterval(
@@ -210,19 +216,84 @@ internal data class PerformanceCauseInput(
     val blockingGcPerSecond: Double,
 )
 
-internal fun detectLikelyBottleneck(input: PerformanceCauseInput): String {
+internal enum class PerformanceSeverity(val displayName: String) {
+    HEALTHY("Healthy"),
+    NOTICE("Notice"),
+    DEGRADED("Degraded"),
+    SEVERE("Severe"),
+}
+
+internal data class PerformanceCauseProfile(
+    val primaryCause: String,
+    val secondaryCause: String? = null,
+    val confidencePercent: Int = 0,
+    val severity: PerformanceSeverity = PerformanceSeverity.HEALTHY,
+    val evidence: String = "",
+) {
+    companion object {
+        fun disabled() = PerformanceCauseProfile(
+            primaryCause = "Profiler disabled",
+            confidencePercent = 0,
+            severity = PerformanceSeverity.HEALTHY,
+            evidence = "Enable Cause profiler to collect attribution data",
+        )
+    }
+}
+
+private data class ScoredPerformanceCause(
+    val label: String,
+    val score: Double,
+    val evidence: String,
+)
+
+internal fun analyzePerformanceCause(input: PerformanceCauseInput): PerformanceCauseProfile {
     val refresh = input.refreshRateHz.takeIf { it >= 30f } ?: 60f
     val budgetMs = 1_000.0 / refresh
-    if (input.fps <= 0.0 && input.frameTotalMs <= 0.0) return "Idle / no rendered frames"
-    if (input.blockingGcPerSecond >= 0.5 || input.allocationMbPerSecond >= 160.0) {
-        return "Allocation / blocking GC pressure"
+    if (input.fps <= 0.0 && input.frameTotalMs <= 0.0) {
+        return PerformanceCauseProfile(
+            primaryCause = "Idle / no rendered frames",
+            confidencePercent = 100,
+            severity = PerformanceSeverity.HEALTHY,
+            evidence = "No rendered FrameMetrics samples in this interval",
+        )
     }
+
+    val totalRatio = input.frameTotalMs / budgetMs
+    val p95Ratio = input.frameDurationP95Ms / budgetMs
+    val severity = when {
+        p95Ratio >= 3.0 || input.jankPercent >= 30.0 -> PerformanceSeverity.SEVERE
+        p95Ratio >= 2.0 || input.jankPercent >= 12.0 -> PerformanceSeverity.DEGRADED
+        p95Ratio >= 1.20 || input.jankPercent >= 3.0 -> PerformanceSeverity.NOTICE
+        else -> PerformanceSeverity.HEALTHY
+    }
+    val candidates = mutableListOf<ScoredPerformanceCause>()
+    fun add(label: String, score: Double, evidence: String) {
+        if (score.isFinite() && score > 0.0) candidates += ScoredPerformanceCause(label, score, evidence)
+    }
+
     val recompositions = input.appRecompositionsPerSecond + input.chatRecompositionsPerSecond
-    if (recompositions > refresh * 3.0 && input.frameTotalMs > budgetMs * 0.8) {
-        return "Compose state churn / recomposition"
+    if (input.blockingGcPerSecond >= 0.25 || input.allocationMbPerSecond >= 96.0) {
+        val score = 6.0 +
+            max(input.blockingGcPerSecond / 0.5, input.allocationMbPerSecond / 160.0)
+        add(
+            "Allocation / blocking GC pressure",
+            score,
+            "bGC ${input.blockingGcPerSecond.f1()}/s, alloc ${input.allocationMbPerSecond.f1()} MB/s",
+        )
     }
-    if (input.blurSourceDrawsPerFrame > 1.15 && input.frameTotalMs > budgetMs * 0.8) {
-        return "Duplicate content recording for blur"
+    if (recompositions > refresh * 1.5 && (totalRatio >= 0.8 || p95Ratio >= 1.2)) {
+        add(
+            "Compose state churn / recomposition",
+            1.8 + recompositions / (refresh * 3.0) + max(totalRatio - 0.8, 0.0),
+            "${recompositions.f1()} recompositions/s at ${refresh.toDouble().f0()} Hz",
+        )
+    }
+    if (input.blurSourceDrawsPerFrame > 1.15 && (totalRatio >= 0.8 || p95Ratio >= 1.2)) {
+        add(
+            "Duplicate content recording for blur",
+            2.4 + (input.blurSourceDrawsPerFrame - 1.15) * 1.5 + max(totalRatio - 0.8, 0.0),
+            "${input.blurSourceDrawsPerFrame.f1()} blur source traversals/frame",
+        )
     }
 
     val stages = buildList {
@@ -236,28 +307,75 @@ internal fun detectLikelyBottleneck(input: PerformanceCauseInput): String {
         add("Input handling" to input.inputMs)
         if (input.blurFrames > 0L) add("Blur CPU recording / replay" to input.blurCpuMs)
     }
-    val dominant = stages.maxByOrNull { it.second } ?: return "Mixed / unattributed frame work"
-
-    // The largest measured stage is not automatically the cause. At 120 Hz a
-    // 2.5 ms GPU stage is healthy even when TOTAL_DURATION crosses 8.33 ms.
-    val stageCausalThreshold = budgetMs * 0.62
-    if (dominant.second >= stageCausalThreshold) {
-        return when {
-            dominant.first == "GPU rendering" && input.blurFrames > 0L -> "GPU rendering (blur active)"
-            dominant.first == "UI draw / recording" && input.blurFrames > 0L && input.blurCpuMs >= dominant.second * 0.35 ->
-                "Blur source recording / extra draws"
-            else -> dominant.first
+    val dominant = stages.maxByOrNull { it.second }
+    stages.forEach { (rawLabel, durationMs) ->
+        val ratio = durationMs / budgetMs
+        if (ratio < 0.35) return@forEach
+        val label = when {
+            rawLabel == "GPU rendering" && input.blurFrames > 0L -> "GPU rendering (blur active)"
+            rawLabel == "UI draw / recording" &&
+                input.blurFrames > 0L &&
+                input.blurCpuMs >= durationMs * 0.35 -> "Blur source recording / extra draws"
+            else -> rawLabel
         }
+        add(
+            label,
+            ratio * 1.7,
+            "${durationMs.f1()} ms of ${budgetMs.f1()} ms frame budget",
+        )
     }
 
-    val intervalSlow = input.frameDurationP95Ms >= budgetMs * 1.45 || input.jankPercent >= 3.0
-    if ((input.frameTotalMs >= budgetMs || intervalSlow) && dominant.second < stageCausalThreshold) {
-        return "Frame pacing / scheduling stalls"
+    val intervalSlow = p95Ratio >= 1.45 || input.jankPercent >= 3.0
+    val dominantMs = dominant?.second ?: 0.0
+    if (intervalSlow && dominantMs < budgetMs * 0.62) {
+        add(
+            "Frame pacing / scheduling stalls",
+            2.0 + max(p95Ratio - 1.0, 0.0) + input.jankPercent / 20.0,
+            "p95 ${input.frameDurationP95Ms.f1()} ms, jank ${input.jankPercent.f1()}%, largest measured stage ${dominantMs.f1()} ms",
+        )
     }
-    return "Within frame budget"
+
+    if (candidates.isEmpty()) {
+        val withinBudget = totalRatio < 1.0 && p95Ratio < 1.2 && input.jankPercent < 3.0
+        return PerformanceCauseProfile(
+            primaryCause = if (withinBudget) "Within frame budget" else "Mixed / unattributed frame work",
+            confidencePercent = if (withinBudget) 96 else 48,
+            severity = severity,
+            evidence = "total ${input.frameTotalMs.f1()} ms, p95 ${input.frameDurationP95Ms.f1()} ms, budget ${budgetMs.f1()} ms, jank ${input.jankPercent.f1()}%",
+        )
+    }
+
+    val ranked = candidates.sortedByDescending(ScoredPerformanceCause::score)
+    val primary = ranked.first()
+    val secondary = ranked.drop(1).firstOrNull { it.label != primary.label }
+    val margin = if (secondary == null) {
+        1.0
+    } else {
+        ((primary.score - secondary.score) / primary.score.coerceAtLeast(0.001)).coerceIn(0.0, 1.0)
+    }
+    val strength = (primary.score / 4.0).coerceIn(0.0, 1.0)
+    val dataCoverage = if (input.gpuMs != null) 1.0 else 0.92
+    val confidence = ((45.0 + strength * 35.0 + margin * 20.0) * dataCoverage)
+        .toInt()
+        .coerceIn(40, 99)
+    val secondaryLabel = secondary
+        ?.takeIf { it.score >= primary.score * 0.45 }
+        ?.label
+    return PerformanceCauseProfile(
+        primaryCause = primary.label,
+        secondaryCause = secondaryLabel,
+        confidencePercent = confidence,
+        severity = severity,
+        evidence = primary.evidence,
+    )
 }
 
+/** Compatibility helper for callers/tests which need only the top-ranked label. */
+internal fun detectLikelyBottleneck(input: PerformanceCauseInput): String =
+    analyzePerformanceCause(input).primaryCause
+
 internal fun normalizedPerformanceIntervalMs(value: Int): Int = value.coerceIn(250, 2_000)
+internal fun normalizedPerformanceOverlayScale(value: Float): Float = value.coerceIn(0.60f, 2.00f)
 
 internal fun performancePercentile(values: List<Double>, percentile: Double): Double {
     if (values.isEmpty()) return 0.0
@@ -506,7 +624,7 @@ internal class ArborPerformanceMonitor(private val activity: Activity) {
             // physically displayed frames on a 120 Hz panel.
             val appRenderedRate = boundedRenderedFrameRate(rawRenderedRate, latestRefreshRate)
             val fps = appRenderedRate
-            val cause = if (diagnosticProfilerEnabled) detectLikelyBottleneck(
+            val causeProfile = if (diagnosticProfilerEnabled) analyzePerformanceCause(
                 PerformanceCauseInput(
                     refreshRateHz = latestRefreshRate,
                     fps = fps,
@@ -529,7 +647,7 @@ internal class ArborPerformanceMonitor(private val activity: Activity) {
                     allocationMbPerSecond = allocationMbPerSecond,
                     blockingGcPerSecond = blockingGcPerSecond,
                 ),
-            ) else "Profiler disabled"
+            ) else PerformanceCauseProfile.disabled()
             PerformanceSnapshot(
                 fps = fps,
                 displayRefreshRateHz = latestRefreshRate,
@@ -570,7 +688,7 @@ internal class ArborPerformanceMonitor(private val activity: Activity) {
                 allocationMbPerSecond = allocationMbPerSecond,
                 blockingGcPerSecond = blockingGcPerSecond,
                 screenName = renderProfiler.screenName,
-                likelyBottleneck = cause,
+                causeProfile = causeProfile,
             )
         }
         _snapshot.value = snapshotData
@@ -630,97 +748,119 @@ internal fun ArborPerformanceOverlay(
     modifier: Modifier = Modifier,
     backgroundOpacity: Float = 0.86f,
     textOpacity: Float = 1f,
+    scale: Float = 1f,
 ) {
     val panelAlpha = backgroundOpacity.coerceIn(0f, 1f)
+    val uiScale = normalizedPerformanceOverlayScale(scale)
+    val panelShape = RoundedCornerShape((10f * uiScale).dp)
+    val secondaryText = Color.White.copy(alpha = 0.86f)
+    val diagnosticText = Color.White.copy(alpha = 0.82f)
     Surface(
-        modifier = modifier.border(1.dp, Color.White.copy(alpha = 0.14f * panelAlpha), RoundedCornerShape(10.dp)),
+        modifier = modifier
+            .performanceOverlayTouchThrough()
+            .border((1f * uiScale).dp, Color.White.copy(alpha = 0.14f * panelAlpha), panelShape),
         color = Color.Black.copy(alpha = panelAlpha),
         contentColor = Color.White,
-        shape = RoundedCornerShape(10.dp),
-        shadowElevation = (6f * panelAlpha).dp,
+        shape = panelShape,
+        shadowElevation = (6f * uiScale * panelAlpha).dp,
     ) {
-        // No pointer-input/clickable modifier is installed: taps, scrolling and edge gestures
-        // continue to the content underneath this visual-only overlay.
         Column(
             Modifier
                 .graphicsLayer { alpha = textOpacity.coerceIn(0f, 1f) }
-                .padding(horizontal = 9.dp, vertical = 7.dp),
+                .padding(horizontal = (9f * uiScale).dp, vertical = (7f * uiScale).dp),
         ) {
             Text(
                 "Render ${snapshot.appRenderedFrameRate.f0()} fps  ${snapshot.averageFrameMs.f1()} ms  J ${snapshot.jankPercent.f1()}%",
                 fontFamily = FontFamily.Monospace,
-                fontSize = 11.sp,
+                fontSize = (11f * uiScale).sp,
                 maxLines = 1,
             )
             if (detailed) {
                 Text(
                     "Display ${snapshot.displayRefreshRateHz.toDouble().f0()} Hz  Callback ${snapshot.choreographerCallbackRate.f0()}/s  Present ${snapshot.presentedFrameRate?.f0() ?: "n/a"}",
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
-                    color = Color.White.copy(alpha = 0.86f),
+                    fontSize = (10f * uiScale).sp,
+                    color = secondaryText,
                     maxLines = 1,
                 )
                 Text(
                     "FM avg ${snapshot.frameMetricsTotalMs.f1()} ms  p95 ${snapshot.p95FrameMs.f1()}  p99 ${snapshot.p99FrameMs.f1()}",
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
-                    color = Color.White.copy(alpha = 0.86f),
+                    fontSize = (10f * uiScale).sp,
+                    color = secondaryText,
                     maxLines = 1,
                 )
                 Text(
                     "CPU ${snapshot.cpuPercent.f1()}%  PSS ${snapshot.pssMb.f0()} MB  Heap ${snapshot.javaHeapMb.f0()} MB",
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
-                    color = Color.White.copy(alpha = 0.86f),
+                    fontSize = (10f * uiScale).sp,
+                    color = secondaryText,
                     maxLines = 1,
                 )
                 Text(
                     "GPU ${snapshot.gpuAverageMs?.f1() ?: "n/a"} ms  Miss/s ${snapshot.missedFramesPerSecond.f1()}  Reports ${snapshot.droppedMetricReports}",
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
+                    fontSize = (10f * uiScale).sp,
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.95f),
                     maxLines = 1,
                 )
                 if (snapshot.diagnosticProfilerActive) {
+                    val profile = snapshot.causeProfile
                     Text(
-                        "Likely: ${snapshot.likelyBottleneck}",
+                        "Cause ${profile.confidencePercent}% · ${profile.severity.displayName}: ${profile.primaryCause}",
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 10.sp,
+                        fontSize = (10f * uiScale).sp,
                         color = Color(0xFFFFD180),
                         maxLines = 1,
                     )
                     Text(
+                        "Evidence: ${profile.evidence}",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = (9f * uiScale).sp,
+                        color = Color(0xFFFFE0B2),
+                        maxLines = 1,
+                    )
+                    profile.secondaryCause?.let { secondary ->
+                        Text(
+                            "Secondary: $secondary",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = (9f * uiScale).sp,
+                            color = Color.White.copy(alpha = 0.76f),
+                            maxLines = 1,
+                        )
+                    }
+                    Text(
                         "FM ${snapshot.frameMetricsTotalMs.f1()}  L ${snapshot.layoutMeasureMs.f1()}  D ${snapshot.drawMs.f1()}  Cmd ${snapshot.commandIssueMs.f1()}  Sw ${snapshot.swapBuffersMs.f1()}",
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 9.sp,
-                        color = Color.White.copy(alpha = 0.82f),
+                        fontSize = (9f * uiScale).sp,
+                        color = diagnosticText,
                         maxLines = 1,
                     )
                     Text(
                         "BlurCPU ${snapshot.blurCpuMsPerFrame.f2()}  ${snapshot.blurFilteredMegapixelsPerSecond.f0()} MP/s  srcTrav×${snapshot.blurSourceDrawsPerFrame.f1()} replay×${snapshot.blurLayerReplaysPerFrame.f1()}",
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 9.sp,
-                        color = Color.White.copy(alpha = 0.82f),
+                        fontSize = (9f * uiScale).sp,
+                        color = diagnosticText,
                         maxLines = 1,
                     )
                     Text(
                         "cap/s ${snapshot.blurCaptureUpdatesPerSecond.f1()} fx/s ${snapshot.blurEffectBuildsPerSecond.f1()}  levels D${snapshot.blurDownsampleLevels.f1()}/U${snapshot.blurUpsampleLevels.f1()}",
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 9.sp,
-                        color = Color.White.copy(alpha = 0.82f),
+                        fontSize = (9f * uiScale).sp,
+                        color = diagnosticText,
                         maxLines = 1,
                     )
                     Text(
                         "Recomp/s app ${snapshot.appRecompositionsPerSecond.f1()} chat ${snapshot.chatRecompositionsPerSecond.f1()}",
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 9.sp,
-                        color = Color.White.copy(alpha = 0.82f),
+                        fontSize = (9f * uiScale).sp,
+                        color = diagnosticText,
                         maxLines = 1,
                     )
                     Text(
                         "Alloc ${snapshot.allocationMbPerSecond.f1()} MB/s  bGC ${snapshot.blockingGcPerSecond.f1()}  Screen ${snapshot.screenName}",
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 9.sp,
+                        fontSize = (9f * uiScale).sp,
                         color = Color.White.copy(alpha = 0.68f),
                         maxLines = 1,
                     )
@@ -729,6 +869,36 @@ internal fun ArborPerformanceOverlay(
         }
     }
 }
+
+/**
+ * Makes the visual overlay an explicit hit-test participant which shares every event
+ * with the sibling underneath and never consumes any change. This is stronger than
+ * merely omitting clickable/pointerInput: overlapping sibling hit testing is now
+ * guaranteed for scroll, tap, drawer-edge, and stylus input which starts on the panel.
+ */
+private class PerformanceOverlayTouchThroughNode : Modifier.Node(), PointerInputModifierNode {
+    override fun sharePointerInputWithSiblings(): Boolean = true
+    override fun onPointerEvent(
+        pointerEvent: PointerEvent,
+        pass: PointerEventPass,
+        bounds: IntSize,
+    ) = Unit
+    override fun onCancelPointerInput() = Unit
+}
+
+private class PerformanceOverlayTouchThroughElement :
+    ModifierNodeElement<PerformanceOverlayTouchThroughNode>() {
+    override fun create(): PerformanceOverlayTouchThroughNode = PerformanceOverlayTouchThroughNode()
+    override fun update(node: PerformanceOverlayTouchThroughNode) = Unit
+    override fun InspectorInfo.inspectableProperties() {
+        name = "performanceOverlayTouchThrough"
+    }
+    override fun equals(other: Any?): Boolean = other is PerformanceOverlayTouchThroughElement
+    override fun hashCode(): Int = javaClass.hashCode()
+}
+
+private fun Modifier.performanceOverlayTouchThrough(): Modifier =
+    this then PerformanceOverlayTouchThroughElement()
 
 private fun Double.f0(): String = String.format(Locale.US, "%.0f", this)
 private fun Double.f1(): String = String.format(Locale.US, "%.1f", this)

@@ -24,7 +24,7 @@
 
 Arbor is a bring-your-own-provider AI client. It connects your phone directly to the services you choose—without a WebView, hosted Arbor account, application backend, telemetry, or advertising. API keys are protected with Android Keystore-backed encryption, chats live in a local SQLCipher database, and imported files remain in app-private storage.
 
-Current version: **0.20.10**
+Current version: **0.20.11**
 
 ## Development disclosure and disclaimer
 
@@ -58,7 +58,7 @@ Arbor is provided **“AS IS”**, without warranties of any kind. Use, modify, 
 
 ## Install
 
-1. Download `Arbor-0.20.10-release.apk` from the [latest GitHub Release](https://github.com/omerfaruknehir/Arbor/releases/latest).
+1. Download `Arbor-0.20.11-release.apk` from the [latest GitHub Release](https://github.com/omerfaruknehir/Arbor/releases/latest).
 2. Allow installation from your browser or file manager when Android asks.
 3. Open Arbor and follow the welcome flow.
 4. Connect a ChatGPT account, API provider, or local model server.
@@ -119,7 +119,7 @@ For dependency sources, bundled native component notices, hashes, and build reci
 Arbor is created by [@omerfaruknehir](https://github.com/omerfaruknehir).
 
 - [Changelog](CHANGELOG.md)
-- [Latest release notes](docs/releases/RELEASE_NOTES_0.20.10.md)
+- [Latest release notes](docs/releases/RELEASE_NOTES_0.20.11.md)
 - [Source repository](https://github.com/omerfaruknehir/Arbor)
 - [Issue tracker](https://github.com/omerfaruknehir/Arbor/issues)
 
