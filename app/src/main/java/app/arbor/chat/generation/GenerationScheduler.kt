@@ -9,6 +9,7 @@ import androidx.work.Constraints
 import androidx.work.NetworkType
 import androidx.work.WorkManager
 import app.arbor.chat.chat.ChatRepository
+import app.arbor.chat.data.MessageStatus
 import app.arbor.chat.data.SendMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -26,7 +27,21 @@ class GenerationScheduler(
                 withContext(Dispatchers.IO) {
                     WorkManager.getInstance(context).cancelAllWorkByTag(conversationTag(conversationId)).result.get()
                 }
-                active.forEach { repository.markInterrupted(it.nodeId, "Steered by user") }
+                // Steering is an intentional hand-off, not an error or a paused
+                // response. Preserve each partial answer, but do not offer Resume
+                // for work which the new user message has explicitly replaced.
+                active.forEach { message ->
+                    repository.finish(
+                        message.nodeId,
+                        MessageStatus.COMPLETE,
+                        null,
+                        message.inputTokens,
+                        message.outputTokens,
+                        message.cachedInputTokens,
+                        message.costMicros,
+                        message.costKnown,
+                    )
+                }
             }
         }
         val assistantId = repository.submit(conversationId, text, attachmentIds, effectiveMode) ?: return
