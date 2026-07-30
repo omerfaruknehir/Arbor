@@ -24,7 +24,7 @@
 
 Arbor is a bring-your-own-provider AI client. It connects your phone directly to the services you choose—without a WebView, hosted Arbor account, application backend, telemetry, or advertising. API keys are protected with Android Keystore-backed encryption, chats live in a local SQLCipher database, and imported files remain in app-private storage.
 
-Current version: **0.20.7**
+Current version: **0.20.9**
 
 ## Development disclosure and disclaimer
 
@@ -58,13 +58,13 @@ Arbor is provided **“AS IS”**, without warranties of any kind. Use, modify, 
 
 ## Install
 
-1. Download `Arbor-0.20.7-debug.apk` from the [latest GitHub Release](https://github.com/omerfaruknehir/Arbor/releases/latest).
+1. Download `Arbor-0.20.9-release.apk` from the [latest GitHub Release](https://github.com/omerfaruknehir/Arbor/releases/latest).
 2. Allow installation from your browser or file manager when Android asks.
 3. Open Arbor and follow the welcome flow.
 4. Connect a ChatGPT account, API provider, or local model server.
 5. Start a chat. Optional Python and Linux tools can be prepared later from **Settings → Local tools**.
 
-The downloadable APK uses package ID `app.arbor.chat.debug` and Arbor's public, reproducible debug signer. It is intended for direct testing and can update earlier GitHub or local debug builds signed with the same key. It is not signed for production store distribution.
+The public APK is an R8-minified, resource-shrunk **release build**. It intentionally keeps package ID `app.arbor.chat.debug` and Arbor's public reproducible signer so it can update the earlier GitHub debug builds without deleting chats or settings. The Android build is not debuggable, but Arbor's in-app **Developer settings** remain available. Protected production signing switches to the production package ID `app.arbor.chat`.
 
 Local OpenAI-compatible servers default to `http://127.0.0.1:11434/v1`. On a physical phone, `127.0.0.1` means the phone itself. Arbor permits cleartext HTTP only for loopback and the Android emulator host alias; remote machines require HTTPS.
 
@@ -77,16 +77,16 @@ Requirements:
 - Linux, macOS, or Windows with Android Studio support
 
 ```bash
-./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
+./gradlew --no-daemon testReleaseUnitTest lintRelease assembleRelease bundleRelease
 ```
 
-The APK is written to `app/build/outputs/apk/debug/app-debug.apk`. See [BUILDING.md](BUILDING.md) for the full APK/AAB/instrumentation command, ABI details, offline toolchain, verification, and protected release signing.
+Without protected signing variables, the release APK is signed with the repository's public update key and remains package-compatible with prior GitHub builds. The APK is written to `app/build/outputs/apk/release/app-release.apk`. See [BUILDING.md](BUILDING.md) for APK/AAB/instrumentation commands, ABI details, offline toolchain use, verification, and protected production signing.
 
 ## Releases and CI
 
-Every push and pull request runs unit tests, Android lint, APK/AAB compilation, and an Android 35 emulator smoke test through [Android CI](.github/workflows/android.yml).
+Every push and pull request runs unit tests, Android lint, an optimized release APK/AAB build, and an Android 35 emulator smoke test through [Android CI](.github/workflows/android.yml).
 
-When `main` introduces a new app version, the [release workflow](.github/workflows/release.yml) verifies bundled third-party license provenance, validates the local offline license catalog, repeats Android verification, builds the reproducibly signed debug APK, AAB, and instrumentation APK, generates SHA-256 checksums, creates the matching version tag, and publishes the GitHub Release automatically. Same-version commits are detected and skipped.
+When `main` introduces a new app version, the [release workflow](.github/workflows/release.yml) verifies bundled third-party license provenance, validates and decode-tests the local offline license catalog, repeats Android verification, builds the optimized release APK and AAB, verifies the APK signature, generates SHA-256 checksums, creates the matching version tag, and publishes the GitHub Release automatically. Same-version commits are detected and skipped.
 
 Production distribution deliberately requires your own protected signing key. No production private key is stored in this repository.
 
@@ -119,7 +119,7 @@ For dependency sources, bundled native component notices, hashes, and build reci
 Arbor is created by [@omerfaruknehir](https://github.com/omerfaruknehir).
 
 - [Changelog](CHANGELOG.md)
-- [Latest release notes](docs/releases/RELEASE_NOTES_0.20.7.md)
+- [Latest release notes](docs/releases/RELEASE_NOTES_0.20.9.md)
 - [Source repository](https://github.com/omerfaruknehir/Arbor)
 - [Issue tracker](https://github.com/omerfaruknehir/Arbor/issues)
 
