@@ -35,13 +35,38 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          from textwrap import dedent
 
           workflow = Path('.github/workflows/apply-performance-overlay-upgrade.yml').read_text()
           marker = "          python3 - <<'PY'\n"
           start = workflow.index(marker) + len(marker)
           end = workflow.index("\n          PY\n", start)
-          Path('/tmp/apply-performance-overlay.py').write_text(dedent(workflow[start:end]) + '\n')
+          raw_lines = workflow[start:end].splitlines()
+          yaml_indent = 10
+          output = []
+          inside_triple = False
+          string_trim = yaml_indent
+
+          for raw_line in raw_lines:
+              if not inside_triple:
+                  line = raw_line[yaml_indent:] if raw_line.startswith(' ' * yaml_indent) else raw_line
+                  output.append(line)
+                  if line.count('"""') % 2 == 1:
+                      inside_triple = True
+                      delimiter_column = raw_line.index('"""')
+                      after = raw_line.split('"""', 1)[1]
+                      if after:
+                          content_indent = len(after) - len(after.lstrip(' '))
+                          string_trim = max(0, delimiter_column - content_indent)
+                      else:
+                          string_trim = yaml_indent
+              else:
+                  line = raw_line[string_trim:] if raw_line.startswith(' ' * string_trim) else raw_line
+                  output.append(line)
+                  if raw_line.count('"""') % 2 == 1:
+                      inside_triple = False
+                      string_trim = yaml_indent
+
+          Path('/tmp/apply-performance-overlay.py').write_text('\n'.join(output) + '\n')
           PY
           python3 /tmp/apply-performance-overlay.py
 
