@@ -22,3 +22,5 @@ This release simplifies active-response controls and fixes two generation-state 
 - Think, Search, and Tools controls are hidden while a response is already running because changes cannot affect that in-flight request.
 
 The FPS/developer overlay and all Developer settings remain available in optimized release builds.
+
+Normal Android CI validates unit tests, lint, the optimized release APK/AAB, and device instrumentation before publication.
