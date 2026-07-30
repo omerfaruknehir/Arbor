@@ -15,12 +15,19 @@ class NavigationBackTest {
     }
     @Test fun chatIsTheActivityRoot() { assertNull(backDestination(Screen.CHAT)) }
 
-    @Test fun drawerSwipeIsLimitedToChatSoSettingsCanUseBothBackEdges() {
+    @Test fun drawerSwipeWorksAtChatAndSettingsRoots() {
         assertTrue(drawerSwipeEnabled(Screen.CHAT))
-        assertFalse(drawerSwipeEnabled(Screen.SETTINGS))
+        assertTrue(drawerSwipeEnabled(Screen.SETTINGS))
         assertFalse(drawerSwipeEnabled(Screen.SEARCH))
         assertFalse(drawerSwipeEnabled(Screen.SANDBOX))
         assertFalse(drawerSwipeEnabled(Screen.TERMINAL))
+    }
+
+    @Test fun settingsReservesOnlyTheRealLeftBackEdge() {
+        val root = java.io.File("src/main/java/app/arbor/chat/ui/ArborApp.kt").readText()
+        assertTrue(root.contains("SettingsLeftBackEdgeGuard"))
+        assertTrue(root.contains(".width(48.dp)"))
+        assertTrue(root.contains(".horizontalGesturePriority()"))
     }
 
     @Test fun pageBackTakesOverAsSoonAsTheDrawerIsNoLongerVisible() {

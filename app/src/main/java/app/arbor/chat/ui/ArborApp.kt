@@ -2,8 +2,10 @@ package app.arbor.chat.ui
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.WindowInsets
@@ -130,7 +132,10 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
                 when (destination) {
                     Screen.CHAT -> ChatScreen(viewModel, compactOpenDrawer)
                     Screen.SEARCH -> SearchScreen(viewModel, compactOpenDrawer)
-                    Screen.SETTINGS -> SettingsScreen(viewModel, compactOpenDrawer)
+                    Screen.SETTINGS -> Box(Modifier.fillMaxSize()) {
+                        SettingsScreen(viewModel, compactOpenDrawer)
+                        SettingsLeftBackEdgeGuard()
+                    }
                     Screen.SANDBOX -> SandboxScreen(viewModel)
                     Screen.TERMINAL -> LinuxTerminalScreen(viewModel)
                 }
@@ -181,8 +186,8 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
             InteractiveNavigationDrawer(
                 state = drawerState,
                 modifier = Modifier.fillMaxSize(),
-                // Only Chat owns the left-edge drawer gesture. Settings uses both
-                // system back edges; its menu button remains the explicit drawer entry point.
+                // Chat and Settings retain pull-to-open. In Settings, a narrow
+                // non-consuming priority strip reserves the actual system Back edge.
                 gesturesEnabled = drawerSwipeEnabled(screen),
                 drawerContent = { drawerModifier ->
                     ModalDrawerSheet(modifier = drawerModifier) {
@@ -254,6 +259,19 @@ private fun PerformanceOverlayHost(
     )
 }
 
+@Composable
+private fun SettingsLeftBackEdgeGuard() {
+    // The drawer can still be pulled from the Settings content, but the first
+    // 48 dp are owned by Android Back. This node only registers geometry; it
+    // consumes no pointer input and therefore cannot block taps or scrolling.
+    Box(
+        Modifier
+            .fillMaxHeight()
+            .width(48.dp)
+            .horizontalGesturePriority(),
+    )
+}
+
 internal fun performanceOverlayAlignment(position: PerformanceOverlayPosition): Alignment = when (position) {
     PerformanceOverlayPosition.TOP_START -> Alignment.TopStart
     PerformanceOverlayPosition.TOP_END -> Alignment.TopEnd
@@ -275,6 +293,6 @@ internal fun screenDepth(screen: Screen): Int = when (screen) {
     Screen.TERMINAL -> 3
 }
 
-internal fun drawerSwipeEnabled(screen: Screen): Boolean = screen == Screen.CHAT
+internal fun drawerSwipeEnabled(screen: Screen): Boolean = screen == Screen.CHAT || screen == Screen.SETTINGS
 
 internal fun pageBackEnabled(drawerVisible: Boolean): Boolean = !drawerVisible

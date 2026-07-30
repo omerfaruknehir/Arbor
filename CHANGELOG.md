@@ -470,6 +470,14 @@
 # Changelog
 
 
+## 0.20.13 — 2026-07-30
+
+- Restore pull-to-open drawer gestures in Settings without stealing Android's left-edge Back gesture.
+- Reserve only a 48 dp non-consuming Back edge; drawer swipes still work from the Settings content area.
+- Attach explicit versioned source ZIP and TAR.GZ archives to releases and include them in SHA-256 checksums.
+- Split release verification into isolated, memory-bounded Gradle invocations to prevent Kotlin compiler stalls.
+
+
 ## 0.20.12 — 2026-07-30
 
 - Make the left-edge Android back gesture work from the main Settings menu.
