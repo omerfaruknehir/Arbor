@@ -15,9 +15,9 @@ class NavigationBackTest {
     }
     @Test fun chatIsTheActivityRoot() { assertNull(backDestination(Screen.CHAT)) }
 
-    @Test fun drawerSwipeIsEnabledAtChatAndSettingsRoots() {
+    @Test fun drawerSwipeIsLimitedToChatSoSettingsCanUseBothBackEdges() {
         assertTrue(drawerSwipeEnabled(Screen.CHAT))
-        assertTrue(drawerSwipeEnabled(Screen.SETTINGS))
+        assertFalse(drawerSwipeEnabled(Screen.SETTINGS))
         assertFalse(drawerSwipeEnabled(Screen.SEARCH))
         assertFalse(drawerSwipeEnabled(Screen.SANDBOX))
         assertFalse(drawerSwipeEnabled(Screen.TERMINAL))

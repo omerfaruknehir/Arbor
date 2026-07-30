@@ -469,6 +469,13 @@
 
 # Changelog
 
+
+## 0.20.12 — 2026-07-30
+
+- Make the left-edge Android back gesture work from the main Settings menu.
+- Limit pull-to-open drawer gestures to Chat; Settings keeps its explicit menu button.
+- Add regression coverage for Settings back-gesture ownership.
+
 ## 0.20.11 — 2026-07-30
 
 - Add a 60–200% scale control for the performance overlay.
