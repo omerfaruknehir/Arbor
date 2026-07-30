@@ -1,0 +1,123 @@
+name: Settings left-edge back hotfix v3
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/one-shot-settings-left-back-v3.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply hotfix and prepare release
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              if old not in text:
+                  raise SystemExit(f"Expected text not found in {path}: {old!r}")
+              file.write_text(text.replace(old, new, 1))
+
+          replace_exact(
+              "app/src/main/java/app/arbor/chat/ui/ArborApp.kt",
+              "                // Chat and the Settings root support pull-to-open. Nested Settings pages\n                // still register horizontal Back priority, so the drawer yields to them.\n                gesturesEnabled = drawerSwipeEnabled(screen),",
+              "                // Only Chat owns the left-edge drawer gesture. Settings uses both\n                // system back edges; its menu button remains the explicit drawer entry point.\n                gesturesEnabled = drawerSwipeEnabled(screen),",
+          )
+          replace_exact(
+              "app/src/main/java/app/arbor/chat/ui/ArborApp.kt",
+              "internal fun drawerSwipeEnabled(screen: Screen): Boolean = screen == Screen.CHAT || screen == Screen.SETTINGS",
+              "internal fun drawerSwipeEnabled(screen: Screen): Boolean = screen == Screen.CHAT",
+          )
+          replace_exact(
+              "app/src/test/java/app/arbor/chat/ui/NavigationBackTest.kt",
+              "    @Test fun drawerSwipeIsEnabledAtChatAndSettingsRoots() {\n        assertTrue(drawerSwipeEnabled(Screen.CHAT))\n        assertTrue(drawerSwipeEnabled(Screen.SETTINGS))\n        assertFalse(drawerSwipeEnabled(Screen.SEARCH))\n        assertFalse(drawerSwipeEnabled(Screen.SANDBOX))\n        assertFalse(drawerSwipeEnabled(Screen.TERMINAL))\n    }",
+              "    @Test fun drawerSwipeIsLimitedToChatSoSettingsCanUseBothBackEdges() {\n        assertTrue(drawerSwipeEnabled(Screen.CHAT))\n        assertFalse(drawerSwipeEnabled(Screen.SETTINGS))\n        assertFalse(drawerSwipeEnabled(Screen.SEARCH))\n        assertFalse(drawerSwipeEnabled(Screen.SANDBOX))\n        assertFalse(drawerSwipeEnabled(Screen.TERMINAL))\n    }",
+          )
+          replace_exact("app/build.gradle.kts", "versionCode = 137", "versionCode = 138")
+          replace_exact("app/build.gradle.kts", 'versionName = "0.20.11"', 'versionName = "0.20.12"')
+
+          changelog = Path("CHANGELOG.md")
+          text = changelog.read_text()
+          if "## 0.20.12 — 2026-07-30" not in text:
+              marker = "# Changelog\n"
+              section = "\n\n## 0.20.12 — 2026-07-30\n\n- Make the left-edge Android back gesture work from the main Settings menu.\n- Limit pull-to-open drawer gestures to Chat; Settings keeps its explicit menu button.\n- Add regression coverage for Settings back-gesture ownership.\n"
+              if marker not in text:
+                  raise SystemExit("CHANGELOG heading not found")
+              changelog.write_text(text.replace(marker, marker + section, 1))
+
+          readme = Path("README.md")
+          readme.write_text(readme.read_text().replace("0.20.11", "0.20.12"))
+
+          notes = "# Arbor 0.20.12\n\n## Fixed\n\n- The left-edge Android back gesture now works from the main Settings menu and returns to Chat, matching the right-edge gesture.\n- Settings no longer lets the drawer pull-to-open recognizer steal the left-edge back gesture.\n- The drawer remains available from the Settings hamburger button.\n\n## Build\n\nThis is an optimized, minified release build. Developer settings and the performance overlay remain available in-app.\n"
+          Path("docs/releases/RELEASE_NOTES_0.20.12.md").write_text(notes)
+
+          for workflow in (
+              ".github/workflows/one-shot-settings-left-back.yml",
+              ".github/workflows/one-shot-settings-left-back-v2.yml",
+              ".github/workflows/one-shot-settings-left-back-v3.yml",
+          ):
+              path = Path(workflow)
+              if path.exists():
+                  path.unlink()
+          PY
+
+      - name: Verify and build optimized release
+        shell: bash
+        run: ./gradlew --no-daemon --stacktrace testReleaseUnitTest lintRelease assembleRelease bundleRelease assembleDebugAndroidTest
+
+      - name: Verify release APK signature
+        shell: bash
+        run: "$ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk"
+
+      - name: Commit and push
+        id: commit
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix Settings left-edge back gesture and release 0.20.12"
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          mkdir -p release
+          cp app/build/outputs/apk/release/app-release.apk release/Arbor-0.20.12-release.apk
+          cp app/build/outputs/bundle/release/app-release.aab release/Arbor-0.20.12-release.aab
+          (cd release && sha256sum Arbor-0.20.12-release.* > Arbor-0.20.12-SHA256.txt)
+          gh release create v0.20.12 release/* \
+            --target "$TARGET_SHA" \
+            --title "Arbor 0.20.12" \
+            --notes-file docs/releases/RELEASE_NOTES_0.20.12.md
