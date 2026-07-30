@@ -52,7 +52,7 @@ jobs:
     needs: detect_version
     if: needs.detect_version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 75
     env:
       ARBOR_VERSION: ${{ needs.detect_version.outputs.version }}
       ARBOR_TAG: ${{ needs.detect_version.outputs.tag }}
@@ -78,10 +78,22 @@ jobs:
         run: ./ci/verify-third-party-licenses.sh
 
       - name: Verify offline license catalog
-        run: ./gradlew --no-daemon :app:generateOfflineLicenseCatalog
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:generateOfflineLicenseCatalog
 
-      - name: Verify and build optimized release
-        run: ./gradlew --no-daemon --stacktrace testReleaseUnitTest lintRelease assembleRelease bundleRelease assembleDebugAndroidTest
+      - name: Run release unit tests
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
+
+      - name: Run release lint
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
+
+      - name: Assemble optimized release APK
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease
+
+      - name: Assemble optimized release AAB
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process bundleRelease
+
+      - name: Assemble instrumentation APK
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleDebugAndroidTest
 
       - name: Verify release APK signature
         shell: bash
@@ -93,6 +105,10 @@ jobs:
           mkdir -p release
           cp app/build/outputs/apk/release/app-release.apk "release/Arbor-${ARBOR_VERSION}-release.apk"
           cp app/build/outputs/bundle/release/app-release.aab "release/Arbor-${ARBOR_VERSION}-release.aab"
+          git archive --format=zip --prefix="Arbor-${ARBOR_VERSION}/" \
+            -o "release/Arbor-${ARBOR_VERSION}-source.zip" "$GITHUB_SHA"
+          git archive --format=tar --prefix="Arbor-${ARBOR_VERSION}/" "$GITHUB_SHA" \
+            | gzip -n > "release/Arbor-${ARBOR_VERSION}-source.tar.gz"
           (
             cd release
             sha256sum * > "Arbor-${ARBOR_VERSION}-SHA256.txt"
