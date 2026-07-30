@@ -110,6 +110,16 @@ replace_once(
           )""",
 )
 
+stable_build = """run: ./gradlew --no-daemon --stacktrace testReleaseUnitTest lintRelease assembleRelease bundleRelease assembleDebugAndroidTest"""
+stable_build_split = """run: |
+          ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
+          ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
+          ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease
+          ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process bundleRelease
+          ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleDebugAndroidTest"""
+replace_once(release, stable_build, stable_build_split)
+replace_once(".github/workflows/android.yml", stable_build, stable_build_split)
+
 replace_once("app/build.gradle.kts", "versionCode = 138", "versionCode = 139")
 replace_once("app/build.gradle.kts", 'versionName = "0.20.12"', 'versionName = "0.20.13"')
 
@@ -123,6 +133,7 @@ section = """
 - Restore pull-to-open drawer gestures in Settings without stealing Android's left-edge Back gesture.
 - Reserve only a 48 dp non-consuming Back edge; drawer swipes still work from the Settings content area.
 - Attach explicit versioned source ZIP and TAR.GZ archives to releases and include them in SHA-256 checksums.
+- Split release verification into isolated, memory-bounded Gradle invocations to prevent Kotlin compiler stalls.
 """
 if "## 0.20.13 — 2026-07-30" not in text:
     if marker not in text:
@@ -139,6 +150,7 @@ Path("docs/releases/RELEASE_NOTES_0.20.13.md").write_text("""# Arbor 0.20.13
 - Pull-to-open drawer gestures work again from Settings.
 - Android Back still owns the actual left screen edge. Start a drawer swipe slightly inside the Settings content; start Back from the physical edge.
 - The edge reservation consumes no pointer input, so scrolling and taps remain unaffected.
+- Release verification uses isolated, memory-bounded Gradle invocations to avoid Kotlin compiler stalls.
 
 ## Release assets
 
@@ -154,6 +166,7 @@ Developer settings and the performance overlay remain available in the optimized
 for temporary in (
     ".github/workflows/one-shot-settings-drawer-source.yml",
     ".github/workflows/one-shot-settings-drawer-source-v2.yml",
+    ".github/workflows/one-shot-settings-drawer-source-v3.yml",
     ".github/scripts/fix_0_20_13.py",
 ):
     path = Path(temporary)
