@@ -16,6 +16,12 @@ val releaseStoreFile = providers.gradleProperty("ARBOR_KEYSTORE_FILE").orNull ?:
 val releaseStorePassword = providers.gradleProperty("ARBOR_KEYSTORE_PASSWORD").orNull ?: System.getenv("ARBOR_KEYSTORE_PASSWORD")
 val releaseKeyAlias = providers.gradleProperty("ARBOR_KEY_ALIAS").orNull ?: System.getenv("ARBOR_KEY_ALIAS")
 val releaseKeyPassword = providers.gradleProperty("ARBOR_KEY_PASSWORD").orNull ?: System.getenv("ARBOR_KEY_PASSWORD")
+val hasProtectedReleaseSigning = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
 
 val licenseCatalogRoot = rootProject.file("licenses")
 val generatedLicenseAssets = layout.buildDirectory.dir("generated/offlineLicenses/assets")
@@ -176,8 +182,8 @@ android {
         applicationId = "app.arbor.chat"
         minSdk = 26
         targetSdk = 36
-        versionCode = 134
-        versionName = "0.20.8"
+        versionCode = 135
+        versionName = "0.20.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -188,16 +194,15 @@ android {
 
     signingConfigs {
         getByName("debug") {
-            // Public test key: reproducible GitHub/local debug APK updates only.
-            // Production releases must use the separate protected release key.
+            // Public test key: reproducible public builds and in-place upgrades.
             storeFile = rootProject.file("ci/arbor-debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
-        if (!releaseStoreFile.isNullOrBlank()) {
+        if (hasProtectedReleaseSigning) {
             create("release") {
-                storeFile = file(releaseStoreFile)
+                storeFile = file(requireNotNull(releaseStoreFile))
                 storePassword = releaseStorePassword
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword
@@ -217,7 +222,14 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.findByName("release")
+            if (hasProtectedReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                // Public GitHub releases stay update-compatible with the previously
+                // distributed .debug package while using the optimized release build type.
+                applicationIdSuffix = ".debug"
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
         debug {
             applicationIdSuffix = ".debug"

@@ -35,18 +35,20 @@ jobs:
         run: ./ci/verify-third-party-licenses.sh
       - name: Verify offline license catalog
         run: ./gradlew --no-daemon :app:generateOfflineLicenseCatalog
-      - name: Verify debug build
-        run: ./gradlew --no-daemon --stacktrace testDebugUnitTest lintDebug assembleDebug bundleDebug assembleDebugAndroidTest
+      - name: Verify optimized release build
+        run: ./gradlew --no-daemon --stacktrace testReleaseUnitTest lintRelease assembleRelease bundleRelease assembleDebugAndroidTest
+      - name: Verify release APK signature
+        run: "$ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: arbor-debug-and-reports
+          name: arbor-release-and-reports
           path: |
-            app/build/outputs/apk/debug/*.apk
-            app/build/outputs/bundle/debug/*.aab
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/bundle/release/*.aab
             app/build/outputs/apk/androidTest/debug/*.apk
             app/build/reports/tests/
-            app/build/reports/lint-results-debug.html
+            app/build/reports/lint-results-release.html
 
   device-smoke:
     runs-on: ubuntu-latest
@@ -105,10 +107,10 @@ jobs:
           ARBOR_KEYSTORE_PASSWORD: ${{ secrets.ARBOR_KEYSTORE_PASSWORD }}
           ARBOR_KEY_ALIAS: ${{ secrets.ARBOR_KEY_ALIAS }}
           ARBOR_KEY_PASSWORD: ${{ secrets.ARBOR_KEY_PASSWORD }}
-        run: ./gradlew --no-daemon assembleRelease bundleRelease
+        run: ./gradlew --no-daemon testReleaseUnitTest lintRelease assembleRelease bundleRelease
       - uses: actions/upload-artifact@v4
         with:
-          name: arbor-signed-release
+          name: arbor-protected-signed-release
           path: |
             app/build/outputs/apk/release/*.apk
             app/build/outputs/bundle/release/*.aab

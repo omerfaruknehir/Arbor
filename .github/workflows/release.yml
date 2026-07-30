@@ -1,4 +1,4 @@
-name: Release APK
+name: Release Android
 
 on:
   push:
@@ -80,16 +80,19 @@ jobs:
       - name: Verify offline license catalog
         run: ./gradlew --no-daemon :app:generateOfflineLicenseCatalog
 
-      - name: Verify and build
-        run: ./gradlew --no-daemon --stacktrace testDebugUnitTest lintDebug assembleDebug bundleDebug assembleDebugAndroidTest
+      - name: Verify and build optimized release
+        run: ./gradlew --no-daemon --stacktrace testReleaseUnitTest lintRelease assembleRelease bundleRelease assembleDebugAndroidTest
+
+      - name: Verify release APK signature
+        shell: bash
+        run: "$ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk"
 
       - name: Prepare release assets
         shell: bash
         run: |
           mkdir -p release
-          cp app/build/outputs/apk/debug/app-debug.apk "release/Arbor-${ARBOR_VERSION}-debug.apk"
-          cp app/build/outputs/bundle/debug/app-debug.aab "release/Arbor-${ARBOR_VERSION}-debug.aab"
-          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk "release/Arbor-${ARBOR_VERSION}-debug-androidTest.apk"
+          cp app/build/outputs/apk/release/app-release.apk "release/Arbor-${ARBOR_VERSION}-release.apk"
+          cp app/build/outputs/bundle/release/app-release.aab "release/Arbor-${ARBOR_VERSION}-release.aab"
           (
             cd release
             sha256sum * > "Arbor-${ARBOR_VERSION}-SHA256.txt"
@@ -97,7 +100,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Arbor-${{ env.ARBOR_TAG }}-Android
+          name: Arbor-${{ env.ARBOR_TAG }}-Android-release
           if-no-files-found: error
           path: release/*
 
