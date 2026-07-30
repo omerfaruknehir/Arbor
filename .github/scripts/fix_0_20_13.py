@@ -89,37 +89,6 @@ replace_once(
 """,
 )
 
-release = ".github/workflows/release.yml"
-replace_once(
-    release,
-    """          cp app/build/outputs/apk/release/app-release.apk "release/Arbor-${ARBOR_VERSION}-release.apk"
-          cp app/build/outputs/bundle/release/app-release.aab "release/Arbor-${ARBOR_VERSION}-release.aab"
-          (
-            cd release
-            sha256sum * > "Arbor-${ARBOR_VERSION}-SHA256.txt"
-          )""",
-    """          cp app/build/outputs/apk/release/app-release.apk "release/Arbor-${ARBOR_VERSION}-release.apk"
-          cp app/build/outputs/bundle/release/app-release.aab "release/Arbor-${ARBOR_VERSION}-release.aab"
-          git archive --format=zip --prefix="Arbor-${ARBOR_VERSION}/" \\
-            -o "release/Arbor-${ARBOR_VERSION}-source.zip" "$GITHUB_SHA"
-          git archive --format=tar --prefix="Arbor-${ARBOR_VERSION}/" "$GITHUB_SHA" \\
-            | gzip -n > "release/Arbor-${ARBOR_VERSION}-source.tar.gz"
-          (
-            cd release
-            sha256sum * > "Arbor-${ARBOR_VERSION}-SHA256.txt"
-          )""",
-)
-
-stable_build = """run: ./gradlew --no-daemon --stacktrace testReleaseUnitTest lintRelease assembleRelease bundleRelease assembleDebugAndroidTest"""
-stable_build_split = """run: |
-          ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
-          ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
-          ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease
-          ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process bundleRelease
-          ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleDebugAndroidTest"""
-replace_once(release, stable_build, stable_build_split)
-replace_once(".github/workflows/android.yml", stable_build, stable_build_split)
-
 replace_once("app/build.gradle.kts", "versionCode = 138", "versionCode = 139")
 replace_once("app/build.gradle.kts", 'versionName = "0.20.12"', 'versionName = "0.20.13"')
 
@@ -162,13 +131,3 @@ Path("docs/releases/RELEASE_NOTES_0.20.13.md").write_text("""# Arbor 0.20.13
 
 Developer settings and the performance overlay remain available in the optimized release build.
 """)
-
-for temporary in (
-    ".github/workflows/one-shot-settings-drawer-source.yml",
-    ".github/workflows/one-shot-settings-drawer-source-v2.yml",
-    ".github/workflows/one-shot-settings-drawer-source-v3.yml",
-    ".github/scripts/fix_0_20_13.py",
-):
-    path = Path(temporary)
-    if path.exists():
-        path.unlink()
