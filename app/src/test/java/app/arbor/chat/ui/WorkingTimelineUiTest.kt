@@ -55,15 +55,18 @@ class WorkingTimelineUiTest {
     }
 
     @Test
-    fun composerMakesBackgroundActionsDiscoverable() {
+    fun composerKeepsActiveActionsCompactAndPredictable() {
         val chat = java.io.File("src/main/java/app/arbor/chat/ui/ChatScreen.kt").readText()
         val composer = chat.substringAfter("private fun Composer(").substringBefore("private fun StagedAttachmentPreview")
 
-        assertTrue(composer.contains("Arbor is working in the background"))
-        assertTrue(composer.contains("Send queues a message; use ⋮ for Steer"))
-        assertTrue(composer.contains("viewModel.send(if (generating) SendMode.QUEUE else SendMode.SEND_NOW)"))
-        assertTrue(composer.contains("Choose Queue, Steer, or separate turn"))
-        assertTrue(composer.contains("Text(\"Stop\")"))
+        assertTrue(composer.contains("generating -> \"Working\""))
+        assertTrue(composer.contains("viewModel.send(if (generating) SendMode.STEER else SendMode.SEND_NOW)"))
+        assertTrue(composer.contains("Queue this message"))
+        assertTrue(composer.contains("Stop current response"))
+        assertTrue(composer.contains("if (providerConfigured && !generating)"))
+        assertFalse(composer.contains("Arbor is working in the background"))
+        assertFalse(composer.contains("Choose Queue, Steer, or separate turn"))
+        assertFalse(composer.contains("Start a separate turn"))
         assertFalse(composer.contains("\"Stop or send\""))
     }
 

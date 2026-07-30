@@ -2,6 +2,7 @@ package app.arbor.chat.provider
 
 import app.arbor.chat.data.MessageRole
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
@@ -45,29 +46,47 @@ class OpenAiCompatibleProvider(
             .post(bodyJson.toString().toRequestBody("application/json".toMediaType()))
         if (request.apiKey.isNotBlank()) builder.header("Authorization", "Bearer ${request.apiKey}")
         request.customHeaders.forEach(builder::header)
+        val httpRequest = builder.build()
 
-        val calls = linkedMapOf<Int, ToolCallAccumulator>()
-        client.newCall(builder.build()).useCancellable { response ->
-            if (!response.isSuccessful) {
-                val error = response.body?.readErrorSnippet().orEmpty()
-                throw ProviderHttpException(response.code, "${response.code} ${response.message}: $error")
+        var emptyAttempt = 0
+        while (true) {
+            val calls = linkedMapOf<Int, ToolCallAccumulator>()
+            var meaningfulPayloadReceived = false
+            var finishReason: String? = null
+            client.newCall(httpRequest).useCancellable { response ->
+                if (!response.isSuccessful) {
+                    val error = response.body?.readErrorSnippet().orEmpty()
+                    throw ProviderHttpException(response.code, "${response.code} ${response.message}: $error")
+                }
+                val source = response.body?.source() ?: error("Provider returned an empty response")
+                while (!source.exhausted()) {
+                    coroutineContext.ensureActive()
+                    val line = source.readUtf8Line() ?: break
+                    if (!line.startsWith("data:")) continue
+                    val payload = line.removePrefix("data:").trim()
+                    if (payload == "[DONE]") break
+                    parseChunk(payload, calls)?.let { chunk ->
+                        if (chunk.hasMeaningfulPayload()) meaningfulPayloadReceived = true
+                        finishReason = chunk.finishReason ?: finishReason
+                        emit(chunk)
+                    }
+                }
             }
-            val source = response.body?.source() ?: error("Provider returned an empty response")
-            while (!source.exhausted()) {
-                coroutineContext.ensureActive()
-                val line = source.readUtf8Line() ?: break
-                if (!line.startsWith("data:")) continue
-                val payload = line.removePrefix("data:").trim()
-                if (payload == "[DONE]") break
-                parseChunk(payload, calls)?.let { emit(it) }
+            if (calls.isNotEmpty()) {
+                val completed = calls.toSortedMap()
+                emit(StreamChunk(
+                    toolCallProgress = completed.map { (index, call) -> call.progress(index, complete = true) },
+                    toolCalls = completed.values.map { it.complete() },
+                ))
+                meaningfulPayloadReceived = true
             }
-        }
-        if (calls.isNotEmpty()) {
-            val completed = calls.toSortedMap()
-            emit(StreamChunk(
-                toolCallProgress = completed.map { (index, call) -> call.progress(index, complete = true) },
-                toolCalls = completed.values.map { it.complete() },
-            ))
+            if (meaningfulPayloadReceived) break
+            if (emptyAttempt >= MAX_EMPTY_STREAM_RETRIES) {
+                val suffix = finishReason?.takeIf(String::isNotBlank)?.let { " (finish reason: $it)" }.orEmpty()
+                throw ProviderProtocolException("Provider completed without returning content after ${emptyAttempt + 1} attempts$suffix")
+            }
+            emptyAttempt++
+            delay(EMPTY_STREAM_RETRY_DELAY_MS * emptyAttempt)
         }
     }
 
@@ -260,7 +279,10 @@ class OpenAiCompatibleProvider(
                                 }
                             })
                         } else if (message.role == MessageRole.ASSISTANT && message.nativeToolCalls.isNotEmpty() && message.content.isBlank()) {
-                            put("content", JsonNull)
+                            // DeepSeek rejects a null assistant content field while
+                            // replaying tool calls. Other OpenAI-compatible APIs use
+                            // null for the same protocol shape.
+                            put("content", if (isDeepSeek) JsonPrimitive("") else JsonNull)
                         } else {
                             put("content", JsonPrimitive(combinedText(message, emptySet())))
                         }
@@ -333,6 +355,10 @@ class OpenAiCompatibleProvider(
         return (listOf(message.content) + context).filter(String::isNotBlank).joinToString("\n\n")
     }
 
+    private fun StreamChunk.hasMeaningfulPayload(): Boolean =
+        text.isNotEmpty() || reasoning.isNotEmpty() || toolCallProgress.isNotEmpty() ||
+            toolCalls.isNotEmpty() || generatedImages.isNotEmpty()
+
     internal class ToolCallAccumulator {
         var id: String = ""
         var name: String = ""
@@ -354,6 +380,8 @@ class OpenAiCompatibleProvider(
 
     private companion object {
         const val MAX_IMAGE_BYTES = 64L * 1024 * 1024
+        const val MAX_EMPTY_STREAM_RETRIES = 2
+        const val EMPTY_STREAM_RETRY_DELAY_MS = 750L
         const val MAX_IMAGE_RESPONSE_BYTES = 96L * 1024 * 1024
     }
 

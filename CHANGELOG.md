@@ -469,6 +469,16 @@
 
 # Changelog
 
+## 0.20.10 — 2026-07-30
+
+- Treat steering as an intentional hand-off instead of a resumable interruption.
+- Retry empty OpenAI-compatible streams before surfacing an error.
+- Fix DeepSeek tool-call replay to use non-null assistant content.
+- Make sending during generation steer by default; queue remains available by long-pressing Send.
+- Replace the large interruption overlay and background-work card with compact status controls.
+- Hide inactive option chips while a response is running and suppress empty finished assistant cards.
+
+
 ## 0.16.29
 
 - Replaced the predictive-back commit snap with a short render-layer completion phase.

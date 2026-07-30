@@ -1097,21 +1097,43 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     Icon(Icons.Filled.KeyboardArrowDown, "Go to latest message")
                 }
             }
-            val interrupted = recoverable.firstOrNull { it.status == MessageStatus.INTERRUPTED || it.status == MessageStatus.ERROR }
-            AnimatedVisibility(interrupted != null, modifier = Modifier.align(Alignment.TopCenter).padding(top = padding.calculateTopPadding() + 12.dp)) {
+            val interrupted = recoverable.firstOrNull { candidate ->
+                candidate.status == MessageStatus.ERROR ||
+                    (candidate.status == MessageStatus.INTERRUPTED &&
+                        candidate.error !in setOf("Steered by user", "Replaced by an edited message"))
+            }
+            AnimatedVisibility(
+                visible = interrupted != null && !generating,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = padding.calculateTopPadding() + 8.dp, start = 12.dp, end = 12.dp),
+            ) {
                 interrupted?.let { message ->
+                    val failed = message.status == MessageStatus.ERROR
                     Surface(
-                        color = MaterialTheme.colorScheme.errorContainer,
-                        shape = MaterialTheme.shapes.large,
-                        shadowElevation = 4.dp,
-                        modifier = Modifier.padding(12.dp),
+                        color = if (failed) MaterialTheme.colorScheme.errorContainer
+                        else MaterialTheme.colorScheme.secondaryContainer,
+                        shape = MaterialTheme.shapes.extraLarge,
+                        tonalElevation = 2.dp,
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(if (message.status == MessageStatus.INTERRUPTED) "Response interrupted" else "Request failed", fontWeight = FontWeight.SemiBold)
-                                Text(message.error.orEmpty(), maxLines = 2, style = MaterialTheme.typography.bodySmall)
+                        Row(
+                            Modifier.padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Outlined.WarningAmber, null, Modifier.size(18.dp))
+                            Text(
+                                if (failed) "Request failed" else "Response paused",
+                                Modifier.padding(start = 9.dp).weight(1f),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                            )
+                            TextButton(onClick = {
+                                if (failed) viewModel.retryMessage(message) else viewModel.resume(message)
+                            }) {
+                                Text(if (failed) "Retry" else "Continue")
                             }
-                            AssistChip(onClick = { viewModel.resume(message) }, label = { Text("Resume") })
                         }
                     }
                 }
@@ -1253,6 +1275,14 @@ private fun MessageCard(
     val displayContent = if (deepResearchResponse) {
         remember(message.content) { ResearchStateProtocol.extract(message.content).cleanedText }
     } else message.content
+    if (
+        message.role == MessageRole.ASSISTANT &&
+        message.status != MessageStatus.STREAMING &&
+        displayContent.isBlank() &&
+        displayReasoning.isBlank() &&
+        timeline.isEmpty() &&
+        attachments.isEmpty()
+    ) return
     var editing by remember(message.nodeId) { mutableStateOf(false) }
     var editedText by remember(message.nodeId) { mutableStateOf(message.content) }
     var copied by remember(message.nodeId) { mutableStateOf(false) }
@@ -2443,41 +2473,34 @@ private fun Composer(
             if (generating || pending.isNotEmpty()) {
                 Surface(
                     color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .72f),
-                    shape = MaterialTheme.shapes.large,
+                    shape = CircleShape,
                     modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp),
                 ) {
                     Row(
-                        Modifier.padding(start = 12.dp, end = 4.dp, top = 5.dp, bottom = 5.dp),
+                        Modifier.padding(start = 12.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         if (generating) {
-                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 1.8.dp)
+                            CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 1.8.dp)
                         } else {
-                            Icon(Icons.Outlined.Schedule, null, Modifier.size(17.dp))
+                            Icon(Icons.Outlined.Schedule, null, Modifier.size(16.dp))
                         }
-                        Column(Modifier.padding(start = 9.dp).weight(1f)) {
-                            Text(
-                                if (generating) "Arbor is working in the background" else "Messages queued",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                when {
-                                    generating && pending.isNotEmpty() ->
-                                        "${pending.size} queued • Send queues another message"
-                                    generating -> "Send queues a message; use ⋮ for Steer"
-                                    else -> "${pending.size} waiting"
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            )
-                        }
+                        Text(
+                            when {
+                                generating && pending.isNotEmpty() -> "Working · ${pending.size} queued"
+                                generating -> "Working"
+                                else -> "${pending.size} queued"
+                            },
+                            modifier = Modifier.padding(start = 9.dp).weight(1f),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
                         if (generating) {
-                            TextButton(onClick = {
-                                haptics.reject()
-                                viewModel.stop()
-                            }) {
-                                Text("Stop")
+                            IconButton(
+                                onClick = { haptics.reject(); viewModel.stop() },
+                                modifier = Modifier.size(36.dp),
+                            ) {
+                                Icon(Icons.Filled.Stop, "Stop current response", Modifier.size(19.dp))
                             }
                         }
                     }
@@ -2498,7 +2521,7 @@ private fun Composer(
                     }
                 }
             }
-            if (providerConfigured) conversation?.let { current ->
+            if (providerConfigured && !generating) conversation?.let { current ->
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2574,7 +2597,7 @@ private fun Composer(
                     placeholder = {
                         Text(
                             if (!providerConfigured) "Set up a provider to start"
-                            else if (generating) "Steer or queue…"
+                            else if (generating) "Add direction…"
                             else if (conversation?.deepResearchEnabled == true) "Research request…"
                             else "Message Arbor…",
                             maxLines = 1,
@@ -2586,14 +2609,6 @@ private fun Composer(
                     maxLines = 7,
                 )
                 Spacer(Modifier.width(6.dp))
-                if (generating) {
-                    IconButton(onClick = {
-                        haptics.tap()
-                        sendMenu = true
-                    }) {
-                        Icon(Icons.Outlined.MoreVert, "Choose Queue, Steer, or separate turn")
-                    }
-                }
                 Surface(
                     shape = CircleShape,
                     color = if (providerConfigured && hasPayload && !importing) MaterialTheme.colorScheme.primary
@@ -2605,7 +2620,7 @@ private fun Composer(
                         onClick = {
                             haptics.confirm()
                             onImmediateSend()
-                            viewModel.send(if (generating) SendMode.QUEUE else SendMode.SEND_NOW)
+                            viewModel.send(if (generating) SendMode.STEER else SendMode.SEND_NOW)
                         },
                         onLongClick = {
                             haptics.longPress()
@@ -2615,8 +2630,8 @@ private fun Composer(
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Icon(
-                            if (generating) Icons.Outlined.Schedule else Icons.Filled.ArrowUpward,
-                            if (generating) "Queue after current response" else "Send",
+                            if (generating) Icons.AutoMirrored.Outlined.AltRoute else Icons.Filled.ArrowUpward,
+                            if (generating) "Steer current response" else "Send",
                         )
                     }
                 }
@@ -2650,41 +2665,46 @@ private fun Composer(
         ModalBottomSheet(onDismissRequest = { sendMenu = false }) {
             Column(Modifier.padding(bottom = 24.dp)) {
                 Text(
-                    if (generating) "Response actions" else "Send options",
+                    if (generating) "While Arbor is working" else "Send options",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
                 )
-                if (generating) ListItem(
-                    headlineContent = { Text("Stop current response") },
-                    supportingContent = { Text("Keep the partial answer and Working trace") },
-                    leadingContent = { Icon(Icons.Filled.Stop, null) },
-                    modifier = Modifier.combinedClickable(onClick = { viewModel.stop(); sendMenu = false }, onLongClick = { viewModel.stop(); sendMenu = false }),
-                )
-                ListItem(
-                    headlineContent = { Text(if (generating) "Steer current response" else "Send now") },
-                    supportingContent = { Text(if (!hasPayload) "Type a message or attach a file first" else if (generating) "Stop it, preserve its state, insert this message, then continue" else "Start a response immediately") },
-                    leadingContent = { Icon(if (generating) Icons.AutoMirrored.Outlined.AltRoute else Icons.AutoMirrored.Filled.Send, null) },
-                    modifier = Modifier.combinedClickable(
-                        onClick = { if (hasPayload) { onImmediateSend(); viewModel.send(if (generating) SendMode.STEER else SendMode.SEND_NOW); sendMenu = false } },
-                        onLongClick = { if (hasPayload) { onImmediateSend(); viewModel.send(if (generating) SendMode.STEER else SendMode.SEND_NOW); sendMenu = false } },
-                    ),
-                    colors = androidx.compose.material3.ListItemDefaults.colors(
-                        headlineColor = if (hasPayload) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = .38f),
-                    ),
-                )
-                if (generating) ListItem(
-                    headlineContent = { Text("Queue after response") },
-                    supportingContent = { Text(if (hasPayload) "Send automatically when the current response finishes" else "Type a message or attach a file first") },
-                    leadingContent = { Icon(Icons.Outlined.Schedule, null) },
-                    modifier = Modifier.combinedClickable(onClick = { if (hasPayload) { viewModel.send(SendMode.QUEUE); sendMenu = false } }, onLongClick = { if (hasPayload) { viewModel.send(SendMode.QUEUE); sendMenu = false } }),
-                )
-                if (generating) ListItem(
-                    headlineContent = { Text("Start a separate turn") },
-                    supportingContent = { Text(if (hasPayload) "Let both responses run concurrently" else "Type a message or attach a file first") },
-                    leadingContent = { Icon(Icons.AutoMirrored.Filled.Send, null) },
-                    modifier = Modifier.combinedClickable(onClick = { if (hasPayload) { onImmediateSend(); viewModel.send(SendMode.SEND_NOW); sendMenu = false } }, onLongClick = { if (hasPayload) { onImmediateSend(); viewModel.send(SendMode.SEND_NOW); sendMenu = false } }),
-                )
+                if (generating) {
+                    ListItem(
+                        headlineContent = { Text("Queue this message") },
+                        supportingContent = { Text(if (hasPayload) "Send after the current response finishes" else "Type a message or attach a file first") },
+                        leadingContent = { Icon(Icons.Outlined.Schedule, null) },
+                        modifier = Modifier.clickable {
+                            if (hasPayload) {
+                                viewModel.send(SendMode.QUEUE)
+                                sendMenu = false
+                            }
+                        },
+                    )
+                    ListItem(
+                        headlineContent = { Text("Stop current response") },
+                        supportingContent = { Text("Keep the partial answer") },
+                        leadingContent = { Icon(Icons.Filled.Stop, null) },
+                        modifier = Modifier.clickable {
+                            viewModel.stop()
+                            sendMenu = false
+                        },
+                    )
+                } else {
+                    ListItem(
+                        headlineContent = { Text("Send now") },
+                        supportingContent = { Text(if (hasPayload) "Start a response" else "Type a message or attach a file first") },
+                        leadingContent = { Icon(Icons.AutoMirrored.Filled.Send, null) },
+                        modifier = Modifier.clickable {
+                            if (hasPayload) {
+                                onImmediateSend()
+                                viewModel.send(SendMode.SEND_NOW)
+                                sendMenu = false
+                            }
+                        },
+                    )
+                }
             }
         }
     }
