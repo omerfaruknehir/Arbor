@@ -99,16 +99,16 @@ jobs:
           )'''
           script = replace_labeled_call(script, 'Version bump', robust_version)
           script = script.replace(
-              '              val corner = (10f * uiScale).dp',
-              '              val panelShape = RoundedCornerShape((10f * uiScale).dp)',
+              'val corner = (10f * uiScale).dp',
+              'val panelShape = RoundedCornerShape((10f * uiScale).dp)',
           )
           script = script.replace(
               '.border((1f * uiScale).dp, Color.White.copy(alpha = 0.14f * panelAlpha), corner)',
               '.border((1f * uiScale).dp, Color.White.copy(alpha = 0.14f * panelAlpha), panelShape)',
           )
           script = script.replace(
-              '                  shape = RoundedCornerShape(corner),',
-              '                  shape = panelShape,',
+              'shape = RoundedCornerShape(corner),',
+              'shape = panelShape,',
           )
           Path('/tmp/apply-performance-overlay.py').write_text(script)
           PY
@@ -122,6 +122,7 @@ jobs:
           grep -q 'Overlay scale' app/src/main/java/app/arbor/chat/ui/SettingsScreen.kt
           grep -q 'sharePointerInputWithSiblings(): Boolean = true' app/src/main/java/app/arbor/chat/ui/PerformanceOverlay.kt
           grep -q 'PerformanceCauseProfile' app/src/main/java/app/arbor/chat/ui/PerformanceOverlay.kt
+          grep -q 'val panelShape = RoundedCornerShape' app/src/main/java/app/arbor/chat/ui/PerformanceOverlay.kt
           ! grep -q 'Likely:' app/src/main/java/app/arbor/chat/ui/PerformanceOverlay.kt
 
       - name: Run focused validation
