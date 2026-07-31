@@ -1,0 +1,42 @@
+name: Fix 0.20.20 performance source test
+
+on:
+  push:
+    branches:
+      - agent/stateful-icon-restart-0.20.20
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update canonical route assertion
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('app/src/test/java/app/arbor/chat/ui/PerformanceOverlayTest.kt')
+          text = path.read_text()
+          old = '''        val settingsSource = java.io.File("src/main/java/app/arbor/chat/ui/SettingsScreen.kt").readText()
+        val rootSource = java.io.File("src/main/java/app/arbor/chat/ui/ArborApp.kt").readText()
+        assertTrue(settingsSource.contains("DEVELOPER(\\\"Developer settings\\\")"))
+'''
+          new = '''        val settingsSource = java.io.File("src/main/java/app/arbor/chat/ui/SettingsScreen.kt").readText()
+        val routeSource = java.io.File("src/main/java/app/arbor/chat/ui/SettingsRoute.kt").readText()
+        val rootSource = java.io.File("src/main/java/app/arbor/chat/ui/ArborApp.kt").readText()
+        assertTrue(routeSource.contains("DEVELOPER(\\\"Developer settings\\\")"))
+'''
+          if old not in text:
+              raise SystemExit('Expected performance test block not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          rm .github/workflows/fix-performance-test-02020.yml
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Update performance test for persistent settings routes"
+          git push
