@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.20.20 — 2026-07-31
+
+- Replace the unreliable deferred launcher-alias workaround with an intentional stateful restart: synchronously save the active screen, selected chat, settings/setup page, chat and Settings scroll positions, per-chat drafts, and staged file attachments before switching the icon, then reopen Arbor through the selected launcher alias.
+- Add a system-owned alarm fallback so One UI can tear down every Arbor process during the alias change without losing the relaunch.
+- Persist composer text independently for every conversation; staged attachments remain durable in Arbor private storage and reappear with their matching chat draft.
+- Make the Android splash and launcher handoff use the selected palette and launcher artwork. Dynamic now reads the live wallpaper-derived Android system accent and neutral resources.
+- Rebuild setup as a horizontally swipeable pager with animated transitions, persisted step restoration, and resumable Provider/Linux detours.
+- Add a permanent Setup assistant entry in Settings so setup can always be reopened.
+
 ## 0.20.19 — 2026-07-31
 
 - Stop mutating launcher aliases while Arbor is visible; icon choices are now persisted and committed only after the app leaves the screen.

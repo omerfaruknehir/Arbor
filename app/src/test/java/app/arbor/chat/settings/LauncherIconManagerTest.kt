@@ -27,7 +27,7 @@ class LauncherIconManagerTest {
     }
 
     @Test
-    fun `launcher aliases use a stable trampoline instead of the running activity`() {
+    fun `launcher aliases use palette themed trampolines instead of the running activity`() {
         val manifest = File("src/main/AndroidManifest.xml").readText()
         LauncherIconManager.allAliases.forEach { alias ->
             assertTrue(manifest.contains(".${alias.substringAfterLast('.')}"))
@@ -37,54 +37,76 @@ class LauncherIconManagerTest {
             .substringBefore("</activity>")
         assertFalse(mainActivity.contains("android.intent.category.LAUNCHER"))
         assertTrue(mainActivity.contains("android:launchMode=\"singleTask\""))
-        assertTrue(manifest.contains("android:name=\".LauncherActivity\""))
 
+        val expectedTargets = listOf(
+            ".LauncherArborActivity",
+            ".LauncherSystemActivity",
+            ".LauncherGraphiteActivity",
+            ".LauncherOceanActivity",
+            ".LauncherVioletActivity",
+            ".LauncherSunsetActivity",
+        )
         val aliasBlocks = Regex("<activity-alias[\\s\\S]*?</activity-alias>")
             .findAll(manifest)
             .map { it.value }
             .toList()
         assertEquals(LauncherIconManager.allAliases.size, aliasBlocks.size)
-        aliasBlocks.forEach { block ->
-            assertTrue(block.contains("android:targetActivity=\".LauncherActivity\""))
+        expectedTargets.zip(aliasBlocks).forEach { (target, block) ->
+            assertTrue(block.contains("android:targetActivity=\"$target\""))
             assertFalse(block.contains("android:targetActivity=\".MainActivity\""))
         }
 
         val trampoline = File("src/main/java/app/arbor/chat/LauncherActivity.kt").readText()
+        expectedTargets.forEach { target -> assertTrue(trampoline.contains("class ${target.removePrefix(".")}")) }
         assertTrue(trampoline.contains("Intent(this, MainActivity::class.java)"))
         assertTrue(trampoline.contains("finish()"))
     }
 
     @Test
-    fun `foreground settings only queue icon changes and hidden lifecycle flushes them`() {
+    fun `icon changes use an intentional stateful restart`() {
         val source = File("src/main/java/app/arbor/chat/settings/LauncherIconManager.kt").readText()
-        val foregroundApply = source.substringAfter("fun apply(context:")
-            .substringBefore("fun flushPending")
-        assertTrue(foregroundApply.contains("KEY_PENDING_ALIAS"))
-        assertFalse(foregroundApply.contains("sendBroadcast"))
-        assertFalse(foregroundApply.contains("setComponentEnabledSetting"))
-        assertTrue(source.contains("fun flushPending"))
-        assertTrue(source.contains("LauncherIconSwitchReceiver::class.java"))
+        assertTrue(source.contains("requestStatefulRestart"))
+        assertTrue(source.contains("PendingIntent"))
+        assertFalse(source.contains("KEY_PENDING_ALIAS"))
+        assertFalse(source.contains("flushPending"))
 
         val mainActivity = File("src/main/java/app/arbor/chat/MainActivity.kt").readText()
-        assertTrue(mainActivity.contains("override fun onStop()"))
-        assertTrue(mainActivity.contains("LauncherIconManager.flushPending"))
+        assertTrue(mainActivity.contains("viewModel.flushPersistentState()"))
+        assertTrue(mainActivity.contains("finishAffinity()"))
+        assertTrue(mainActivity.contains("ComponentName(packageName, desiredAlias)"))
 
         val application = File("src/main/java/app/arbor/chat/ArborApplication.kt").readText()
-        assertTrue(application.contains("TRIM_MEMORY_UI_HIDDEN"))
-        assertTrue(application.contains("LauncherIconManager.flushPending"))
+        assertFalse(application.contains("TRIM_MEMORY_UI_HIDDEN"))
+        assertFalse(application.contains("flushPending"))
     }
 
     @Test
-    fun `background icon switching is atomic and acknowledges only the applied alias`() {
+    fun `isolated icon switching is atomic and relaunches the saved session`() {
         val source = File("src/main/java/app/arbor/chat/settings/LauncherIconManager.kt").readText()
         assertTrue(source.contains("setComponentEnabledSettings"))
         assertTrue(source.contains("PackageManager.DONT_KILL_APP"))
         assertTrue(source.contains("applyEnableFirst"))
-        assertTrue(source.contains("markApplied"))
 
         val receiver = File("src/main/java/app/arbor/chat/settings/LauncherIconSwitchReceiver.kt").readText()
         assertTrue(receiver.contains("BroadcastReceiver"))
         assertTrue(receiver.contains("LauncherIconManager.applyDirect"))
-        assertTrue(receiver.contains("LauncherIconManager.markApplied"))
+        assertTrue(receiver.contains("relaunch.send()"))
+        assertTrue(receiver.contains("AlarmManager.ELAPSED_REALTIME_WAKEUP"))
+        assertTrue(receiver.contains("goAsync()"))
+    }
+
+
+    @Test
+    fun `dynamic launcher artwork uses actual Android system palette resources`() {
+        val background = File("src/main/res/drawable-v31/ic_arbor_background_system.xml").readText()
+        val foreground = File("src/main/res/drawable-v31/ic_arbor_foreground_system.xml").readText()
+        assertTrue(background.contains("@android:color/system_accent1_800"))
+        assertTrue(background.contains("@android:color/system_accent2_700"))
+        assertTrue(foreground.contains("@android:color/system_accent1_200"))
+        assertTrue(foreground.contains("@android:color/system_accent3_200"))
+        val splash = File("src/main/res/values-v31/styles.xml").readText()
+        assertTrue(splash.contains("Theme.Arbor.Launcher.System"))
+        assertTrue(splash.contains("@mipmap/ic_launcher_system"))
+        assertTrue(splash.contains("@color/arbor_splash_system"))
     }
 }

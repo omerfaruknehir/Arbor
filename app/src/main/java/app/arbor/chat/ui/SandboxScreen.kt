@@ -111,6 +111,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
     val running = pythonRun?.running == true
     val result = pythonRun?.result ?: pythonRun?.error?.let { ExecutionResult(stderr = it) }
     val conversationId by viewModel.selectedConversationId.collectAsState()
+    val setupTemporarilyAway by viewModel.setupTemporarilyAway.collectAsState()
     val scope = rememberCoroutineScope()
     var clock by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var dismissedLongRun by remember { mutableLongStateOf(0L) }
@@ -172,8 +173,14 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                 overlayOpacity = chromeOverlayOpacity,
                 blurArea = STANDARD_TOP_PANEL_HEIGHT_DP.dp,
                 navigationIcon = {
-                    IconButton(onClick = { viewModel.screen.value = Screen.SETTINGS }) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to Settings")
+                    IconButton(onClick = {
+                        if (setupTemporarilyAway) viewModel.returnToSetup()
+                        else viewModel.screen.value = Screen.SETTINGS
+                    }) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.ArrowBack,
+                            if (setupTemporarilyAway) "Back to setup" else "Back to Settings",
+                        )
                     }
                 },
             )

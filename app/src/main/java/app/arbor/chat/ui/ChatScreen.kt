@@ -167,6 +167,7 @@ import app.arbor.chat.sandbox.WorkspaceReadResult
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -231,6 +232,14 @@ internal fun calculateAutoFollowSeekSpeedPxPerSecond(
     val shaped = combined * combined * (3f - (2f * combined))
     return minSpeedPxPerSecond + ((maxSpeedPxPerSecond - minSpeedPxPerSecond) * shaped)
 }
+
+private data class PersistedChatScrollSample(
+    val anchorNodeId: String?,
+    val firstVisibleItemIndex: Int,
+    val firstVisibleItemOffset: Int,
+    val atLatest: Boolean,
+    val topBarHeightOffset: Float,
+)
 
 internal data class MessageBranchKey(
     val conversationId: String,
@@ -455,7 +464,7 @@ internal fun calculateComposerChromeProgressFromBottom(
     return ((distance - startPx).toFloat() / (endPx - startPx).toFloat()).coerceIn(0f, 1f)
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, FlowPreview::class)
 @Composable
 fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     SideEffect { ArborRenderProfiler.recordChatRecomposition() }
@@ -480,6 +489,9 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     var chatMenu by remember { mutableStateOf(false) }
     var showChatConfiguration by remember { mutableStateOf(false) }
     val messageListState = rememberLazyListState()
+    val savedScroll = remember(conversation?.id) {
+        conversation?.id?.let(viewModel::chatScrollSnapshot)
+    }
     val userDraggingMessageList by messageListState.interactionSource.collectIsDraggedAsState()
     val listScope = rememberCoroutineScope()
     val blurState = rememberArborBackdropBlurState()
@@ -721,7 +733,9 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
 
         val collapsedOffset = snapshotFlow { topAppBarState.heightOffsetLimit }
             .first { it < 0f }
-        topAppBarState.heightOffset = collapsedOffset
+        topAppBarState.heightOffset = savedScroll?.topBarHeightOffset
+            ?.coerceIn(collapsedOffset, 0f)
+            ?: collapsedOffset
     }
 
     LaunchedEffect(conversation?.id, paging.itemCount, initialPositioned, messageBottomInsetPx) {
@@ -729,9 +743,48 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         // composer. Positioning with a zero inset is what briefly left the last
         // response behind the input controls.
         if (!initialPositioned && paging.itemCount > 0 && messageBottomInsetPx > 0) {
-            snapChatToBottom(messageListState, paging.itemCount - 1, messageBottomInsetPx)
+            val snapshot = savedScroll
+            if (snapshot != null && !snapshot.atLatest) {
+                val sourceIndex = snapshot.anchorNodeId?.let { nodeId ->
+                    paging.itemSnapshotList.items.indexOfFirst { it.nodeId == nodeId }
+                        .takeIf { it >= 0 }
+                }
+                val targetIndex = sourceIndex?.let {
+                    chronologicalUiIndex(it, paging.itemSnapshotList.items.size)
+                } ?: snapshot.firstVisibleItemIndex.coerceIn(0, paging.itemCount - 1)
+                messageListState.scrollToItem(targetIndex, snapshot.firstVisibleItemOffset)
+                followMode = ChatFollowMode.DETACHED
+            } else {
+                snapChatToBottom(messageListState, paging.itemCount - 1, messageBottomInsetPx)
+            }
             initialPositioned = true
         }
+    }
+
+    LaunchedEffect(messageListState, conversation?.id, topAppBarState, initialPositioned) {
+        if (!initialPositioned) return@LaunchedEffect
+        val conversationId = conversation?.id ?: return@LaunchedEffect
+        snapshotFlow {
+            val firstVisible = messageListState.layoutInfo.visibleItemsInfo.firstOrNull()
+            PersistedChatScrollSample(
+                anchorNodeId = (firstVisible?.key as? String)?.takeUnless { it.startsWith("loading-") },
+                firstVisibleItemIndex = messageListState.firstVisibleItemIndex,
+                firstVisibleItemOffset = messageListState.firstVisibleItemScrollOffset,
+                atLatest = !messageListState.canScrollForward,
+                topBarHeightOffset = topAppBarState.heightOffset,
+            )
+        }
+            .distinctUntilChanged()
+            .collect { snapshot ->
+                viewModel.saveChatScrollSnapshot(
+                    conversationId = conversationId,
+                    anchorNodeId = snapshot.anchorNodeId,
+                    firstVisibleItemIndex = snapshot.firstVisibleItemIndex,
+                    firstVisibleItemOffset = snapshot.firstVisibleItemOffset,
+                    atLatest = snapshot.atLatest,
+                    topBarHeightOffset = snapshot.topBarHeightOffset,
+                )
+            }
     }
 
     // Reattach follow mode when generation starts, but never hard-position the
@@ -2592,7 +2645,7 @@ private fun Composer(
                 }
                 OutlinedTextField(
                     value = draft,
-                    onValueChange = { viewModel.draft.value = it },
+                    onValueChange = viewModel::setDraft,
                     enabled = providerConfigured,
                     placeholder = {
                         Text(

@@ -2,6 +2,9 @@ package app.arbor.chat.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,10 +47,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
@@ -58,6 +61,8 @@ import androidx.compose.ui.unit.dp
 import app.arbor.chat.settings.ColorPalette
 import app.arbor.chat.settings.ThemeMode
 import app.arbor.chat.ui.theme.palettePreviewColors
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 private enum class OnboardingStep { WELCOME, APPEARANCE, PROVIDER, TOOLS, READY }
 
@@ -89,6 +94,7 @@ internal fun ArborStartupScreen() {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun OnboardingScreen(
     currentThemeMode: ThemeMode,
@@ -98,6 +104,8 @@ internal fun OnboardingScreen(
     providerCatalogDelayed: Boolean,
     pythonEnabled: Boolean,
     linuxEnabled: Boolean,
+    stepIndex: Int,
+    onStepChanged: (Int) -> Unit,
     onThemeModeChanged: (ThemeMode) -> Unit,
     onPaletteChanged: (ColorPalette) -> Unit,
     onMatchLauncherIconToPaletteChanged: (Boolean) -> Unit,
@@ -108,14 +116,32 @@ internal fun OnboardingScreen(
     onOpenLinuxSetup: () -> Unit,
     onExplore: () -> Unit,
 ) {
-    var stepIndex by rememberSaveable { mutableIntStateOf(0) }
     val steps = OnboardingStep.entries
-    val step = steps[stepIndex.coerceIn(0, steps.lastIndex)]
+    val initialPage = stepIndex.coerceIn(0, steps.lastIndex)
+    val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { steps.size })
+    val scope = rememberCoroutineScope()
     val haptics = rememberArborHaptics()
+    val currentPage = pagerState.currentPage.coerceIn(0, steps.lastIndex)
+    val step = steps[currentPage]
 
-    BackHandler(enabled = stepIndex > 0) {
+    fun moveTo(page: Int) {
+        val target = page.coerceIn(0, steps.lastIndex)
+        scope.launch { pagerState.animateScrollToPage(target) }
+    }
+
+    LaunchedEffect(stepIndex) {
+        val requested = stepIndex.coerceIn(0, steps.lastIndex)
+        if (pagerState.settledPage != requested) pagerState.scrollToPage(requested)
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }
+            .distinctUntilChanged()
+            .collect { onStepChanged(it) }
+    }
+
+    BackHandler(enabled = currentPage > 0) {
         haptics.selection()
-        stepIndex--
+        moveTo(currentPage - 1)
     }
 
     Surface(
@@ -130,62 +156,68 @@ internal fun OnboardingScreen(
                 .padding(horizontal = 20.dp, vertical = 14.dp),
         ) {
             OnboardingProgressHeader(
-                stepIndex = stepIndex,
+                stepIndex = currentPage,
                 stepCount = steps.size,
-                showBack = stepIndex > 0,
+                showBack = currentPage > 0,
                 onBack = {
                     haptics.selection()
-                    stepIndex--
+                    moveTo(currentPage - 1)
                 },
             )
-            Column(
-                Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(top = 18.dp, bottom = 20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(18.dp),
-            ) {
-                when (step) {
-                    OnboardingStep.WELCOME -> WelcomeStep()
-                    OnboardingStep.APPEARANCE -> AppearanceStep(
-                        currentThemeMode = currentThemeMode,
-                        currentPalette = currentPalette,
-                        matchLauncherIconToPalette = matchLauncherIconToPalette,
-                        amoled = amoled,
-                        onThemeModeChanged = {
-                            haptics.selection()
-                            onThemeModeChanged(it)
-                        },
-                        onPaletteChanged = {
-                            haptics.selection()
-                            onPaletteChanged(it)
-                        },
-                        onMatchLauncherIconToPaletteChanged = onMatchLauncherIconToPaletteChanged,
-                        onAmoledChanged = onAmoledChanged,
-                    )
-                    OnboardingStep.PROVIDER -> ProviderStep(providerCatalogDelayed)
-                    OnboardingStep.TOOLS -> ToolsStep(
-                        pythonEnabled = pythonEnabled,
-                        linuxEnabled = linuxEnabled,
-                        onPythonEnabledChanged = onPythonEnabledChanged,
-                        onLinuxEnabledChanged = onLinuxEnabledChanged,
-                    )
-                    OnboardingStep.READY -> ReadyStep(
-                        themeMode = currentThemeMode,
-                        palette = currentPalette,
-                        matchLauncherIconToPalette = matchLauncherIconToPalette,
-                        pythonEnabled = pythonEnabled,
-                        linuxEnabled = linuxEnabled,
-                    )
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                key = { steps[it].name },
+                beyondViewportPageCount = 1,
+            ) { page ->
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(top = 18.dp, bottom = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                ) {
+                    when (steps[page]) {
+                        OnboardingStep.WELCOME -> WelcomeStep()
+                        OnboardingStep.APPEARANCE -> AppearanceStep(
+                            currentThemeMode = currentThemeMode,
+                            currentPalette = currentPalette,
+                            matchLauncherIconToPalette = matchLauncherIconToPalette,
+                            amoled = amoled,
+                            onThemeModeChanged = {
+                                haptics.selection()
+                                onThemeModeChanged(it)
+                            },
+                            onPaletteChanged = {
+                                haptics.selection()
+                                onPaletteChanged(it)
+                            },
+                            onMatchLauncherIconToPaletteChanged = onMatchLauncherIconToPaletteChanged,
+                            onAmoledChanged = onAmoledChanged,
+                        )
+                        OnboardingStep.PROVIDER -> ProviderStep(providerCatalogDelayed)
+                        OnboardingStep.TOOLS -> ToolsStep(
+                            pythonEnabled = pythonEnabled,
+                            linuxEnabled = linuxEnabled,
+                            onPythonEnabledChanged = onPythonEnabledChanged,
+                            onLinuxEnabledChanged = onLinuxEnabledChanged,
+                        )
+                        OnboardingStep.READY -> ReadyStep(
+                            themeMode = currentThemeMode,
+                            palette = currentPalette,
+                            matchLauncherIconToPalette = matchLauncherIconToPalette,
+                            pythonEnabled = pythonEnabled,
+                            linuxEnabled = linuxEnabled,
+                        )
+                    }
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Spacer(Modifier.height(14.dp))
             when (step) {
-                OnboardingStep.WELCOME -> PrimaryNextButton("Set up Arbor") { stepIndex = 1 }
-                OnboardingStep.APPEARANCE -> PrimaryNextButton("Continue") { stepIndex = 2 }
+                OnboardingStep.WELCOME -> PrimaryNextButton("Set up Arbor") { moveTo(1) }
+                OnboardingStep.APPEARANCE -> PrimaryNextButton("Continue") { moveTo(2) }
                 OnboardingStep.PROVIDER -> {
                     Button(
                         onClick = {
@@ -197,13 +229,13 @@ internal fun OnboardingScreen(
                     OutlinedButton(
                         onClick = {
                             haptics.selection()
-                            stepIndex = 3
+                            moveTo(3)
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Continue and connect later") }
                 }
                 OnboardingStep.TOOLS -> {
-                    PrimaryNextButton("Continue") { stepIndex = 4 }
+                    PrimaryNextButton("Continue") { moveTo(4) }
                     OutlinedButton(
                         onClick = {
                             haptics.selection()
@@ -408,7 +440,7 @@ private fun AppearanceStep(
         }
     }
     Text(
-        "The launcher icon updates after Arbor leaves the screen, so setup is never interrupted. Android themed icons can override app-selected colors.",
+        "Changing the launcher icon briefly restarts Arbor after saving this setup page, every chat draft and file, and the current scroll position. Android themed icons can still override app-selected colors.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth(),

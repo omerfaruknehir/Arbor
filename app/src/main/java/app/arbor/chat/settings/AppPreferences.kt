@@ -185,11 +185,6 @@ class AppPreferences(context: Context) {
     val developerSettings: StateFlow<DeveloperSettings> = _developerSettings.asStateFlow()
     val hasNewChatDefaults: Boolean get() = preferences.getBoolean(KEY_DEFAULTS_INITIALIZED, false)
 
-    init {
-        // Reconcile aliases after app updates or launcher cache resets.
-        LauncherIconManager.apply(appContext, _matchLauncherIconToPalette.value, _palette.value)
-    }
-
     private fun readChromeBlurStrength():  Float {
         val saved = preferences.getFloat(KEY_CHROME_BLUR_STRENGTH, 0.7f).coerceIn(0f, 1f)
         if (!preferences.contains(KEY_CHROME_BLUR_ENABLED)) return saved
@@ -245,15 +240,11 @@ class AppPreferences(context: Context) {
     fun setPalette(value: ColorPalette) {
         _palette.value = value
         preferences.edit { putString(KEY_PALETTE, value.name) }
-        if (_matchLauncherIconToPalette.value) {
-            LauncherIconManager.apply(appContext, matchPalette = true, palette = value)
-        }
     }
 
     fun setMatchLauncherIconToPalette(enabled: Boolean) {
         _matchLauncherIconToPalette.value = enabled
         preferences.edit { putBoolean(KEY_MATCH_LAUNCHER_ICON_TO_PALETTE, enabled) }
-        LauncherIconManager.apply(appContext, matchPalette = enabled, palette = _palette.value)
     }
 
     fun setThemeMode(value: ThemeMode) {

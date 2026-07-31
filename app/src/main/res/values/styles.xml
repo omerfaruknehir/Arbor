@@ -8,10 +8,27 @@
         <item name="android:windowNoTitle">true</item>
     </style>
 
-    <style name="Theme.Arbor.Launcher" parent="android:style/Theme.Translucent.NoTitleBar">
-        <item name="android:windowBackground">@android:color/transparent</item>
-        <item name="android:windowDisablePreview">true</item>
-        <item name="android:windowIsTranslucent">true</item>
+    <style name="Theme.Arbor.Launcher" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowBackground">@color/arbor_splash_fallback</item>
+        <item name="android:windowDisablePreview">false</item>
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">@color/arbor_splash_fallback</item>
+        <item name="android:navigationBarColor">@color/arbor_splash_fallback</item>
         <item name="android:windowNoTitle">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
     </style>
+
+    <style name="Theme.Arbor.Launcher.Arbor" parent="Theme.Arbor.Launcher" />
+    <style name="Theme.Arbor.Launcher.Graphite" parent="Theme.Arbor.Launcher" />
+    <style name="Theme.Arbor.Launcher.Ocean" parent="Theme.Arbor.Launcher" />
+    <style name="Theme.Arbor.Launcher.Violet" parent="Theme.Arbor.Launcher" />
+    <style name="Theme.Arbor.Launcher.Sunset" parent="Theme.Arbor.Launcher" />
+    <style name="Theme.Arbor.Launcher.System" parent="Theme.Arbor.Launcher">
+        <item name="android:windowBackground">@color/arbor_splash_system</item>
+        <item name="android:statusBarColor">@color/arbor_splash_system</item>
+        <item name="android:navigationBarColor">@color/arbor_splash_system</item>
+    </style>
+
 </resources>

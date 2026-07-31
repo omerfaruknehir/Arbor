@@ -1,27 +1,28 @@
 package app.arbor.chat.settings
 
+import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
+import androidx.annotation.DrawableRes
 import androidx.annotation.RequiresApi
+import app.arbor.chat.R
 
 /**
- * Queues launcher alias changes and commits them only after Arbor is hidden.
+ * Applies one manifest-declared launcher alias as part of an intentional restart.
  *
- * Changing an activity-alias is a package-manager operation. Some launchers tear
- * down the visible task even when [PackageManager.DONT_KILL_APP] is supplied.
- * The foreground UI therefore only records the desired alias. [flushPending]
- * dispatches the actual mutation after MainActivity has stopped or Android has
- * reported that Arbor's UI is hidden.
+ * Samsung/One UI can tear down the current task whenever activity-alias state is
+ * changed, even with DONT_KILL_APP. Arbor therefore saves its complete UI state,
+ * dispatches the component mutation to the isolated launcher process, closes the
+ * old task deliberately, and lets that process relaunch Arbor from the snapshot.
  */
 internal object LauncherIconManager {
     private const val TAG = "ArborLauncherIcon"
-    private const val STATE_PREFERENCES = "arbor_launcher_icon_state"
-    private const val KEY_PENDING_ALIAS = "pending_alias"
     internal const val EXTRA_DESIRED_ALIAS = "app.arbor.chat.extra.DESIRED_LAUNCHER_ALIAS"
+    internal const val EXTRA_RELAUNCH_INTENT = "app.arbor.chat.extra.RELAUNCH_INTENT"
 
     internal const val ARBOR_ALIAS = "app.arbor.chat.LauncherArbor"
     internal const val SYSTEM_ALIAS = "app.arbor.chat.LauncherSystem"
@@ -51,49 +52,37 @@ internal object LauncherIconManager {
         }
     }
 
-    /** Records the requested launcher icon without touching component state. */
-    fun apply(context: Context, matchPalette: Boolean, palette: ColorPalette): Boolean {
-        val appContext = context.applicationContext
-        val desiredClassName = aliasClassName(matchPalette, palette)
-        return runCatching {
-            val pending = statePreferences(appContext)
-            if (enabledAlias(appContext) == desiredClassName) {
-                pending.edit().remove(KEY_PENDING_ALIAS).commit()
-            } else {
-                pending.edit().putString(KEY_PENDING_ALIAS, desiredClassName).commit()
-            }
-        }.onFailure { error ->
-            Log.w(TAG, "Could not queue launcher icon alias update", error)
-        }.getOrDefault(false)
-    }
+    @DrawableRes
+    internal fun iconResource(matchPalette: Boolean, palette: ColorPalette): Int =
+        when (aliasClassName(matchPalette, palette)) {
+            SYSTEM_ALIAS -> R.mipmap.ic_launcher_system
+            GRAPHITE_ALIAS -> R.mipmap.ic_launcher_graphite
+            OCEAN_ALIAS -> R.mipmap.ic_launcher_ocean
+            VIOLET_ALIAS -> R.mipmap.ic_launcher_violet
+            SUNSET_ALIAS -> R.mipmap.ic_launcher_sunset
+            else -> R.mipmap.ic_launcher
+        }
 
-    /**
-     * Sends a queued mutation to the lightweight launcher process.
-     * Call only after Arbor's visible activity has stopped.
-     */
-    fun flushPending(context: Context): Boolean {
-        val appContext = context.applicationContext
-        val desiredClassName = statePreferences(appContext)
-            .getString(KEY_PENDING_ALIAS, null)
-            ?.takeIf { it in allAliases }
-            ?: return false
+    fun needsChange(context: Context, matchPalette: Boolean, palette: ColorPalette): Boolean =
+        enabledAlias(context.applicationContext) != aliasClassName(matchPalette, palette)
+
+    fun requestStatefulRestart(
+        context: Context,
+        desiredClassName: String,
+        relaunchIntent: PendingIntent,
+    ): Boolean {
+        if (desiredClassName !in allAliases) return false
         return runCatching {
-            appContext.sendBroadcast(
-                Intent(appContext, LauncherIconSwitchReceiver::class.java)
-                    .setPackage(appContext.packageName)
-                    .putExtra(EXTRA_DESIRED_ALIAS, desiredClassName),
+            context.applicationContext.sendBroadcast(
+                Intent(context, LauncherIconSwitchReceiver::class.java)
+                    .setPackage(context.packageName)
+                    .putExtra(EXTRA_DESIRED_ALIAS, desiredClassName)
+                    .putExtra(EXTRA_RELAUNCH_INTENT, relaunchIntent),
             )
             true
         }.onFailure { error ->
-            Log.w(TAG, "Could not dispatch queued launcher icon update", error)
+            Log.w(TAG, "Could not dispatch stateful launcher icon restart", error)
         }.getOrDefault(false)
-    }
-
-    internal fun markApplied(context: Context, desiredClassName: String) {
-        val preferences = statePreferences(context.applicationContext)
-        if (preferences.getString(KEY_PENDING_ALIAS, null) == desiredClassName) {
-            preferences.edit().remove(KEY_PENDING_ALIAS).commit()
-        }
     }
 
     internal fun applyDirect(context: Context, desiredClassName: String): Boolean {
@@ -111,9 +100,6 @@ internal object LauncherIconManager {
             Log.w(TAG, "Could not update launcher icon alias", error)
         }.getOrDefault(false)
     }
-
-    private fun statePreferences(context: Context) =
-        context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
 
     private fun enabledAlias(context: Context): String? {
         val packageManager = context.packageManager
