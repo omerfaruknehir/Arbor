@@ -66,7 +66,11 @@ class LauncherIconManagerTest {
         assertFalse(preferences.contains("LauncherIconManager.apply("))
         val application = File("src/main/java/app/arbor/chat/ArborApplication.kt").readText()
         assertTrue(application.contains("ProcessLifecycleOwner"))
+        assertTrue(application.contains("override fun onStart"))
         assertTrue(application.contains("override fun onStop"))
-        assertTrue(application.contains("applyPendingLauncherIcon"))
+        assertTrue(application.contains("pendingIconJob?.cancel()"))
+        assertTrue(application.contains("streamingMessages().isNotEmpty()"))
+        assertTrue(application.contains("delay(750)"))
+        assertTrue(application.contains("if (!processVisible) container.appPreferences.applyPendingLauncherIcon()"))
     }
 }
