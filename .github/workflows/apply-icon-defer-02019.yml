@@ -1,0 +1,41 @@
+name: Apply Arbor 0.20.19 icon defer patch
+
+on:
+  push:
+    branches:
+      - agent/defer-icon-switch-0.20.19
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply verified source transformation
+        run: python scripts/apply_icon_defer_02019.py
+
+      - name: Run structural checks
+        shell: bash
+        run: |
+          ./ci/verify-third-party-licenses.sh
+          git diff --check
+          grep -q 'versionName = "0.20.19"' app/build.gradle.kts
+          grep -q 'fun flushPending' app/src/main/java/app/arbor/chat/settings/LauncherIconManager.kt
+          grep -q 'override fun onStop()' app/src/main/java/app/arbor/chat/MainActivity.kt
+
+      - name: Commit clean patch
+        shell: bash
+        run: |
+          rm scripts/apply_icon_defer_02019.py
+          rm .github/workflows/apply-icon-defer-02019.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Defer launcher icon mutation until Arbor is hidden"
+          git push
