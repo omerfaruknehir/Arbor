@@ -13,7 +13,6 @@ import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -130,7 +129,7 @@ internal fun RepairableGeneratedContent(
         )
     }
 
-    if (editing && current != null) AlertDialog(
+    if (editing && current != null) ArborAlertDialog(
         onDismissRequest = { editing = false },
         title = { Text("Edit ${type.displayLabel} source") },
         text = {

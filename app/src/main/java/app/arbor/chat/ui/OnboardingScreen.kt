@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.DarkMode
@@ -40,6 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -56,9 +58,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.arbor.chat.R
+import app.arbor.chat.settings.ColorPalette
 import app.arbor.chat.settings.ThemeMode
 
-private enum class OnboardingStep { WELCOME, APPEARANCE, PROVIDER }
+private enum class OnboardingStep { WELCOME, APPEARANCE, PROVIDER, TOOLS, READY }
 
 internal fun shouldBlockForProviderCatalog(catalogReady: Boolean, graceExpired: Boolean): Boolean =
     !catalogReady && !graceExpired
@@ -91,13 +94,23 @@ internal fun ArborStartupScreen() {
 @Composable
 internal fun OnboardingScreen(
     currentThemeMode: ThemeMode,
+    currentPalette: ColorPalette,
+    amoled: Boolean,
     providerCatalogDelayed: Boolean,
+    pythonEnabled: Boolean,
+    linuxEnabled: Boolean,
     onThemeModeChanged: (ThemeMode) -> Unit,
+    onPaletteChanged: (ColorPalette) -> Unit,
+    onAmoledChanged: (Boolean) -> Unit,
+    onPythonEnabledChanged: (Boolean) -> Unit,
+    onLinuxEnabledChanged: (Boolean) -> Unit,
     onOpenProviderSetup: () -> Unit,
+    onOpenLinuxSetup: () -> Unit,
     onExplore: () -> Unit,
 ) {
     var stepIndex by rememberSaveable { mutableIntStateOf(0) }
-    val step = OnboardingStep.values()[stepIndex.coerceIn(0, OnboardingStep.values().lastIndex)]
+    val steps = OnboardingStep.entries
+    val step = steps[stepIndex.coerceIn(0, steps.lastIndex)]
     val haptics = rememberArborHaptics()
 
     BackHandler(enabled = stepIndex > 0) {
@@ -118,6 +131,7 @@ internal fun OnboardingScreen(
         ) {
             OnboardingProgressHeader(
                 stepIndex = stepIndex,
+                stepCount = steps.size,
                 showBack = stepIndex > 0,
                 onBack = {
                     haptics.selection()
@@ -137,49 +151,38 @@ internal fun OnboardingScreen(
                     OnboardingStep.WELCOME -> WelcomeStep()
                     OnboardingStep.APPEARANCE -> AppearanceStep(
                         currentThemeMode = currentThemeMode,
+                        currentPalette = currentPalette,
+                        amoled = amoled,
                         onThemeModeChanged = {
                             haptics.selection()
                             onThemeModeChanged(it)
                         },
+                        onPaletteChanged = {
+                            haptics.selection()
+                            onPaletteChanged(it)
+                        },
+                        onAmoledChanged = onAmoledChanged,
                     )
                     OnboardingStep.PROVIDER -> ProviderStep(providerCatalogDelayed)
+                    OnboardingStep.TOOLS -> ToolsStep(
+                        pythonEnabled = pythonEnabled,
+                        linuxEnabled = linuxEnabled,
+                        onPythonEnabledChanged = onPythonEnabledChanged,
+                        onLinuxEnabledChanged = onLinuxEnabledChanged,
+                    )
+                    OnboardingStep.READY -> ReadyStep(
+                        themeMode = currentThemeMode,
+                        palette = currentPalette,
+                        pythonEnabled = pythonEnabled,
+                        linuxEnabled = linuxEnabled,
+                    )
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Spacer(Modifier.height(14.dp))
             when (step) {
-                OnboardingStep.WELCOME -> {
-                    Button(
-                        onClick = {
-                            haptics.confirm()
-                            stepIndex = 1
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Get started") }
-                    TextButton(
-                        onClick = {
-                            haptics.selection()
-                            onExplore()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Skip for now") }
-                }
-                OnboardingStep.APPEARANCE -> {
-                    Button(
-                        onClick = {
-                            haptics.confirm()
-                            stepIndex = 2
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Continue") }
-                    OutlinedButton(
-                        onClick = {
-                            haptics.selection()
-                            onExplore()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Skip setup") }
-                }
+                OnboardingStep.WELCOME -> PrimaryNextButton("Set up Arbor") { stepIndex = 1 }
+                OnboardingStep.APPEARANCE -> PrimaryNextButton("Continue") { stepIndex = 2 }
                 OnboardingStep.PROVIDER -> {
                     Button(
                         onClick = {
@@ -187,18 +190,54 @@ internal fun OnboardingScreen(
                             onOpenProviderSetup()
                         },
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Open provider setup") }
+                    ) { Text("Connect a provider now") }
                     OutlinedButton(
                         onClick = {
                             haptics.selection()
+                            stepIndex = 3
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Continue and connect later") }
+                }
+                OnboardingStep.TOOLS -> {
+                    PrimaryNextButton("Continue") { stepIndex = 4 }
+                    OutlinedButton(
+                        onClick = {
+                            haptics.selection()
+                            onOpenLinuxSetup()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Open Linux environment manager") }
+                }
+                OnboardingStep.READY -> {
+                    Button(
+                        onClick = {
+                            haptics.confirm()
                             onExplore()
                         },
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Continue without a provider") }
+                    ) { Text("Enter Arbor") }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onOpenProviderSetup, modifier = Modifier.weight(1f)) {
+                            Text("Provider")
+                        }
+                        OutlinedButton(onClick = onOpenLinuxSetup, modifier = Modifier.weight(1f)) {
+                            Text("Linux")
+                        }
+                    }
                 }
             }
+            if (step != OnboardingStep.READY) {
+                TextButton(
+                    onClick = {
+                        haptics.selection()
+                        onExplore()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Exit setup for now") }
+            }
             Text(
-                "Setup is never permanent. You can change the theme or add providers later in Settings.",
+                "Nothing here locks you in. Theme, providers, defaults, and local tools remain editable in Settings.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -209,8 +248,21 @@ internal fun OnboardingScreen(
 }
 
 @Composable
+private fun PrimaryNextButton(label: String, onClick: () -> Unit) {
+    val haptics = rememberArborHaptics()
+    Button(
+        onClick = {
+            haptics.confirm()
+            onClick()
+        },
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text(label) }
+}
+
+@Composable
 private fun OnboardingProgressHeader(
     stepIndex: Int,
+    stepCount: Int,
     showBack: Boolean,
     onBack: () -> Unit,
 ) {
@@ -228,12 +280,12 @@ private fun OnboardingProgressHeader(
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                "Step ${stepIndex + 1} of 3",
+                "Step ${stepIndex + 1} of $stepCount",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                repeat(3) { index ->
+                repeat(stepCount) { index ->
                     Surface(
                         modifier = Modifier.weight(1f).height(4.dp),
                         color = if (index <= stepIndex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -262,7 +314,7 @@ private fun WelcomeStep() {
         textAlign = TextAlign.Center,
     )
     Text(
-        "A private, native workspace for AI chat and agent work.",
+        "Set up only what you need. Arbor works as a private native client, and every choice can be changed later.",
         style = MaterialTheme.typography.titleMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
@@ -274,9 +326,9 @@ private fun WelcomeStep() {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column {
-            OnboardingValueRow(Icons.Outlined.Lock, "Private by design", "Chats and credentials stay on this device.")
-            OnboardingValueRow(Icons.Outlined.Cloud, "Your providers", "Connect directly to ChatGPT, an API, or a local server.")
-            OnboardingValueRow(Icons.Outlined.Code, "Tools when you need them", "Search, files, Python, and optional Linux workspaces.")
+            OnboardingValueRow(Icons.Outlined.Lock, "Private by design", "Chats, credentials, and tool workspaces stay on this device.")
+            OnboardingValueRow(Icons.Outlined.Cloud, "Bring your own models", "Use a ChatGPT account, API provider, or local server.")
+            OnboardingValueRow(Icons.Outlined.Code, "Local tools are optional", "Bundled Python works immediately; Linux is installed only when requested.")
         }
     }
 }
@@ -284,54 +336,69 @@ private fun WelcomeStep() {
 @Composable
 private fun AppearanceStep(
     currentThemeMode: ThemeMode,
+    currentPalette: ColorPalette,
+    amoled: Boolean,
     onThemeModeChanged: (ThemeMode) -> Unit,
+    onPaletteChanged: (ColorPalette) -> Unit,
+    onAmoledChanged: (Boolean) -> Unit,
 ) {
-    Text(
-        "Choose your theme",
-        style = MaterialTheme.typography.headlineMedium,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onBackground,
-        modifier = Modifier.fillMaxWidth(),
-    )
-    Text(
-        "The preview applies immediately. System follows your phone; Light and Dark stay fixed until you change them.",
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.fillMaxWidth(),
-    )
+    SetupHeading("Make Arbor yours", "Every choice previews immediately across the entire setup flow.")
+    Text("Brightness", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth())
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         ThemeModeChoice(
             icon = Icons.Outlined.SettingsBrightness,
-            title = "System",
-            subtitle = "Match Android automatically",
+            title = "Follow device",
+            subtitle = "Switch with Android automatically",
             selected = currentThemeMode == ThemeMode.SYSTEM,
             onClick = { onThemeModeChanged(ThemeMode.SYSTEM) },
         )
         ThemeModeChoice(
             icon = Icons.Outlined.LightMode,
             title = "Light",
-            subtitle = "Always use the light theme",
+            subtitle = "Keep Arbor light",
             selected = currentThemeMode == ThemeMode.LIGHT,
             onClick = { onThemeModeChanged(ThemeMode.LIGHT) },
         )
         ThemeModeChoice(
             icon = Icons.Outlined.DarkMode,
             title = "Dark",
-            subtitle = "Always use the dark theme",
+            subtitle = "Keep Arbor dark",
             selected = currentThemeMode == ThemeMode.DARK,
             onClick = { onThemeModeChanged(ThemeMode.DARK) },
         )
     }
+    Text("Color palette", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth())
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        ColorPalette.entries.forEach { palette ->
+            PaletteChoice(
+                palette = palette,
+                selected = currentPalette == palette,
+                onClick = { onPaletteChanged(palette) },
+            )
+        }
+    }
     Surface(
-        color = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text("Live preview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(
-                "Every setup screen uses the selected color scheme, including status-bar icon contrast.",
-                style = MaterialTheme.typography.bodyMedium,
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("AMOLED black", fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (currentThemeMode == ThemeMode.LIGHT) "Available in dark mode" else "Use true black for the darkest surfaces",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = amoled,
+                onCheckedChange = onAmoledChanged,
+                enabled = currentThemeMode != ThemeMode.LIGHT,
             )
         }
     }
@@ -350,10 +417,7 @@ private fun ThemeModeChoice(
         color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer,
         contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
         shape = MaterialTheme.shapes.large,
-        border = BorderStroke(
-            1.dp,
-            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-        ),
+        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
     ) {
         Row(
             Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -371,18 +435,46 @@ private fun ThemeModeChoice(
 }
 
 @Composable
+private fun PaletteChoice(
+    palette: ColorPalette,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val preview = when (palette) {
+        ColorPalette.ARBOR -> Color(0xFF3B8A62)
+        ColorPalette.SYSTEM -> MaterialTheme.colorScheme.tertiary
+        ColorPalette.GRAPHITE -> Color(0xFF60758F)
+        ColorPalette.OCEAN -> Color(0xFF007C91)
+        ColorPalette.VIOLET -> Color(0xFF7459A6)
+        ColorPalette.SUNSET -> Color(0xFFB85C38)
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+        shape = MaterialTheme.shapes.large,
+        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Surface(color = preview, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.size(30.dp)) {}
+            Column(Modifier.weight(1f)) {
+                Text(palette.setupName, fontWeight = FontWeight.SemiBold)
+                Text(palette.setupDescription, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            RadioButton(selected = selected, onClick = onClick)
+        }
+    }
+}
+
+@Composable
 private fun ProviderStep(providerCatalogDelayed: Boolean) {
-    Text(
+    SetupHeading(
         "Connect a model",
-        style = MaterialTheme.typography.headlineMedium,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onBackground,
-        modifier = Modifier.fillMaxWidth(),
-    )
-    Text(
-        "A provider is required only when you are ready to send messages. You can safely enter the app first and return to setup later.",
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.fillMaxWidth(),
+        "A provider is required only when you send a message. You can enter Arbor first and connect one later.",
     )
     if (providerCatalogDelayed) {
         Surface(
@@ -392,7 +484,7 @@ private fun ProviderStep(providerCatalogDelayed: Boolean) {
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
-                "The built-in provider catalog is taking longer than expected. Setup remains usable, and Arbor will keep loading it in the background.",
+                "The built-in provider catalog is delayed. Setup remains usable and Arbor will keep retrying without trapping you on a spinner.",
                 modifier = Modifier.padding(14.dp),
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -407,7 +499,7 @@ private fun ProviderStep(providerCatalogDelayed: Boolean) {
         Column {
             OnboardingValueRow(Icons.Outlined.AccountCircle, "ChatGPT account", "Sign in without pasting an API key.")
             OnboardingValueRow(Icons.Outlined.Cloud, "API provider", "Use OpenAI, Anthropic, Gemini, DeepSeek, or another compatible endpoint.")
-            OnboardingValueRow(Icons.Outlined.Storage, "Local server", "Connect to Ollama, llama.cpp, or LM Studio on this device.")
+            OnboardingValueRow(Icons.Outlined.Storage, "Local server", "Connect to Ollama, llama.cpp, or LM Studio.")
         }
     }
     Surface(
@@ -416,26 +508,119 @@ private fun ProviderStep(providerCatalogDelayed: Boolean) {
         shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Row(
-            Modifier.padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Lock, null)
-            Text(
-                "API keys are encrypted with Android Keystore and sent only to the provider you choose.",
-                style = MaterialTheme.typography.bodySmall,
-            )
+            Text("Credentials are encrypted with Android Keystore and sent only to the provider you choose.", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
 
 @Composable
-private fun OnboardingValueRow(
+private fun ToolsStep(
+    pythonEnabled: Boolean,
+    linuxEnabled: Boolean,
+    onPythonEnabledChanged: (Boolean) -> Unit,
+    onLinuxEnabledChanged: (Boolean) -> Unit,
+) {
+    SetupHeading("Local tools", "Choose the defaults for new chats. Existing chats keep their own tool settings.")
+    SetupToggleCard(
+        icon = Icons.Outlined.Code,
+        title = "Local Python",
+        subtitle = "Bundled and ready immediately. Each chat gets a persistent isolated environment.",
+        checked = pythonEnabled,
+        onCheckedChange = onPythonEnabledChanged,
+    )
+    SetupToggleCard(
+        icon = Icons.Outlined.Storage,
+        title = "Linux tooling",
+        subtitle = "Optional rootless distribution for CLIs and native packages. The filesystem downloads only when you install it.",
+        checked = linuxEnabled,
+        onCheckedChange = onLinuxEnabledChanged,
+    )
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("How Linux setup works", fontWeight = FontWeight.SemiBold)
+            Text("1. Choose a distribution and review its download.", style = MaterialTheme.typography.bodySmall)
+            Text("2. Arbor verifies and extracts it into app-private storage.", style = MaterialTheme.typography.bodySmall)
+            Text("3. Packages and terminal access are managed from one workspace screen.", style = MaterialTheme.typography.bodySmall)
+            Text("Chat files remain in /workspace even if the Linux distribution is removed.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun SetupToggleCard(
     icon: ImageVector,
     title: String,
     subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
 ) {
+    Surface(
+        color = if (checked) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+        contentColor = if (checked) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) },
+    ) {
+        Row(
+            Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(icon, null, Modifier.size(26.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.SemiBold)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = checked, onCheckedChange = onCheckedChange)
+        }
+    }
+}
+
+@Composable
+private fun ReadyStep(
+    themeMode: ThemeMode,
+    palette: ColorPalette,
+    pythonEnabled: Boolean,
+    linuxEnabled: Boolean,
+) {
+    SetupHeading("Arbor is ready", "You can enter the app now. Missing optional pieces are shown as actionable warnings instead of blocking screens.")
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column {
+            OnboardingValueRow(Icons.Outlined.CheckCircle, "Appearance", "${themeMode.setupName} · ${palette.setupName}${if (themeMode != ThemeMode.LIGHT) " · dark surfaces available" else ""}")
+            OnboardingValueRow(Icons.Outlined.CheckCircle, "Local Python", if (pythonEnabled) "Enabled for new chats" else "Off by default")
+            OnboardingValueRow(Icons.Outlined.CheckCircle, "Linux tools", if (linuxEnabled) "Enabled when a distribution is installed" else "Optional and off by default")
+        }
+    }
+    Text(
+        "Provider and Linux setup buttons remain available below. Neither is required to inspect Arbor or change settings.",
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+    )
+}
+
+@Composable
+private fun SetupHeading(title: String, subtitle: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.headlineMedium,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onBackground,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
+}
+
+@Composable
+private fun OnboardingValueRow(icon: ImageVector, title: String, subtitle: String) {
     ListItem(
         headlineContent = { Text(title, fontWeight = FontWeight.SemiBold) },
         supportingContent = { Text(subtitle) },
@@ -446,11 +631,36 @@ private fun OnboardingValueRow(
                 shape = MaterialTheme.shapes.large,
                 modifier = Modifier.size(42.dp),
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(icon, null, Modifier.size(22.dp))
-                }
+                Box(contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(22.dp)) }
             }
         },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     )
 }
+
+private val ThemeMode.setupName: String
+    get() = when (this) {
+        ThemeMode.SYSTEM -> "Follow device"
+        ThemeMode.LIGHT -> "Light"
+        ThemeMode.DARK -> "Dark"
+    }
+
+private val ColorPalette.setupName: String
+    get() = when (this) {
+        ColorPalette.ARBOR -> "Arbor"
+        ColorPalette.SYSTEM -> "Android dynamic"
+        ColorPalette.GRAPHITE -> "Graphite"
+        ColorPalette.OCEAN -> "Ocean"
+        ColorPalette.VIOLET -> "Violet"
+        ColorPalette.SUNSET -> "Sunset"
+    }
+
+private val ColorPalette.setupDescription: String
+    get() = when (this) {
+        ColorPalette.ARBOR -> "Natural Arbor green"
+        ColorPalette.SYSTEM -> "Generated from your wallpaper on Android 12+"
+        ColorPalette.GRAPHITE -> "Restrained blue-gray"
+        ColorPalette.OCEAN -> "Cool teal and cyan"
+        ColorPalette.VIOLET -> "Deep purple accents"
+        ColorPalette.SUNSET -> "Warm orange and rose"
+    }

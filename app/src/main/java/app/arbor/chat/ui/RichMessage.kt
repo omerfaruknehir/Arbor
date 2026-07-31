@@ -39,7 +39,6 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material3.Button
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
@@ -584,7 +583,7 @@ private fun PackageRequestBlock(
             }
         }
     }
-    if (confirm) AlertDialog(
+    if (confirm) ArborAlertDialog(
         onDismissRequest = { confirm = false },
         title = { Text("Allow package changes?") },
         text = {

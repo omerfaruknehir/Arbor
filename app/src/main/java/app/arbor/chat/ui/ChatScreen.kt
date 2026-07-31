@@ -75,7 +75,6 @@ import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.WarningAmber
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
@@ -1420,7 +1419,7 @@ private fun MessageCard(
             }
         }
     }
-    if (editing) AlertDialog(
+    if (editing) ArborAlertDialog(
         onDismissRequest = { editing = false },
         title = { Text("Edit message") },
         text = {
@@ -2110,7 +2109,7 @@ private fun ScriptRunActivityCard(initial: ScriptRunResult, viewModel: ChatViewM
         }
     }
     if (showDiagnostics && detailsOpen) {
-        AlertDialog(
+        ArborAlertDialog(
             onDismissRequest = { detailsOpen = false },
             title = { Text(if (failed) "Run failed" else "Run details") },
             text = {
@@ -2177,7 +2176,7 @@ private fun ScriptRunActivityCard(initial: ScriptRunResult, viewModel: ChatViewM
         )
     }
     if (showDiagnostics) source?.let { text ->
-        AlertDialog(
+        ArborAlertDialog(
             onDismissRequest = { source = null },
             title = { Text(latest.scriptPath) },
             text = {

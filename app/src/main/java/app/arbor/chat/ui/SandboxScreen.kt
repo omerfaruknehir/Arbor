@@ -20,7 +20,6 @@ import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.Button
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -384,6 +383,17 @@ fun SandboxScreen(viewModel: ChatViewModel) {
             } else {
             Text("Linux workspace", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text("Choose a rootless user-space distribution for broader third-party CLIs and libraries. Each distribution keeps its own packages, shares this chat's files at /workspace, and is a compatibility layer—not a security boundary.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (!ubuntuStatus.installed) {
+                Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("Before the first install", fontWeight = FontWeight.SemiBold)
+                        Text("• Requires a network download and app-private storage.", style = MaterialTheme.typography.bodySmall)
+                        Text("• Arbor verifies the archive before extraction and exposes progress for every stage.", style = MaterialTheme.typography.bodySmall)
+                        Text("• A failed or interrupted setup can be retried; /workspace chat files are not deleted.", style = MaterialTheme.typography.bodySmall)
+                        Text("• No Android root access is used or requested.", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 LinuxDistribution.entries.forEach { option ->
                     FilterChip(
@@ -522,7 +532,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
             }
         }
     }
-    if (confirmInstall) AlertDialog(
+    if (confirmInstall) ArborAlertDialog(
         onDismissRequest = { confirmInstall = false },
         title = { Text("Allow package installation?") },
         text = {
@@ -541,7 +551,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
             }, enabled = packageReview?.plan?.hasChanges == true) { Text("Allow and install") }
         },
     )
-    if (confirmUbuntuInstall) AlertDialog(
+    if (confirmUbuntuInstall) ArborAlertDialog(
         onDismissRequest = { confirmUbuntuInstall = false },
         title = { Text("Allow ${ubuntuStatus.distribution.packageManager.command} package changes?") },
         text = {
@@ -563,7 +573,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
         },
     )
     removePackage?.let { name ->
-        AlertDialog(
+        ArborAlertDialog(
             onDismissRequest = { removePackage = null },
             title = { Text("Remove $name?") },
             text = { Text("$appName will remove this distribution from the current chat environment. Shared dependencies are kept unless you remove them separately.") },
@@ -577,7 +587,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
         )
     }
     if (confirmLinuxRemoval) {
-        AlertDialog(
+        ArborAlertDialog(
             onDismissRequest = { confirmLinuxRemoval = false },
             title = { Text("Remove ${ubuntuStatus.distribution.displayName}?") },
             text = {
@@ -598,7 +608,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
     if (longPython != null) {
         val startedAt = longPython.startedAt
         val seconds = ((clock - startedAt) / 1_000).coerceAtLeast(10)
-        AlertDialog(
+        ArborAlertDialog(
             onDismissRequest = { dismissedLongRun = startedAt },
             title = { Text("Python is still running") },
             text = {

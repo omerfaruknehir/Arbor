@@ -50,6 +50,9 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
     val credentialRevision by viewModel.credentialRevision.collectAsState()
     val providerCatalogReady by viewModel.providerCatalogReady.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
+    val palette by viewModel.palette.collectAsState()
+    val amoled by viewModel.amoled.collectAsState()
+    val newChatDefaults by viewModel.newChatDefaults.collectAsState()
     val configuredProviders = remember(providers, credentialRevision) {
         viewModel.configuredProviders(providers)
     }
@@ -84,11 +87,27 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
     ) {
         OnboardingScreen(
             currentThemeMode = themeMode,
+            currentPalette = palette,
+            amoled = amoled,
             providerCatalogDelayed = !providerCatalogReady,
+            pythonEnabled = newChatDefaults.agentPythonEnabled,
+            linuxEnabled = newChatDefaults.agentUbuntuEnabled,
             onThemeModeChanged = viewModel::setThemeMode,
+            onPaletteChanged = viewModel::setPalette,
+            onAmoledChanged = viewModel::setAmoled,
+            onPythonEnabledChanged = { enabled ->
+                viewModel.updateNewChatDefaults { it.copy(agentPythonEnabled = enabled) }
+            },
+            onLinuxEnabledChanged = { enabled ->
+                viewModel.updateNewChatDefaults { it.copy(agentUbuntuEnabled = enabled) }
+            },
             onOpenProviderSetup = {
                 onboardingDismissedForSession = true
                 viewModel.openProviderSetup()
+            },
+            onOpenLinuxSetup = {
+                onboardingDismissedForSession = true
+                viewModel.screen.value = Screen.SANDBOX
             },
             onExplore = { onboardingDismissedForSession = true },
         )

@@ -46,7 +46,6 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.automirrored.outlined.Login
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material3.Button
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
@@ -313,7 +312,7 @@ private fun SettingsHome(providerCount: Int, onOpen: (SettingsRoute) -> Unit) = 
         SettingsDestination(
             icon = Icons.Outlined.Palette,
             title = "Appearance",
-            subtitle = "Theme mode, colors, and AMOLED black",
+            subtitle = "Theme mode, six color palettes, and AMOLED black",
             onClick = { onOpen(SettingsRoute.APPEARANCE) },
         )
         SettingsDestination(
@@ -496,7 +495,7 @@ private fun AppearanceSettingsPage(
     }
 
     HorizontalDivider()
-    SectionTitle("Color scheme", "Use $appName green, a neutral graphite palette, or Android dynamic colors.")
+    SectionTitle("Color scheme", "Choose a restrained built-in palette or Android dynamic colors. Changes preview immediately.")
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         ColorPalette.entries.forEach { option ->
             Surface(
@@ -508,9 +507,12 @@ private fun AppearanceSettingsPage(
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Surface(
                         color = when (option) {
-                            ColorPalette.ARBOR -> MaterialTheme.colorScheme.primary
-                            ColorPalette.GRAPHITE -> MaterialTheme.colorScheme.secondary
+                            ColorPalette.ARBOR -> Color(0xFF3B8A62)
                             ColorPalette.SYSTEM -> MaterialTheme.colorScheme.tertiary
+                            ColorPalette.GRAPHITE -> Color(0xFF60758F)
+                            ColorPalette.OCEAN -> Color(0xFF007C91)
+                            ColorPalette.VIOLET -> Color(0xFF7459A6)
+                            ColorPalette.SUNSET -> Color(0xFFB85C38)
                         },
                         shape = androidx.compose.foundation.shape.CircleShape,
                         modifier = Modifier.size(28.dp),
@@ -706,7 +708,7 @@ private fun SystemPromptEditorDialog(
     var name by remember(initial?.id) { mutableStateOf(initial?.name.orEmpty()) }
     var prompt by remember(initial?.id) { mutableStateOf(initial?.prompt.orEmpty()) }
     var mode by remember(initial?.id) { mutableStateOf(initial?.mode ?: SystemPromptMode.PREPEND) }
-    AlertDialog(
+    ArborAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
@@ -746,7 +748,7 @@ private fun LocalCodeExecutionSettingsPage(
         { enabled -> viewModel.updateNewChatDefaults { it.copy(agentUbuntuEnabled = enabled) } },
     )
     Text(
-        "Local Python and Linux share each chat's private workspace. Linux setup and packages live in one manager; the terminal opens from there.",
+        "Local Python is bundled. Linux is optional, downloaded only on request, and managed from one screen with staged progress, retry, packages, terminal, and removal.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -1092,13 +1094,19 @@ private val ColorPalette.displayName: String
         ColorPalette.ARBOR -> "Arbor"
         ColorPalette.SYSTEM -> "Dynamic"
         ColorPalette.GRAPHITE -> "Graphite"
+        ColorPalette.OCEAN -> "Ocean"
+        ColorPalette.VIOLET -> "Violet"
+        ColorPalette.SUNSET -> "Sunset"
     }
 
 private val ColorPalette.description: String
     get() = when (this) {
-        ColorPalette.ARBOR -> "Arbor's green Material palette"
+        ColorPalette.ARBOR -> "Arbor's natural green Material palette"
         ColorPalette.SYSTEM -> "Colors generated from your wallpaper on Android 12+"
-        ColorPalette.GRAPHITE -> "Neutral blue-gray palette"
+        ColorPalette.GRAPHITE -> "Restrained blue-gray palette"
+        ColorPalette.OCEAN -> "Cool teal and cyan accents"
+        ColorPalette.VIOLET -> "Deep purple with soft rose accents"
+        ColorPalette.SUNSET -> "Warm orange, rose, and gold accents"
     }
 
 @Composable
@@ -1543,7 +1551,7 @@ private fun ProviderSettings(
     }
 
     removingProvider?.let { provider ->
-        AlertDialog(
+        ArborAlertDialog(
             onDismissRequest = { removingProvider = null },
             title = { Text("Remove ${provider.displayName}?") },
             text = { Text(if (provider.kind == ProviderKind.OPENAI_OAUTH) "Its encrypted OAuth session and models will be disconnected. Chats and usage history are kept." else "Its saved API key will be erased and it will disappear from model selectors. Chats and usage history are kept.") },
@@ -1627,7 +1635,7 @@ private fun AddChatGptProviderDialog(
     onAdd: (String) -> Unit,
 ) {
     var name by remember { mutableStateOf(if (existingCount == 0) "ChatGPT account" else "ChatGPT account ${existingCount + 1}") }
-    AlertDialog(
+    ArborAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add ChatGPT provider") },
         text = {
@@ -1657,7 +1665,7 @@ private fun RenameChatGptProviderDialog(
     onRename: (String) -> Unit,
 ) {
     var name by remember(provider.id) { mutableStateOf(provider.displayName) }
-    AlertDialog(
+    ArborAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Rename ChatGPT provider") },
         text = {
@@ -2041,7 +2049,7 @@ private fun AddProviderDialog(
         modelName = ""
     }
 
-    AlertDialog(
+    ArborAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add provider") },
         text = {

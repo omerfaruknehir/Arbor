@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -32,6 +31,7 @@ import app.arbor.chat.ui.ArborApp
 import app.arbor.chat.ui.ChatViewModel
 import app.arbor.chat.ui.theme.ArborTheme
 
+import app.arbor.chat.ui.ArborAlertDialog
 class MainActivity : ComponentActivity() {
     private val viewModel: ChatViewModel by viewModels {
         ChatViewModel.factory((application as ArborApplication).container)
@@ -53,7 +53,7 @@ class MainActivity : ComponentActivity() {
                 val renderSafeMode by viewModel.renderSafeMode.collectAsState()
                 crashReport?.let { report ->
                     val context = LocalContext.current
-                    AlertDialog(
+                    ArborAlertDialog(
                         onDismissRequest = { container.crashReporter.clear(); crashReport = null },
                         title = { Text("$appName recovered a crash report") },
                         text = {

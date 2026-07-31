@@ -1,3 +1,14 @@
+# Changelog
+
+## 0.20.15 — 2026-07-31
+
+- Replace the shallow first-run screen with a five-step setup assistant covering appearance, provider readiness, local Python, optional Linux tooling, and a final readiness summary.
+- Add live color-palette selection during setup and expand Appearance to Arbor, Dynamic, Graphite, Ocean, Violet, and Sunset palettes.
+- Add AMOLED selection to setup and keep every choice immediately previewable and editable later.
+- Make Linux onboarding explicit about download, storage, verification, retry behavior, rootless execution, and /workspace preservation.
+- Fix edge Back gestures dismissing popups on pointer-down or pointer cancellation.
+- Make dialog Back close the keyboard first; a second Back dismisses the dialog, while outside taps can no longer destroy in-progress edits.
+
 ## 0.20.6
 
 - Add a repository-owned `licenses/` catalog with one metadata record per bundled runtime component, local icons, useful descriptions, official source links, SPDX expressions where applicable, and complete checked-in license documents.

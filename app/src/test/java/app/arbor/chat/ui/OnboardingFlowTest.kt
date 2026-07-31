@@ -25,15 +25,29 @@ class OnboardingFlowTest {
     }
 
     @Test
-    fun `onboarding has contrast-safe root live theme selection and escape actions`() {
+    fun `onboarding covers appearance providers tools and safe exits`() {
         val source = java.io.File("src/main/java/app/arbor/chat/ui/OnboardingScreen.kt").readText()
         assertTrue(source.contains("contentColor = MaterialTheme.colorScheme.onBackground"))
-        assertTrue(source.contains("ThemeMode.SYSTEM"))
-        assertTrue(source.contains("ThemeMode.LIGHT"))
-        assertTrue(source.contains("ThemeMode.DARK"))
-        assertTrue(source.contains("Skip for now"))
-        assertTrue(source.contains("Continue without a provider"))
+        assertTrue(source.contains("OnboardingStep.APPEARANCE"))
+        assertTrue(source.contains("OnboardingStep.PROVIDER"))
+        assertTrue(source.contains("OnboardingStep.TOOLS"))
+        assertTrue(source.contains("OnboardingStep.READY"))
+        assertTrue(source.contains("ColorPalette.OCEAN"))
+        assertTrue(source.contains("ColorPalette.VIOLET"))
+        assertTrue(source.contains("ColorPalette.SUNSET"))
+        assertTrue(source.contains("Open Linux environment manager"))
+        assertTrue(source.contains("Exit setup for now"))
         assertTrue(source.contains("BackHandler(enabled = stepIndex > 0)"))
+    }
+
+    @Test
+    fun `popup back hides keyboard and ignores system edge origins`() {
+        val source = java.io.File("src/main/java/app/arbor/chat/ui/ReleaseDismissPopup.kt").readText()
+        assertTrue(source.contains("WindowInsets.ime.getBottom"))
+        assertTrue(source.contains("keyboard?.hide()"))
+        assertTrue(source.contains("startedInBackEdge"))
+        assertTrue(source.contains("dismissOnClickOutside = false"))
+        assertTrue(source.contains("fun ArborAlertDialog"))
     }
 
     @Test
@@ -46,11 +60,12 @@ class OnboardingFlowTest {
     }
 
     @Test
-    fun `Linux management has one owner`() {
+    fun `Linux management has one owner and a first install checklist`() {
         val settings = java.io.File("src/main/java/app/arbor/chat/ui/SettingsScreen.kt").readText()
         val workspace = java.io.File("src/main/java/app/arbor/chat/ui/SandboxScreen.kt").readText()
         val terminal = java.io.File("src/main/java/app/arbor/chat/ui/LinuxTerminalScreen.kt").readText()
         assertTrue(settings.contains("Manage tool workspace"))
+        assertTrue(workspace.contains("Before the first install"))
         assertTrue(workspace.contains("Install \${ubuntuStatus.distribution.displayName}"))
         assertTrue(workspace.contains("Remove Linux workspace"))
         assertFalse(terminal.contains("selectLinuxDistribution"))

@@ -15,7 +15,6 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.Button
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -57,6 +56,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import app.arbor.chat.ArborApplication
 
+import app.arbor.chat.ui.ArborAlertDialog
 @Composable
 fun ProgrammableWidgetBlock(
     source: String,
@@ -167,7 +167,7 @@ fun ProgrammableWidgetBlock(
             if (pinStatus.isNotBlank()) Text(pinStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
         }
     }
-    if (pinReview) AlertDialog(
+    if (pinReview) ArborAlertDialog(
         onDismissRequest = { pinReview = false },
         title = { Text("Add ${definition.title} to Home?") },
         text = {
