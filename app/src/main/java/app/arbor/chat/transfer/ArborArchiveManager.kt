@@ -60,6 +60,7 @@ data class ArchiveOptions(
     val includeSystemPrompt: Boolean = false,
     val includeRequestMetadata: Boolean = false,
     val includeLinuxEnvironments: Boolean = false,
+    val includeAppSettings: Boolean = false,
 )
 
 @Serializable
@@ -83,6 +84,7 @@ private data class ArchiveManifest(
     val options: ArchiveOptions,
     val conversations: List<PortableConversationBundle>,
     val linuxEnvironments: List<PortableLinuxEnvironment> = emptyList(),
+    val appSettings: PortableAppSettings? = null,
 )
 
 @Serializable
@@ -106,6 +108,8 @@ private data class PortableConversation(
     val workingTokenLimit: Int,
     val maxOutputTokens: Int,
     val systemPrompt: String,
+    val systemPromptProfileId: String? = null,
+    val projectId: String? = null,
     val totalInputTokens: Long,
     val totalOutputTokens: Long,
     val totalCostMicros: Long,
@@ -173,6 +177,7 @@ data class ArchivePreview(
     val attachmentCount: Int,
     val linuxEnvironmentCount: Int,
     val linuxEnvironmentBytes: Long,
+    val appSettingsIncluded: Boolean,
     val encrypted: Boolean,
     val createdAt: Long,
     val appVersion: String,
@@ -190,6 +195,7 @@ data class IncomingArchiveState(
 data class ArchiveImportResult(
     val conversationIds: List<String>,
     val linuxEnvironmentCount: Int,
+    val settingsRestored: Boolean,
 )
 
 class ArchivePasswordRequiredException : IllegalArgumentException("This Arbor archive is password protected")
@@ -198,6 +204,7 @@ class ArborArchiveManager(
     private val context: Context,
     private val database: ArborDatabase,
     private val linuxEnvironments: LinuxEnvironmentArchiveStore,
+    private val appSettings: AppSettingsArchiveStore,
 ) {
     private val json = Json {
         encodeDefaults = true
@@ -283,6 +290,7 @@ class ArborArchiveManager(
                 attachmentCount = manifest.conversations.sumOf { it.attachments.size },
                 linuxEnvironmentCount = manifest.linuxEnvironments.size,
                 linuxEnvironmentBytes = manifest.linuxEnvironments.sumOf { it.sizeBytes },
+                appSettingsIncluded = manifest.appSettings != null,
                 encrypted = decoded.header.encrypted,
                 createdAt = manifest.createdAt,
                 appVersion = manifest.appVersion,
@@ -298,11 +306,19 @@ class ArborArchiveManager(
         try {
             val manifest = readManifest(decoded.file)
             ZipFile(decoded.file).use { zip ->
+                val settingsRestore = manifest.appSettings?.let { appSettings.restore(it) }
+                    ?: AppSettingsRestoreResult()
                 val conversationIds = manifest.conversations.map { bundle ->
-                    importConversation(zip, bundle, preserveArchiveState = manifest.kind == ArchiveKind.BACKUP)
+                    importConversation(
+                        zip = zip,
+                        bundle = bundle,
+                        preserveArchiveState = manifest.kind == ArchiveKind.BACKUP,
+                        projectIds = settingsRestore.projectIds,
+                        systemPromptProfileIds = settingsRestore.systemPromptProfileIds,
+                    )
                 }
                 val restoredLinux = linuxEnvironments.restore(zip, manifest.linuxEnvironments)
-                ArchiveImportResult(conversationIds, restoredLinux)
+                ArchiveImportResult(conversationIds, restoredLinux, settingsRestore.restored)
             }
         } finally {
             decoded.file.delete()
@@ -320,10 +336,14 @@ class ArborArchiveManager(
         val preparedLinux = if (kind == ArchiveKind.BACKUP && options.includeLinuxEnvironments) {
             linuxEnvironments.prepareSnapshots()
         } else emptyList()
+        val portableSettings = if (kind == ArchiveKind.BACKUP && options.includeAppSettings) {
+            appSettings.snapshot()
+        } else null
         try {
-            require(bundles.isNotEmpty() || preparedLinux.isNotEmpty()) {
-                if (options.includeLinuxEnvironments) "There are no chats or installed Linux environments to back up"
-                else "There are no chats to back up"
+            require(bundles.isNotEmpty() || preparedLinux.isNotEmpty() || portableSettings != null) {
+                if (options.includeLinuxEnvironments || options.includeAppSettings) {
+                    "There are no chats, app settings, or installed Linux environments to back up"
+                } else "There are no chats to back up"
             }
             val now = System.currentTimeMillis()
             val manifest = ArchiveManifest(
@@ -332,12 +352,14 @@ class ArborArchiveManager(
                 appVersion = BuildConfig.VERSION_NAME,
                 title = when {
                     kind == ArchiveKind.CHAT -> bundles.single().conversation.title
-                    bundles.isEmpty() -> "Arbor Linux backup"
+                    bundles.isEmpty() && preparedLinux.isNotEmpty() -> "Arbor Linux backup"
+                    bundles.isEmpty() -> "Arbor settings backup"
                     else -> "Arbor backup"
                 },
                 options = options,
                 conversations = bundles,
                 linuxEnvironments = preparedLinux.map(PreparedLinuxEnvironment::metadata),
+                appSettings = portableSettings,
             )
             val encrypted = password.isNotEmpty()
             val salt = if (encrypted) ByteArray(SALT_BYTES).also(SecureRandom()::nextBytes) else null
@@ -415,6 +437,8 @@ class ArborArchiveManager(
                 workingTokenLimit = conversation.workingTokenLimit,
                 maxOutputTokens = conversation.maxOutputTokens,
                 systemPrompt = if (options.includeSystemPrompt) conversation.systemPrompt else "",
+                systemPromptProfileId = if (options.includeAppSettings) conversation.systemPromptProfileId else null,
+                projectId = if (options.includeAppSettings) conversation.projectId else null,
                 totalInputTokens = conversation.totalInputTokens,
                 totalOutputTokens = conversation.totalOutputTokens,
                 totalCostMicros = conversation.totalCostMicros,
@@ -467,6 +491,8 @@ class ArborArchiveManager(
         zip: ZipFile,
         bundle: PortableConversationBundle,
         preserveArchiveState: Boolean,
+        projectIds: Map<String, String>,
+        systemPromptProfileIds: Map<String, String>,
     ): String {
         val now = System.currentTimeMillis()
         val conversationId = UUID.randomUUID().toString()
@@ -522,7 +548,7 @@ class ArborArchiveManager(
                         workingTokenLimit = source.workingTokenLimit,
                         maxOutputTokens = source.maxOutputTokens,
                         systemPrompt = source.systemPrompt,
-                        systemPromptProfileId = null,
+                        systemPromptProfileId = source.systemPromptProfileId?.let(systemPromptProfileIds::get),
                         totalInputTokens = source.totalInputTokens,
                         totalOutputTokens = source.totalOutputTokens,
                         totalCostMicros = source.totalCostMicros,
@@ -539,7 +565,7 @@ class ArborArchiveManager(
                         hybridTokenCountingEnabled = source.hybridTokenCountingEnabled,
                         archived = preserveArchiveState && source.archived,
                         pinned = preserveArchiveState && source.pinned,
-                        projectId = null,
+                        projectId = source.projectId?.let(projectIds::get),
                         archivedAt = if (preserveArchiveState) source.archivedAt else null,
                     ),
                 )

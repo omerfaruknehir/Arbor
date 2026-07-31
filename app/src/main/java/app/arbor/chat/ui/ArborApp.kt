@@ -73,6 +73,9 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
     val snackbar = remember { SnackbarHostState() }
     val openDrawer = remember(drawerState) { { drawerState.open(); Unit } }
 
+    LaunchedEffect(viewModel) {
+        viewModel.notices.collect { snackbar.showSnackbar(it) }
+    }
     LaunchedEffect(providerCatalogReady) {
         if (providerCatalogReady) {
             providerCatalogGraceExpired = false
@@ -92,35 +95,40 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
         }
     }
     if (onboardingCatalogUsable && setupActive && !setupTemporarilyAway) {
-        OnboardingScreen(
-            currentThemeMode = themeMode,
-            currentPalette = palette,
-            matchLauncherIconToPalette = matchLauncherIconToPalette,
-            amoled = amoled,
-            providerCatalogDelayed = !providerCatalogReady,
-            configuredProviderCount = configuredProviders.size,
-            pythonEnabled = newChatDefaults.agentPythonEnabled,
-            stepIndex = setupStepIndex,
-            stepOffsetFraction = setupPageOffsetFraction,
-            scrollOffsetForStep = viewModel::setupScrollOffset,
-            onPagerPositionChanged = viewModel::updateSetupPagerPosition,
-            onStepScrollChanged = viewModel::saveSetupScrollOffset,
-            linuxEnabled = newChatDefaults.agentUbuntuEnabled,
-            linuxStatus = ubuntuStatus,
-            onThemeModeChanged = viewModel::setThemeMode,
-            onPaletteChanged = viewModel::setPalette,
-            onMatchLauncherIconToPaletteChanged = viewModel::setMatchLauncherIconToPalette,
-            onAmoledChanged = viewModel::setAmoled,
-            onPythonEnabledChanged = { enabled ->
-                viewModel.updateNewChatDefaults { it.copy(agentPythonEnabled = enabled) }
-            },
-            onLinuxEnabledChanged = { enabled ->
-                viewModel.updateNewChatDefaults { it.copy(agentUbuntuEnabled = enabled) }
-            },
-            onOpenProviderSetup = viewModel::openProviderSetupFromSetup,
-            onOpenLinuxSetup = viewModel::openLinuxSetupFromSetup,
-            onExplore = viewModel::finishSetup,
-        )
+        Box(Modifier.fillMaxSize()) {
+            OnboardingScreen(
+                viewModel = viewModel,
+                currentThemeMode = themeMode,
+                currentPalette = palette,
+                matchLauncherIconToPalette = matchLauncherIconToPalette,
+                amoled = amoled,
+                providerCatalogDelayed = !providerCatalogReady,
+                configuredProviderCount = configuredProviders.size,
+                pythonEnabled = newChatDefaults.agentPythonEnabled,
+                stepIndex = setupStepIndex,
+                stepOffsetFraction = setupPageOffsetFraction,
+                scrollOffsetForStep = viewModel::setupScrollOffset,
+                onPagerPositionChanged = viewModel::updateSetupPagerPosition,
+                onStepScrollChanged = viewModel::saveSetupScrollOffset,
+                linuxEnabled = newChatDefaults.agentUbuntuEnabled,
+                linuxStatus = ubuntuStatus,
+                onThemeModeChanged = viewModel::setThemeMode,
+                onPaletteChanged = viewModel::setPalette,
+                onMatchLauncherIconToPaletteChanged = viewModel::setMatchLauncherIconToPalette,
+                onAmoledChanged = viewModel::setAmoled,
+                onPythonEnabledChanged = { enabled ->
+                    viewModel.updateNewChatDefaults { it.copy(agentPythonEnabled = enabled) }
+                },
+                onLinuxEnabledChanged = { enabled ->
+                    viewModel.updateNewChatDefaults { it.copy(agentUbuntuEnabled = enabled) }
+                },
+                onOpenProviderSetup = viewModel::openProviderSetupFromSetup,
+                onOpenLinuxSetup = viewModel::openLinuxSetupFromSetup,
+                onExplore = viewModel::finishSetup,
+            )
+            incomingArchive?.let { state -> IncomingArchiveDialog(viewModel, state) }
+            SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+        }
         return
     }
 

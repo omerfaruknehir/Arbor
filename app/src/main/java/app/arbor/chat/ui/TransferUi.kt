@@ -60,6 +60,7 @@ internal fun BackupSettingsPage(viewModel: ChatViewModel) = SettingsPage {
     val scope = rememberCoroutineScope()
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
+    var includeAppSettings by remember { mutableStateOf(true) }
     var includeAttachments by remember { mutableStateOf(true) }
     var includePrivateData by remember { mutableStateOf(true) }
     var includeSystemPrompt by remember { mutableStateOf(true) }
@@ -73,6 +74,7 @@ internal fun BackupSettingsPage(viewModel: ChatViewModel) = SettingsPage {
         includeSystemPrompt = includeSystemPrompt,
         includeRequestMetadata = includePrivateData,
         includeLinuxEnvironments = includeLinuxEnvironments,
+        includeAppSettings = includeAppSettings,
     )
     val backupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(ARBOR_BACKUP_MIME),
@@ -116,11 +118,19 @@ internal fun BackupSettingsPage(viewModel: ChatViewModel) = SettingsPage {
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
                     Text("Portable Arbor backup", fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Chats, branches, per-chat settings, metadata, and optional attachments. API keys and OAuth sessions are deliberately excluded.",
+                        "Chats, branches, app configuration, organization, metadata, and optional attachments. API keys and OAuth sessions are deliberately excluded.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+            TransferSwitch("Include app settings and configuration", includeAppSettings) { includeAppSettings = it }
+            if (includeAppSettings) {
+                Text(
+                    "Includes theme, UI behavior, new-chat defaults, provider endpoints/models, projects, prompt profiles, and automation settings. Credentials, OAuth sessions, provider authorization headers, cloud grants, drafts, and navigation state stay excluded.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             TransferSwitch("Include attachments", includeAttachments) { includeAttachments = it }
             TransferSwitch("Include reasoning, tool traces, and request metadata", includePrivateData) { includePrivateData = it }
@@ -370,6 +380,7 @@ internal fun IncomingArchiveDialog(
                     IncludedRow("Tool traces", value.options.includeToolData)
                     IncludedRow("Custom system prompt", value.options.includeSystemPrompt)
                     IncludedRow("Request metadata", value.options.includeRequestMetadata)
+                    IncludedRow("App settings and configuration", value.appSettingsIncluded)
                     IncludedRow("Installed Linux environments", value.options.includeLinuxEnvironments)
                     Surface(
                         color = MaterialTheme.colorScheme.tertiaryContainer,
@@ -377,7 +388,11 @@ internal fun IncomingArchiveDialog(
                         shape = MaterialTheme.shapes.large,
                     ) {
                         Text(
-                            "Import creates separate local copies. It never replaces an existing chat and does not import API keys or OAuth sessions.",
+                            if (value.appSettingsIncluded) {
+                                "Chats are imported as separate copies. Included app settings and organization are applied, but API keys, OAuth sessions, provider authorization headers, and cloud grants are never imported."
+                            } else {
+                                "Import creates separate local copies. It never replaces an existing chat and does not import API keys or OAuth sessions."
+                            },
                             Modifier.fillMaxWidth().padding(12.dp),
                             style = MaterialTheme.typography.bodySmall,
                         )

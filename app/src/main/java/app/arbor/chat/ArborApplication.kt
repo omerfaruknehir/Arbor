@@ -28,6 +28,7 @@ import app.arbor.chat.security.CrashReporter
 import app.arbor.chat.settings.AppPreferences
 import app.arbor.chat.settings.ComposerDraftStore
 import app.arbor.chat.settings.PersistentUiStateStore
+import app.arbor.chat.transfer.AppSettingsArchiveStore
 import app.arbor.chat.transfer.ArborArchiveManager
 import app.arbor.chat.transfer.GoogleDriveAppDataClient
 import app.arbor.chat.transfer.LinuxEnvironmentArchiveStore
@@ -115,7 +116,8 @@ class AppContainer(val application: Application, val crashReporter: CrashReporte
     val pythonSandbox = PythonSandbox(application)
     val ubuntuRuntime = UbuntuRuntime(application, pythonSandbox)
     val linuxEnvironmentArchives = LinuxEnvironmentArchiveStore(application, pythonSandbox, ubuntuRuntime)
-    val archiveManager = ArborArchiveManager(application, database, linuxEnvironmentArchives)
+    val appSettingsArchives = AppSettingsArchiveStore(application, appPreferences, database)
+    val archiveManager = ArborArchiveManager(application, database, linuxEnvironmentArchives, appSettingsArchives)
     val scopedCloudFolder = ScopedCloudFolderStore(application)
     val googleDriveAppData = GoogleDriveAppDataClient(application)
     val runRecords = RunRecordStore(pythonSandbox::workspace)

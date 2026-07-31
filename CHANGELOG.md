@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.20.25 — 2026-07-31
+
+- Add local and least-privilege cloud restore actions directly to the first setup page, including Google Drive app storage and one explicitly selected document-provider folder.
+- Let portable backups include theme/UI settings, new-chat defaults, developer settings, provider/model configuration, projects, system-prompt profiles, automation policy, and selected Linux distribution.
+- Remap project and prompt-profile links while importing chats, without overwriting existing chats.
+- Keep API keys, OAuth sessions, provider authorization headers, database encryption keys, cloud grants, drafts, and transient navigation state out of portable settings.
+- Continue setup at provider connection after restore so credentials can be reconnected deliberately.
+
 ## 0.20.24 — 2026-07-31
 
 - Let portable backups include installed Ubuntu, Debian, and Alpine environments, preserving rootfs permissions, symbolic links, hard links, packages, and configuration.
