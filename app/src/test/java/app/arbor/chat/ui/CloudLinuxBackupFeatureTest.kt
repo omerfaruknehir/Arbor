@@ -23,7 +23,10 @@ class CloudLinuxBackupFeatureTest {
         assertTrue(archive.contains("includeLinuxEnvironments: Boolean = false"))
         assertTrue(archive.contains("linuxEnvironments.prepareSnapshots()"))
         assertTrue(linux.contains(".restore-"))
+        val runtime = source("src/main/java/app/arbor/chat/sandbox/UbuntuRuntime.kt")
         assertTrue(linux.contains("runtime.properties"))
+        assertTrue(linux.contains("runtime.withFilesystemSnapshot"))
+        assertTrue(runtime.contains("withFilesystemSnapshot"))
     }
 
     @Test

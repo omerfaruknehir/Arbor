@@ -3,6 +3,7 @@ package app.arbor.chat.transfer
 import android.content.Context
 import androidx.core.content.edit
 import app.arbor.chat.sandbox.PythonSandbox
+import app.arbor.chat.sandbox.UbuntuRuntime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -40,8 +41,10 @@ data class PreparedLinuxEnvironment(
 class LinuxEnvironmentArchiveStore(
     private val context: Context,
     private val python: PythonSandbox,
+    private val runtime: UbuntuRuntime,
 ) {
     suspend fun prepareSnapshots(): List<PreparedLinuxEnvironment> = withContext(Dispatchers.IO) {
+        runtime.withFilesystemSnapshot {
         val selected = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
             .getString(KEY_DISTRIBUTION, "UBUNTU")
             .orEmpty()
@@ -79,7 +82,7 @@ class LinuxEnvironmentArchiveStore(
                 archive = archive,
             )
         }
-    }
+    } }
 
     fun writePrepared(zip: ZipOutputStream, prepared: List<PreparedLinuxEnvironment>) {
         prepared.forEach { value ->
@@ -95,6 +98,7 @@ class LinuxEnvironmentArchiveStore(
         zip: ZipFile,
         environments: List<PortableLinuxEnvironment>,
     ): Int = withContext(Dispatchers.IO) {
+        runtime.withFilesystemSnapshot {
         var restored = 0
         var selectedId: String? = null
         environments.forEach { metadata ->
@@ -152,7 +156,7 @@ class LinuxEnvironmentArchiveStore(
             }
         }
         restored
-    }
+    } }
 
     private fun isInstalledEnvironment(root: File): Boolean =
         File(root, "runtime.properties").isFile && File(root, "rootfs").isDirectory
