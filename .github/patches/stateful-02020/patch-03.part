@@ -1,0 +1,252 @@
++                backTarget = if (setupTemporarilyAway && screen == Screen.SANDBOX) Screen.CHAT else backDestination(screen),
++                onBack = { target ->
++                    if (setupTemporarilyAway && screen == Screen.SANDBOX) viewModel.returnToSetup()
++                    else viewModel.screen.value = target
++                },
+                 depth = ::screenDepth,
+                 // Once a closing drawer is no longer visible, page Back must immediately
+                 // take ownership. Waiting for its spring job to finish creates a gap where
+ diff --git a/app/src/main/java/app/arbor/chat/ui/ChatScreen.kt b/app/src/main/java/app/arbor/chat/ui/ChatScreen.kt
+index 78f5f7d..befd5cf 100644
+--- a/app/src/main/java/app/arbor/chat/ui/ChatScreen.kt
++++ b/app/src/main/java/app/arbor/chat/ui/ChatScreen.kt
+@@ -167,6 +167,7 @@ import app.arbor.chat.sandbox.WorkspaceReadResult
+ import kotlinx.serialization.decodeFromString
+ import kotlinx.serialization.json.Json
+ import kotlinx.coroutines.CancellationException
++import kotlinx.coroutines.FlowPreview
+ import kotlinx.coroutines.launch
+ import kotlinx.coroutines.currentCoroutineContext
+ import kotlinx.coroutines.ensureActive
+@@ -232,6 +233,14 @@ internal fun calculateAutoFollowSeekSpeedPxPerSecond(
+     return minSpeedPxPerSecond + ((maxSpeedPxPerSecond - minSpeedPxPerSecond) * shaped)
+ }
+ 
++private data class PersistedChatScrollSample(
++    val anchorNodeId: String?,
++    val firstVisibleItemIndex: Int,
++    val firstVisibleItemOffset: Int,
++    val atLatest: Boolean,
++    val topBarHeightOffset: Float,
++)
++
+ internal data class MessageBranchKey(
+     val conversationId: String,
+     val parentNodeId: String?,
+@@ -455,7 +464,7 @@ internal fun calculateComposerChromeProgressFromBottom(
+     return ((distance - startPx).toFloat() / (endPx - startPx).toFloat()).coerceIn(0f, 1f)
+ }
+ 
+-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
++@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, FlowPreview::class)
+ @Composable
+ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+     SideEffect { ArborRenderProfiler.recordChatRecomposition() }
+@@ -480,6 +489,9 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+     var chatMenu by remember { mutableStateOf(false) }
+     var showChatConfiguration by remember { mutableStateOf(false) }
+     val messageListState = rememberLazyListState()
++    val savedScroll = remember(conversation?.id) {
++        conversation?.id?.let(viewModel::chatScrollSnapshot)
++    }
+     val userDraggingMessageList by messageListState.interactionSource.collectIsDraggedAsState()
+     val listScope = rememberCoroutineScope()
+     val blurState = rememberArborBackdropBlurState()
+@@ -721,7 +733,9 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+ 
+         val collapsedOffset = snapshotFlow { topAppBarState.heightOffsetLimit }
+             .first { it < 0f }
+-        topAppBarState.heightOffset = collapsedOffset
++        topAppBarState.heightOffset = savedScroll?.topBarHeightOffset
++            ?.coerceIn(collapsedOffset, 0f)
++            ?: collapsedOffset
+     }
+ 
+     LaunchedEffect(conversation?.id, paging.itemCount, initialPositioned, messageBottomInsetPx) {
+@@ -729,11 +743,50 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+         // composer. Positioning with a zero inset is what briefly left the last
+         // response behind the input controls.
+         if (!initialPositioned && paging.itemCount > 0 && messageBottomInsetPx > 0) {
+-            snapChatToBottom(messageListState, paging.itemCount - 1, messageBottomInsetPx)
++            val snapshot = savedScroll
++            if (snapshot != null && !snapshot.atLatest) {
++                val sourceIndex = snapshot.anchorNodeId?.let { nodeId ->
++                    paging.itemSnapshotList.items.indexOfFirst { it.nodeId == nodeId }
++                        .takeIf { it >= 0 }
++                }
++                val targetIndex = sourceIndex?.let {
++                    chronologicalUiIndex(it, paging.itemSnapshotList.items.size)
++                } ?: snapshot.firstVisibleItemIndex.coerceIn(0, paging.itemCount - 1)
++                messageListState.scrollToItem(targetIndex, snapshot.firstVisibleItemOffset)
++                followMode = ChatFollowMode.DETACHED
++            } else {
++                snapChatToBottom(messageListState, paging.itemCount - 1, messageBottomInsetPx)
++            }
+             initialPositioned = true
+         }
+     }
+ 
++    LaunchedEffect(messageListState, conversation?.id, topAppBarState, initialPositioned) {
++        if (!initialPositioned) return@LaunchedEffect
++        val conversationId = conversation?.id ?: return@LaunchedEffect
++        snapshotFlow {
++            val firstVisible = messageListState.layoutInfo.visibleItemsInfo.firstOrNull()
++            PersistedChatScrollSample(
++                anchorNodeId = (firstVisible?.key as? String)?.takeUnless { it.startsWith("loading-") },
++                firstVisibleItemIndex = messageListState.firstVisibleItemIndex,
++                firstVisibleItemOffset = messageListState.firstVisibleItemScrollOffset,
++                atLatest = !messageListState.canScrollForward,
++                topBarHeightOffset = topAppBarState.heightOffset,
++            )
++        }
++            .distinctUntilChanged()
++            .collect { snapshot ->
++                viewModel.saveChatScrollSnapshot(
++                    conversationId = conversationId,
++                    anchorNodeId = snapshot.anchorNodeId,
++                    firstVisibleItemIndex = snapshot.firstVisibleItemIndex,
++                    firstVisibleItemOffset = snapshot.firstVisibleItemOffset,
++                    atLatest = snapshot.atLatest,
++                    topBarHeightOffset = snapshot.topBarHeightOffset,
++                )
++            }
++    }
++
+     // Reattach follow mode when generation starts, but never hard-position the
+     // list here. paging.itemCount changes as tool/file/result cards are appended;
+     // snapping to lastIndex on each change briefly aligned that item at the top
+@@ -2592,7 +2645,7 @@ private fun Composer(
+                 }
+                 OutlinedTextField(
+                     value = draft,
+-                    onValueChange = { viewModel.draft.value = it },
++                    onValueChange = viewModel::setDraft,
+                     enabled = providerConfigured,
+                     placeholder = {
+                         Text(
+ diff --git a/app/src/main/java/app/arbor/chat/ui/ChatViewModel.kt b/app/src/main/java/app/arbor/chat/ui/ChatViewModel.kt
+index dd36980..8fda87a 100644
+--- a/app/src/main/java/app/arbor/chat/ui/ChatViewModel.kt
++++ b/app/src/main/java/app/arbor/chat/ui/ChatViewModel.kt
+@@ -53,17 +53,22 @@ import app.arbor.chat.sandbox.ScriptRunResult
+ import app.arbor.chat.sandbox.WorkspaceReadResult
+ import app.arbor.chat.agent.AgentToolRequest
+ import app.arbor.chat.settings.NewChatDefaults
++import app.arbor.chat.settings.LauncherIconManager
++import app.arbor.chat.settings.PersistentUiStateStore
+ import app.arbor.chat.generated.GeneratedBlockRepairState
+ import app.arbor.chat.generated.GeneratedBlockType
+ import app.arbor.chat.generated.GeneratedValidationError
+ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.CancellationException
++import kotlinx.coroutines.channels.BufferOverflow
+ import kotlinx.coroutines.Job
+ import kotlinx.coroutines.flow.MutableStateFlow
+ import kotlinx.coroutines.flow.MutableSharedFlow
+ import kotlinx.coroutines.flow.SharingStarted
+ import kotlinx.coroutines.flow.StateFlow
+ import kotlinx.coroutines.flow.filterNotNull
++import kotlinx.coroutines.flow.debounce
++import kotlinx.coroutines.flow.merge
+ import kotlinx.coroutines.flow.combine
+ import kotlinx.coroutines.flow.first
+ import kotlinx.coroutines.flow.flatMapLatest
+@@ -73,6 +78,7 @@ import kotlinx.coroutines.flow.stateIn
+ import kotlinx.coroutines.launch
+ import kotlinx.coroutines.withContext
+ import kotlinx.coroutines.ExperimentalCoroutinesApi
++import kotlinx.coroutines.FlowPreview
+ import kotlinx.coroutines.sync.Mutex
+ import kotlinx.coroutines.sync.withLock
+ import kotlinx.serialization.encodeToString
+@@ -99,9 +105,10 @@ data class LinuxRunState(
+     val error: String? = null,
+ )
+ 
+-@OptIn(ExperimentalCoroutinesApi::class)
++@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
+ class ChatViewModel(private val container: AppContainer, savedStateHandle: SavedStateHandle) : ViewModel() {
+     private val toolResultJson = Json { ignoreUnknownKeys = true }
++    private val restoredUiState = container.persistentUiState.restore()
+     val conversations = container.repository.conversations.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+     val archivedConversations = container.repository.archivedConversations.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+     val projects = container.repository.projects.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+@@ -112,17 +119,54 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
+         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AutomationSettingsEntity())
+     val ubuntuStatus: StateFlow<UbuntuRuntimeStatus> = container.ubuntuRuntime.status
+     val linuxDistribution: StateFlow<LinuxDistribution> = container.ubuntuRuntime.distribution
+-    val selectedConversationId = savedStateHandle.getMutableStateFlow<String?>("selected_conversation", null)
++    val selectedConversationId = savedStateHandle.getMutableStateFlow<String?>(
++        "selected_conversation",
++        restoredUiState.selectedConversationId,
++    )
++    private val newDraftConversationId = savedStateHandle.getMutableStateFlow<String?>(
++        "new_draft_conversation",
++        restoredUiState.newDraftConversationId,
++    )
+     private val draftConversation = MutableStateFlow<ConversationEntity?>(null)
+-    val showArchived = savedStateHandle.getMutableStateFlow("show_archived", false)
+-    val selectedProjectId = savedStateHandle.getMutableStateFlow<String?>("selected_project", null)
+-    val draft = savedStateHandle.getMutableStateFlow("draft", "")
++    val showArchived = savedStateHandle.getMutableStateFlow("show_archived", restoredUiState.showArchived)
++    val selectedProjectId = savedStateHandle.getMutableStateFlow<String?>(
++        "selected_project",
++        restoredUiState.selectedProjectId,
++    )
++    private val activeDraftConversationId = MutableStateFlow(
++        restoredUiState.selectedConversationId ?: restoredUiState.newDraftConversationId,
++    )
++    val draft = MutableStateFlow(
++        activeDraftConversationId.value?.let(container.composerDrafts::read).orEmpty(),
++    )
+     val stagedAttachments = MutableStateFlow<List<AttachmentEntity>>(emptyList())
+     val importing = MutableStateFlow(false)
+-    val screen = savedStateHandle.getMutableStateFlow("screen", Screen.CHAT)
+-    val searchQuery = savedStateHandle.getMutableStateFlow("search_query", "")
+-    val focusedMessageNodeId = savedStateHandle.getMutableStateFlow<String?>("focused_message_node", null)
++    val screen = savedStateHandle.getMutableStateFlow("screen", restoredUiState.screen)
++    val settingsRoute = savedStateHandle.getMutableStateFlow("settings_route", restoredUiState.settingsRoute)
++    val searchQuery = savedStateHandle.getMutableStateFlow("search_query", restoredUiState.searchQuery)
++    val focusedMessageNodeId = savedStateHandle.getMutableStateFlow<String?>(
++        "focused_message_node",
++        restoredUiState.focusedMessageNodeId,
++    )
+     private val focusedMessageIndex = savedStateHandle.getMutableStateFlow<Int?>("focused_message_index", null)
++    val setupActive = savedStateHandle.getMutableStateFlow("setup_active", restoredUiState.setupActive)
++    val setupStepIndex = savedStateHandle.getMutableStateFlow("setup_step", restoredUiState.setupStepIndex)
++    val setupTemporarilyAway = savedStateHandle.getMutableStateFlow(
++        "setup_temporarily_away",
++        restoredUiState.setupTemporarilyAway,
++    )
++    val setupDismissed = savedStateHandle.getMutableStateFlow("setup_dismissed", restoredUiState.setupDismissed)
++    val launcherRestartRequests = MutableSharedFlow<String>(extraBufferCapacity = 1)
++    private val latestChatScrollSnapshots = mutableMapOf<String, PersistentUiStateStore.ChatScrollSnapshot>()
++    private val chatScrollUpdates = MutableSharedFlow<Pair<String, PersistentUiStateStore.ChatScrollSnapshot>>(
++        extraBufferCapacity = 1,
++        onBufferOverflow = BufferOverflow.DROP_OLDEST,
++    )
++    private val latestSettingsScrollOffsets = mutableMapOf<SettingsRoute, Int>()
++    private val settingsScrollUpdates = MutableSharedFlow<Pair<SettingsRoute, Int>>(
++        extraBufferCapacity = 1,
++        onBufferOverflow = BufferOverflow.DROP_OLDEST,
++    )
+     val amoled: StateFlow<Boolean> = container.appPreferences.amoled
+     val chromeBlurStrength: StateFlow<Float> = container.appPreferences.chromeBlurStrength
+     val chromeEdgeSoftness: StateFlow<Float> = container.appPreferences.chromeEdgeSoftness
+@@ -150,8 +194,177 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
+     private var linuxRunJob: Job? = null
+     @Volatile private var initialized = false
+ 
++    init {
++        viewModelScope.launch {
++            combine(activeDraftConversationId.filterNotNull(), draft) { conversationId, text ->
++                conversationId to text
++            }
++                .debounce(180)
++                .collect { (conversationId, text) ->
++                    withContext(Dispatchers.IO) { container.composerDrafts.write(conversationId, text) }
++                }
++        }
++        viewModelScope.launch {
++            chatScrollUpdates
++                .debounce(180)
