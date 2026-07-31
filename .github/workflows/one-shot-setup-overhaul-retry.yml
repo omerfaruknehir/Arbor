@@ -57,6 +57,21 @@ jobs:
           output.write_bytes(script)
           print(f'Reconstructed verified {len(script)}-byte patch script')
           PY
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('/tmp/fix_0_20_15.py')
+          text = path.read_text()
+          old = """if not changelog.startswith(anchor):
+              raise RuntimeError('CHANGELOG.md anchor changed')
+          write('CHANGELOG.md', entry + changelog[len(anchor):])"""
+          new = """if changelog.startswith(anchor):
+              changelog = changelog[len(anchor):]
+          write('CHANGELOG.md', entry + changelog.lstrip('\\n'))"""
+          if old not in text:
+              raise RuntimeError('Changelog compatibility patch anchor changed')
+          path.write_text(text.replace(old, new, 1))
+          PY
           python3 -m py_compile /tmp/fix_0_20_15.py
           python3 /tmp/fix_0_20_15.py
           git diff --check
