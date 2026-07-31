@@ -106,6 +106,7 @@ internal fun ArborStartupScreen() {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun OnboardingScreen(
+    viewModel: ChatViewModel,
     currentThemeMode: ThemeMode,
     currentPalette: ColorPalette,
     matchLauncherIconToPalette: Boolean,
@@ -204,7 +205,7 @@ internal fun OnboardingScreen(
                     verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
                     when (steps[page]) {
-                        OnboardingStep.WELCOME -> WelcomeStep()
+                        OnboardingStep.WELCOME -> WelcomeStep(viewModel)
                         OnboardingStep.APPEARANCE -> AppearanceStep(
                             currentThemeMode = currentThemeMode,
                             currentPalette = currentPalette,
@@ -462,7 +463,7 @@ private fun OnboardingProgressHeader(
 }
 
 @Composable
-private fun WelcomeStep() {
+private fun WelcomeStep(viewModel: ChatViewModel) {
     Spacer(Modifier.height(8.dp))
     ArborMark(modifier = Modifier.size(96.dp), contentDescription = "Arbor")
     Text(
@@ -490,6 +491,7 @@ private fun WelcomeStep() {
             OnboardingValueRow(Icons.Outlined.Code, "Local tools are optional", "Bundled Python works immediately; Linux requires a separate distribution install.")
         }
     }
+    SetupRestoreActions(viewModel)
 }
 
 @Composable

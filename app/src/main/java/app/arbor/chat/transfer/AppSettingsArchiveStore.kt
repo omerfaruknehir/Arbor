@@ -291,7 +291,7 @@ class AppSettingsArchiveStore(
             restoreProviders(value)
             restoreProjects(value.projects, projectIds)
             restorePromptProfiles(value.systemPromptProfiles, promptIds)
-            value.automation?.let(::restoreAutomation)
+            value.automation?.let { restoreAutomation(it) }
         }
         restorePreferences(value.preferences, promptIds)
         return AppSettingsRestoreResult(

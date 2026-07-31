@@ -299,7 +299,7 @@ internal fun CloudBackupTargets(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(
-            "Android/Google One app backup is enabled for small, non-secret Arbor preferences. Chats, attachments, and Linux root filesystems use the portable backup targets above because Android's standard app backup is limited to 25 MB. API keys, OAuth sessions, and database encryption keys are excluded everywhere.",
+            "Portable cloud backups can include chats, app settings, organization, and optional Linux root filesystems. Android/Google One app backup remains limited to small non-secret preferences. API keys, OAuth sessions, provider authorization headers, cloud grants, and database encryption keys are excluded everywhere.",
             modifier = Modifier.padding(14.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

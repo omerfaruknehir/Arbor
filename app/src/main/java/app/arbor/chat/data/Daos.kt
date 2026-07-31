@@ -98,6 +98,9 @@ interface SystemPromptProfileDao {
     @Query("SELECT * FROM system_prompt_profiles ORDER BY name COLLATE NOCASE")
     fun observeAll(): Flow<List<SystemPromptProfileEntity>>
 
+    @Query("SELECT * FROM system_prompt_profiles ORDER BY name COLLATE NOCASE")
+    suspend fun all(): List<SystemPromptProfileEntity>
+
     @Query("SELECT * FROM system_prompt_profiles WHERE id = :id")
     suspend fun get(id: String): SystemPromptProfileEntity?
 
@@ -118,6 +121,9 @@ interface SystemPromptProfileDao {
 interface ProjectDao {
     @Query("SELECT * FROM projects ORDER BY name COLLATE NOCASE")
     fun observeAll(): Flow<List<ProjectEntity>>
+
+    @Query("SELECT * FROM projects ORDER BY name COLLATE NOCASE")
+    suspend fun all(): List<ProjectEntity>
 
     @Query("SELECT * FROM projects WHERE id = :id")
     suspend fun get(id: String): ProjectEntity?
@@ -278,6 +284,12 @@ interface CatalogDao {
     @Query("SELECT * FROM providers WHERE enabled = 1 ORDER BY displayName")
     fun observeProviders(): Flow<List<ProviderEntity>>
 
+    @Query("SELECT * FROM providers ORDER BY displayName")
+    suspend fun allProviders(): List<ProviderEntity>
+
+    @Query("SELECT * FROM models ORDER BY providerId, displayName")
+    suspend fun allModels(): List<ModelEntity>
+
     @Query("SELECT * FROM providers WHERE id = :id")
     suspend fun provider(id: String): ProviderEntity?
 
@@ -304,6 +316,9 @@ interface CatalogDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertModel(value: ModelEntity)
+
+    @Query("DELETE FROM models WHERE providerId = :providerId")
+    suspend fun deleteModels(providerId: String)
 }
 
 @Dao

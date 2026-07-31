@@ -357,6 +357,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         viewModelScope.launch {
             runCatching { container.archiveManager.importArchive(state.uri, password) }
                 .onSuccess { result ->
+                    val restoredDuringSetup = setupActive.value
                     incomingArchive.value = null
                     result.conversationIds.firstOrNull()?.let(::selectConversation)
                     if (result.conversationIds.isNotEmpty()) screen.value = Screen.CHAT
@@ -364,12 +365,26 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
                         if (result.conversationIds.isNotEmpty()) {
                             add("${result.conversationIds.size} chat${if (result.conversationIds.size == 1) "" else "s"}")
                         }
+                        if (result.settingsRestored) add("app settings")
                         if (result.linuxEnvironmentCount > 0) {
                             add("${result.linuxEnvironmentCount} Linux environment${if (result.linuxEnvironmentCount == 1) "" else "s"}")
                         }
                     }
-                    notices.tryEmit("Imported ${parts.joinToString(" and ")}")
+                    val credentialNote = if (result.settingsRestored) {
+                        ". Provider credentials and OAuth sessions were excluded; reconnect them in the next setup step"
+                    } else ""
+                    notices.tryEmit("Imported ${parts.joinToString(" and ")}$credentialNote")
                     if (result.linuxEnvironmentCount > 0) container.ubuntuRuntime.refresh()
+                    if (result.settingsRestored) reconcileLauncherIcon()
+                    if (restoredDuringSetup) {
+                        setupActive.value = true
+                        setupStepIndex.value = 2
+                        setupPageOffsetFraction.value = 0f
+                        setupTemporarilyAway.value = false
+                        setupDismissed.value = false
+                        settingsRoute.value = SettingsRoute.HOME
+                        screen.value = Screen.CHAT
+                    }
                 }
                 .onFailure { error -> incomingArchive.value = state.copy(importing = false, error = error.message ?: "Import failed") }
         }
