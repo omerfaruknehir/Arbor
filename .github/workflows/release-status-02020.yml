@@ -1,0 +1,37 @@
+name: Track Arbor 0.20.20 release
+
+on:
+  push:
+    branches:
+      - agent/release-status-0.20.20
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record main release run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: e6568402b9cf10b1783419bc897d0d1f706f7d4e
+        run: |
+          for attempt in $(seq 1 20); do
+            run_id="$(gh api 'repos/${{ github.repository }}/actions/workflows/release.yml/runs?branch=main&per_page=10' --jq ".workflow_runs[] | select(.head_sha == \"$TARGET_SHA\") | .id" | head -n1)"
+            if [[ -n "$run_id" ]]; then
+              gh api "repos/${{ github.repository }}/actions/runs/$run_id" > .github/release-0.20.20-run.json
+              gh api "repos/${{ github.repository }}/actions/runs/$run_id/jobs?per_page=100" > .github/release-0.20.20-jobs.json
+              printf '%s\n' "$run_id" > .github/release-0.20.20-run-id.txt
+              break
+            fi
+            sleep 6
+          done
+          test -s .github/release-0.20.20-run-id.txt
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/release-0.20.20-*.json .github/release-0.20.20-run-id.txt
+          git commit -m 'Record Arbor 0.20.20 release status [skip ci]'
+          git push
