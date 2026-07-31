@@ -1,0 +1,148 @@
+         setupActive.value = true
+         setupStepIndex.value = 2
++        setupPageOffsetFraction.value = 0f
+         setupTemporarilyAway.value = true
+         settingsRoute.value = SettingsRoute.PROVIDERS
+         providerSetupRequested.value = true
+@@ -354,6 +399,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
+     fun openLinuxSetupFromSetup() {
+         setupActive.value = true
+         setupStepIndex.value = 3
++        setupPageOffsetFraction.value = 0f
+         setupTemporarilyAway.value = true
+         screen.value = Screen.SANDBOX
+     }
+diff --git a/app/src/main/java/app/arbor/chat/ui/OnboardingScreen.kt b/app/src/main/java/app/arbor/chat/ui/OnboardingScreen.kt
+index adf8063c1804a24287819b5aa9ef4e2d370dcad4..54623fe656f1af8291045deea1bc02e80fe1faa7 100644
+--- a/app/src/main/java/app/arbor/chat/ui/OnboardingScreen.kt
++++ b/app/src/main/java/app/arbor/chat/ui/OnboardingScreen.kt
+@@ -2,7 +2,9 @@ package app.arbor.chat.ui
+ 
+ import androidx.activity.compose.BackHandler
+ import androidx.compose.foundation.BorderStroke
++import androidx.compose.foundation.background
+ import androidx.compose.foundation.ExperimentalFoundationApi
++import androidx.compose.foundation.ScrollState
+ import androidx.compose.foundation.pager.HorizontalPager
+ import androidx.compose.foundation.pager.rememberPagerState
+ import androidx.compose.foundation.clickable
+@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.Column
+ import androidx.compose.foundation.layout.Row
+ import androidx.compose.foundation.layout.Spacer
+ import androidx.compose.foundation.layout.WindowInsets
++import androidx.compose.foundation.layout.fillMaxHeight
+ import androidx.compose.foundation.layout.fillMaxSize
+ import androidx.compose.foundation.layout.fillMaxWidth
+ import androidx.compose.foundation.layout.height
+@@ -52,6 +55,7 @@ import androidx.compose.runtime.rememberCoroutineScope
+ import androidx.compose.runtime.snapshotFlow
+ import androidx.compose.runtime.getValue
+ import androidx.compose.ui.Alignment
++import androidx.compose.ui.draw.clip
+ import androidx.compose.ui.graphics.Color
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.graphics.vector.ImageVector
+@@ -105,7 +109,10 @@ internal fun OnboardingScreen(
+     pythonEnabled: Boolean,
+     linuxEnabled: Boolean,
+     stepIndex: Int,
+-    onStepChanged: (Int) -> Unit,
++    stepOffsetFraction: Float,
++    scrollOffsetForStep: (Int) -> Int,
++    onPagerPositionChanged: (Int, Float) -> Unit,
++    onStepScrollChanged: (Int, Int) -> Unit,
+     onThemeModeChanged: (ThemeMode) -> Unit,
+     onPaletteChanged: (ColorPalette) -> Unit,
+     onMatchLauncherIconToPaletteChanged: (Boolean) -> Unit,
+@@ -118,10 +125,20 @@ internal fun OnboardingScreen(
+ ) {
+     val steps = OnboardingStep.entries
+     val initialPage = stepIndex.coerceIn(0, steps.lastIndex)
++    val initialOffset = stepOffsetFraction.coerceIn(-0.499f, 0.499f)
+     val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { steps.size })
++    val pageScrollStates = listOf(
++        rememberScrollState(initial = scrollOffsetForStep(0)),
++        rememberScrollState(initial = scrollOffsetForStep(1)),
++        rememberScrollState(initial = scrollOffsetForStep(2)),
++        rememberScrollState(initial = scrollOffsetForStep(3)),
++        rememberScrollState(initial = scrollOffsetForStep(4)),
++    )
+     val scope = rememberCoroutineScope()
+     val haptics = rememberArborHaptics()
+     val currentPage = pagerState.currentPage.coerceIn(0, steps.lastIndex)
++    val pagePosition = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
++        .coerceIn(0f, steps.lastIndex.toFloat())
+     val step = steps[currentPage]
+ 
+     fun moveTo(page: Int) {
+@@ -129,14 +146,14 @@ internal fun OnboardingScreen(
+         scope.launch { pagerState.animateScrollToPage(target) }
+     }
+ 
+-    LaunchedEffect(stepIndex) {
+-        val requested = stepIndex.coerceIn(0, steps.lastIndex)
+-        if (pagerState.settledPage != requested) pagerState.scrollToPage(requested)
+-    }
+     LaunchedEffect(pagerState) {
+-        snapshotFlow { pagerState.settledPage }
++        pagerState.scrollToPage(initialPage, initialOffset)
++        snapshotFlow { pagerState.currentPage to pagerState.currentPageOffsetFraction }
+             .distinctUntilChanged()
+-            .collect { onStepChanged(it) }
++            .collect { (page, offset) -> onPagerPositionChanged(page, offset) }
++    }
++    pageScrollStates.forEachIndexed { page, state ->
++        SetupScrollReporter(page, state, onStepScrollChanged)
+     }
+ 
+     BackHandler(enabled = currentPage > 0) {
+@@ -156,7 +173,8 @@ internal fun OnboardingScreen(
+                 .padding(horizontal = 20.dp, vertical = 14.dp),
+         ) {
+             OnboardingProgressHeader(
+-                stepIndex = currentPage,
++                pagePosition = pagePosition,
++                currentStepIndex = currentPage,
+                 stepCount = steps.size,
+                 showBack = currentPage > 0,
+                 onBack = {
+@@ -173,7 +191,7 @@ internal fun OnboardingScreen(
+                 Column(
+                     Modifier
+                         .fillMaxSize()
+-                        .verticalScroll(rememberScrollState())
++                        .verticalScroll(pageScrollStates[page])
+                         .padding(top = 18.dp, bottom = 20.dp),
+                     horizontalAlignment = Alignment.CenterHorizontally,
+                     verticalArrangement = Arrangement.spacedBy(18.dp),
+@@ -294,9 +312,27 @@ private fun PrimaryNextButton(label: String, onClick: () -> Unit) {
+     ) { Text(label) }
+ }
+ 
++
++internal fun setupProgressForSegment(pagePosition: Float, segmentIndex: Int): Float =
++    (pagePosition - segmentIndex + 1f).coerceIn(0f, 1f)
++
+ @Composable
+-private fun OnboardingProgressHeader(
++private fun SetupScrollReporter(
+     stepIndex: Int,
++    scrollState: ScrollState,
++    onStepScrollChanged: (Int, Int) -> Unit,
++) {
++    LaunchedEffect(stepIndex, scrollState) {
++        snapshotFlow { scrollState.value }
++            .distinctUntilChanged()
++            .collect { onStepScrollChanged(stepIndex, it) }
++    }
++}
++
++@Composable
++private fun OnboardingProgressHeader(
++    pagePosition: Float,
++    currentStepIndex: Int,
+     stepCount: Int,
+     showBack: Boolean,
+     onBack: () -> Unit,
+@@ -315,17 +351,27 @@ private fun OnboardingProgressHeader(
+         }
