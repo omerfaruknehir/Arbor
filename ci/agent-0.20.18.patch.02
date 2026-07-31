@@ -1,0 +1,105 @@
+ -> Unit)?) {
+             .distinctUntilChanged()
+             .collect { nodeIds ->
+                 pagingNodeIds = nodeIds
+-                nodeIds.forEachIndexed { sourceIndex, nodeId ->
+-                    stableMessageKeysByUiIndex[
+-                        chronologicalUiIndex(sourceIndex, nodeIds.size)
+-                    ] = nodeId
+-                }
+-                if (!generatingState.value && nodeIds.isNotEmpty()) {
+-                    stableMessageKeysByUiIndex.keys.removeAll { it !in nodeIds.indices }
+-                }
+             }
+     }
+ 
+@@ -715,7 +705,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+         initialPositioned = false
+         streamingAnchorTracker.anchor = null
+         streamingAnchorTracker.missingAnchorFrames = 0
+-        stableMessageKeysByUiIndex.clear()
+         topAppBarState.contentOffset = 0f
+         topAppBarState.heightOffset = 0f
+ 
+@@ -1042,9 +1031,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+                         key = { uiIndex ->
+                             val sourceIndex = chronologicalSourceIndex(uiIndex, paging.itemCount)
+                             paging.peek(sourceIndex)?.nodeId
+-                                ?.also { stableMessageKeysByUiIndex[uiIndex] = it }
+-                                ?: stableMessageKeysByUiIndex[uiIndex]
+-                                ?: "loading-${conversation?.id.orEmpty()}-$uiIndex"
++                                ?: "loading-${conversation?.id.orEmpty()}-$uiIndex-$sourceIndex"
+                         },
+                         contentType = { uiIndex ->
+                             val sourceIndex = chronologicalSourceIndex(uiIndex, paging.itemCount)
+diff --git a/app/src/main/java/app/arbor/chat/ui/LicenseCatalogScreen.kt b/app/src/main/java/app/arbor/chat/ui/LicenseCatalogScreen.kt
+index 110e3a13e58b7de0e1efeaa3c85b54344960b0a4..fbf38846d52c0de9fd95b322b65f860cb0b265f7 100644
+--- a/app/src/main/java/app/arbor/chat/ui/LicenseCatalogScreen.kt
++++ b/app/src/main/java/app/arbor/chat/ui/LicenseCatalogScreen.kt
+@@ -289,6 +289,10 @@ private fun LicenseIcon(component: OfflineLicenseComponent, modifier: Modifier =
+         color = MaterialTheme.colorScheme.surfaceContainerHigh,
+     ) {
+         when {
++            component.id == "arbor" -> ArborMark(
++                modifier = Modifier.fillMaxSize().padding(4.dp),
++                contentDescription = "Arbor",
++            )
+             svgRequest != null -> SubcomposeAsyncImage(
+                 model = svgRequest,
+                 contentDescription = null,
+diff --git a/app/src/main/java/app/arbor/chat/ui/OnboardingScreen.kt b/app/src/main/java/app/arbor/chat/ui/OnboardingScreen.kt
+index 7a6bd61fae381c28f2bb1c26ff62d5f33569c932..6a39a33a7ede14d56883da03dd07dabee36241c0 100644
+--- a/app/src/main/java/app/arbor/chat/ui/OnboardingScreen.kt
++++ b/app/src/main/java/app/arbor/chat/ui/OnboardingScreen.kt
+@@ -408,7 +408,7 @@ private fun AppearanceStep(
+         }
+     }
+     Text(
+-        "Arbor stays open while the launcher refreshes. Android themed icons can override app-selected colors.",
++        "The icon is queued and updates after Arbor moves to the background and active work finishes, so the current screen is never closed. Android themed icons can override app-selected colors.",
+         style = MaterialTheme.typography.bodySmall,
+         color = MaterialTheme.colorScheme.onSurfaceVariant,
+         modifier = Modifier.fillMaxWidth(),
+diff --git a/app/src/main/java/app/arbor/chat/ui/PaletteVisuals.kt b/app/src/main/java/app/arbor/chat/ui/PaletteVisuals.kt
+index 698cd2e24f579b6fc0bdbd20229dafb809a14110..82d4e4384b1642b3e2c4aa8e452d574aad7ab1c8 100644
+--- a/app/src/main/java/app/arbor/chat/ui/PaletteVisuals.kt
++++ b/app/src/main/java/app/arbor/chat/ui/PaletteVisuals.kt
+@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.Dp
+ import androidx.compose.ui.unit.dp
+ import app.arbor.chat.R
+ import app.arbor.chat.settings.ColorPalette
++import app.arbor.chat.ui.theme.LocalArborColorPalette
+ import app.arbor.chat.ui.theme.PalettePreviewColors
+ import kotlin.math.min
+ 
+@@ -52,13 +53,56 @@ private fun PaletteDot(color: Color, modifier: Modifier = Modifier) {
+     ) {}
+ }
+ 
+-/** Arbor's in-app mark, rendered from the active Material color scheme. */
++private data class ArborMarkColors(
++    val backgroundStart: Color,
++    val backgroundEnd: Color,
++    val leftStemStart: Color,
++    val leftStemEnd: Color,
++    val rightStem: Color,
++    val accent: Color,
++)
++
++private fun arborMarkColors(palette: ColorPalette): ArborMarkColors = when (palette) {
++    ColorPalette.ARBOR -> ArborMarkColors(
++        backgroundStart = Color(0xFF083A2C), backgroundEnd = Color(0xFF0C684F),
++        leftStemStart = Color(0xFF86DFB8), leftStemEnd = Color(0xFFDDFBEA),
++        rightStem = Color(0xFFF1FFF7), accent = Color(0xFFF4C761),
++    )
++    ColorPalette.SYSTEM -> ArborMarkColors(
++        backgroundStart = Color(0xFF293B52), backgroundEnd = Color(0xFF67507E),
++        leftStemStart = Color(0xFFA9D4FF), leftStemEnd = Color(0xFFE8DDFF),
++        rightStem = Color(0xFFFFF8FF), accent = Color(0xFFFFB4A9),
++    )
++    ColorPalette.GRAPHITE -> ArborMarkColors(
++        backgroundStart = Color(0xFF162234), backgroundEnd = Color(0xFF425F86),
++        leftStemStart = Color(0xFFA9C7F8), leftStemEnd = Color(0xFFE7F0FF),
++        rightStem = Color(0xFFF7F9FF), accent = Color(0xFFE5BFA6),
++    )
++    ColorPalette.OCEAN -> ArborMar
