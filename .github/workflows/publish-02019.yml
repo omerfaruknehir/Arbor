@@ -1,0 +1,39 @@
+name: Publish Arbor 0.20.19 cleanly
+
+on:
+  push:
+    branches:
+      - agent/defer-icon-switch-0.20.19
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Remove one-shot publisher from source branch
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm .github/workflows/publish-02019.yml
+          git commit -m "Remove one-shot 0.20.19 publisher"
+          git push origin HEAD:agent/defer-icon-switch-0.20.19
+
+      - name: Squash verified patch onto main
+        shell: bash
+        run: |
+          git fetch origin main agent/defer-icon-switch-0.20.19
+          git checkout -B publish-main origin/main
+          git merge --squash origin/agent/defer-icon-switch-0.20.19
+          test ! -e .github/workflows/publish-02019.yml
+          test ! -e scripts/apply_icon_defer_02019.py
+          grep -q 'versionName = "0.20.19"' app/build.gradle.kts
+          git commit -m "Defer launcher icon mutation until Arbor is hidden" -m "Release Arbor 0.20.19 with launcher alias changes persisted while visible and applied only after the app UI is hidden."
+          git push origin HEAD:main
