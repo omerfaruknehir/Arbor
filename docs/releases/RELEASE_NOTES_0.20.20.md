@@ -18,4 +18,4 @@ Setup is now a horizontally swipeable pager with animated page transitions. The 
 
 ## Validation focus
 
-Regression coverage checks intentional restart coordination, system-owned relaunch fallback, per-chat draft/file persistence, chat and Settings scroll journaling, dynamic launcher resources, palette-specific splash targets, pager navigation, and resumable setup detours.
+Regression coverage checks intentional restart coordination, system-owned relaunch fallback, per-chat draft/file persistence, chat and Settings scroll journaling, dynamic launcher resources, palette-specific splash targets, pager navigation, resumable setup detours, and preservation of the existing developer performance-overlay wiring.
