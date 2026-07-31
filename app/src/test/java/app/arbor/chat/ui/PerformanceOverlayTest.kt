@@ -50,8 +50,9 @@ class PerformanceOverlayTest {
     @Test
     fun settingsAndRootContainDeveloperPerformanceWiring() {
         val settingsSource = java.io.File("src/main/java/app/arbor/chat/ui/SettingsScreen.kt").readText()
+        val routeSource = java.io.File("src/main/java/app/arbor/chat/ui/SettingsRoute.kt").readText()
         val rootSource = java.io.File("src/main/java/app/arbor/chat/ui/ArborApp.kt").readText()
-        assertTrue(settingsSource.contains("DEVELOPER(\"Developer settings\")"))
+        assertTrue(routeSource.contains("DEVELOPER(\"Developer settings\")"))
         assertTrue(settingsSource.contains("Show tool diagnostics"))
         assertTrue(settingsSource.contains("SettingsRoute.DEVELOPER, SettingsRoute.LICENSES -> SettingsRoute.ABOUT"))
         assertTrue(settingsSource.contains("SettingsRoute.LICENSES -> LicenseCatalogSettingsPage()"))
