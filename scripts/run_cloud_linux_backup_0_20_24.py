@@ -69,6 +69,29 @@ replace_once(
     "shared transfer heading visibility",
 )
 
+Path("app/src/main/res/xml/backup_rules.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <include domain="sharedpref" path="arbor_app_settings.xml" />
+    <include domain="sharedpref" path="arbor_ui_session.xml" />
+    <include domain="sharedpref" path="arbor_linux_runtime.xml" />
+</full-backup-content>
+''')
+
+Path("app/src/main/res/xml/data_extraction_rules.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <include domain="sharedpref" path="arbor_app_settings.xml" />
+        <include domain="sharedpref" path="arbor_ui_session.xml" />
+        <include domain="sharedpref" path="arbor_linux_runtime.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="arbor_app_settings.xml" />
+        <include domain="sharedpref" path="arbor_ui_session.xml" />
+        <include domain="sharedpref" path="arbor_linux_runtime.xml" />
+    </device-transfer>
+</data-extraction-rules>
+''')
+
 Path("app/src/test/java/app/arbor/chat/ui/CloudLinuxBackupFeatureTest.kt").write_text(r'''package app.arbor.chat.ui
 
 import java.io.File
@@ -98,15 +121,17 @@ class CloudLinuxBackupFeatureTest {
     }
 
     @Test
-    fun androidBackupExcludesSecretsAndLargePrivateData() {
+    fun androidBackupIncludesOnlySmallNonSecretPreferences() {
         val manifest = source("src/main/AndroidManifest.xml")
         val rules = source("src/main/res/xml/data_extraction_rules.xml")
         assertTrue(manifest.contains("android:allowBackup"))
         assertTrue(manifest.contains("@xml/backup_rules"))
-        assertTrue(rules.contains("arbor_secrets.xml"))
-        assertTrue(rules.contains("ubuntu/"))
-        assertTrue(rules.contains("linux-runtimes/"))
-        assertTrue(rules.contains("attachments/"))
+        assertTrue(rules.contains("arbor_app_settings.xml"))
+        assertTrue(rules.contains("arbor_ui_session.xml"))
+        assertTrue(rules.contains("arbor_linux_runtime.xml"))
+        assertFalse(rules.contains("arbor_secrets.xml"))
+        assertFalse(rules.contains("domain=\"database\""))
+        assertFalse(rules.contains("domain=\"file\""))
     }
 }
 ''')
