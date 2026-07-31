@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.21 — 2026-07-31
+
+- Keep setup as a dedicated first-run/resume flow and remove the Setup assistant destination from Settings.
+- Persist the live setup pager page, fractional swipe offset, and independent vertical scroll position for every setup page before launcher-icon restarts.
+- Restore the exact setup viewport after icon changes and after temporary Provider/Linux detours.
+- Drive each setup progress segment directly from the pager's continuous swipe/animation position instead of jumping only when a page settles.
+
 ## 0.20.20 — 2026-07-31
 
 - Replace the unreliable deferred launcher-alias workaround with an intentional stateful restart: synchronously save the active screen, selected chat, settings/setup page, chat and Settings scroll positions, per-chat drafts, and staged file attachments before switching the icon, then reopen Arbor through the selected launcher alias.

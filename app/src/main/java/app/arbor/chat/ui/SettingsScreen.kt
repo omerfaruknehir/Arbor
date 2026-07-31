@@ -245,7 +245,6 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         SettingsRoute.HOME -> SettingsHome(
                             providerCount = registeredProviders.size,
                             onOpen = { viewModel.settingsRoute.value = it },
-                            onStartSetup = viewModel::startSetup,
                         )
                         SettingsRoute.DEFAULTS -> NewChatDefaultsSettings(defaults, configuredProviders, viewModel)
                         SettingsRoute.AUTOMATION -> AutomationSettingsPage(automation, configuredProviders, viewModel)
@@ -288,7 +287,6 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
 private fun SettingsHome(
     providerCount: Int,
     onOpen: (SettingsRoute) -> Unit,
-    onStartSetup: () -> Unit,
 ) = SettingsPage {
     SettingsGroup("AI & models") {
         SettingsDestination(
@@ -317,12 +315,6 @@ private fun SettingsHome(
         )
     }
     SettingsGroup("App") {
-        SettingsDestination(
-            icon = Icons.Outlined.AutoAwesome,
-            title = "Setup assistant",
-            subtitle = "Resume or run appearance, providers, and local tools setup",
-            onClick = onStartSetup,
-        )
         SettingsDestination(
             icon = Icons.Outlined.Palette,
             title = "Appearance",

@@ -60,6 +60,7 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
     var providerCatalogGraceExpired by rememberSaveable { mutableStateOf(false) }
     val setupActive by viewModel.setupActive.collectAsState()
     val setupStepIndex by viewModel.setupStepIndex.collectAsState()
+    val setupPageOffsetFraction by viewModel.setupPageOffsetFraction.collectAsState()
     val setupTemporarilyAway by viewModel.setupTemporarilyAway.collectAsState()
     val setupDismissed by viewModel.setupDismissed.collectAsState()
     val performanceMonitor = remember(activity) { ArborPerformanceMonitor(activity) }
@@ -96,7 +97,10 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
             providerCatalogDelayed = !providerCatalogReady,
             pythonEnabled = newChatDefaults.agentPythonEnabled,
             stepIndex = setupStepIndex,
-            onStepChanged = { viewModel.setupStepIndex.value = it },
+            stepOffsetFraction = setupPageOffsetFraction,
+            scrollOffsetForStep = viewModel::setupScrollOffset,
+            onPagerPositionChanged = viewModel::updateSetupPagerPosition,
+            onStepScrollChanged = viewModel::saveSetupScrollOffset,
             linuxEnabled = newChatDefaults.agentUbuntuEnabled,
             onThemeModeChanged = viewModel::setThemeMode,
             onPaletteChanged = viewModel::setPalette,

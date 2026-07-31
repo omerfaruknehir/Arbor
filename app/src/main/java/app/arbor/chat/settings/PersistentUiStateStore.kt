@@ -23,6 +23,7 @@ class PersistentUiStateStore(context: Context) {
         val focusedMessageNodeId: String?,
         val setupActive: Boolean,
         val setupStepIndex: Int,
+        val setupPageOffsetFraction: Float,
         val setupTemporarilyAway: Boolean,
         val setupDismissed: Boolean,
     )
@@ -46,6 +47,8 @@ class PersistentUiStateStore(context: Context) {
         focusedMessageNodeId = preferences.getString(KEY_FOCUSED_MESSAGE, null),
         setupActive = preferences.getBoolean(KEY_SETUP_ACTIVE, false),
         setupStepIndex = preferences.getInt(KEY_SETUP_STEP, 0).coerceAtLeast(0),
+        setupPageOffsetFraction = preferences.getFloat(KEY_SETUP_PAGE_OFFSET, 0f)
+            .coerceIn(MIN_PAGE_OFFSET, MAX_PAGE_OFFSET),
         setupTemporarilyAway = preferences.getBoolean(KEY_SETUP_TEMPORARILY_AWAY, false),
         setupDismissed = preferences.getBoolean(KEY_SETUP_DISMISSED, false),
     )
@@ -61,6 +64,7 @@ class PersistentUiStateStore(context: Context) {
         focusedMessageNodeId: String?,
         setupActive: Boolean,
         setupStepIndex: Int,
+        setupPageOffsetFraction: Float,
         setupTemporarilyAway: Boolean,
         setupDismissed: Boolean,
     ) {
@@ -75,6 +79,10 @@ class PersistentUiStateStore(context: Context) {
             putNullableString(KEY_FOCUSED_MESSAGE, focusedMessageNodeId)
             putBoolean(KEY_SETUP_ACTIVE, setupActive)
             putInt(KEY_SETUP_STEP, setupStepIndex.coerceAtLeast(0))
+            putFloat(
+                KEY_SETUP_PAGE_OFFSET,
+                setupPageOffsetFraction.coerceIn(MIN_PAGE_OFFSET, MAX_PAGE_OFFSET),
+            )
             putBoolean(KEY_SETUP_TEMPORARILY_AWAY, setupTemporarilyAway)
             putBoolean(KEY_SETUP_DISMISSED, setupDismissed)
         }
@@ -119,6 +127,16 @@ class PersistentUiStateStore(context: Context) {
     fun settingsScroll(route: SettingsRoute): Int =
         preferences.getInt(settingsScrollKey(route), 0).coerceAtLeast(0)
 
+
+    fun saveSetupScroll(stepIndex: Int, offset: Int, immediate: Boolean = false) {
+        preferences.edit(commit = immediate) {
+            putInt(setupScrollKey(stepIndex), offset.coerceAtLeast(0))
+        }
+    }
+
+    fun setupScroll(stepIndex: Int): Int =
+        preferences.getInt(setupScrollKey(stepIndex), 0).coerceAtLeast(0)
+
     fun clearChatScroll(conversationId: String) {
         preferences.edit { remove(scrollKey(conversationId)) }
     }
@@ -135,6 +153,8 @@ class PersistentUiStateStore(context: Context) {
 
     private fun settingsScrollKey(route: SettingsRoute) = "settings_scroll.${route.name}"
 
+    private fun setupScrollKey(stepIndex: Int) = "setup_scroll.${stepIndex.coerceAtLeast(0)}"
+
     private companion object {
         const val SEPARATOR = "\u001f"
         const val KEY_SELECTED_CONVERSATION = "selected_conversation"
@@ -147,7 +167,10 @@ class PersistentUiStateStore(context: Context) {
         const val KEY_FOCUSED_MESSAGE = "focused_message"
         const val KEY_SETUP_ACTIVE = "setup_active"
         const val KEY_SETUP_STEP = "setup_step"
+        const val KEY_SETUP_PAGE_OFFSET = "setup_page_offset"
         const val KEY_SETUP_TEMPORARILY_AWAY = "setup_temporarily_away"
+        const val MIN_PAGE_OFFSET = -0.499f
+        const val MAX_PAGE_OFFSET = 0.499f
         const val KEY_SETUP_DISMISSED = "setup_dismissed"
     }
 }
