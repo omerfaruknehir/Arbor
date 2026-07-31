@@ -1,0 +1,95 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 274884cc35e7d2d4d193d48bc0feca35e4b3e44a..c57ed7be77e18193bddb97010d6a450f3fa29bdf 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,12 @@
+ # Changelog
+ 
++## 0.20.18 — 2026-07-31
++
++- Defer launcher-alias mutation until Arbor is fully backgrounded and no generation is active, preventing One UI from closing the visible app or interrupting work while a theme/icon setting is changed.
++- Render onboarding, drawer, and Licenses Arbor marks from the exact palette-specific launcher artwork instead of approximate Material colors.
++- Prevent recycled Markdown views and stale paging placeholder keys from showing only an old short prefix of user messages.
++- Add device-oriented regression coverage for background-only icon application, exact logo colors, themed license branding, and full-message fallback rendering.
++
+ ## 0.20.17 — 2026-07-31
+ 
+ - Route launcher aliases through a transparent trampoline so changing the icon cannot close the active MainActivity task.
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 40d60d3fa26cdd9983bdb3c8f6b274ae8a6bf292..b8ab71435bec6d044105047ae5a77d0b44890cf8 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -182,8 +182,8 @@ android {
+         applicationId = "app.arbor.chat"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 143
+-        versionName = "0.20.17"
++        versionCode = 144
++        versionName = "0.20.18"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+         vectorDrawables.useSupportLibrary = true
+@@ -274,6 +274,7 @@ dependencies {
+     implementation("androidx.activity:activity-compose:1.10.1")
+     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.0")
+     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
++    implementation("androidx.lifecycle:lifecycle-process:2.9.0")
+     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
+     implementation("androidx.navigation:navigation-compose:2.9.0")
+     implementation("androidx.compose.material3:material3")
+diff --git a/app/src/main/java/app/arbor/chat/ArborApplication.kt b/app/src/main/java/app/arbor/chat/ArborApplication.kt
+index 5ffa45489248d39999bd10758a100d97e9d3bd0b..0d09b4623e29e1198a4a454d2dc0e1aafdf6166e 100644
+--- a/app/src/main/java/app/arbor/chat/ArborApplication.kt
++++ b/app/src/main/java/app/arbor/chat/ArborApplication.kt
+@@ -23,6 +23,9 @@ import app.arbor.chat.security.SecureStore
+ import app.arbor.chat.security.CrashReporter
+ import app.arbor.chat.settings.AppPreferences
+ import app.arbor.chat.generated.GeneratedBlockRepairCoordinator
++import androidx.lifecycle.DefaultLifecycleObserver
++import androidx.lifecycle.LifecycleOwner
++import androidx.lifecycle.ProcessLifecycleOwner
+ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.SupervisorJob
+@@ -37,6 +40,19 @@ class ArborApplication : Application() {
+         super.onCreate()
+         val crashReporter = CrashReporter(this).also(CrashReporter::install)
+         container = AppContainer(this, crashReporter)
++        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
++            override fun onStop(owner: LifecycleOwner) {
++                // Component aliases are changed only after the last Arbor Activity
++                // is no longer visible. This avoids One UI closing the foreground UI.
++                CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
++                    // Do not risk interrupting an active background generation if
++                    // this launcher chooses to restart the package after mutation.
++                    if (container.database.messageDao().streamingMessages().isEmpty()) {
++                        container.appPreferences.applyPendingLauncherIcon()
++                    }
++                }
++            }
++        })
+         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+             // Generated/returned assistant images are already known to the agent which created them.
+             // Keep old installs visually clean instead of retaining an unnecessary OCR overlay.
+diff --git a/app/src/main/java/app/arbor/chat/settings/AppPreferences.kt b/app/src/main/java/app/arbor/chat/settings/AppPreferences.kt
+index 74c7421b7f4824709f850c845e7ec34eb7ae2764..56ca2d88e2f765c2d3c7d5b0846f02424e50beb7 100644
+--- a/app/src/main/java/app/arbor/chat/settings/AppPreferences.kt
++++ b/app/src/main/java/app/arbor/chat/settings/AppPreferences.kt
+@@ -186,8 +186,8 @@ class AppPreferences(context: Context) {
+     val hasNewChatDefaults: Boolean get() = preferences.getBoolean(KEY_DEFAULTS_INITIALIZED, false)
+ 
+     init {
+-        // Reconcile aliases after app updates or launcher cache resets.
+-        LauncherIconManager.apply(appContext, _matchLauncherIconToPalette.value, _palette.value)
++        // Queue reconciliation; the application applies it only after Arbor is backgrounded.
++        LauncherIconManager.request(appContext, _matchLauncherIconToPalette.value, _palette.value)
+     }
+ 
+     private fun readChromeBlurStrength():  Float {
+@@ -246,16 +246,18 @@ class AppPreferences(context: Context) {
+         _palette.value = value
+         preferences.edit { putString(KEY_PALETTE, value.name) }
+         if (_matchLauncherIconToPalette.value) {
+-            LauncherIconManager.apply(appContext, matchPalette = true, palette = value)
++        
