@@ -2,6 +2,7 @@ package app.arbor.chat
 
 import android.app.ActivityManager
 import android.app.Application
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.os.Build
 import android.os.Process
@@ -26,6 +27,7 @@ import app.arbor.chat.sandbox.RunRecordStore
 import app.arbor.chat.security.SecureStore
 import app.arbor.chat.security.CrashReporter
 import app.arbor.chat.settings.AppPreferences
+import app.arbor.chat.settings.LauncherIconManager
 import app.arbor.chat.generated.GeneratedBlockRepairCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,12 +36,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 
 class ArborApplication : Application() {
+    private var launcherIconProcess = false
+
     lateinit var container: AppContainer
         private set
 
     override fun onCreate() {
         super.onCreate()
-        if (isLauncherIconProcess()) return
+        launcherIconProcess = isLauncherIconProcess()
+        if (launcherIconProcess) return
         val crashReporter = CrashReporter(this).also(CrashReporter::install)
         container = AppContainer(this, crashReporter)
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
@@ -70,6 +75,13 @@ class ArborApplication : Application() {
             container.database.automationSettingsDao().upsert(
                 container.database.automationSettingsDao().get() ?: app.arbor.chat.data.AutomationSettingsEntity(),
             )
+        }
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (!launcherIconProcess && level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+            LauncherIconManager.flushPending(this)
         }
     }
 

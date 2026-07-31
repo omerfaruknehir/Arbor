@@ -9,15 +9,18 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 
 /**
- * Requests launcher alias changes through a dedicated process.
+ * Queues launcher alias changes and commits them only after Arbor is hidden.
  *
- * Some OEM package managers ignore DONT_KILL_APP when aliases are toggled by the
- * foreground process. The explicit receiver performs the package mutation in
- * :launcher_icon, keeping MainActivity and its task out of the process which is
- * touching component state.
+ * Changing an activity-alias is a package-manager operation. Some launchers tear
+ * down the visible task even when [PackageManager.DONT_KILL_APP] is supplied.
+ * The foreground UI therefore only records the desired alias. [flushPending]
+ * dispatches the actual mutation after MainActivity has stopped or Android has
+ * reported that Arbor's UI is hidden.
  */
 internal object LauncherIconManager {
     private const val TAG = "ArborLauncherIcon"
+    private const val STATE_PREFERENCES = "arbor_launcher_icon_state"
+    private const val KEY_PENDING_ALIAS = "pending_alias"
     internal const val EXTRA_DESIRED_ALIAS = "app.arbor.chat.extra.DESIRED_LAUNCHER_ALIAS"
 
     internal const val ARBOR_ALIAS = "app.arbor.chat.LauncherArbor"
@@ -48,9 +51,32 @@ internal object LauncherIconManager {
         }
     }
 
+    /** Records the requested launcher icon without touching component state. */
     fun apply(context: Context, matchPalette: Boolean, palette: ColorPalette): Boolean {
         val appContext = context.applicationContext
         val desiredClassName = aliasClassName(matchPalette, palette)
+        return runCatching {
+            val pending = statePreferences(appContext)
+            if (enabledAlias(appContext) == desiredClassName) {
+                pending.edit().remove(KEY_PENDING_ALIAS).commit()
+            } else {
+                pending.edit().putString(KEY_PENDING_ALIAS, desiredClassName).commit()
+            }
+        }.onFailure { error ->
+            Log.w(TAG, "Could not queue launcher icon alias update", error)
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Sends a queued mutation to the lightweight launcher process.
+     * Call only after Arbor's visible activity has stopped.
+     */
+    fun flushPending(context: Context): Boolean {
+        val appContext = context.applicationContext
+        val desiredClassName = statePreferences(appContext)
+            .getString(KEY_PENDING_ALIAS, null)
+            ?.takeIf { it in allAliases }
+            ?: return false
         return runCatching {
             appContext.sendBroadcast(
                 Intent(appContext, LauncherIconSwitchReceiver::class.java)
@@ -59,8 +85,15 @@ internal object LauncherIconManager {
             )
             true
         }.onFailure { error ->
-            Log.w(TAG, "Could not request launcher icon alias update", error)
+            Log.w(TAG, "Could not dispatch queued launcher icon update", error)
         }.getOrDefault(false)
+    }
+
+    internal fun markApplied(context: Context, desiredClassName: String) {
+        val preferences = statePreferences(context.applicationContext)
+        if (preferences.getString(KEY_PENDING_ALIAS, null) == desiredClassName) {
+            preferences.edit().remove(KEY_PENDING_ALIAS).commit()
+        }
     }
 
     internal fun applyDirect(context: Context, desiredClassName: String): Boolean {
@@ -77,6 +110,20 @@ internal object LauncherIconManager {
         }.onFailure { error ->
             Log.w(TAG, "Could not update launcher icon alias", error)
         }.getOrDefault(false)
+    }
+
+    private fun statePreferences(context: Context) =
+        context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
+
+    private fun enabledAlias(context: Context): String? {
+        val packageManager = context.packageManager
+        return allAliases.firstOrNull { className ->
+            isEnabled(
+                packageManager = packageManager,
+                component = ComponentName(context.packageName, className),
+                manifestDefault = className == ARBOR_ALIAS,
+            )
+        }
     }
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)

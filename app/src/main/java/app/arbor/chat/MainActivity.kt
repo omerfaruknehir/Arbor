@@ -33,6 +33,7 @@ import app.arbor.chat.ui.LocalArborIconPalette
 import app.arbor.chat.ui.ChatViewModel
 import app.arbor.chat.ui.theme.ArborTheme
 import app.arbor.chat.settings.ColorPalette
+import app.arbor.chat.settings.LauncherIconManager
 
 import app.arbor.chat.ui.ArborAlertDialog
 class MainActivity : ComponentActivity() {
@@ -92,6 +93,13 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         (application as ArborApplication).container.openAiOAuth.onBrowserReturned()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) {
+            LauncherIconManager.flushPending(applicationContext)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

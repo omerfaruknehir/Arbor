@@ -55,16 +55,36 @@ class LauncherIconManagerTest {
     }
 
     @Test
-    fun `icon switching is atomic where supported and never requests a process kill`() {
+    fun `foreground settings only queue icon changes and hidden lifecycle flushes them`() {
+        val source = File("src/main/java/app/arbor/chat/settings/LauncherIconManager.kt").readText()
+        val foregroundApply = source.substringAfter("fun apply(context:")
+            .substringBefore("fun flushPending")
+        assertTrue(foregroundApply.contains("KEY_PENDING_ALIAS"))
+        assertFalse(foregroundApply.contains("sendBroadcast"))
+        assertFalse(foregroundApply.contains("setComponentEnabledSetting"))
+        assertTrue(source.contains("fun flushPending"))
+        assertTrue(source.contains("LauncherIconSwitchReceiver::class.java"))
+
+        val mainActivity = File("src/main/java/app/arbor/chat/MainActivity.kt").readText()
+        assertTrue(mainActivity.contains("override fun onStop()"))
+        assertTrue(mainActivity.contains("LauncherIconManager.flushPending"))
+
+        val application = File("src/main/java/app/arbor/chat/ArborApplication.kt").readText()
+        assertTrue(application.contains("TRIM_MEMORY_UI_HIDDEN"))
+        assertTrue(application.contains("LauncherIconManager.flushPending"))
+    }
+
+    @Test
+    fun `background icon switching is atomic and acknowledges only the applied alias`() {
         val source = File("src/main/java/app/arbor/chat/settings/LauncherIconManager.kt").readText()
         assertTrue(source.contains("setComponentEnabledSettings"))
         assertTrue(source.contains("PackageManager.DONT_KILL_APP"))
         assertTrue(source.contains("applyEnableFirst"))
-        assertTrue(source.contains("LauncherIconSwitchReceiver::class.java"))
-        assertTrue(source.contains("applyDirect"))
+        assertTrue(source.contains("markApplied"))
 
         val receiver = File("src/main/java/app/arbor/chat/settings/LauncherIconSwitchReceiver.kt").readText()
         assertTrue(receiver.contains("BroadcastReceiver"))
         assertTrue(receiver.contains("LauncherIconManager.applyDirect"))
+        assertTrue(receiver.contains("LauncherIconManager.markApplied"))
     }
 }

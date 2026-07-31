@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.19 — 2026-07-31
+
+- Stop mutating launcher aliases while Arbor is visible; icon choices are now persisted and committed only after the app leaves the screen.
+- Flush pending icon changes from both MainActivity.onStop and Android's UI-hidden callback, with the component mutation still isolated in the launcher process.
+- Acknowledge a pending icon only after the requested alias was applied, preventing lost updates across process teardown.
+- Update Appearance and onboarding copy to describe the safe deferred refresh behavior.
+
 ## 0.20.18 — 2026-07-31
 
 - Render the drawer, onboarding, and Arbor license entry from the exact active launcher-icon drawable instead of a separately approximated logo.
@@ -501,6 +508,13 @@
 - Batched streaming Markdown updates and GPU-cheap consistent block fades.
 
 # Changelog
+
+## 0.20.19 — 2026-07-31
+
+- Stop mutating launcher aliases while Arbor is visible; icon choices are now persisted and committed only after the app leaves the screen.
+- Flush pending icon changes from both MainActivity.onStop and Android's UI-hidden callback, with the component mutation still isolated in the launcher process.
+- Acknowledge a pending icon only after the requested alias was applied, preventing lost updates across process teardown.
+- Update Appearance and onboarding copy to describe the safe deferred refresh behavior.
 
 
 ## 0.20.14 — 2026-07-31
