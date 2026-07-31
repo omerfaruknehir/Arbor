@@ -1,0 +1,19 @@
+{
+  "id": "google-play-services-auth",
+  "name": "Google Play services Auth",
+  "version": "21.6.0",
+  "category": "Cloud authorization",
+  "description": "On-demand Google authorization used only for Arbor's hidden Google Drive app-data backup folder.",
+  "projectUrl": "https://developers.google.com/identity/authorization",
+  "icon": "icons/android.svg",
+  "coordinates": [
+    "com.google.android.gms:play-services-auth:21.6.0"
+  ],
+  "licenses": [
+    {
+      "name": "Google Mobile Developer Services and API terms notice",
+      "file": "texts/Google-Mobile-Developer-Services-Notice.txt"
+    }
+  ],
+  "notice": "Arbor requests only drive.appdata at the moment the user chooses a direct Google Drive backup action."
+}
