@@ -16,8 +16,8 @@ class GeneratedBlockRepairCoordinatorTest {
     @After fun clean() { root.deleteRecursively() }
 
     @Test fun invalidWidgetRepairsSuccessfullyOnAttemptOne() = runTest {
-        val coordinator = GeneratedBlockRepairCoordinator(::workspace) { """```arbor-ui
-{"type":"choice","title":"Pick","options":["A","B"]}
+        val coordinator = GeneratedBlockRepairCoordinator(::workspace) { """```arbor-snippet
+{"schema":"arbor-snippet/1","id":"pick","title":"Pick","state":{"answer":""},"ui":{"type":"choice","value":"answer","options":[{"label":"A","value":"A"},{"label":"B","value":"B"}]},"actions":{}}
 ```""" }
         val result = coordinator.repair("c", "m", "b", GeneratedBlockType.CHAT_UI, """{"type":"graph"}""", errors("bad type"), 3)
         assertEquals(GeneratedRepairStatus.ACCEPTED, result.status)
@@ -60,8 +60,8 @@ class GeneratedBlockRepairCoordinatorTest {
     }
 
     @Test fun proseAndMultipleBlocksAreRejectedAsMalformedRepairResponses() {
-        assertTrue(GeneratedContentCapabilityRegistry.extractSingleReplacement("Here:\n```arbor-ui\n{}\n```", "arbor-ui").isFailure)
-        assertTrue(GeneratedContentCapabilityRegistry.extractSingleReplacement("```arbor-ui\n{}\n```\n```arbor-ui\n{}\n```", "arbor-ui").isFailure)
+        assertTrue(GeneratedContentCapabilityRegistry.extractSingleReplacement("Here:\n```arbor-snippet\n{}\n```", "arbor-snippet").isFailure)
+        assertTrue(GeneratedContentCapabilityRegistry.extractSingleReplacement("```arbor-snippet\n{}\n```\n```arbor-snippet\n{}\n```", "arbor-snippet").isFailure)
     }
 
     @Test fun explicitUserRetryStartsFreshBoundedCycle() = runTest {
@@ -86,8 +86,8 @@ class GeneratedBlockRepairCoordinatorTest {
         var calls = 0
         fun coordinator() = GeneratedBlockRepairCoordinator(::workspace) {
             calls++
-            """```arbor-ui
-{"type":"choice","options":["A"]}
+            """```arbor-snippet
+{"schema":"arbor-snippet/1","id":"pick","state":{"answer":""},"ui":{"type":"choice","value":"answer","options":[{"label":"A","value":"A"}]},"actions":{}}
 ```"""
         }
         coordinator().repair("c", "m", "persisted", GeneratedBlockType.CHAT_UI, "{}", errors("invalid"), 3)

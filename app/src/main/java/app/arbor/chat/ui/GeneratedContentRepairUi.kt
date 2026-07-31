@@ -221,7 +221,8 @@ private fun RepairDetails(state: GeneratedBlockRepairState) {
 }
 
 private val GeneratedBlockType.displayLabel: String get() = when (this) {
-    GeneratedBlockType.CHAT_UI, GeneratedBlockType.HOME_WIDGET -> "widget"
+    GeneratedBlockType.CHAT_UI -> "snippet"
+    GeneratedBlockType.HOME_WIDGET -> "widget"
     GeneratedBlockType.CHART -> "chart"
     GeneratedBlockType.DIAGRAM -> "diagram"
 }

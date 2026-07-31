@@ -1,8 +1,7 @@
 package app.arbor.chat.ui
 
+import android.accounts.Account
 import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -18,6 +17,8 @@ import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.Logout
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -28,6 +29,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,7 +43,9 @@ import androidx.compose.ui.unit.dp
 import app.arbor.chat.transfer.ArchiveOptions
 import app.arbor.chat.transfer.CloudBackupEntry
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.AuthorizationResult
 import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.auth.api.identity.RevokeAccessRequest
 import com.google.android.gms.common.Scopes
 import com.google.android.gms.common.api.Scope
 import kotlinx.coroutines.launch
@@ -49,6 +53,7 @@ import java.text.DateFormat
 import java.util.Date
 
 private sealed interface GoogleBackupAction {
+    data object Connect : GoogleBackupAction
     data object Save : GoogleBackupAction
     data object List : GoogleBackupAction
     data class Open(val entry: CloudBackupEntry) : GoogleBackupAction
@@ -64,11 +69,16 @@ internal fun CloudBackupTargets(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val authorizationClient = remember(context) { Identity.getAuthorizationClient(context) }
+    val driveScopes = remember { listOf(Scope(Scopes.DRIVE_APPFOLDER)) }
     var folderLabel by remember { mutableStateOf(viewModel.connectedCloudFolderLabel()) }
     var folderBackups by remember { mutableStateOf<List<CloudBackupEntry>>(emptyList()) }
     var driveBackups by remember { mutableStateOf<List<CloudBackupEntry>>(emptyList()) }
     var busy by remember { mutableStateOf<String?>(null) }
     var pendingGoogleAction by remember { mutableStateOf<GoogleBackupAction?>(null) }
+    var googleConnected by remember { mutableStateOf(false) }
+    var googleAccount by remember { mutableStateOf<Account?>(null) }
+    var googleAccountLabel by remember { mutableStateOf<String?>(null) }
+    var driveError by remember { mutableStateOf<String?>(null) }
 
     fun refreshFolderBackups() {
         scope.launch {
@@ -81,17 +91,18 @@ internal fun CloudBackupTargets(
     fun performGoogle(action: GoogleBackupAction, accessToken: String) {
         scope.launch {
             busy = when (action) {
+                GoogleBackupAction.Connect, GoogleBackupAction.List -> "drive-list"
                 GoogleBackupAction.Save -> "drive-save"
-                GoogleBackupAction.List -> "drive-list"
                 is GoogleBackupAction.Open -> "drive-open-${action.entry.id}"
             }
+            driveError = null
             runCatching {
                 when (action) {
-                    GoogleBackupAction.Save -> {
-                        viewModel.writeGoogleDriveBackup(accessToken, options, password)
+                    GoogleBackupAction.Connect, GoogleBackupAction.List -> {
                         driveBackups = viewModel.listGoogleDriveBackups(accessToken)
                     }
-                    GoogleBackupAction.List -> {
+                    GoogleBackupAction.Save -> {
+                        viewModel.writeGoogleDriveBackup(accessToken, options, password)
                         driveBackups = viewModel.listGoogleDriveBackups(accessToken)
                     }
                     is GoogleBackupAction.Open -> {
@@ -100,12 +111,31 @@ internal fun CloudBackupTargets(
                     }
                 }
             }.onSuccess {
-                if (action == GoogleBackupAction.Save) viewModel.postNotice("Backup saved to Google Drive app storage")
-            }.onFailure {
-                viewModel.postNotice(it.message ?: "Google Drive backup failed")
+                googleConnected = true
+                if (action == GoogleBackupAction.Save) viewModel.postNotice("Backup saved to Google Drive")
+            }.onFailure { error ->
+                val message = error.message ?: "Google Drive backup failed"
+                driveError = message
+                if (message.contains("authorization", ignoreCase = true) || message.contains("401")) {
+                    googleConnected = false
+                }
             }
             busy = null
         }
+    }
+
+    fun acceptAuthorization(action: GoogleBackupAction, authorization: AuthorizationResult) {
+        val token = authorization.accessToken
+        if (token.isNullOrBlank()) {
+            driveError = "Google returned no access token. Check that this app's package name and signing certificate are registered for its OAuth client."
+            googleConnected = false
+            return
+        }
+        val account = authorization.toGoogleSignInAccount()
+        googleAccount = account?.account
+        googleAccountLabel = account?.email ?: account?.displayName ?: account?.account?.name
+        googleConnected = true
+        performGoogle(action, token)
     }
 
     val googleAuthorizationLauncher = rememberLauncherForActivityResult(
@@ -113,44 +143,86 @@ internal fun CloudBackupTargets(
     ) { result ->
         val action = pendingGoogleAction
         pendingGoogleAction = null
-        if (result.resultCode != Activity.RESULT_OK || action == null) return@rememberLauncherForActivityResult
+        if (action == null) return@rememberLauncherForActivityResult
+        if (result.resultCode != Activity.RESULT_OK) {
+            driveError = "Google Drive connection was canceled."
+            return@rememberLauncherForActivityResult
+        }
         runCatching { authorizationClient.getAuthorizationResultFromIntent(result.data ?: Intent()) }
-            .onSuccess { authorization ->
-                val token = authorization.accessToken
-                if (token.isNullOrBlank()) viewModel.postNotice("Google Drive authorization returned no access token")
-                else performGoogle(action, token)
-            }
-            .onFailure { viewModel.postNotice(it.message ?: "Google Drive authorization failed") }
+            .onSuccess { acceptAuthorization(action, it) }
+            .onFailure { driveError = it.message ?: "Google Drive authorization failed" }
     }
 
-    fun authorizeGoogle(action: GoogleBackupAction) {
-        if (busy != null) return
+    fun authorizeGoogle(action: GoogleBackupAction, selectAccount: Boolean = false) {
+        if (busy != null || pendingGoogleAction != null) return
+        driveError = null
         pendingGoogleAction = action
-        val request = AuthorizationRequest.builder()
-            .setRequestedScopes(listOf(Scope(Scopes.DRIVE_APPFOLDER)))
-            .build()
-        authorizationClient.authorize(request)
+        val builder = AuthorizationRequest.builder().setRequestedScopes(driveScopes)
+        if (selectAccount) {
+            builder.setPrompt(AuthorizationRequest.Prompt.SELECT_ACCOUNT)
+        } else {
+            googleAccount?.let(builder::setAccount)
+        }
+        authorizationClient.authorize(builder.build())
             .addOnSuccessListener { result ->
                 if (result.hasResolution()) {
                     val pendingIntent = result.pendingIntent
                     if (pendingIntent == null) {
                         pendingGoogleAction = null
-                        viewModel.postNotice("Google Drive authorization could not be opened")
+                        driveError = "Google Drive authorization could not be opened."
                     } else {
-                        googleAuthorizationLauncher.launch(
-                            IntentSenderRequest.Builder(pendingIntent.intentSender).build(),
-                        )
+                        googleAuthorizationLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
                     }
                 } else {
                     pendingGoogleAction = null
-                    val token = result.accessToken
-                    if (token.isNullOrBlank()) viewModel.postNotice("Google Drive authorization returned no access token")
-                    else performGoogle(action, token)
+                    acceptAuthorization(action, result)
                 }
             }
             .addOnFailureListener {
                 pendingGoogleAction = null
-                viewModel.postNotice(it.message ?: "Google Drive authorization failed")
+                googleConnected = false
+                driveError = it.message ?: "Google Drive authorization failed"
+            }
+    }
+
+    DisposableEffect(authorizationClient) {
+        var active = true
+        val request = AuthorizationRequest.builder().setRequestedScopes(driveScopes).build()
+        authorizationClient.authorize(request)
+            .addOnSuccessListener { result ->
+                if (active && !result.hasResolution() && !googleConnected && busy == null) {
+                    acceptAuthorization(GoogleBackupAction.Connect, result)
+                }
+            }
+            .addOnFailureListener { /* No prior grant: stay disconnected without showing an error. */ }
+        onDispose { active = false }
+    }
+
+    fun disconnectGoogle() {
+        val account = googleAccount
+        if (account == null) {
+            googleConnected = false
+            googleAccountLabel = null
+            driveBackups = emptyList()
+            return
+        }
+        busy = "drive-disconnect"
+        val request = RevokeAccessRequest.builder()
+            .setAccount(account)
+            .setScopes(driveScopes)
+            .build()
+        authorizationClient.revokeAccess(request)
+            .addOnSuccessListener {
+                googleConnected = false
+                googleAccount = null
+                googleAccountLabel = null
+                driveBackups = emptyList()
+                driveError = null
+                busy = null
+            }
+            .addOnFailureListener {
+                driveError = it.message ?: "Google Drive could not be disconnected"
+                busy = null
             }
     }
 
@@ -169,7 +241,7 @@ internal fun CloudBackupTargets(
 
     TransferHeading(
         title = "Private cloud targets",
-        subtitle = "Arbor uses either a single folder you explicitly choose or Google Drive's hidden appDataFolder. It never requests access to all files in your cloud account.",
+        subtitle = "Use either one folder you explicitly choose or Google Drive's hidden Arbor-only app storage. Arbor never requests access to your whole cloud drive.",
     )
 
     Surface(
@@ -181,17 +253,17 @@ internal fun CloudBackupTargets(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.FolderOpen, null, tint = MaterialTheme.colorScheme.primary)
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text("App-only cloud folder", fontWeight = FontWeight.SemiBold)
+                    Text("Selected cloud folder", fontWeight = FontWeight.SemiBold)
                     Text(
                         folderLabel?.let { "Connected: $it" }
-                            ?: "Works with Google Drive, OneDrive, Dropbox, Nextcloud, USB, and other Android document providers.",
+                            ?: "Works with Drive, OneDrive, Dropbox, Nextcloud, USB, local storage, and other Android document providers.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
             Text(
-                "Android grants Arbor persistent read/write access only to the selected folder. Choose or create a folder named Arbor; no account-wide permission is requested.",
+                "Android grants Arbor persistent access only to the folder you select. Create or choose a dedicated Arbor folder; no account-wide permission is requested.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -212,9 +284,7 @@ internal fun CloudBackupTargets(
                             folderBackups = emptyList()
                         },
                         enabled = busy == null,
-                    ) {
-                        Icon(Icons.Outlined.DeleteOutline, null)
-                    }
+                    ) { Icon(Icons.Outlined.DeleteOutline, null) }
                 }
             }
             if (folderLabel != null) {
@@ -236,15 +306,11 @@ internal fun CloudBackupTargets(
                 ) {
                     if (busy == "folder-save") CircularProgressIndicator(Modifier.padding(end = 8.dp), strokeWidth = 2.dp)
                     else Icon(Icons.Outlined.CloudDone, null)
-                    Text(" Back up now to this folder")
+                    Text(" Back up now")
                 }
-                OutlinedButton(
-                    onClick = { refreshFolderBackups() },
-                    enabled = busy == null,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
+                OutlinedButton(onClick = { refreshFolderBackups() }, enabled = busy == null, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Outlined.Refresh, null)
-                    Text(" Show backups in folder")
+                    Text(" Show backups")
                 }
                 CloudBackupList(folderBackups, busy) { entry ->
                     runCatching { viewModel.openConnectedFolderBackup(entry) }
@@ -264,32 +330,98 @@ internal fun CloudBackupTargets(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Cloud, null, tint = MaterialTheme.colorScheme.primary)
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text("Google Drive app storage", fontWeight = FontWeight.SemiBold)
+                    Text("Google Drive", fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Uses the non-sensitive drive.appdata scope. Backups live in Drive's hidden Arbor-only appDataFolder and cannot be read by other apps.",
+                        "Uses only Drive's hidden appDataFolder. Connect once, then create, browse, preview, and restore backups without repeating the consent flow.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            Button(
-                onClick = { authorizeGoogle(GoogleBackupAction.Save) },
-                enabled = enabled && busy == null,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                if (busy == "drive-save") CircularProgressIndicator(Modifier.padding(end = 8.dp), strokeWidth = 2.dp)
-                else Icon(Icons.Outlined.Backup, null)
-                Text(" Back up to Google Drive app storage")
+
+            if (!googleConnected) {
+                Button(
+                    onClick = { authorizeGoogle(GoogleBackupAction.Connect, selectAccount = true) },
+                    enabled = enabled && busy == null && pendingGoogleAction == null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (pendingGoogleAction != null) CircularProgressIndicator(Modifier.padding(end = 8.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.Outlined.Person, null)
+                    Text(" Connect Google Drive")
+                }
+                Text(
+                    "Arbor asks for the non-sensitive drive.appdata scope only. The backup files remain hidden from normal Drive browsing and from other apps.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .55f),
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.CloudDone, null, tint = MaterialTheme.colorScheme.primary)
+                        Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                            Text("Connected", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                googleAccountLabel ?: "Google account selected",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                Button(
+                    onClick = { authorizeGoogle(GoogleBackupAction.Save) },
+                    enabled = enabled && busy == null && pendingGoogleAction == null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (busy == "drive-save") CircularProgressIndicator(Modifier.padding(end = 8.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.Outlined.Backup, null)
+                    Text(if (busy == "drive-save") " Creating and uploading…" else " Back up now")
+                }
+                OutlinedButton(
+                    onClick = { authorizeGoogle(GoogleBackupAction.List) },
+                    enabled = busy == null && pendingGoogleAction == null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Outlined.Refresh, null)
+                    Text(" Refresh backup list")
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { authorizeGoogle(GoogleBackupAction.Connect, selectAccount = true) },
+                        enabled = busy == null && pendingGoogleAction == null,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Switch account") }
+                    OutlinedButton(
+                        onClick = ::disconnectGoogle,
+                        enabled = busy == null,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Outlined.Logout, null)
+                        Text(" Disconnect")
+                    }
+                }
+                CloudBackupList(driveBackups, busy) { entry -> authorizeGoogle(GoogleBackupAction.Open(entry)) }
             }
-            OutlinedButton(
-                onClick = { authorizeGoogle(GoogleBackupAction.List) },
-                enabled = busy == null,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(Icons.Outlined.Refresh, null)
-                Text(" Show Google Drive backups")
+
+            driveError?.let { message ->
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Google Drive error", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onErrorContainer)
+                        Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                        OutlinedButton(onClick = { authorizeGoogle(GoogleBackupAction.Connect, selectAccount = true) }) {
+                            Text("Reconnect")
+                        }
+                    }
+                }
             }
-            CloudBackupList(driveBackups, busy) { entry -> authorizeGoogle(GoogleBackupAction.Open(entry)) }
         }
     }
 
@@ -299,7 +431,7 @@ internal fun CloudBackupTargets(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(
-            "Portable cloud backups can include chats, app settings, organization, and optional Linux root filesystems. Android/Google One app backup remains limited to small non-secret preferences. API keys, OAuth sessions, provider authorization headers, cloud grants, and database encryption keys are excluded everywhere.",
+            "Portable cloud backups can include chats, app settings, organization, and optional Linux root filesystems. Passwordless backups are allowed after an explicit warning; API keys, OAuth sessions, provider authorization headers, cloud grants, and database encryption keys are excluded.",
             modifier = Modifier.padding(14.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -315,7 +447,7 @@ private fun CloudBackupList(
 ) {
     if (entries.isEmpty()) return
     HorizontalDivider()
-    entries.take(12).forEach { entry ->
+    entries.take(20).forEach { entry ->
         Row(
             Modifier.fillMaxWidth().padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -335,9 +467,7 @@ private fun CloudBackupList(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            OutlinedButton(onClick = { onOpen(entry) }, enabled = busy == null) {
-                Text("Preview")
-            }
+            OutlinedButton(onClick = { onOpen(entry) }, enabled = busy == null) { Text("Preview") }
         }
     }
 }
@@ -347,10 +477,4 @@ private fun readableBytes(value: Long): String = when {
     value >= 1024L * 1024 -> "%.1f MiB".format(value.toDouble() / (1024.0 * 1024))
     value >= 1024L -> "%.1f KiB".format(value.toDouble() / 1024.0)
     else -> "$value B"
-}
-
-private tailrec fun Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
-    else -> null
 }

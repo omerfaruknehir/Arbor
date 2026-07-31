@@ -1,23 +1,27 @@
 package app.arbor.chat.generated
 
-import app.arbor.chat.widgets.ArborMiniAppParser
-import app.arbor.chat.widgets.ArborWidgetParser
-import app.arbor.chat.widgets.renderedMiniAppComponentTypes
+import app.arbor.chat.widgets.ArborProgramParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GeneratedContentCapabilityRegistryTest {
-    @Test fun everyRegisteredMiniAppComponentHasValidatorAndRenderer() {
-        assertEquals(ArborMiniAppParser.supportedComponentTypes, GeneratedContentCapabilityRegistry.miniAppComponentTypes)
-        assertEquals(GeneratedContentCapabilityRegistry.miniAppComponentTypes, renderedMiniAppComponentTypes)
+    @Test fun registryExposesTheProgramRuntimeExactly() {
+        assertEquals(ArborProgramParser.nodeTypes, GeneratedContentCapabilityRegistry.programNodeTypes)
+        assertEquals(ArborProgramParser.actionOps, GeneratedContentCapabilityRegistry.programActionTypes)
+        assertEquals(ArborProgramParser.capabilityTypes, GeneratedContentCapabilityRegistry.widgetCapabilityTypes)
+        assertEquals(ArborProgramParser.dataSourceTypes, GeneratedContentCapabilityRegistry.widgetDataSourceTypes)
     }
 
-    @Test fun everyRegisteredActionIsValidatedByRuntimeParser() {
-        assertEquals(ArborMiniAppParser.supportedOperations, GeneratedContentCapabilityRegistry.miniAppActionTypes)
-        assertTrue(GeneratedContentCapabilityRegistry.widgetTypes.containsAll(ArborWidgetParser.supportedTypes))
+    @Test fun snippetsAndWidgetsHaveSeparateCanonicalFencesWithoutLegacyAliases() {
+        assertNotNull(GeneratedContentCapabilityRegistry.capability("arbor-snippet"))
+        assertNotNull(GeneratedContentCapabilityRegistry.capability("arbor-widget"))
+        listOf("arbor-ui", "ui", "arbor-form", "widget", "mini_app").forEach {
+            assertNull(GeneratedContentCapabilityRegistry.capability(it))
+        }
     }
 
     @Test fun everyDocumentedFenceMapsToAValidator() {
@@ -47,8 +51,8 @@ class GeneratedContentCapabilityRegistryTest {
     }
 
     @Test fun contractAndValidatorVersionsAreExplicit() {
-        assertTrue(GeneratedContentCapabilityRegistry.CONTRACT_VERSION.startsWith("arbor-generated-content/1-"))
-        assertEquals("1.0.0", GeneratedContentCapabilityRegistry.VALIDATOR_VERSION)
+        assertTrue(GeneratedContentCapabilityRegistry.CONTRACT_VERSION.startsWith("arbor-generated-content/2-"))
+        assertEquals("2.0.0", GeneratedContentCapabilityRegistry.VALIDATOR_VERSION)
         assertTrue(GeneratedContentCapabilityRegistry.compactSummary().contains(GeneratedContentCapabilityRegistry.CONTRACT_VERSION))
         assertFalse(
             GeneratedContentCapabilityRegistry.contractVersionForShape(GeneratedContentCapabilityRegistry.contractShape()) ==
@@ -56,13 +60,15 @@ class GeneratedContentCapabilityRegistryTest {
         )
     }
 
-    @Test fun relevantPromptsIncludeOnlyRequestedFullSchema() {
-        val chart = GeneratedContentCapabilityRegistry.promptForRequest("Make a bar chart for this data")
-        assertTrue(chart.contains("`arbor-chart` schema"))
-        assertFalse(chart.contains("`arbor-widget` Home-screen schema"))
+    @Test fun relevantPromptsKeepSnippetAndWidgetSkillsSeparate() {
+        val quiz = GeneratedContentCapabilityRegistry.promptForRequest("Make a quiz inside chat")
+        assertTrue(quiz.contains("`arbor-snippet` schema"))
+        assertFalse(quiz.contains("`arbor-widget` schema"))
+
+        val widget = GeneratedContentCapabilityRegistry.promptForRequest("Make a live home screen widget")
+        assertTrue(widget.contains("`arbor-widget` schema"))
 
         val ordinary = GeneratedContentCapabilityRegistry.promptForRequest("Explain why the sky is blue")
         assertEquals(GeneratedContentCapabilityRegistry.compactSummary(), ordinary)
-        assertFalse(ordinary.contains("Exact valid examples:"))
     }
 }

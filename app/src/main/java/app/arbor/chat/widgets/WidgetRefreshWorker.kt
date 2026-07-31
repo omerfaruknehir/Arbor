@@ -20,51 +20,66 @@ internal class WidgetRefreshWorker(context: Context, params: WorkerParameters) :
         if (id == AppWidgetManager.INVALID_APPWIDGET_ID) return Result.failure()
         val storage = WidgetStorage(applicationContext)
         val source = storage.source(id) ?: return Result.failure()
-        val definition = ArborWidgetParser.parse(source).getOrNull() ?: return Result.failure()
-        val dataSource = definition.dataSource ?: return Result.success()
-        storage.setState(id, STATE_LOADING, "true")
-        updateWidget(applicationContext, id, source)
-        return runCatching { WidgetLiveDataClient.fetch(dataSource) }.fold(
+        val grants = storage.grants(id) ?: return Result.failure()
+        val definition = ArborProgramParser.parse(source, ArborProgramSurface.WIDGET).getOrNull() ?: return Result.failure()
+        if (!grantsSatisfy(definition, grants)) return Result.failure()
+        val requested = inputData.getStringArray(KEY_SOURCES)?.toSet().orEmpty().ifEmpty { setOf("*") }
+        if (definition.dataSources.isEmpty()) return Result.success()
+        return runCatching {
+            WidgetDataRuntime.refresh(
+                context = applicationContext,
+                definition = definition,
+                grants = grants,
+                currentState = storage.state(id).ifEmpty { definition.state },
+                requestedSources = requested,
+            )
+        }.fold(
             onSuccess = { result ->
-                result.values.forEach { (key, value) -> storage.setState(id, liveKey(key), value) }
-                storage.setState(id, STATE_UPDATED, result.updatedAtMillis.toString())
-                storage.setState(id, STATE_ERROR, "")
-                storage.setState(id, STATE_LOADING, "false")
-                updateWidget(applicationContext, id, source)
+                storage.setState(id, result.state)
+                storage.setUpdatedAt(id, result.updatedAtMillis)
+                storage.setError(id, null)
+                updateWidget(applicationContext, id, source, grants)
                 Result.success()
             },
             onFailure = { error ->
-                storage.setState(id, STATE_ERROR, error.message?.take(240) ?: "Refresh failed")
-                storage.setState(id, STATE_LOADING, "false")
-                updateWidget(applicationContext, id, source)
+                storage.setError(id, error.message ?: "Widget refresh failed")
+                updateWidget(applicationContext, id, source, grants)
                 Result.success()
             },
         )
     }
 
-    companion object { const val KEY_WIDGET_ID = "widget_id" }
+    companion object {
+        const val KEY_WIDGET_ID = "widget_id"
+        const val KEY_SOURCES = "sources"
+    }
 }
 
 internal object WidgetRefreshScheduler {
     private val network = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 
-    fun sync(context: Context, id: Int, definition: ArborWidgetDefinition) {
-        val dataSource = definition.dataSource
-        if (dataSource == null) {
+    fun sync(context: Context, id: Int, definition: ArborProgramDefinition, grants: WidgetCapabilityGrants) {
+        val interval = definition.refreshMinutes
+        if (interval == null || !grants.backgroundRefresh || definition.dataSources.isEmpty()) {
             WorkManager.getInstance(context).cancelUniqueWork(periodicName(id))
             return
         }
-        val request = PeriodicWorkRequestBuilder<WidgetRefreshWorker>(dataSource.refreshMinutes, TimeUnit.MINUTES)
-            .setInputData(input(id))
-            .setConstraints(network)
+        val needsNetwork = definition.dataSources.any { it.type == "http_json" }
+        val request = PeriodicWorkRequestBuilder<WidgetRefreshWorker>(interval, TimeUnit.MINUTES)
+            .setInputData(input(id, setOf("*")))
+            .apply { if (needsNetwork) setConstraints(network) }
             .build()
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(periodicName(id), ExistingPeriodicWorkPolicy.UPDATE, request)
     }
 
-    fun refreshNow(context: Context, id: Int) {
+    fun refreshNow(context: Context, id: Int, sources: Set<String> = setOf("*")) {
+        val storage = WidgetStorage(context)
+        val source = storage.source(id) ?: return
+        val definition = ArborProgramParser.parse(source, ArborProgramSurface.WIDGET).getOrNull() ?: return
+        val needsNetwork = definition.dataSources.any { it.type == "http_json" && ("*" in sources || it.id in sources) }
         val request = OneTimeWorkRequestBuilder<WidgetRefreshWorker>()
-            .setInputData(input(id))
-            .setConstraints(network)
+            .setInputData(input(id, sources))
+            .apply { if (needsNetwork) setConstraints(network) }
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(nowName(id), ExistingWorkPolicy.REPLACE, request)
     }
@@ -74,16 +89,15 @@ internal object WidgetRefreshScheduler {
         WorkManager.getInstance(context).cancelUniqueWork(nowName(id))
     }
 
-    private fun input(id: Int) = Data.Builder().putInt(WidgetRefreshWorker.KEY_WIDGET_ID, id).build()
-    private fun periodicName(id: Int) = "arbor_widget_periodic_$id"
-    private fun nowName(id: Int) = "arbor_widget_refresh_$id"
+    private fun input(id: Int, sources: Set<String>) = Data.Builder()
+        .putInt(WidgetRefreshWorker.KEY_WIDGET_ID, id)
+        .putStringArray(WidgetRefreshWorker.KEY_SOURCES, sources.toTypedArray())
+        .build()
+
+    private fun periodicName(id: Int) = "arbor_program_widget_periodic_$id"
+    private fun nowName(id: Int) = "arbor_program_widget_refresh_$id"
 }
 
-private fun updateWidget(context: Context, id: Int, source: String) {
-    AppWidgetManager.getInstance(context).updateAppWidget(id, ArborHomeWidgetProvider.views(context, id, source))
+private fun updateWidget(context: Context, id: Int, source: String, grants: WidgetCapabilityGrants) {
+    AppWidgetManager.getInstance(context).updateAppWidget(id, ArborHomeWidgetProvider.views(context, id, source, grants))
 }
-
-internal fun liveKey(id: String) = "live_$id"
-internal const val STATE_LOADING = "_live_loading"
-internal const val STATE_UPDATED = "_live_updated"
-internal const val STATE_ERROR = "_live_error"
