@@ -2,7 +2,6 @@ package app.arbor.chat.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -53,11 +52,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import app.arbor.chat.R
 import app.arbor.chat.settings.ColorPalette
 import app.arbor.chat.settings.ThemeMode
 import app.arbor.chat.ui.theme.palettePreviewColors
@@ -307,11 +304,7 @@ private fun OnboardingProgressHeader(
 @Composable
 private fun WelcomeStep() {
     Spacer(Modifier.height(8.dp))
-    Image(
-        painter = painterResource(R.drawable.ic_arbor_mark),
-        contentDescription = "Arbor",
-        modifier = Modifier.size(96.dp),
-    )
+    ArborMark(modifier = Modifier.size(96.dp), contentDescription = "Arbor")
     Text(
         "Welcome to Arbor",
         style = MaterialTheme.typography.headlineLarge,
@@ -415,7 +408,7 @@ private fun AppearanceStep(
         }
     }
     Text(
-        "The launcher may take a moment to refresh. Android themed icons can override app-selected colors.",
+        "Arbor stays open while the launcher refreshes. Android themed icons can override app-selected colors.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth(),

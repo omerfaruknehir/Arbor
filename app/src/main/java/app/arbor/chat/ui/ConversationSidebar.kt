@@ -1,7 +1,6 @@
 package app.arbor.chat.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,14 +55,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import app.arbor.chat.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.arbor.chat.data.ConversationListItem
 import app.arbor.chat.data.ProjectEntity
-import app.arbor.chat.R
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -334,15 +332,6 @@ private fun ConversationRow(item: ConversationListItem, selected: Boolean, onCli
             }
         }
     }
-}
-
-@Composable
-private fun ArborMark(modifier: Modifier = Modifier) {
-    Image(
-        painter = painterResource(R.drawable.ic_arbor_mark),
-        contentDescription = stringResource(R.string.app_name),
-        modifier = modifier,
-    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

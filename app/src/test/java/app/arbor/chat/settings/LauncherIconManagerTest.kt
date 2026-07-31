@@ -27,19 +27,38 @@ class LauncherIconManagerTest {
     }
 
     @Test
-    fun `manifest exposes exactly one default launcher alias`() {
+    fun `launcher aliases use a stable trampoline instead of the running activity`() {
         val manifest = File("src/main/AndroidManifest.xml").readText()
         LauncherIconManager.allAliases.forEach { alias ->
             assertTrue(manifest.contains(".${alias.substringAfterLast('.')}"))
         }
 
-        val mainActivity = manifest.substringAfter(".MainActivity")
+        val mainActivity = manifest.substringAfter("android:name=\".MainActivity\"")
             .substringBefore("</activity>")
         assertFalse(mainActivity.contains("android.intent.category.LAUNCHER"))
+        assertTrue(mainActivity.contains("android:launchMode=\"singleTask\""))
+        assertTrue(manifest.contains("android:name=\".LauncherActivity\""))
 
-        val arborAlias = manifest.substringAfter(".LauncherArbor")
-            .substringBefore("</activity-alias>")
-        assertTrue(arborAlias.contains("android:enabled"))
-        assertTrue(arborAlias.contains("true"))
+        val aliasBlocks = Regex("<activity-alias[\\s\\S]*?</activity-alias>")
+            .findAll(manifest)
+            .map { it.value }
+            .toList()
+        assertEquals(LauncherIconManager.allAliases.size, aliasBlocks.size)
+        aliasBlocks.forEach { block ->
+            assertTrue(block.contains("android:targetActivity=\".LauncherActivity\""))
+            assertFalse(block.contains("android:targetActivity=\".MainActivity\""))
+        }
+
+        val trampoline = File("src/main/java/app/arbor/chat/LauncherActivity.kt").readText()
+        assertTrue(trampoline.contains("Intent(this, MainActivity::class.java)"))
+        assertTrue(trampoline.contains("finish()"))
+    }
+
+    @Test
+    fun `icon switching is atomic where supported and never requests a process kill`() {
+        val source = File("src/main/java/app/arbor/chat/settings/LauncherIconManager.kt").readText()
+        assertTrue(source.contains("setComponentEnabledSettings"))
+        assertTrue(source.contains("PackageManager.DONT_KILL_APP"))
+        assertTrue(source.contains("applyEnableFirst"))
     }
 }
