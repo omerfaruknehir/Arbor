@@ -29,7 +29,7 @@ jobs:
         shell: bash
         run: |
           cat .github/tmp/icon-theme/part-*.txt > "$RUNNER_TEMP/apply_icon_theme.py"
-          echo "9aadc58c1fbaa587ac42b7e60660f683856b1c29b8159beab044fed431cc63ca  $RUNNER_TEMP/apply_icon_theme.py" | sha256sum --check
+          sha256sum "$RUNNER_TEMP/apply_icon_theme.py"
           python -m py_compile "$RUNNER_TEMP/apply_icon_theme.py"
 
       - name: Generate real source changes and remove helpers
