@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.20.26 — 2026-07-31
+
+- Replace category-based generated widgets and the `mini_app` compatibility layer with separate `arbor-snippet/1` and `arbor-widget/1` program surfaces.
+- Add a general component-tree and bounded action runtime for AI-composed snippets and Android Home-screen widgets, including custom styling, persistent state, canvas rendering, and live data bindings.
+- Add per-widget capability manifests and grants for exact HTTPS origins, approximate or precise location, one selected document-provider folder, and scheduled refresh.
+- Rebuild Google Drive backup as a connected-account flow with account selection, silent reuse, backup browsing, preview/restore, switching, disconnect/revoke, progress, and inline diagnostics.
+- Move portable chat sharing to a dedicated top-bar button immediately before the chat overflow menu.
+- Remove all legacy widget parsers, specialized widget layouts, aliases, storage migration, and backward compatibility.
+
 ## 0.20.25 — 2026-07-31
 
 - Add local and least-privilege cloud restore actions directly to the first setup page, including Google Drive app storage and one explicitly selected document-provider folder.

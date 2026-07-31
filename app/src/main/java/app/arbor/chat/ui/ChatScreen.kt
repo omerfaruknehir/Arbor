@@ -71,6 +71,7 @@ import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Schedule
@@ -983,6 +984,11 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 },
                 actions = {
                     if (pending.isNotEmpty()) Badge { Text(pending.size.toString()) }
+                    conversation?.let { activeConversation ->
+                        IconButton(onClick = { viewModel.requestShareConversation(activeConversation.id) }) {
+                            Icon(Icons.Outlined.Share, "Share portable chat")
+                        }
+                    }
                     Box {
                         IconButton(onClick = { chatMenu = true }) { Icon(Icons.Outlined.MoreVert, "Chat actions") }
                         ArborDropdownMenu(expanded = chatMenu, onDismissRequest = { chatMenu = false }) {

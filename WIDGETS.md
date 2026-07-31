@@ -1,114 +1,197 @@
-# Arbor generated-content contract
+# Arbor snippets and programmable widgets
 
-Contract family: `arbor-generated-content/1` (the runtime appends a deterministic schema-shape fingerprint so the exposed version changes with the contract)  
-Validator: `1.0.0`
+Contract family: `arbor-generated-content/2`
+Validator: `2.0.0`
 
-`GeneratedContentCapabilityRegistry` in application code is authoritative. Model prompt summaries, validation, exact examples, fence aliases, limits, component/action sets, and repair schema excerpts are derived from that registry. This file explains the same contract for humans; consistency tests require all registry examples to validate and every mini-app component exposed by the renderer to be registered by the parser.
+`GeneratedContentCapabilityRegistry` is the prompt-time and validation-time authority. This document is the human-readable skill specification supplied with the app.
 
-Supported native generated fences:
+## The hard boundary
 
-- `arbor-ui` (`ui`, `arbor-form` aliases): native chat-only declarative interaction.
-- `arbor-widget` (`widget` alias): Home eligibility requires `"surface":"home"` or `"surface":"both"` and explicit pinning review.
-- `arbor-chart` (`chart`, `bar-chart`, `barchart`, `line-chart`, `pie-chart` aliases): JSON with `type` (`bar`, `line`, `area`, `scatter`, `pie`, or `donut`), optional `title`, and one to eight series of at most 80 finite labelled points.
-- `mermaid` (`graph`, `diagram`, `dot`, `graphviz` aliases): bounded native flowchart, sequence, and basic DOT text only.
+Arbor has two generated-program surfaces. They are intentionally incompatible.
 
-Ordinary Markdown tables and code fences are not generated mini-apps. Arbor never accepts HTML, JavaScript, JSX, WebViews, downloaded bytecode, or arbitrary executable generated UI as a fallback.
+| Surface | Fence | Schema | Lives where | External capabilities |
+|---|---|---|---|---|
+| Snippet | `arbor-snippet` | `arbor-snippet/1` | Inside one chat message | None |
+| Widget | `arbor-widget` | `arbor-widget/1` | Android Home screen | Explicit per-widget grants |
 
-# Native mini-app schema
+A **snippet** is a chat interaction: a quiz, short questionnaire, calculator, checklist, configuration form, simple question, or other temporary interactive answer.
 
-Arbor has two deliberately separate interactive surfaces:
+A **widget** is an Android launcher program. Arbor shows an installation card inside chat, but the program itself runs outside the app after the user reviews its manifest and pins it.
 
-- `arbor-ui` renders native Compose inside the conversation only. Use it for questions, requirement gathering, forms, previews, configuration, quizzes, and other chat interaction.
-- `arbor-widget` may offer Android Home-screen pinning only when the JSON also contains `"surface":"home"` or `"surface":"both"`. Use it only when the user explicitly asks for a launcher widget.
+The removed `arbor-ui`, `ui`, `arbor-form`, `widget`, category-based widget roots, and `mini_app` schema are not parsed or migrated.
 
-Home eligibility defaults to false. An `arbor-ui` fence never offers pinning even if malformed content asks for it. No HTML, JavaScript, WebView, downloaded bytecode, or generated source is evaluated.
+## One component language, not widget categories
 
-Every definition has an expandable local security review which lists requested capabilities, expected benefits, risks, and cautions in a Flatpak-style summary. Live network data is never fetched merely because a model emitted a definition: the user must consent on first use. A separately configured model may provide a second security opinion, but that opinion is advisory; Arbor's local validator and capability restrictions remain authoritative. Home-screen installation has its own final review and pin confirmation.
+Do not emit roots such as `type: "stock"`, `type: "prayer_times"`, `type: "calculator"`, or `type: "quiz"`. Those were brittle categories.
 
-## Structure
+Compose the experience from general nodes instead:
 
-Use `type: "mini_app"` for a composed experience:
+- layout: `column`, `row`, `stack`, `spacer`, `divider`
+- content: `text`, `metric`, `list`, `chart`, `progress`
+- interaction: `button`, `toggle`, `choice`, `slider`, `input`
+
+`input` is snippet-only because Android launchers cannot host a keyboard. Home widgets may display sliders and choices, but launcher interaction is exposed through at most four visible button/toggle actions.
+
+Every node supports the relevant subset of:
 
 ```json
 {
-  "type": "mini_app",
-  "title": "Study dashboard",
-  "description": "A small multi-page study tool",
-  "state": {
-    "correct": 0,
-    "attempted": 0,
-    "subject": "Math"
-  },
-  "screens": [
-    {
-      "id": "dashboard",
-      "title": "Dashboard",
-      "components": []
-    }
-  ]
+  "type": "text",
+  "id": "optional_stable_id",
+  "text": "Hello {{name}}",
+  "label": "Optional label",
+  "value": "state_key_or_template",
+  "action": "action_group_id",
+  "visibleWhen": "count > 0",
+  "children": [],
+  "options": [],
+  "items": [],
+  "min": 0,
+  "max": 100,
+  "step": 1,
+  "decimals": 2,
+  "style": {
+    "foreground": "primary",
+    "background": "surface_variant",
+    "emphasis": "strong",
+    "align": "start",
+    "padding": 12,
+    "gap": 8,
+    "cornerRadius": 16,
+    "fontSize": 18,
+    "weight": 1
+  }
 }
 ```
 
-Put that JSON in an `arbor-ui` fence by default. Add `"surface":"both"` and use an `arbor-widget` fence only for an explicitly requested Home-screen version.
+Theme color tokens are `primary`, `secondary`, `tertiary`, `surface`, `surface_variant`, `on_surface`, `error`, and `transparent`. `#RRGGBB` and `#AARRGGBB` are also accepted.
 
-Limits are enforced before rendering: 48 KB source, 48 state values, eight screens, 32 components per screen, 24 list/chart items, 16 buttons per button group, and eight actions per button/item.
+## State, templates, conditions, and actions
 
-## Components
+State is a flat map of at most 64 primitive values. `{{name}}` inserts a state value. `{{=count*2}}` evaluates Arbor's numeric expression language.
 
-- `text`: `text` supports templates.
-- `metric`: large formatted value from `value`, state `id`, or numeric `expression`; supports `prefix`, `suffix`, and `decimals`.
-- `input`: editable in chat; `value: "number"` requests a numeric keyboard. Home-screen rendering is read-only, so provide choices or a keypad when Home interaction matters.
-- `slider`: state-backed control using `min`, `max`, and `step`. Home-screen rendering provides bounded minus/plus controls.
-- `toggle`: state-backed switch and Home-screen toggle button.
-- `choice`: state-backed options from `options`.
-- `buttons`: one or more generated buttons from `buttons`.
-- `progress`: value from its state `id`, `value`, or `expression`, with `min` and `max`.
-- `list` and `table`: rows from `items`; rows may be tappable by giving them `actions`.
-- `chart`: bar, line, area, scatter, pie, or donut from `items`. Each item has `label` and a numeric/template `value`.
-- `timer`: state `id` contains seconds. `value: "countdown"` counts down; other values count up in chat.
-- `divider` and `spacer`: visual organization.
+Expressions allow numbers, state identifiers, `+ - * / % ^`, parentheses, and `min`, `max`, `abs`, `round`, and `pow`. There are no loops, imports, user-defined functions, or object access.
 
-Any component or list item may use `visibleWhen`. It accepts a truthy state name, a numeric expression, `name==value`, or `name!=value`.
+`visibleWhen` accepts a truthy state key, numeric expression, `name == value`, or `name != value`.
 
-## Templates and expressions
+Actions are named groups containing ordered operations:
 
-`{{subject}}` inserts a state value. `{{=attempted-correct}}` evaluates the restricted numeric expression language. Numeric expressions support state identifiers, numbers, `+ - * / % ^`, parentheses, `min`, `max`, `abs`, `round`, and `pow`.
+- `set`, `add`, `multiply`, `toggle`, `append`, `backspace`, `evaluate`
+- `reset`
+- `submit` for sending an explicit snippet result back into the chat
+- `refresh` for requesting one widget data source
+- `write_folder` for replacing the file of a declared `folder_text` source after a `read_write` grant
+- `open_app` for opening Arbor from a launcher widget
 
-## Actions
+Later operations see state changes made by earlier operations in the same group.
 
-Buttons and tappable list items use an ordered `actions` array. Each action observes changes made by earlier actions in the same chain.
+## Snippet skill
 
-- `set`: assign rendered `value` to `target`.
-- `add` and `multiply`: update numeric `target` from `value` or `expression`.
-- `toggle`: invert a boolean/numeric `target`.
-- `append` and `backspace`: build safe keypad/input state.
-- `evaluate`: evaluate `expression`, or the current target text, into `target`.
-- `navigate`: switch to `screen`.
-- `reset`: restore initial state.
-- `refresh`: request the configured live data source.
-- `submit`: return rendered `message` to the conversation; Home-screen use saves the result visibly.
-- `timer_start`, `timer_pause`, and `timer_reset`: control timer state.
+Use a snippet only when the interaction belongs in the answer itself. Snippets cannot request network, background work, location, folders, notifications, contacts, camera, microphone, or other Android permissions.
 
-An optional `condition` uses the same rules as `visibleWhen`.
-
-## Live data
-
-A mini-app may include the same HTTPS JSON `dataSource` used by live widgets:
-
-```json
+```arbor-snippet
 {
-  "dataSource": {
-    "url": "https://public.example/api/data",
-    "refreshMinutes": 15,
-    "bindings": [
-      {"id": "price", "label": "Price", "path": "quote.price", "decimals": 2}
+  "schema": "arbor-snippet/1",
+  "id": "prime_quiz",
+  "title": "Prime-number check",
+  "state": {"answer": "", "checked": false},
+  "ui": {
+    "type": "column",
+    "style": {"gap": 10},
+    "children": [
+      {"type": "text", "text": "Which number is prime?", "style": {"emphasis": "strong"}},
+      {
+        "type": "choice",
+        "value": "answer",
+        "options": [
+          {"label": "9", "value": "9"},
+          {"label": "11", "value": "11"},
+          {"label": "15", "value": "15"}
+        ]
+      },
+      {"type": "button", "label": "Check", "action": "check"},
+      {"type": "text", "text": "Correct", "visibleWhen": "checked == true"}
+    ]
+  },
+  "actions": {
+    "check": [
+      {"op": "set", "target": "checked", "value": true},
+      {"op": "submit", "message": "Quiz answer: {{answer}}"}
     ]
   }
 }
 ```
 
-Binding IDs become state values and can feed any component, expression, chart, condition, or action. After explicit first-use consent, Arbor allows public HTTPS JSON only, blocks redirects and private/local addresses, limits responses to 1 MB, caches the last successful result, and uses WorkManager for pinned-widget refresh.
+## Widget skill
 
-## Boundaries
+A widget requires a stable `id`, a general UI tree, named actions, an explicit capability manifest, optional data sources, and optional scheduled refresh.
 
-This is a bounded native UI/state language, not a way to install arbitrary generated Android code. It intentionally has no loops, imports, scripts, reflection, shell access, WebView, hidden network requests, or arbitrary Android intents. Python and Ubuntu tools remain separate, explicit agent tools with their existing policies.
+### Capability manifest
+
+Each capability has a user-facing `reason`. Arbor rejects a data source unless its matching capability is present, then asks the user to grant it for that pinned widget instance.
+
+- `network`: exact HTTPS origins only, for example `https://api.open-meteo.com`. No wildcards, path grants, redirects, embedded credentials, or private/local IPs.
+- `location`: `approximate` or `precise`; the Android runtime permission must still exist when the widget refreshes.
+- `folder`: `read` or `read_write`; the user chooses one Storage Access Framework document tree. Relative paths cannot escape it.
+- `background_refresh`: permits WorkManager scheduling. The interval is 15–1440 minutes and Android may defer execution.
+
+A widget that requests no capabilities remains fully local.
+
+### Data sources
+
+- `http_json`: GET-only HTTPS JSON, maximum 1 MB. Bindings copy explicit JSON paths into state.
+- `location`: binds `latitude`, `longitude`, `accuracy`, or `updatedAt` into state.
+- `folder_text`: reads one relative UTF-8 file from the selected tree and binds `text`, `size`, or `lineCount`.
+
+Location and folder sources run before HTTP sources, so their state can safely parameterize an allowed URL.
+
+```arbor-widget
+{
+  "schema": "arbor-widget/1",
+  "id": "local_weather",
+  "title": "Weather",
+  "description": "Live temperature for the current area",
+  "state": {"latitude": 0, "longitude": 0, "temperature": "—"},
+  "ui": {
+    "type": "column",
+    "style": {"gap": 8},
+    "children": [
+      {"type": "metric", "label": "Temperature", "value": "{{temperature}} °C"},
+      {"type": "button", "label": "Refresh", "action": "refresh_weather"}
+    ]
+  },
+  "actions": {
+    "refresh_weather": [{"op": "refresh", "source": "weather"}]
+  },
+  "capabilities": [
+    {"type": "location", "accuracy": "approximate", "reason": "Use the device area for local weather."},
+    {"type": "network", "origins": ["https://api.open-meteo.com"], "reason": "Download current weather from Open-Meteo."},
+    {"type": "background_refresh", "reason": "Keep the launcher value current."}
+  ],
+  "dataSources": [
+    {
+      "id": "location",
+      "type": "location",
+      "bindings": [
+        {"state": "latitude", "path": "latitude"},
+        {"state": "longitude", "path": "longitude"}
+      ]
+    },
+    {
+      "id": "weather",
+      "type": "http_json",
+      "url": "https://api.open-meteo.com/v1/forecast?latitude={{latitude}}&longitude={{longitude}}&current=temperature_2m",
+      "bindings": [
+        {"state": "temperature", "path": "current.temperature_2m", "fallback": "—"}
+      ]
+    }
+  ],
+  "refreshMinutes": 30
+}
+```
+
+## Security and privacy invariants
+
+Generated programs never execute HTML, JavaScript, JSX, WebViews, downloaded bytecode, reflection, shell commands, Python, Linux commands, arbitrary Android intents, or hidden permissions.
+
+Network grants expose the device IP address to only the listed origin. Location and folder data can enter a granted network request only when the same widget declares and receives both capabilities. Home-screen content is visible to anyone who can view the unlocked launcher. Removing a widget deletes its private program state and cancels its scheduled work.

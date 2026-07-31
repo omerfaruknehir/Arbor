@@ -83,7 +83,8 @@ import app.arbor.chat.sandbox.PackageReview
 import app.arbor.chat.sandbox.PackagePlan
 import app.arbor.chat.sandbox.UbuntuExecutionResult
 import app.arbor.chat.sandbox.UbuntuPackageInstallResult
-import app.arbor.chat.widgets.ProgrammableWidgetBlock
+import app.arbor.chat.widgets.SnippetBlock
+import app.arbor.chat.widgets.WidgetInstallBlock
 import app.arbor.chat.ArborApplication
 import app.arbor.chat.generated.GeneratedBlockRepairState
 import app.arbor.chat.generated.GeneratedBlockType
@@ -352,7 +353,7 @@ internal fun RichMessage(
                         } else when (block.language.lowercase()) {
                             "mermaid", "graph", "diagram", "dot", "graphviz",
                             "chart", "arbor-chart", "bar-chart", "barchart", "line-chart", "pie-chart",
-                            "arbor-ui", "ui", "arbor-form", "arbor-widget", "widget" -> {
+                            "arbor-snippet", "arbor-widget" -> {
                                 val capability = checkNotNull(GeneratedContentCapabilityRegistry.capability(block.language))
                                 val preparationErrors = remember(block.code, capability.type) {
                                     generatedPreparationErrors(capability.type, block.code)
@@ -372,8 +373,8 @@ internal fun RichMessage(
                                     when (capability.type) {
                                         GeneratedBlockType.DIAGRAM -> if (safeRendering) SafeGeneratedBlock("Diagram", repaired) { crashReporter?.setRenderSafeMode(false) } else NativeDiagramBlock(repaired)
                                         GeneratedBlockType.CHART -> if (safeRendering) SafeGeneratedBlock("Chart", repaired) { crashReporter?.setRenderSafeMode(false) } else NativeChartBlock(repaired)
-                                        GeneratedBlockType.CHAT_UI -> ProgrammableWidgetBlock(repaired, onWidgetSubmit, onReviewWidgetSecurity, allowHomePinning = false)
-                                        GeneratedBlockType.HOME_WIDGET -> ProgrammableWidgetBlock(repaired, onWidgetSubmit, onReviewWidgetSecurity, allowHomePinning = true)
+                                        GeneratedBlockType.CHAT_UI -> SnippetBlock(repaired, onWidgetSubmit)
+                                        GeneratedBlockType.HOME_WIDGET -> WidgetInstallBlock(repaired)
                                     }
                                 }
                             }

@@ -1,7 +1,7 @@
 package app.arbor.chat.generated
 
-import app.arbor.chat.widgets.ArborMiniAppParser
-import app.arbor.chat.widgets.ArborWidgetParser
+import app.arbor.chat.widgets.ArborProgramParser
+import app.arbor.chat.widgets.ArborProgramSurface
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -32,17 +32,18 @@ data class GeneratedFenceCapability(
 
 /** Authoritative prompt and validator registry for native generated content. */
 object GeneratedContentCapabilityRegistry {
-    const val CONTRACT_FAMILY = "arbor-generated-content/1"
-    const val VALIDATOR_VERSION = "1.0.0"
+    const val CONTRACT_FAMILY = "arbor-generated-content/2"
+    const val VALIDATOR_VERSION = "2.0.0"
     val chartTypes = setOf("bar", "line", "area", "scatter", "pie", "donut")
-    val miniAppComponentTypes: Set<String> get() = ArborMiniAppParser.supportedComponentTypes
-    val miniAppActionTypes: Set<String> get() = ArborMiniAppParser.supportedOperations
-    val widgetTypes: Set<String> get() = ArborWidgetParser.supportedTypes
-    val widgetFieldTypes: Set<String> get() = ArborWidgetParser.supportedFields
+    val programNodeTypes: Set<String> get() = ArborProgramParser.nodeTypes
+    val programActionTypes: Set<String> get() = ArborProgramParser.actionOps
+    val widgetCapabilityTypes: Set<String> get() = ArborProgramParser.capabilityTypes
+    val widgetDataSourceTypes: Set<String> get() = ArborProgramParser.dataSourceTypes
 
+    // No aliases for the removed arbor-ui/ui/widget/mini_app formats.
     val fences = listOf(
-        GeneratedFenceCapability(GeneratedBlockType.CHAT_UI, "arbor-ui", setOf("arbor-ui", "ui", "arbor-form"), 48_000),
-        GeneratedFenceCapability(GeneratedBlockType.HOME_WIDGET, "arbor-widget", setOf("arbor-widget", "widget"), 48_000),
+        GeneratedFenceCapability(GeneratedBlockType.CHAT_UI, "arbor-snippet", setOf("arbor-snippet"), 96_000),
+        GeneratedFenceCapability(GeneratedBlockType.HOME_WIDGET, "arbor-widget", setOf("arbor-widget"), 96_000),
         GeneratedFenceCapability(GeneratedBlockType.CHART, "arbor-chart", setOf("arbor-chart", "chart", "bar-chart", "barchart", "line-chart", "pie-chart"), 48_000),
         GeneratedFenceCapability(GeneratedBlockType.DIAGRAM, "mermaid", setOf("mermaid", "graph", "diagram", "dot", "graphviz"), 48_000),
     )
@@ -52,13 +53,13 @@ object GeneratedContentCapabilityRegistry {
     fun contractShape(): String = buildString {
         append(VALIDATOR_VERSION).append('|')
         fences.sortedBy { it.canonicalFence }.forEach { append(it.canonicalFence).append(':').append(it.aliases.sorted()).append(':').append(it.maxSourceChars).append('|') }
-        append("widgets=").append(widgetTypes.sorted()).append('|')
-        append("fields=").append(widgetFieldTypes.sorted()).append('|')
-        append("components=").append(miniAppComponentTypes.sorted()).append('|')
-        append("actions=").append(miniAppActionTypes.sorted()).append('|')
+        append("nodes=").append(programNodeTypes.sorted()).append('|')
+        append("actions=").append(programActionTypes.sorted()).append('|')
+        append("capabilities=").append(widgetCapabilityTypes.sorted()).append('|')
+        append("sources=").append(widgetDataSourceTypes.sorted()).append('|')
         append("charts=").append(chartTypes.sorted()).append('|')
-        append("limits=screens8,components32,state48,items24,buttons16,actions8,series8,points80,diagramLines240")
-        append("|security=no-html-js-jsx-webview-executable-ui;home-explicit")
+        append("limits=nodes160,depth12,state64,actionGroups64,sources12,origins8,series8,points80,diagramLines240")
+        append("|security=no-html-js-jsx-webview-reflection-shell-downloaded-code;widget-grants-instance-scoped")
     }
 
     fun contractVersionForShape(shape: String): String {
@@ -70,9 +71,10 @@ object GeneratedContentCapabilityRegistry {
 
     fun compactSummary(): String = """
         Arbor generated-content contract: $CONTRACT_VERSION; validator $VALIDATOR_VERSION.
-        Validated native fences: ${fences.joinToString { "`${it.canonicalFence}` (${it.aliases.joinToString()})" }}.
-        `arbor-ui` is chat-only native interaction. `arbor-widget` is Home-screen eligible only with surface `home` or `both`; eligibility otherwise remains false. `arbor-chart` uses Arbor's JSON series schema. `mermaid`/`dot` use Arbor's bounded native diagram subset. Ordinary Markdown tables remain Markdown, not mini-apps.
-        Generated blocks are parsed, schema/semantic/security validated, and renderer-prepared before display. Never invent fields or component/action types. Never emit HTML, JavaScript, JSX, WebView content, executable generated UI, or an HTML/JS fallback.
+        Use `arbor-snippet` only for interactive content inside a chat message. Use `arbor-widget` only for an installable Android Home-screen program. They have separate schemas and are never interchangeable.
+        Snippets have no Android permissions, background jobs, network, location, or folder access. Widgets must declare every capability with a user-facing reason and receive a per-widget grant before pinning. Network grants are exact HTTPS origins; folder grants are one user-selected document tree; location is approximate or precise; scheduled refresh is explicit and Android-limited to 15 minutes or slower.
+        Both surfaces use one bounded component tree (${programNodeTypes.sorted().joinToString()}) and one bounded action language (${programActionTypes.sorted().joinToString()}). Build quizzes, forms, calculators, trackers, dashboards, and other experiences by composing nodes; never invent category-specific widget types.
+        Never emit the removed `arbor-ui`, `ui`, `arbor-form`, `widget`, or `mini_app` formats. Never emit HTML, JavaScript, JSX, WebView content, reflection, shell commands, downloaded code, or an executable fallback.
     """.trimIndent()
 
     fun promptForRequest(userText: String): String = buildString {
@@ -83,9 +85,11 @@ object GeneratedContentCapabilityRegistry {
     fun relevantTypes(userText: String): Set<GeneratedBlockType> {
         val value = userText.lowercase()
         return buildSet {
-            if (listOf("widget", "mini-app", "mini app", "interactive", "form", "questionnaire", "calculator", "home screen").any(value::contains)) {
+            if (listOf("quiz", "question", "interactive", "form", "questionnaire", "calculator", "snippet", "inside chat").any(value::contains)) {
                 add(GeneratedBlockType.CHAT_UI)
-                if ("widget" in value || "home screen" in value || "launcher" in value) add(GeneratedBlockType.HOME_WIDGET)
+            }
+            if (listOf("widget", "home screen", "launcher", "live update", "background refresh").any(value::contains)) {
+                add(GeneratedBlockType.HOME_WIDGET)
             }
             if (listOf("chart", "plot", "graph of", "visualize data", "grafik").any(value::contains)) add(GeneratedBlockType.CHART)
             if (listOf("diagram", "mermaid", "flowchart", "sequence diagram", "architecture graph").any(value::contains)) add(GeneratedBlockType.DIAGRAM)
@@ -93,7 +97,8 @@ object GeneratedContentCapabilityRegistry {
     }
 
     fun fullSchema(type: GeneratedBlockType): String = when (type) {
-        GeneratedBlockType.CHAT_UI, GeneratedBlockType.HOME_WIDGET -> widgetSchema(type)
+        GeneratedBlockType.CHAT_UI -> snippetSchema()
+        GeneratedBlockType.HOME_WIDGET -> widgetSchema()
         GeneratedBlockType.CHART -> chartSchema()
         GeneratedBlockType.DIAGRAM -> diagramSchema()
     }
@@ -103,7 +108,8 @@ object GeneratedContentCapabilityRegistry {
         if (source.isBlank()) return error("syntax", "/", "Block source is empty")
         if (source.length > max) return error("limits", "/", "Source exceeds $max characters")
         return when (type) {
-            GeneratedBlockType.CHAT_UI, GeneratedBlockType.HOME_WIDGET -> validateWidget(type, source)
+            GeneratedBlockType.CHAT_UI -> validateProgram(source, ArborProgramSurface.SNIPPET)
+            GeneratedBlockType.HOME_WIDGET -> validateProgram(source, ArborProgramSurface.WIDGET)
             GeneratedBlockType.CHART -> validateChart(source)
             GeneratedBlockType.DIAGRAM -> validateDiagram(source)
         }
@@ -121,11 +127,11 @@ object GeneratedContentCapabilityRegistry {
     val validExamples: Map<GeneratedBlockType, List<String>> by lazy {
         mapOf(
             GeneratedBlockType.CHAT_UI to listOf(
-                """{"type":"choice","title":"Choose","options":["A","B"]}""",
-                """{"type":"mini_app","title":"Counter","state":{"count":0},"screens":[{"id":"main","components":[{"type":"metric","id":"count","label":"Count","value":"{{count}}"},{"type":"buttons","id":"actions","buttons":[{"label":"Add","style":"primary","actions":[{"operation":"add","target":"count","value":1}]}]}]}]}""",
+                """{"schema":"arbor-snippet/1","id":"quick_quiz","title":"Quick quiz","state":{"answer":"","checked":false},"ui":{"type":"column","children":[{"type":"text","text":"Which number is prime?","style":{"emphasis":"strong"}},{"type":"choice","id":"answer_choice","value":"answer","options":[{"label":"9","value":"9"},{"label":"11","value":"11"},{"label":"15","value":"15"}]},{"type":"button","label":"Check","action":"check"},{"type":"text","text":"{{answer == 11}}","visibleWhen":"checked == true"}]},"actions":{"check":[{"op":"set","target":"checked","value":true},{"op":"submit","message":"Quiz answer: {{answer}}"}]}}""",
             ),
             GeneratedBlockType.HOME_WIDGET to listOf(
-                """{"type":"counter","title":"Counter","surface":"home","value":0,"actions":[{"label":"+1","target":"value","operation":"add","value":1}]}""",
+                """{"schema":"arbor-widget/1","id":"counter","title":"Counter","state":{"count":0},"ui":{"type":"column","children":[{"type":"metric","label":"Count","value":"{{count}}"},{"type":"button","label":"Add one","action":"increment"}]},"actions":{"increment":[{"op":"add","target":"count","value":1}]},"capabilities":[],"dataSources":[]}""",
+                """{"schema":"arbor-widget/1","id":"weather","title":"Weather","description":"Live temperature","state":{"latitude":0,"longitude":0,"temperature":"—"},"ui":{"type":"column","children":[{"type":"metric","label":"Temperature","value":"{{temperature}} °C"},{"type":"button","label":"Refresh","action":"refresh_weather"}]},"actions":{"refresh_weather":[{"op":"refresh","source":"weather"}]},"capabilities":[{"type":"location","accuracy":"approximate","reason":"Use the device area for local weather."},{"type":"network","origins":["https://api.open-meteo.com"],"reason":"Download current weather from Open-Meteo."},{"type":"background_refresh","reason":"Keep the launcher value current."}],"dataSources":[{"id":"location","type":"location","bindings":[{"state":"latitude","path":"latitude"},{"state":"longitude","path":"longitude"}]},{"id":"weather","type":"http_json","url":"https://api.open-meteo.com/v1/forecast?latitude={{latitude}}&longitude={{longitude}}&current=temperature_2m","bindings":[{"state":"temperature","path":"current.temperature_2m","fallback":"—"}]}],"refreshMinutes":30}""",
             ),
             GeneratedBlockType.CHART to listOf(
                 """{"type":"bar","title":"Example","series":[{"name":"Value","values":[{"label":"A","value":1},{"label":"B","value":2}]}]}""",
@@ -138,42 +144,10 @@ object GeneratedContentCapabilityRegistry {
         )
     }
 
-    private fun validateWidget(type: GeneratedBlockType, source: String): GeneratedValidationResult {
-        val root = parseObject(source) ?: return error("syntax", "/", "Expected one JSON object")
-        val errors = mutableListOf<GeneratedValidationError>()
-        rejectUnknown(root, WIDGET_ROOT_FIELDS, "/", errors)
-        validateWidgetUnknownFields(root, errors)
-        if (type == GeneratedBlockType.CHAT_UI && root["surface"]?.jsonPrimitive?.contentOrNull in setOf("home", "both")) {
-            errors += GeneratedValidationError("security", "/surface", "arbor-ui is chat-only")
-        }
-        val parsed = ArborWidgetParser.parse(source)
-        parsed.exceptionOrNull()?.let {
-            errors += GeneratedValidationError("schema", "/", it.message ?: "Widget validation failed")
-        }
-        if (type == GeneratedBlockType.HOME_WIDGET && parsed.getOrNull()?.homeEnabled != true) {
-            errors += GeneratedValidationError("semantic", "/surface", "arbor-widget requires surface home or both")
-        }
-        return GeneratedValidationResult(errors.distinct())
-    }
-
-    private fun validateWidgetUnknownFields(root: JsonObject, errors: MutableList<GeneratedValidationError>) {
-        if (root["type"]?.jsonPrimitive?.contentOrNull?.lowercase() == "mini_app") validateMiniAppUnknownFields(root, errors)
-        fun arrays(name: String, allowed: Set<String>) {
-            (root[name] as? JsonArray).orEmpty().forEachIndexed { index, element ->
-                (element as? JsonObject)?.let { rejectUnknown(it, allowed, "/$name/$index", errors) }
-            }
-        }
-        arrays("fields", FIELD_FIELDS)
-        arrays("outputs", OUTPUT_FIELDS)
-        arrays("actions", LEGACY_ACTION_FIELDS)
-        arrays("items", SCHEDULE_FIELDS)
-        arrays("events", SCHEDULE_FIELDS)
-        (root["dataSource"] as? JsonObject)?.let { data ->
-            rejectUnknown(data, DATA_SOURCE_FIELDS, "/dataSource", errors)
-            (data["bindings"] as? JsonArray).orEmpty().forEachIndexed { index, element ->
-                (element as? JsonObject)?.let { rejectUnknown(it, BINDING_FIELDS, "/dataSource/bindings/$index", errors) }
-            }
-        }
+    private fun validateProgram(source: String, surface: ArborProgramSurface): GeneratedValidationResult {
+        val parsed = ArborProgramParser.parse(source, surface)
+        return parsed.exceptionOrNull()?.let { error("schema", "/", it.message ?: "Program validation failed") }
+            ?: GeneratedValidationResult.Valid
     }
 
     private fun validateChart(source: String): GeneratedValidationResult {
@@ -220,27 +194,6 @@ object GeneratedContentCapabilityRegistry {
         return GeneratedValidationResult.Valid
     }
 
-    private fun validateMiniAppUnknownFields(root: JsonObject, errors: MutableList<GeneratedValidationError>) {
-        val screens = root["screens"] as? JsonArray ?: return
-        screens.forEachIndexed { screenIndex, screenValue ->
-            val screen = screenValue as? JsonObject ?: return@forEachIndexed
-            rejectUnknown(screen, setOf("id", "title", "components"), "/screens/$screenIndex", errors)
-            (screen["components"] as? JsonArray).orEmpty().forEachIndexed { componentIndex, componentValue ->
-                val component = componentValue as? JsonObject ?: return@forEachIndexed
-                rejectUnknown(component, MINI_COMPONENT_FIELDS, "/screens/$screenIndex/components/$componentIndex", errors)
-                listOf("buttons", "items").forEach { collection ->
-                    (component[collection] as? JsonArray).orEmpty().forEachIndexed { itemIndex, itemValue ->
-                        val item = itemValue as? JsonObject ?: return@forEachIndexed
-                        rejectUnknown(item, if (collection == "buttons") BUTTON_FIELDS else ITEM_FIELDS, "/screens/$screenIndex/components/$componentIndex/$collection/$itemIndex", errors)
-                        (item["actions"] as? JsonArray).orEmpty().forEachIndexed { actionIndex, actionValue ->
-                            (actionValue as? JsonObject)?.let { rejectUnknown(it, ACTION_FIELDS, "/screens/$screenIndex/components/$componentIndex/$collection/$itemIndex/actions/$actionIndex", errors) }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     private fun rejectUnknown(value: JsonObject, allowed: Set<String>, path: String, errors: MutableList<GeneratedValidationError>) {
         (value.keys - allowed).sorted().forEach { field -> errors += GeneratedValidationError("schema", "$path/$field".replace("//", "/"), "Unsupported field") }
     }
@@ -248,19 +201,32 @@ object GeneratedContentCapabilityRegistry {
     private fun parseObject(source: String): JsonObject? = runCatching { Json.parseToJsonElement(source) as? JsonObject }.getOrNull()
     private fun error(phase: String, path: String, message: String) = GeneratedValidationResult(listOf(GeneratedValidationError(phase, path, message)))
 
-    private fun widgetSchema(type: GeneratedBlockType) = """
-        ${if (type == GeneratedBlockType.CHAT_UI) "`arbor-ui` chat-native schema" else "`arbor-widget` Home-screen schema"} — $CONTRACT_VERSION
-        Root `type`: ${widgetTypes.sorted().joinToString()}. Field kinds: ${widgetFieldTypes.sorted().joinToString()}.
-        `mini_app` components (max 8 screens, 32 components/screen): ${miniAppComponentTypes.sorted().joinToString()}.
-        Actions (max 8/control): ${miniAppActionTypes.sorted().joinToString()}. State max 48 values; options/items max 24; buttons max 16; strings and expressions are bounded by the validator.
-        Safe expressions: numbers, state identifiers, + - * / % ^, parentheses, min/max/abs/round/pow. No code execution.
-        Home eligibility exists only in `arbor-widget` with `"surface":"home"` or `"surface":"both"`; default is false. Live data is read-only public HTTPS JSON with explicit bounded bindings. No credentials, private hosts, mutation, HTML, JS, or Android permissions.
-        Exact examples:
-        ```${if (type == GeneratedBlockType.CHAT_UI) "arbor-ui" else "arbor-widget"}
-        ${validExamples.getValue(type).first()}
+    private fun snippetSchema() = """
+        `arbor-snippet` schema — $CONTRACT_VERSION
+        Root: schema=`arbor-snippet/1`; id optional; title/description optional; state object; ui node required; actions object optional. Capabilities, dataSources, and refreshMinutes are forbidden.
+        UI nodes: ${programNodeTypes.sorted().joinToString()}. Compose these nodes to build quizzes, simple questions, forms, calculators, checklists, trackers, and other in-chat interactions. Do not create a special root type for the use case.
+        Every node has type and optional id, text, label, value, action, visibleWhen, options, items, children, min/max/step/decimals, and style. Style supports foreground/background theme tokens or hex colors, emphasis, align, padding, gap, cornerRadius, fontSize, and weight.
+        Actions: ${programActionTypes.sorted().joinToString()}. Snippets normally use state actions and submit; refresh/open_app have no external capability and should be avoided. Safe expressions support state identifiers, numbers, + - * / % ^, parentheses, min/max/abs/round/pow.
+        Exact example:
+        ```arbor-snippet
+        ${validExamples.getValue(GeneratedBlockType.CHAT_UI).first()}
         ```
-        ```arbor-ui
-        ${validExamples.getValue(GeneratedBlockType.CHAT_UI).last()}
+    """.trimIndent()
+
+    private fun widgetSchema() = """
+        `arbor-widget` schema — $CONTRACT_VERSION
+        Root: schema=`arbor-widget/1`; stable id required; title/description; state; ui; actions; capabilities; dataSources; optional refreshMinutes (15–1440).
+        UI nodes and actions are the same bounded declarative program used by snippets: nodes=${programNodeTypes.sorted().joinToString()}; actions=${programActionTypes.sorted().joinToString()}. Home widgets cannot use input because launchers cannot host a keyboard. The launcher renders the component tree and exposes at most four visible button/toggle actions.
+        Capabilities are explicit objects with type and reason. Supported: network (exact HTTPS origins), location (approximate|precise), folder (read|read_write, one user-selected tree), background_refresh. Data sources: http_json, location, folder_text. A data source is rejected unless its exact capability is declared; the user must grant it again for each pinned widget instance.
+        http_json is GET-only, max 1 MB, no redirects, no credentials, no private/local IPs. Bindings copy bounded JSON paths into state. location binds latitude/longitude/accuracy/updatedAt. folder_text reads one relative file inside the selected tree and binds text/size/lineCount. Scheduled refresh requires background_refresh and is 15 minutes or slower.
+        No HTML, JavaScript, WebView, code download, shell, reflection, arbitrary Android intents, hidden permissions, unrestricted network, or unrestricted file access.
+        Exact local example:
+        ```arbor-widget
+        ${validExamples.getValue(GeneratedBlockType.HOME_WIDGET)[0]}
+        ```
+        Exact live example:
+        ```arbor-widget
+        ${validExamples.getValue(GeneratedBlockType.HOME_WIDGET)[1]}
         ```
     """.trimIndent()
 
@@ -287,16 +253,4 @@ object GeneratedContentCapabilityRegistry {
         ${validExamples.getValue(GeneratedBlockType.DIAGRAM)[1]}
         ```
     """.trimIndent()
-
-    private val WIDGET_ROOT_FIELDS = setOf("type", "title", "description", "surface", "home", "options", "fields", "outputs", "actions", "min", "max", "step", "value", "from", "to", "rate", "symbol", "dataSource", "items", "events", "timezone", "state", "screens")
-    private val MINI_COMPONENT_FIELDS = setOf("type", "id", "label", "text", "value", "expression", "visibleWhen", "placeholder", "min", "max", "step", "decimals", "prefix", "suffix", "options", "items", "buttons")
-    private val BUTTON_FIELDS = setOf("label", "style", "visibleWhen", "actions", "action")
-    private val ITEM_FIELDS = setOf("label", "value", "detail", "visibleWhen", "actions", "action")
-    private val ACTION_FIELDS = setOf("operation", "target", "value", "expression", "screen", "message", "condition")
-    private val FIELD_FIELDS = setOf("id", "label", "kind", "value", "min", "max", "step", "options", "prefix", "suffix")
-    private val OUTPUT_FIELDS = setOf("label", "expression", "decimals", "prefix", "suffix")
-    private val LEGACY_ACTION_FIELDS = setOf("label", "target", "operation", "value")
-    private val SCHEDULE_FIELDS = setOf("id", "label", "time", "detail")
-    private val DATA_SOURCE_FIELDS = setOf("url", "refreshMinutes", "bindings")
-    private val BINDING_FIELDS = setOf("id", "label", "path", "decimals", "prefix", "suffix")
 }
