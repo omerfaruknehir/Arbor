@@ -1,0 +1,126 @@
+kColors(
++        backgroundStart = Color(0xFF00363F), backgroundEnd = Color(0xFF00677A),
++        leftStemStart = Color(0xFF54D6F2), leftStemEnd = Color(0xFFD5F7FF),
++        rightStem = Color(0xFFF2FDFF), accent = Color(0xFFBEC6EA),
++    )
++    ColorPalette.VIOLET -> ArborMarkColors(
++        backgroundStart = Color(0xFF2E1D4F), backgroundEnd = Color(0xFF67508F),
++        leftStemStart = Color(0xFFD1BCFF), leftStemEnd = Color(0xFFF0E8FF),
++        rightStem = Color(0xFFFFF8FF), accent = Color(0xFFEFB8C8),
++    )
++    ColorPalette.SUNSET -> ArborMarkColors(
++        backgroundStart = Color(0xFF5C1A07), backgroundEnd = Color(0xFF9B4425),
++        leftStemStart = Color(0xFFFFB59C), leftStemEnd = Color(0xFFFFEDE7),
++        rightStem = Color(0xFFFFF8F6), accent = Color(0xFFD7C58D),
++    )
++}
++
++/** Exact in-app rendering of the selected adaptive launcher artwork. */
+ @Composable
+ internal fun ArborMark(
+     modifier: Modifier = Modifier,
+     contentDescription: String? = null,
++    palette: ColorPalette = LocalArborColorPalette.current,
+ ) {
+-    val colors = MaterialTheme.colorScheme
++    val colors = arborMarkColors(palette)
+     val accessibility = if (contentDescription == null) Modifier else Modifier.semantics {
+         this.contentDescription = contentDescription
+     }
+@@ -72,7 +116,7 @@ internal fun ArborMark(
+ 
+         drawRoundRect(
+             brush = Brush.linearGradient(
+-                colors = listOf(colors.primaryContainer, colors.primary),
++                colors = listOf(colors.backgroundStart, colors.backgroundEnd),
+                 start = point(15f, 8f),
+                 end = point(96f, 101f),
+             ),
+@@ -92,7 +136,7 @@ internal fun ArborMark(
+         drawPath(
+             path = leftStem,
+             brush = Brush.linearGradient(
+-                colors = listOf(colors.onPrimaryContainer, colors.onPrimary),
++                colors = listOf(colors.leftStemStart, colors.leftStemEnd),
+                 start = point(27f, 84f),
+                 end = point(55f, 25f),
+             ),
+@@ -109,7 +153,7 @@ internal fun ArborMark(
+         }
+         drawPath(
+             path = rightStem,
+-            color = colors.onPrimary,
++            color = colors.rightStem,
+             style = Stroke(width = 11f * unit, cap = StrokeCap.Round),
+         )
+ 
+@@ -123,7 +167,7 @@ internal fun ArborMark(
+         }
+         drawPath(
+             path = crossbar,
+-            color = colors.tertiary,
++            color = colors.accent,
+             style = Stroke(width = 8f * unit, cap = StrokeCap.Round),
+         )
+ 
+@@ -141,7 +185,7 @@ internal fun ArborMark(
+             )
+             close()
+         }
+-        drawPath(leaf, color = colors.tertiary)
++        drawPath(leaf, color = colors.accent)
+     }
+ }
+ 
+diff --git a/app/src/main/java/app/arbor/chat/ui/RichMessage.kt b/app/src/main/java/app/arbor/chat/ui/RichMessage.kt
+index 5f00d14c827b033cd469341b0a374f403ba8880b..1b0d0fc7cefb0a207a5dd820cd4f3460564ec070 100644
+--- a/app/src/main/java/app/arbor/chat/ui/RichMessage.kt
++++ b/app/src/main/java/app/arbor/chat/ui/RichMessage.kt
+@@ -1150,6 +1150,7 @@ private fun MarkdownAndroidView(
+ ) {
+     var parsedMarkdown by remember(markwon) { mutableStateOf<ParsedMarkdownSource?>(null) }
+     LaunchedEffect(markwon, markdown) {
++        parsedMarkdown = null
+         val spanned = withContext(Dispatchers.Default) {
+             renderMarkdownSafely(markwon, markdown)
+         }
+@@ -1179,8 +1180,24 @@ private fun MarkdownAndroidView(
+                 view.setHorizontallyScrolling(false)
+                 view.appliedStyleKey = styleKey
+             }
+-            val ready = parsedMarkdown
+-            if (ready != null && (view.renderedSource != ready.source || view.renderedStyleKey != styleKey)) {
++            val ready = parsedMarkdown?.takeIf { it.source == markdown }
++            if (ready == null) {
++                // A recycled TextView can otherwise retain a previous short source
++                // until background Markdown parsing completes. Show the complete raw
++                // message immediately, then replace it with the parsed spans.
++                val fallback = markdownRenderFallbackText(markdown)
++                if (view.renderedSource != markdown || view.renderedStyleKey != styleKey || view.text?.length != fallback.length) {
++                    view.setText(fallback, TextView.BufferType.SPANNABLE)
++                    view.renderedSource = markdown
++                    view.renderedStyleKey = styleKey
++                    view.renderedAsFallback = true
++                }
++            } else if (
++                view.renderedSource != ready.source ||
++                view.renderedStyleKey != styleKey ||
++                view.renderedAsFallback ||
++                view.text?.length != ready.spanned.length
++            ) {
+                 try {
+                     markwon.setParsedMarkdown(view, ready.spanned)
+                     installReferenceSpans(
+@@ -1200,6 +1217,7 @@ private fun MarkdownAndroidView(
+                 }
+                 view.renderedSource = ready.source
+                 view.renderedStyleKey = styleKey
++                view.renderedAsFallback = false
+             }
+         },
+         modifier = modifier,
+@@ -1211,6 +1229,7 @@ private class ArborMarkdownTextView(context: Context) : TextView(context) {
+     var renderedSource: String = ""
+     var renderedStyleKey: Int = 0
+     var appliedStyleKey: Int = 0
++    var renderedAsFallback: B
