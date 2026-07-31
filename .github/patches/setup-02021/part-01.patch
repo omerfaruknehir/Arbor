@@ -1,0 +1,124 @@
+             providerCatalogDelayed = !providerCatalogReady,
+             pythonEnabled = newChatDefaults.agentPythonEnabled,
+             stepIndex = setupStepIndex,
+-            onStepChanged = { viewModel.setupStepIndex.value = it },
++            stepOffsetFraction = setupPageOffsetFraction,
++            scrollOffsetForStep = viewModel::setupScrollOffset,
++            onPagerPositionChanged = viewModel::updateSetupPagerPosition,
++            onStepScrollChanged = viewModel::saveSetupScrollOffset,
+             linuxEnabled = newChatDefaults.agentUbuntuEnabled,
+             onThemeModeChanged = viewModel::setThemeMode,
+             onPaletteChanged = viewModel::setPalette,
+diff --git a/app/src/main/java/app/arbor/chat/ui/ChatViewModel.kt b/app/src/main/java/app/arbor/chat/ui/ChatViewModel.kt
+index 8fda87a93588bb6f7b23b207e8de144b3e2fc6c5..d27baa61b836f6a85f1c5b6975d0d8102d61f931 100644
+--- a/app/src/main/java/app/arbor/chat/ui/ChatViewModel.kt
++++ b/app/src/main/java/app/arbor/chat/ui/ChatViewModel.kt
+@@ -151,6 +151,10 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
+     private val focusedMessageIndex = savedStateHandle.getMutableStateFlow<Int?>("focused_message_index", null)
+     val setupActive = savedStateHandle.getMutableStateFlow("setup_active", restoredUiState.setupActive)
+     val setupStepIndex = savedStateHandle.getMutableStateFlow("setup_step", restoredUiState.setupStepIndex)
++    val setupPageOffsetFraction = savedStateHandle.getMutableStateFlow(
++        "setup_page_offset_fraction",
++        restoredUiState.setupPageOffsetFraction,
++    )
+     val setupTemporarilyAway = savedStateHandle.getMutableStateFlow(
+         "setup_temporarily_away",
+         restoredUiState.setupTemporarilyAway,
+@@ -167,6 +171,11 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
+         extraBufferCapacity = 1,
+         onBufferOverflow = BufferOverflow.DROP_OLDEST,
+     )
++    private val latestSetupScrollOffsets = mutableMapOf<Int, Int>()
++    private val setupScrollUpdates = MutableSharedFlow<Pair<Int, Int>>(
++        extraBufferCapacity = 8,
++        onBufferOverflow = BufferOverflow.DROP_OLDEST,
++    )
+     val amoled: StateFlow<Boolean> = container.appPreferences.amoled
+     val chromeBlurStrength: StateFlow<Float> = container.appPreferences.chromeBlurStrength
+     val chromeEdgeSoftness: StateFlow<Float> = container.appPreferences.chromeEdgeSoftness
+@@ -218,6 +227,13 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
+                     container.persistentUiState.saveSettingsScroll(route, offset)
+                 }
+         }
++        viewModelScope.launch {
++            setupScrollUpdates
++                .debounce(120)
++                .collect { (stepIndex, offset) ->
++                    container.persistentUiState.saveSetupScroll(stepIndex, offset)
++                }
++        }
+         viewModelScope.launch {
+             merge(
+                 selectedConversationId.map { Unit },
+@@ -230,6 +246,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
+                 focusedMessageNodeId.map { Unit },
+                 setupActive.map { Unit },
+                 setupStepIndex.map { Unit },
++                setupPageOffsetFraction.map { Unit },
+                 setupTemporarilyAway.map { Unit },
+                 setupDismissed.map { Unit },
+             )
+@@ -257,6 +274,11 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
+                 container.persistentUiState.saveSettingsScroll(route, offset, immediate = true)
+             }
+         }
++        synchronized(latestSetupScrollOffsets) {
++            latestSetupScrollOffsets.forEach { (stepIndex, offset) ->
++                container.persistentUiState.saveSetupScroll(stepIndex, offset, immediate = true)
++            }
++        }
+     }
+ 
+     fun chatScrollSnapshot(conversationId: String): PersistentUiStateStore.ChatScrollSnapshot? =
+@@ -296,6 +318,25 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
+         settingsScrollUpdates.tryEmit(route to normalized)
+     }
+ 
++    fun setupScrollOffset(stepIndex: Int): Int =
++        synchronized(latestSetupScrollOffsets) {
++            latestSetupScrollOffsets[stepIndex]
++        } ?: container.persistentUiState.setupScroll(stepIndex)
++
++    fun saveSetupScrollOffset(stepIndex: Int, offset: Int) {
++        val normalizedStep = stepIndex.coerceIn(0, 4)
++        val normalizedOffset = offset.coerceAtLeast(0)
++        synchronized(latestSetupScrollOffsets) {
++            latestSetupScrollOffsets[normalizedStep] = normalizedOffset
++        }
++        setupScrollUpdates.tryEmit(normalizedStep to normalizedOffset)
++    }
++
++    fun updateSetupPagerPosition(stepIndex: Int, offsetFraction: Float) {
++        setupStepIndex.value = stepIndex.coerceIn(0, 4)
++        setupPageOffsetFraction.value = offsetFraction.coerceIn(-0.499f, 0.499f)
++    }
++
+     private suspend fun persistCurrentDraft() {
+         val conversationId = activeDraftConversationId.value ?: return
+         withContext(Dispatchers.IO) {
+@@ -321,6 +362,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
+             focusedMessageNodeId = focusedMessageNodeId.value,
+             setupActive = setupActive.value,
+             setupStepIndex = setupStepIndex.value,
++            setupPageOffsetFraction = setupPageOffsetFraction.value,
+             setupTemporarilyAway = setupTemporarilyAway.value,
+             setupDismissed = setupDismissed.value,
+         )
+@@ -328,6 +370,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
+ 
+     fun startSetup(stepIndex: Int = 0) {
+         setupStepIndex.value = stepIndex.coerceIn(0, 4)
++        setupPageOffsetFraction.value = 0f
+         setupActive.value = true
+         setupDismissed.value = false
+         setupTemporarilyAway.value = false
+@@ -337,6 +380,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
+ 
+     fun finishSetup() {
+         setupActive.value = false
++        setupPageOffsetFraction.value = 0f
+         setupDismissed.value = true
+         setupTemporarilyAway.value = false
+         screen.value = Screen.CHAT
+@@ -345,6 +389,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
+     fun openProviderSetupFromSetup() {
