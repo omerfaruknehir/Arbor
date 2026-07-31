@@ -29,6 +29,17 @@ jobs:
         shell: bash
         run: |
           cat .github/tmp/icon-theme/part-*.txt > "$RUNNER_TEMP/apply_icon_theme.py"
+          python - "$RUNNER_TEMP/apply_icon_theme.py" <<'PY'
+          from pathlib import Path
+          import sys
+          path = Path(sys.argv[1])
+          source = path.read_text()
+          old = "s=replace_once(s,'# Changelog\\n\\n','# Changelog\\n\\n'+entry,'changelog')"
+          new = "s=s.replace('# Changelog\\n\\n','# Changelog\\n\\n'+entry,1)"
+          if old not in source:
+              raise SystemExit('changelog normalization target missing')
+          path.write_text(source.replace(old, new, 1))
+          PY
           sha256sum "$RUNNER_TEMP/apply_icon_theme.py"
           python -m py_compile "$RUNNER_TEMP/apply_icon_theme.py"
 
