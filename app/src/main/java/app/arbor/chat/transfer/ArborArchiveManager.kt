@@ -59,6 +59,7 @@ data class ArchiveOptions(
     val includeToolData: Boolean = false,
     val includeSystemPrompt: Boolean = false,
     val includeRequestMetadata: Boolean = false,
+    val includeLinuxEnvironments: Boolean = false,
 )
 
 @Serializable
@@ -81,6 +82,7 @@ private data class ArchiveManifest(
     val title: String,
     val options: ArchiveOptions,
     val conversations: List<PortableConversationBundle>,
+    val linuxEnvironments: List<PortableLinuxEnvironment> = emptyList(),
 )
 
 @Serializable
@@ -169,6 +171,8 @@ data class ArchivePreview(
     val conversationCount: Int,
     val messageCount: Int,
     val attachmentCount: Int,
+    val linuxEnvironmentCount: Int,
+    val linuxEnvironmentBytes: Long,
     val encrypted: Boolean,
     val createdAt: Long,
     val appVersion: String,
@@ -183,11 +187,17 @@ data class IncomingArchiveState(
     val error: String? = null,
 )
 
+data class ArchiveImportResult(
+    val conversationIds: List<String>,
+    val linuxEnvironmentCount: Int,
+)
+
 class ArchivePasswordRequiredException : IllegalArgumentException("This Arbor archive is password protected")
 
 class ArborArchiveManager(
     private val context: Context,
     private val database: ArborDatabase,
+    private val linuxEnvironments: LinuxEnvironmentArchiveStore,
 ) {
     private val json = Json {
         encodeDefaults = true
@@ -222,7 +232,6 @@ class ArborArchiveManager(
         password: String,
     ) = withContext(Dispatchers.IO) {
         val conversationIds = database.conversationDao().all().map(ConversationEntity::id)
-        require(conversationIds.isNotEmpty()) { "There are no chats to back up" }
         val output = requireNotNull(context.contentResolver.openOutputStream(uri, "w")) {
             "The selected backup destination could not be opened"
         }
@@ -237,6 +246,31 @@ class ArborArchiveManager(
         }
     }
 
+    suspend fun writeBackupToCache(
+        options: ArchiveOptions,
+        password: String,
+    ): File = withContext(Dispatchers.IO) {
+        val root = File(context.cacheDir, "backup-exports").apply { mkdirs() }
+        root.listFiles()?.filter { it.isFile && System.currentTimeMillis() - it.lastModified() > SHARE_CACHE_MAX_AGE_MS }
+            ?.forEach(File::delete)
+        val file = File(root, "Arbor-backup-${System.currentTimeMillis()}$ARBOR_BACKUP_EXTENSION")
+        try {
+            file.outputStream().buffered().use { output ->
+                writeArchive(
+                    output = output,
+                    kind = ArchiveKind.BACKUP,
+                    conversationIds = database.conversationDao().all().map(ConversationEntity::id),
+                    options = options,
+                    password = password,
+                )
+            }
+            file
+        } catch (error: Throwable) {
+            file.delete()
+            throw error
+        }
+    }
+
     suspend fun inspect(uri: Uri, password: String = ""): ArchivePreview = withContext(Dispatchers.IO) {
         val decoded = decodePayloadToTemp(uri, password)
         try {
@@ -247,6 +281,8 @@ class ArborArchiveManager(
                 conversationCount = manifest.conversations.size,
                 messageCount = manifest.conversations.sumOf { it.messages.size },
                 attachmentCount = manifest.conversations.sumOf { it.attachments.size },
+                linuxEnvironmentCount = manifest.linuxEnvironments.size,
+                linuxEnvironmentBytes = manifest.linuxEnvironments.sumOf { it.sizeBytes },
                 encrypted = decoded.header.encrypted,
                 createdAt = manifest.createdAt,
                 appVersion = manifest.appVersion,
@@ -257,14 +293,16 @@ class ArborArchiveManager(
         }
     }
 
-    suspend fun importArchive(uri: Uri, password: String = ""): List<String> = withContext(Dispatchers.IO) {
+    suspend fun importArchive(uri: Uri, password: String = ""): ArchiveImportResult = withContext(Dispatchers.IO) {
         val decoded = decodePayloadToTemp(uri, password)
         try {
             val manifest = readManifest(decoded.file)
             ZipFile(decoded.file).use { zip ->
-                manifest.conversations.map { bundle ->
+                val conversationIds = manifest.conversations.map { bundle ->
                     importConversation(zip, bundle, preserveArchiveState = manifest.kind == ArchiveKind.BACKUP)
                 }
+                val restoredLinux = linuxEnvironments.restore(zip, manifest.linuxEnvironments)
+                ArchiveImportResult(conversationIds, restoredLinux)
             }
         } finally {
             decoded.file.delete()
@@ -279,47 +317,63 @@ class ArborArchiveManager(
         password: String,
     ) {
         val bundles = conversationIds.mapNotNull { id -> snapshotConversation(id, options) }
-        require(bundles.isNotEmpty()) { "No chats could be added to the archive" }
-        val now = System.currentTimeMillis()
-        val manifest = ArchiveManifest(
-            kind = kind,
-            createdAt = now,
-            appVersion = BuildConfig.VERSION_NAME,
-            title = if (kind == ArchiveKind.CHAT) bundles.single().conversation.title else "Arbor backup",
-            options = options,
-            conversations = bundles,
-        )
-        val encrypted = password.isNotEmpty()
-        val salt = if (encrypted) ByteArray(SALT_BYTES).also(SecureRandom()::nextBytes) else null
-        val iv = if (encrypted) ByteArray(GCM_IV_BYTES).also(SecureRandom()::nextBytes) else null
-        val header = EnvelopeHeader(
-            kind = kind,
-            encrypted = encrypted,
-            createdAt = now,
-            saltBase64 = salt?.let(::encodeBase64),
-            ivBase64 = iv?.let(::encodeBase64),
-        )
-        output.write(MAGIC)
-        output.write(json.encodeToString(header).toByteArray(Charsets.UTF_8))
-        output.write('\n'.code)
-        val payloadOutput: OutputStream = if (encrypted) {
-            CipherOutputStream(output, encryptionCipher(password, requireNotNull(salt), requireNotNull(iv), header.iterations))
-        } else output
-        ZipOutputStream(BufferedOutputStream(payloadOutput)).use { zip ->
-            zip.putNextEntry(ZipEntry(MANIFEST_ENTRY))
-            zip.write(json.encodeToString(manifest).toByteArray(Charsets.UTF_8))
-            zip.closeEntry()
-            if (options.includeAttachments) {
-                bundles.forEach { bundle ->
-                    val entities = database.attachmentDao().forConversation(bundle.conversation.id).associateBy(AttachmentEntity::id)
-                    bundle.attachments.forEach { portable ->
-                        val source = entities[portable.id]?.localPath?.let(::File)?.takeIf(File::isFile) ?: return@forEach
-                        zip.putNextEntry(ZipEntry(portable.entryName))
-                        source.inputStream().buffered().use { input -> copyWithLimit(input, zip, MAX_ATTACHMENT_BYTES) }
-                        zip.closeEntry()
+        val preparedLinux = if (kind == ArchiveKind.BACKUP && options.includeLinuxEnvironments) {
+            linuxEnvironments.prepareSnapshots()
+        } else emptyList()
+        try {
+            require(bundles.isNotEmpty() || preparedLinux.isNotEmpty()) {
+                if (options.includeLinuxEnvironments) "There are no chats or installed Linux environments to back up"
+                else "There are no chats to back up"
+            }
+            val now = System.currentTimeMillis()
+            val manifest = ArchiveManifest(
+                kind = kind,
+                createdAt = now,
+                appVersion = BuildConfig.VERSION_NAME,
+                title = when {
+                    kind == ArchiveKind.CHAT -> bundles.single().conversation.title
+                    bundles.isEmpty() -> "Arbor Linux backup"
+                    else -> "Arbor backup"
+                },
+                options = options,
+                conversations = bundles,
+                linuxEnvironments = preparedLinux.map(PreparedLinuxEnvironment::metadata),
+            )
+            val encrypted = password.isNotEmpty()
+            val salt = if (encrypted) ByteArray(SALT_BYTES).also(SecureRandom()::nextBytes) else null
+            val iv = if (encrypted) ByteArray(GCM_IV_BYTES).also(SecureRandom()::nextBytes) else null
+            val header = EnvelopeHeader(
+                kind = kind,
+                encrypted = encrypted,
+                createdAt = now,
+                saltBase64 = salt?.let(::encodeBase64),
+                ivBase64 = iv?.let(::encodeBase64),
+            )
+            output.write(MAGIC)
+            output.write(json.encodeToString(header).toByteArray(Charsets.UTF_8))
+            output.write('\n'.code)
+            val payloadOutput: OutputStream = if (encrypted) {
+                CipherOutputStream(output, encryptionCipher(password, requireNotNull(salt), requireNotNull(iv), header.iterations))
+            } else output
+            ZipOutputStream(BufferedOutputStream(payloadOutput)).use { zip ->
+                zip.putNextEntry(ZipEntry(MANIFEST_ENTRY))
+                zip.write(json.encodeToString(manifest).toByteArray(Charsets.UTF_8))
+                zip.closeEntry()
+                if (options.includeAttachments) {
+                    bundles.forEach { bundle ->
+                        val entities = database.attachmentDao().forConversation(bundle.conversation.id).associateBy(AttachmentEntity::id)
+                        bundle.attachments.forEach { portable ->
+                            val source = entities[portable.id]?.localPath?.let(::File)?.takeIf(File::isFile) ?: return@forEach
+                            zip.putNextEntry(ZipEntry(portable.entryName))
+                            source.inputStream().buffered().use { input -> copyWithLimit(input, zip, MAX_ATTACHMENT_BYTES) }
+                            zip.closeEntry()
+                        }
                     }
                 }
+                linuxEnvironments.writePrepared(zip, preparedLinux)
             }
+        } finally {
+            preparedLinux.forEach(PreparedLinuxEnvironment::delete)
         }
     }
 
@@ -646,7 +700,7 @@ class ArborArchiveManager(
         const val MAX_HEADER_BYTES = 16 * 1024
         const val MAX_MANIFEST_BYTES = 32L * 1024 * 1024
         const val MAX_ATTACHMENT_BYTES = 64L * 1024 * 1024
-        const val MAX_ARCHIVE_BYTES = 2L * 1024 * 1024 * 1024
+        const val MAX_ARCHIVE_BYTES = 16L * 1024 * 1024 * 1024
         const val SHARE_CACHE_MAX_AGE_MS = 24L * 60 * 60 * 1000
         val MAGIC = "ARBOR-ARCHIVE/1\n".toByteArray(Charsets.US_ASCII)
     }

@@ -63,8 +63,17 @@ internal fun BackupSettingsPage(viewModel: ChatViewModel) = SettingsPage {
     var includeAttachments by remember { mutableStateOf(true) }
     var includePrivateData by remember { mutableStateOf(true) }
     var includeSystemPrompt by remember { mutableStateOf(true) }
+    var includeLinuxEnvironments by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     val passwordsMatch = password == confirmPassword
+    val backupOptions = ArchiveOptions(
+        includeAttachments = includeAttachments,
+        includeReasoning = includePrivateData,
+        includeToolData = includePrivateData,
+        includeSystemPrompt = includeSystemPrompt,
+        includeRequestMetadata = includePrivateData,
+        includeLinuxEnvironments = includeLinuxEnvironments,
+    )
     val backupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(ARBOR_BACKUP_MIME),
     ) { uri ->
@@ -74,13 +83,7 @@ internal fun BackupSettingsPage(viewModel: ChatViewModel) = SettingsPage {
             runCatching {
                 viewModel.writePortableBackup(
                     uri = uri,
-                    options = ArchiveOptions(
-                        includeAttachments = includeAttachments,
-                        includeReasoning = includePrivateData,
-                        includeToolData = includePrivateData,
-                        includeSystemPrompt = includeSystemPrompt,
-                        includeRequestMetadata = includePrivateData,
-                    ),
+                    options = backupOptions,
                     password = password,
                 )
             }.onSuccess {
@@ -122,6 +125,14 @@ internal fun BackupSettingsPage(viewModel: ChatViewModel) = SettingsPage {
             TransferSwitch("Include attachments", includeAttachments) { includeAttachments = it }
             TransferSwitch("Include reasoning, tool traces, and request metadata", includePrivateData) { includePrivateData = it }
             TransferSwitch("Include custom system prompts", includeSystemPrompt) { includeSystemPrompt = it }
+            TransferSwitch("Include installed Linux environments", includeLinuxEnvironments) { includeLinuxEnvironments = it }
+            if (includeLinuxEnvironments) {
+                Text(
+                    "Arbor includes each installed root filesystem, packages, and configuration. Permissions, symbolic links, and hard links are preserved. This can make the backup several gigabytes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 
@@ -132,6 +143,13 @@ internal fun BackupSettingsPage(viewModel: ChatViewModel) = SettingsPage {
         onConfirmPassword = { confirmPassword = it },
         passwordsMatch = passwordsMatch,
         unencryptedLabel = "No password: backup remains readable to anyone who gets the file. This is allowed; choose a trusted destination.",
+    )
+
+    CloudBackupTargets(
+        viewModel = viewModel,
+        options = backupOptions,
+        password = password,
+        enabled = !busy && passwordsMatch,
     )
 
     Button(
@@ -331,7 +349,14 @@ internal fun IncomingArchiveDialog(
                     ) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(value.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text("${value.conversationCount} chat${if (value.conversationCount == 1) "" else "s"} • ${value.messageCount} messages • ${value.attachmentCount} attachments")
+                            Text(
+                                buildString {
+                                    append("${value.conversationCount} chat${if (value.conversationCount == 1) "" else "s"} • ${value.messageCount} messages • ${value.attachmentCount} attachments")
+                                    if (value.linuxEnvironmentCount > 0) {
+                                        append(" • ${value.linuxEnvironmentCount} Linux environment${if (value.linuxEnvironmentCount == 1) "" else "s"}")
+                                    }
+                                },
+                            )
                             Text(
                                 "Created by Arbor ${value.appVersion} • ${if (value.encrypted) "Password protected" else "Not encrypted"}",
                                 style = MaterialTheme.typography.bodySmall,
@@ -345,6 +370,7 @@ internal fun IncomingArchiveDialog(
                     IncludedRow("Tool traces", value.options.includeToolData)
                     IncludedRow("Custom system prompt", value.options.includeSystemPrompt)
                     IncludedRow("Request metadata", value.options.includeRequestMetadata)
+                    IncludedRow("Installed Linux environments", value.options.includeLinuxEnvironments)
                     Surface(
                         color = MaterialTheme.colorScheme.tertiaryContainer,
                         contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -455,7 +481,7 @@ private fun IncludedRow(label: String, included: Boolean) {
 }
 
 @Composable
-private fun TransferHeading(title: String, subtitle: String) {
+internal fun TransferHeading(title: String, subtitle: String) {
     Column {
         Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

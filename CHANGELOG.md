@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.20.24 — 2026-07-31
+
+- Let portable backups include installed Ubuntu, Debian, and Alpine environments, preserving rootfs permissions, symbolic links, hard links, packages, and configuration.
+- Add a persistent Android document-provider folder target for Google Drive, OneDrive, Dropbox, Nextcloud, USB, and local storage; Arbor receives access only to the folder the user explicitly selects.
+- Add direct Google Drive app-data backup using only the non-sensitive `drive.appdata` scope and Drive's hidden Arbor-only `appDataFolder`.
+- Enable Android/Google One app backup only for small non-secret preferences. Chats, attachments, encrypted database material, credentials, workspaces, and Linux root filesystems remain excluded.
+- Keep passwords optional for every local and cloud portable backup target.
+
 ## 0.20.23 — 2026-07-31
 
 - Replace the single, mostly useless model choice in API-provider setup with a searchable multi-select list. Every discovered model starts selected, and Arbor stores only the models left selected.

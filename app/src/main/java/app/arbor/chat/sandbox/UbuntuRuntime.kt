@@ -220,6 +220,9 @@ class UbuntuRuntime(
         inspect().also { _status.value = it }
     }
 
+    suspend fun <T> withFilesystemSnapshot(block: suspend () -> T): T =
+        lifecycleMutex.withLock { processMutex.withLock { block() } }
+
     suspend fun install(): UbuntuRuntimeStatus = withContext(Dispatchers.IO) { lifecycleMutex.withLock {
         val distro = distribution.value
         val spec = currentSpec() ?: return@withLock UbuntuRuntimeStatus(

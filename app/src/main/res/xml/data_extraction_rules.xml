@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup disableIfNoEncryptionCapabilities="true">
-        <exclude domain="sharedpref" path="arbor_secrets.xml" />
-        <exclude domain="database" path="arbor.db" />
+        <include domain="sharedpref" path="arbor_app_settings.xml" />
+        <include domain="sharedpref" path="arbor_ui_session.xml" />
+        <include domain="sharedpref" path="arbor_linux_runtime.xml" />
     </cloud-backup>
     <device-transfer>
-        <exclude domain="sharedpref" path="arbor_secrets.xml" />
-        <exclude domain="database" path="arbor.db" />
+        <include domain="sharedpref" path="arbor_app_settings.xml" />
+        <include domain="sharedpref" path="arbor_ui_session.xml" />
+        <include domain="sharedpref" path="arbor_linux_runtime.xml" />
     </device-transfer>
 </data-extraction-rules>
