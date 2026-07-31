@@ -39,7 +39,7 @@ jobs:
           cache-read-only: true
 
       - name: Apply source changes
-        run: python scripts/apply_setup_restore_settings_0_20_25.py
+        run: python scripts/run_setup_restore_settings_0_20_25.py
 
       - name: Verify patch cleanliness
         run: git diff --check
