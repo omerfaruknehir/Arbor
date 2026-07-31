@@ -539,7 +539,7 @@ private fun AppearanceSettingsPage(
                 Text("Match launcher icon to palette", fontWeight = FontWeight.SemiBold)
                 Text(
                     if (matchLauncherIconToPalette) {
-                        "Arbor stays open while the launcher refreshes. Android themed icons can override app-selected colors."
+                        "The launcher icon updates after Arbor leaves the screen, so the active app is never interrupted. Android themed icons can override app-selected colors."
                     } else {
                         "Keep the classic Arbor green icon regardless of the selected palette."
                     },
