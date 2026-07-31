@@ -26,9 +26,9 @@ jobs:
       - name: Verify expected base and payload
         shell: bash
         run: |
-          test "$(git rev-parse HEAD^)" = "6ba3974846d5a5329a27e38b9ca686f149f8c097"
+          test "$(git rev-parse HEAD~2)" = "6ba3974846d5a5329a27e38b9ca686f149f8c097"
           test "$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)" = "0.20.15"
-          echo "3592e1d52d35c1bd26b3fe8dacc49210f325f93076224fa8239e08c55b78521e  .github/patches/arbor-0.20.16.patch.gz" | sha256sum --check
+          test "$(git hash-object .github/patches/arbor-0.20.16.patch.gz)" = "239a8f99fbc840e0b4c6c59b6572cf5638a10f29"
 
       - name: Apply verified source patch
         shell: bash
