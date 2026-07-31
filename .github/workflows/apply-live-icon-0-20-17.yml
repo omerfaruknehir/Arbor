@@ -32,7 +32,7 @@ jobs:
           python -c "from pathlib import Path; p=Path('.github/tmp/live-icon/apply_02017.py'); lines=p.read_text().splitlines(); hits=[i for i,line in enumerate(lines) if line.startswith('changelog = replace_once(changelog,')]; assert len(hits)==1; lines[hits[0]]=\"changelog = changelog.replace('# Changelog\\\\n\\\\n', '# Changelog\\\\n\\\\n' + entry, 1)\"; p.write_text('\\n'.join(lines)+'\\n')"
           python -m py_compile .github/tmp/live-icon/apply_02017.py
           python .github/tmp/live-icon/apply_02017.py
-          python -c "from pathlib import Path; p=Path('app/src/main/java/app/arbor/chat/ui/ConversationSidebar.kt'); s=p.read_text(); anchor='import androidx.compose.ui.platform.LocalDensity\\n'; additions='import androidx.compose.ui.res.stringResource\\nimport app.arbor.chat.R\\n'; assert anchor in s; p.write_text(s if 'import androidx.compose.ui.res.stringResource\\n' in s else s.replace(anchor, anchor + additions, 1))"
+          python -c "from pathlib import Path; p=Path('app/src/main/java/app/arbor/chat/ui/ConversationSidebar.kt'); s=p.read_text(); anchor='import androidx.compose.ui.graphics.vector.ImageVector\\n'; additions='import androidx.compose.ui.res.stringResource\\nimport app.arbor.chat.R\\n'; assert anchor in s; p.write_text(s if 'import androidx.compose.ui.res.stringResource\\n' in s else s.replace(anchor, anchor + additions, 1))"
           rm -rf .github/tmp/live-icon
           rm -f .github/workflows/apply-live-icon-0-20-17.yml
           git diff --check
