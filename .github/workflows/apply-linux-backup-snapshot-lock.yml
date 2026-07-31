@@ -1,0 +1,38 @@
+name: Apply Linux backup snapshot lock
+
+on:
+  push:
+    branches:
+      - feature/linux-cloud-app-folder-backups-0.20.24
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-linux-backup-snapshot-lock
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/linux-cloud-app-folder-backups-0.20.24
+          fetch-depth: 0
+
+      - name: Apply snapshot locking
+        run: python scripts/patch_linux_backup_snapshot_lock.py
+
+      - name: Verify patch cleanliness
+        run: git diff --check
+
+      - name: Commit product sources and remove patch machinery
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app
+          git rm scripts/patch_linux_backup_snapshot_lock.py .github/workflows/apply-linux-backup-snapshot-lock.yml
+          git commit -m "Make Linux environment backups filesystem-consistent"
+          git push origin HEAD:feature/linux-cloud-app-folder-backups-0.20.24
