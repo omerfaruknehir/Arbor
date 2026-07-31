@@ -1,0 +1,284 @@
++++ b/app/src/main/java/app/arbor/chat/ui/SandboxScreen.kt
+@@ -111,6 +111,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
+     val running = pythonRun?.running == true
+     val result = pythonRun?.result ?: pythonRun?.error?.let { ExecutionResult(stderr = it) }
+     val conversationId by viewModel.selectedConversationId.collectAsState()
++    val setupTemporarilyAway by viewModel.setupTemporarilyAway.collectAsState()
+     val scope = rememberCoroutineScope()
+     var clock by remember { mutableLongStateOf(System.currentTimeMillis()) }
+     var dismissedLongRun by remember { mutableLongStateOf(0L) }
+@@ -172,8 +173,14 @@ fun SandboxScreen(viewModel: ChatViewModel) {
+                 overlayOpacity = chromeOverlayOpacity,
+                 blurArea = STANDARD_TOP_PANEL_HEIGHT_DP.dp,
+                 navigationIcon = {
+-                    IconButton(onClick = { viewModel.screen.value = Screen.SETTINGS }) {
+-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to Settings")
++                    IconButton(onClick = {
++                        if (setupTemporarilyAway) viewModel.returnToSetup()
++                        else viewModel.screen.value = Screen.SETTINGS
++                    }) {
++                        Icon(
++                            Icons.AutoMirrored.Outlined.ArrowBack,
++                            if (setupTemporarilyAway) "Back to setup" else "Back to Settings",
++                        )
+                     }
+                 },
+             )
+ diff --git a/app/src/main/java/app/arbor/chat/ui/SettingsRoute.kt b/app/src/main/java/app/arbor/chat/ui/SettingsRoute.kt
+new file mode 100644
+index 0000000..cea6c79
+--- /dev/null
++++ b/app/src/main/java/app/arbor/chat/ui/SettingsRoute.kt
+@@ -0,0 +1,15 @@
++package app.arbor.chat.ui
++
++enum class SettingsRoute(val title: String) {
++    HOME("Settings"),
++    DEFAULTS("New chat defaults"),
++    AUTOMATION("Automation"),
++    APPEARANCE("Appearance"),
++    PRIVACY("Privacy & safety"),
++    LOCAL_EXECUTION("Local tools"),
++    DEVELOPER("Developer settings"),
++    SYSTEM_PROMPTS("Custom instructions"),
++    PROVIDERS("Providers & models"),
++    ABOUT("About Arbor"),
++    LICENSES("Licenses & notices"),
++}
+ diff --git a/app/src/main/java/app/arbor/chat/ui/SettingsScreen.kt b/app/src/main/java/app/arbor/chat/ui/SettingsScreen.kt
+index d857977..c61eef0 100644
+--- a/app/src/main/java/app/arbor/chat/ui/SettingsScreen.kt
++++ b/app/src/main/java/app/arbor/chat/ui/SettingsScreen.kt
+@@ -74,6 +74,7 @@ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.CompositionLocalProvider
+ import androidx.compose.runtime.compositionLocalOf
+ import androidx.compose.runtime.LaunchedEffect
++import androidx.compose.runtime.snapshotFlow
+ import androidx.compose.runtime.collectAsState
+ import androidx.compose.runtime.getValue
+ import androidx.compose.runtime.mutableLongStateOf
+@@ -132,6 +133,7 @@ import kotlinx.coroutines.delay
+ import kotlinx.coroutines.launch
+ import kotlinx.coroutines.flow.flowOf
+ import kotlinx.coroutines.flow.first
++import kotlinx.coroutines.flow.distinctUntilChanged
+ import java.text.DateFormat
+ import java.util.Date
+ import java.util.UUID
+@@ -139,20 +141,8 @@ import kotlin.math.roundToInt
+ 
+ 
+ private val LocalSettingsScaffoldPadding = compositionLocalOf { PaddingValues() }
+-
+-private enum class SettingsRoute(val title: String) {
+-    HOME("Settings"),
+-    DEFAULTS("New chat defaults"),
+-    AUTOMATION("Automation"),
+-    APPEARANCE("Appearance"),
+-    PRIVACY("Privacy & safety"),
+-    LOCAL_EXECUTION("Local tools"),
+-    DEVELOPER("Developer settings"),
+-    SYSTEM_PROMPTS("Custom instructions"),
+-    PROVIDERS("Providers & models"),
+-    ABOUT("About Arbor"),
+-    LICENSES("Licenses & notices"),
+-}
++private val LocalSettingsRoute = compositionLocalOf { SettingsRoute.HOME }
++private val LocalSettingsViewModel = compositionLocalOf<ChatViewModel?> { null }
+ 
+ @OptIn(ExperimentalMaterial3Api::class)
+ @Composable
+@@ -175,14 +165,15 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+     val generatedRepairMaxAttempts by viewModel.generatedRepairMaxAttempts.collectAsState()
+     val developerSettings by viewModel.developerSettings.collectAsState()
+     val providerSetupRequested by viewModel.providerSetupRequested.collectAsState()
++    val setupTemporarilyAway by viewModel.setupTemporarilyAway.collectAsState()
+     val registeredProviders = remember(providers, credentialRevision) { viewModel.registeredProviders(providers) }
+     val configuredProviders = remember(providers, credentialRevision) { viewModel.configuredProviders(providers) }
+-    var route by rememberSaveable { mutableStateOf(SettingsRoute.HOME) }
++    val route by viewModel.settingsRoute.collectAsState()
+     val haptics = rememberArborHaptics()
+ 
+     LaunchedEffect(providerSetupRequested) {
+         if (providerSetupRequested) {
+-            route = SettingsRoute.PROVIDERS
++            viewModel.settingsRoute.value = SettingsRoute.PROVIDERS
+             viewModel.consumeProviderSetupRequest()
+         }
+     }
+@@ -194,7 +185,10 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+             SettingsRoute.DEVELOPER, SettingsRoute.LICENSES -> SettingsRoute.ABOUT
+             else -> SettingsRoute.HOME
+         },
+-        onBack = { route = it },
++        onBack = { target ->
++            if (setupTemporarilyAway && route == SettingsRoute.PROVIDERS) viewModel.returnToSetup()
++            else viewModel.settingsRoute.value = target
++        },
+         depth = {
+             when (it) {
+                 SettingsRoute.HOME -> 0
+@@ -223,11 +217,13 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+                     navigationIcon = {
+                         IconButton(onClick = {
+                             haptics.selection()
+-                            if (currentRoute == SettingsRoute.DEVELOPER || currentRoute == SettingsRoute.LICENSES) {
+-                                route = SettingsRoute.ABOUT
+-                            }
+-                            else if (currentRoute != SettingsRoute.HOME) route = SettingsRoute.HOME
+-                            else if (openDrawer != null) openDrawer()
++                            if (setupTemporarilyAway && currentRoute == SettingsRoute.PROVIDERS) {
++                                viewModel.returnToSetup()
++                            } else if (currentRoute == SettingsRoute.DEVELOPER || currentRoute == SettingsRoute.LICENSES) {
++                                viewModel.settingsRoute.value = SettingsRoute.ABOUT
++                            } else if (currentRoute != SettingsRoute.HOME) {
++                                viewModel.settingsRoute.value = SettingsRoute.HOME
++                            } else if (openDrawer != null) openDrawer()
+                             else viewModel.screen.value = Screen.CHAT
+                         }) {
+                             Icon(
+@@ -240,11 +236,16 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+             },
+         ) { padding ->
+             Box(Modifier.fillMaxSize().arborBackdropSource(blurState)) {
+-                CompositionLocalProvider(LocalSettingsScaffoldPadding provides padding) {
++                CompositionLocalProvider(
++                    LocalSettingsScaffoldPadding provides padding,
++                    LocalSettingsRoute provides currentRoute,
++                    LocalSettingsViewModel provides viewModel,
++                ) {
+                     when (currentRoute) {
+                         SettingsRoute.HOME -> SettingsHome(
+                             providerCount = registeredProviders.size,
+-                            onOpen = { route = it },
++                            onOpen = { viewModel.settingsRoute.value = it },
++                            onStartSetup = viewModel::startSetup,
+                         )
+                         SettingsRoute.DEFAULTS -> NewChatDefaultsSettings(defaults, configuredProviders, viewModel)
+                         SettingsRoute.AUTOMATION -> AutomationSettingsPage(automation, configuredProviders, viewModel)
+@@ -272,8 +273,8 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+                         )
+                         SettingsRoute.ABOUT -> AboutSettingsPage(
+                             developerEnabled = developerSettings.enabled,
+-                            onOpenDeveloper = { route = SettingsRoute.DEVELOPER },
+-                            onOpenLicenses = { route = SettingsRoute.LICENSES },
++                            onOpenDeveloper = { viewModel.settingsRoute.value = SettingsRoute.DEVELOPER },
++                            onOpenLicenses = { viewModel.settingsRoute.value = SettingsRoute.LICENSES },
+                         )
+                         SettingsRoute.LICENSES -> LicenseCatalogSettingsPage()
+                     }
+@@ -284,7 +285,11 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+ }
+ 
+ @Composable
+-private fun SettingsHome(providerCount: Int, onOpen: (SettingsRoute) -> Unit) = SettingsPage {
++private fun SettingsHome(
++    providerCount: Int,
++    onOpen: (SettingsRoute) -> Unit,
++    onStartSetup: () -> Unit,
++) = SettingsPage {
+     SettingsGroup("AI & models") {
+         SettingsDestination(
+             icon = Icons.Outlined.Cloud,
+@@ -312,6 +317,12 @@ private fun SettingsHome(providerCount: Int, onOpen: (SettingsRoute) -> Unit) =
+         )
+     }
+     SettingsGroup("App") {
++        SettingsDestination(
++            icon = Icons.Outlined.AutoAwesome,
++            title = "Setup assistant",
++            subtitle = "Resume or run appearance, providers, and local tools setup",
++            onClick = onStartSetup,
++        )
+         SettingsDestination(
+             icon = Icons.Outlined.Palette,
+             title = "Appearance",
+@@ -378,10 +389,19 @@ private fun SettingsDestination(
+ @Composable
+ internal fun SettingsPage(content: @Composable ColumnScope.() -> Unit) {
+     val scaffoldPadding = LocalSettingsScaffoldPadding.current
++    val route = LocalSettingsRoute.current
++    val viewModel = LocalSettingsViewModel.current
++    val scrollState = rememberScrollState(initial = viewModel?.settingsScrollOffset(route) ?: 0)
++    LaunchedEffect(route, scrollState, viewModel) {
++        val target = viewModel ?: return@LaunchedEffect
++        snapshotFlow { scrollState.value }
++            .distinctUntilChanged()
++            .collect { target.saveSettingsScrollOffset(route, it) }
++    }
+     Column(
+         Modifier
+             .fillMaxSize()
+-            .verticalScroll(rememberScrollState())
++            .verticalScroll(scrollState)
+             .padding(
+                 start = 20.dp,
+                 end = 20.dp,
+@@ -539,7 +559,7 @@ private fun AppearanceSettingsPage(
+                 Text("Match launcher icon to palette", fontWeight = FontWeight.SemiBold)
+                 Text(
+                     if (matchLauncherIconToPalette) {
+-                        "The launcher icon updates after Arbor leaves the screen, so the active app is never interrupted. Android themed icons can override app-selected colors."
++                        "Changing the launcher icon briefly restarts Arbor after saving the open page, chat drafts and files, and current scroll positions. Android themed icons can still override app-selected colors."
+                     } else {
+                         "Keep the classic Arbor green icon regardless of the selected palette."
+                     },
+@@ -554,7 +574,7 @@ private fun AppearanceSettingsPage(
+         }
+     }
+     Text(
+-        "Android themed icons can recolor Arbor's monochrome layer. Dynamic uses a Material You base when themed icons are off.",
++        "Android themed icons can recolor Arbor's monochrome layer. Dynamic uses the live wallpaper-derived Material You palette when themed icons are off.",
+         style = MaterialTheme.typography.bodySmall,
+         color = MaterialTheme.colorScheme.onSurfaceVariant,
+     )
+ diff --git a/app/src/main/java/app/arbor/chat/ui/theme/Theme.kt b/app/src/main/java/app/arbor/chat/ui/theme/Theme.kt
+index 38b79c8..9fa0493 100644
+--- a/app/src/main/java/app/arbor/chat/ui/theme/Theme.kt
++++ b/app/src/main/java/app/arbor/chat/ui/theme/Theme.kt
+@@ -2,8 +2,8 @@ package app.arbor.chat.ui.theme
+ 
+ import android.app.Activity
+ import android.content.Context
++import android.content.res.Configuration
+ import android.os.Build
+-import androidx.compose.foundation.isSystemInDarkTheme
+ import androidx.compose.foundation.shape.RoundedCornerShape
+ import androidx.compose.material3.ColorScheme
+ import androidx.compose.material3.MaterialTheme
+@@ -107,7 +107,7 @@ data class PalettePreviewColors(
+     val tertiary: Color,
+ )
+ 
+-private fun paletteColorScheme(
++internal fun paletteColorScheme(
+     palette: ColorPalette,
+     dark: Boolean,
+     context: Context,
+@@ -122,18 +122,41 @@ private fun paletteColorScheme(
+     } else if (dark) ArborDark else ArborLight
+ }
+ 
++
++internal fun resolvedDarkMode(context: Context, themeMode: ThemeMode): Boolean = when (themeMode) {
++    ThemeMode.SYSTEM -> (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
++        Configuration.UI_MODE_NIGHT_YES
++    ThemeMode.LIGHT -> false
++    ThemeMode.DARK -> true
++}
++
++internal fun resolvedArborColorScheme(
++    context: Context,
++    palette: ColorPalette,
++    themeMode: ThemeMode,
++    amoled: Boolean,
++): ColorScheme {
++    val dark = resolvedDarkMode(context, themeMode)
++    var colors = paletteColorScheme(palette, dark, context)
++    if (amoled && dark) colors = colors.copy(
++        background = Color.Black,
++        surface = Color.Black,
++        surfaceContainerLowest = Color.Black,
++        surfaceContainerLow = Color(0xFF08090C),
++        surfaceContainer = Color(0xFF0D0F13),
++        surfaceContainerHigh = Color(0xFF15171C),
