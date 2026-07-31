@@ -53,17 +53,22 @@ import app.arbor.chat.sandbox.ScriptRunResult
 import app.arbor.chat.sandbox.WorkspaceReadResult
 import app.arbor.chat.agent.AgentToolRequest
 import app.arbor.chat.settings.NewChatDefaults
+import app.arbor.chat.settings.LauncherIconManager
+import app.arbor.chat.settings.PersistentUiStateStore
 import app.arbor.chat.generated.GeneratedBlockRepairState
 import app.arbor.chat.generated.GeneratedBlockType
 import app.arbor.chat.generated.GeneratedValidationError
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -73,6 +78,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
@@ -99,9 +105,10 @@ data class LinuxRunState(
     val error: String? = null,
 )
 
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class ChatViewModel(private val container: AppContainer, savedStateHandle: SavedStateHandle) : ViewModel() {
     private val toolResultJson = Json { ignoreUnknownKeys = true }
+    private val restoredUiState = container.persistentUiState.restore()
     val conversations = container.repository.conversations.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val archivedConversations = container.repository.archivedConversations.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val projects = container.repository.projects.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -112,17 +119,54 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AutomationSettingsEntity())
     val ubuntuStatus: StateFlow<UbuntuRuntimeStatus> = container.ubuntuRuntime.status
     val linuxDistribution: StateFlow<LinuxDistribution> = container.ubuntuRuntime.distribution
-    val selectedConversationId = savedStateHandle.getMutableStateFlow<String?>("selected_conversation", null)
+    val selectedConversationId = savedStateHandle.getMutableStateFlow<String?>(
+        "selected_conversation",
+        restoredUiState.selectedConversationId,
+    )
+    private val newDraftConversationId = savedStateHandle.getMutableStateFlow<String?>(
+        "new_draft_conversation",
+        restoredUiState.newDraftConversationId,
+    )
     private val draftConversation = MutableStateFlow<ConversationEntity?>(null)
-    val showArchived = savedStateHandle.getMutableStateFlow("show_archived", false)
-    val selectedProjectId = savedStateHandle.getMutableStateFlow<String?>("selected_project", null)
-    val draft = savedStateHandle.getMutableStateFlow("draft", "")
+    val showArchived = savedStateHandle.getMutableStateFlow("show_archived", restoredUiState.showArchived)
+    val selectedProjectId = savedStateHandle.getMutableStateFlow<String?>(
+        "selected_project",
+        restoredUiState.selectedProjectId,
+    )
+    private val activeDraftConversationId = MutableStateFlow(
+        restoredUiState.selectedConversationId ?: restoredUiState.newDraftConversationId,
+    )
+    val draft = MutableStateFlow(
+        activeDraftConversationId.value?.let(container.composerDrafts::read).orEmpty(),
+    )
     val stagedAttachments = MutableStateFlow<List<AttachmentEntity>>(emptyList())
     val importing = MutableStateFlow(false)
-    val screen = savedStateHandle.getMutableStateFlow("screen", Screen.CHAT)
-    val searchQuery = savedStateHandle.getMutableStateFlow("search_query", "")
-    val focusedMessageNodeId = savedStateHandle.getMutableStateFlow<String?>("focused_message_node", null)
+    val screen = savedStateHandle.getMutableStateFlow("screen", restoredUiState.screen)
+    val settingsRoute = savedStateHandle.getMutableStateFlow("settings_route", restoredUiState.settingsRoute)
+    val searchQuery = savedStateHandle.getMutableStateFlow("search_query", restoredUiState.searchQuery)
+    val focusedMessageNodeId = savedStateHandle.getMutableStateFlow<String?>(
+        "focused_message_node",
+        restoredUiState.focusedMessageNodeId,
+    )
     private val focusedMessageIndex = savedStateHandle.getMutableStateFlow<Int?>("focused_message_index", null)
+    val setupActive = savedStateHandle.getMutableStateFlow("setup_active", restoredUiState.setupActive)
+    val setupStepIndex = savedStateHandle.getMutableStateFlow("setup_step", restoredUiState.setupStepIndex)
+    val setupTemporarilyAway = savedStateHandle.getMutableStateFlow(
+        "setup_temporarily_away",
+        restoredUiState.setupTemporarilyAway,
+    )
+    val setupDismissed = savedStateHandle.getMutableStateFlow("setup_dismissed", restoredUiState.setupDismissed)
+    val launcherRestartRequests = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    private val latestChatScrollSnapshots = mutableMapOf<String, PersistentUiStateStore.ChatScrollSnapshot>()
+    private val chatScrollUpdates = MutableSharedFlow<Pair<String, PersistentUiStateStore.ChatScrollSnapshot>>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    private val latestSettingsScrollOffsets = mutableMapOf<SettingsRoute, Int>()
+    private val settingsScrollUpdates = MutableSharedFlow<Pair<SettingsRoute, Int>>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
     val amoled: StateFlow<Boolean> = container.appPreferences.amoled
     val chromeBlurStrength: StateFlow<Float> = container.appPreferences.chromeBlurStrength
     val chromeEdgeSoftness: StateFlow<Float> = container.appPreferences.chromeEdgeSoftness
@@ -150,7 +194,176 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     private var linuxRunJob: Job? = null
     @Volatile private var initialized = false
 
+    init {
+        viewModelScope.launch {
+            combine(activeDraftConversationId.filterNotNull(), draft) { conversationId, text ->
+                conversationId to text
+            }
+                .debounce(180)
+                .collect { (conversationId, text) ->
+                    withContext(Dispatchers.IO) { container.composerDrafts.write(conversationId, text) }
+                }
+        }
+        viewModelScope.launch {
+            chatScrollUpdates
+                .debounce(180)
+                .collect { (conversationId, snapshot) ->
+                    container.persistentUiState.saveChatScroll(conversationId, snapshot)
+                }
+        }
+        viewModelScope.launch {
+            settingsScrollUpdates
+                .debounce(180)
+                .collect { (route, offset) ->
+                    container.persistentUiState.saveSettingsScroll(route, offset)
+                }
+        }
+        viewModelScope.launch {
+            merge(
+                selectedConversationId.map { Unit },
+                newDraftConversationId.map { Unit },
+                screen.map { Unit },
+                settingsRoute.map { Unit },
+                selectedProjectId.map { Unit },
+                showArchived.map { Unit },
+                searchQuery.map { Unit },
+                focusedMessageNodeId.map { Unit },
+                setupActive.map { Unit },
+                setupStepIndex.map { Unit },
+                setupTemporarilyAway.map { Unit },
+                setupDismissed.map { Unit },
+            )
+                .debounce(120)
+                .collect { persistSessionNow() }
+        }
+    }
+
     fun setRenderSafeMode(enabled: Boolean) = container.crashReporter.setRenderSafeMode(enabled)
+
+    fun setDraft(value: String) {
+        draft.value = value
+    }
+
+    suspend fun flushPersistentState() {
+        persistCurrentDraft()
+        persistSessionNow()
+        synchronized(latestChatScrollSnapshots) {
+            latestChatScrollSnapshots.forEach { (conversationId, snapshot) ->
+                container.persistentUiState.saveChatScroll(conversationId, snapshot, immediate = true)
+            }
+        }
+        synchronized(latestSettingsScrollOffsets) {
+            latestSettingsScrollOffsets.forEach { (route, offset) ->
+                container.persistentUiState.saveSettingsScroll(route, offset, immediate = true)
+            }
+        }
+    }
+
+    fun chatScrollSnapshot(conversationId: String): PersistentUiStateStore.ChatScrollSnapshot? =
+        container.persistentUiState.chatScroll(conversationId)
+
+    fun saveChatScrollSnapshot(
+        conversationId: String,
+        anchorNodeId: String?,
+        firstVisibleItemIndex: Int,
+        firstVisibleItemOffset: Int,
+        atLatest: Boolean,
+        topBarHeightOffset: Float,
+    ) {
+        val snapshot = PersistentUiStateStore.ChatScrollSnapshot(
+            anchorNodeId = anchorNodeId,
+            firstVisibleItemIndex = firstVisibleItemIndex,
+            firstVisibleItemOffset = firstVisibleItemOffset,
+            atLatest = atLatest,
+            topBarHeightOffset = topBarHeightOffset,
+        )
+        synchronized(latestChatScrollSnapshots) {
+            latestChatScrollSnapshots[conversationId] = snapshot
+        }
+        chatScrollUpdates.tryEmit(conversationId to snapshot)
+    }
+
+    fun settingsScrollOffset(route: SettingsRoute): Int =
+        synchronized(latestSettingsScrollOffsets) {
+            latestSettingsScrollOffsets[route]
+        } ?: container.persistentUiState.settingsScroll(route)
+
+    fun saveSettingsScrollOffset(route: SettingsRoute, offset: Int) {
+        val normalized = offset.coerceAtLeast(0)
+        synchronized(latestSettingsScrollOffsets) {
+            latestSettingsScrollOffsets[route] = normalized
+        }
+        settingsScrollUpdates.tryEmit(route to normalized)
+    }
+
+    private suspend fun persistCurrentDraft() {
+        val conversationId = activeDraftConversationId.value ?: return
+        withContext(Dispatchers.IO) {
+            container.composerDrafts.write(conversationId, draft.value)
+        }
+    }
+
+    private suspend fun switchDraftContext(conversationId: String?) {
+        persistCurrentDraft()
+        activeDraftConversationId.value = conversationId
+        draft.value = conversationId?.let(container.composerDrafts::read).orEmpty()
+    }
+
+    private fun persistSessionNow() {
+        container.persistentUiState.saveSession(
+            selectedConversationId = selectedConversationId.value,
+            newDraftConversationId = newDraftConversationId.value,
+            screen = screen.value,
+            settingsRoute = settingsRoute.value,
+            selectedProjectId = selectedProjectId.value,
+            showArchived = showArchived.value,
+            searchQuery = searchQuery.value,
+            focusedMessageNodeId = focusedMessageNodeId.value,
+            setupActive = setupActive.value,
+            setupStepIndex = setupStepIndex.value,
+            setupTemporarilyAway = setupTemporarilyAway.value,
+            setupDismissed = setupDismissed.value,
+        )
+    }
+
+    fun startSetup(stepIndex: Int = 0) {
+        setupStepIndex.value = stepIndex.coerceIn(0, 4)
+        setupActive.value = true
+        setupDismissed.value = false
+        setupTemporarilyAway.value = false
+        settingsRoute.value = SettingsRoute.HOME
+        screen.value = Screen.CHAT
+    }
+
+    fun finishSetup() {
+        setupActive.value = false
+        setupDismissed.value = true
+        setupTemporarilyAway.value = false
+        screen.value = Screen.CHAT
+    }
+
+    fun openProviderSetupFromSetup() {
+        setupActive.value = true
+        setupStepIndex.value = 2
+        setupTemporarilyAway.value = true
+        settingsRoute.value = SettingsRoute.PROVIDERS
+        providerSetupRequested.value = true
+        screen.value = Screen.SETTINGS
+    }
+
+    fun openLinuxSetupFromSetup() {
+        setupActive.value = true
+        setupStepIndex.value = 3
+        setupTemporarilyAway.value = true
+        screen.value = Screen.SANDBOX
+    }
+
+    fun returnToSetup() {
+        setupTemporarilyAway.value = false
+        settingsRoute.value = SettingsRoute.HOME
+        screen.value = Screen.CHAT
+    }
+
 
     fun startPythonRun(code: String, timeoutSeconds: Int) {
         if (_pythonRun.value?.running == true || code.isBlank()) return
@@ -272,22 +485,43 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     private suspend fun ensureInitialized(preferredConversationId: String?): String? = initializationMutex.withLock {
         val preferred = preferredConversationId?.let { container.repository.conversationNow(it) }
         val restored = selectedConversationId.value?.let { container.repository.conversationNow(it) }
-        val target = preferred ?: restored ?: container.repository.conversations.first().firstOrNull()?.conversation
+        val restoredNewDraft = if (preferred == null && restored == null) {
+            newDraftConversationId.value?.let { container.repository.conversationNow(it) }
+        } else null
+        val fallback = if (preferred == null && restored == null && restoredNewDraft == null) {
+            container.repository.conversations.first().firstOrNull()?.conversation
+        } else null
+        val target = preferred ?: restored ?: fallback
+
         if (target != null && !container.appPreferences.hasNewChatDefaults) {
             container.appPreferences.setNewChatDefaults(NewChatDefaults.from(target))
         }
         if (target == null) {
+            val value = restoredNewDraft ?: container.repository.newConversationDraft(
+                projectId = selectedProjectId.value.takeUnless { showArchived.value },
+                defaults = newChatDefaults.value,
+            ).also { container.repository.persistConversationDraft(it) }
             selectedConversationId.value = null
-            if (draftConversation.value == null) draftConversation.value = container.repository.newConversationDraft(defaults = newChatDefaults.value)
-            stagedAttachments.value = emptyList()
+            newDraftConversationId.value = value.id
+            draftConversation.value = value
+            switchDraftContext(value.id)
+            stagedAttachments.value = container.database.attachmentDao().stagedForConversation(value.id)
         } else {
             container.repository.repairActiveMessagePath(target.id)
             draftConversation.value = null
             selectedConversationId.value = target.id
+            switchDraftContext(target.id)
             stagedAttachments.value = container.database.attachmentDao().stagedForConversation(target.id)
             container.repository.markRead(target.id)
+            val savedScroll = container.persistentUiState.chatScroll(target.id)
+            if (focusedMessageNodeId.value == null && savedScroll?.atLatest == false) {
+                focusedMessageIndex.value = savedScroll.anchorNodeId?.let {
+                    container.repository.messageIndexFromLatest(target.id, it)
+                }
+            }
         }
         initialized = true
+        persistSessionNow()
         target?.id
     }
 
@@ -298,18 +532,26 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
             defaults = newChatDefaults.value,
         )
         container.repository.persistConversationDraft(value)
+        persistCurrentDraft()
         draftConversation.value = null
+        newDraftConversationId.value = null
         selectedConversationId.value = value.id
+        activeDraftConversationId.value = value.id
         return value.id
     }
 
-    private fun openEmptyDraft() {
-        selectedConversationId.value = null
-        draftConversation.value = container.repository.newConversationDraft(
+    private suspend fun openEmptyDraft() {
+        persistCurrentDraft()
+        val existing = newDraftConversationId.value?.let { container.repository.conversationNow(it) }
+        val value = existing ?: container.repository.newConversationDraft(
             projectId = selectedProjectId.value.takeUnless { showArchived.value },
             defaults = newChatDefaults.value,
-        )
-        stagedAttachments.value = emptyList()
+        ).also { container.repository.persistConversationDraft(it) }
+        selectedConversationId.value = null
+        newDraftConversationId.value = value.id
+        draftConversation.value = value
+        switchDraftContext(value.id)
+        stagedAttachments.value = container.database.attachmentDao().stagedForConversation(value.id)
         focusedMessageNodeId.value = null
         focusedMessageIndex.value = null
         screen.value = Screen.CHAT
@@ -317,6 +559,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
 
     fun selectConversation(id: String) = launchAction {
         container.repository.repairActiveMessagePath(id)
+        switchDraftContext(id)
         draftConversation.value = null
         focusedMessageNodeId.value = null
         focusedMessageIndex.value = null
@@ -328,6 +571,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
 
     fun openSearchResult(conversationId: String, nodeId: String) = launchAction {
         container.repository.repairActiveMessagePath(conversationId)
+        switchDraftContext(conversationId)
         focusedMessageNodeId.value = nodeId
         focusedMessageIndex.value = container.repository.messageIndexFromLatest(conversationId, nodeId)
         selectedConversationId.value = conversationId
@@ -347,6 +591,9 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         container.attachmentStore.deleteConversationFiles(id)
         container.pythonSandbox.deleteWorkspace(id)
         container.repository.deleteConversation(id)
+        container.composerDrafts.remove(id)
+        container.persistentUiState.clearChatScroll(id)
+        if (newDraftConversationId.value == id) newDraftConversationId.value = null
         if (selectedConversationId.value == id) {
             val fallback = container.repository.conversations.first().firstOrNull()?.conversation?.id
             if (fallback != null) selectConversation(fallback) else openEmptyDraft()
@@ -434,12 +681,15 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
             }
             importing.value = false
         }
-        draft.value = ""
-        stagedAttachments.value = emptyList()
         val effectiveMode = mode ?: if (container.repository.activeStream(id) != null) SendMode.QUEUE else SendMode.SEND_NOW
         runCatching { container.scheduler.submit(id, text, attachments.map { it.id }, effectiveMode) }
+            .onSuccess {
+                setDraft("")
+                withContext(Dispatchers.IO) { container.composerDrafts.remove(id) }
+                stagedAttachments.value = emptyList()
+            }
             .onFailure { error ->
-                draft.value = text
+                setDraft(text)
                 stagedAttachments.value = attachments
                 notices.emit("Could not send: ${error.readableMessage()}")
             }
@@ -487,7 +737,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     }
 
     fun submitWidgetResponse(text: String) {
-        draft.value = text
+        setDraft(text)
         send()
     }
 
@@ -503,8 +753,12 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     fun updateConversation(transform: (ConversationEntity) -> ConversationEntity) {
         val id = selectedConversationId.value
         if (id == null) {
-            draftConversation.value = draftConversation.value?.let(transform)?.copy(updatedAt = System.currentTimeMillis())
-            draftConversation.value?.let { container.appPreferences.setNewChatDefaults(NewChatDefaults.from(it)) }
+            val updated = draftConversation.value?.let(transform)?.copy(updatedAt = System.currentTimeMillis())
+            draftConversation.value = updated
+            updated?.let { value ->
+                container.appPreferences.setNewChatDefaults(NewChatDefaults.from(value))
+                viewModelScope.launch(Dispatchers.IO) { container.repository.persistConversationDraft(value) }
+            }
             return
         }
         launchAction {
@@ -592,6 +846,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         _credentialRevision.value++
         runCatching { container.openAiOAuth.usage(providerId, forceRefresh = true) }
         notices.emit("Connected ${provider.displayName} • ${discovered.size} models available")
+        if (setupTemporarilyAway.value) returnToSetup()
     }
 
     fun cancelChatGptSignIn(providerId: String) {
@@ -673,6 +928,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         initialModels.distinctBy { it.modelId }.forEach { container.repository.saveModel(ModelRequestPolicy.normalize(provider, it)) }
         _credentialRevision.value++
         notices.emit("Added ${provider.displayName}")
+        if (setupTemporarilyAway.value) returnToSetup()
     }
 
     suspend fun saveDiscoveredModels(providerId: String, discovered: List<app.arbor.chat.provider.DiscoveredModel>) {
@@ -738,9 +994,27 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     }
 
     fun setAmoled(enabled: Boolean) = container.appPreferences.setAmoled(enabled)
-    fun setPalette(value: app.arbor.chat.settings.ColorPalette) = container.appPreferences.setPalette(value)
-    fun setMatchLauncherIconToPalette(enabled: Boolean) = container.appPreferences.setMatchLauncherIconToPalette(enabled)
+
+    fun setPalette(value: app.arbor.chat.settings.ColorPalette) {
+        container.appPreferences.setPalette(value)
+        requestLauncherRestartIfNeeded()
+    }
+
+    fun setMatchLauncherIconToPalette(enabled: Boolean) {
+        container.appPreferences.setMatchLauncherIconToPalette(enabled)
+        requestLauncherRestartIfNeeded()
+    }
+
     fun setThemeMode(value: app.arbor.chat.settings.ThemeMode) = container.appPreferences.setThemeMode(value)
+
+    fun reconcileLauncherIcon() = requestLauncherRestartIfNeeded()
+
+    private fun requestLauncherRestartIfNeeded() {
+        val match = matchLauncherIconToPalette.value
+        val currentPalette = palette.value
+        if (!LauncherIconManager.needsChange(container.application, match, currentPalette)) return
+        launcherRestartRequests.tryEmit(LauncherIconManager.aliasClassName(match, currentPalette))
+    }
     fun setChromeBlurStrength(value: Float) = container.appPreferences.setChromeBlurStrength(value)
     fun setChromeEdgeSoftness(value: Float) = container.appPreferences.setChromeEdgeSoftness(value)
     fun setChromeOverlayOpacity(value: Float) = container.appPreferences.setChromeOverlayOpacity(value)

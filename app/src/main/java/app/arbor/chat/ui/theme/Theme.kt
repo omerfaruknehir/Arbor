@@ -2,8 +2,8 @@ package app.arbor.chat.ui.theme
 
 import android.app.Activity
 import android.content.Context
+import android.content.res.Configuration
 import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
@@ -107,7 +107,7 @@ data class PalettePreviewColors(
     val tertiary: Color,
 )
 
-private fun paletteColorScheme(
+internal fun paletteColorScheme(
     palette: ColorPalette,
     dark: Boolean,
     context: Context,
@@ -122,18 +122,41 @@ private fun paletteColorScheme(
     } else if (dark) ArborDark else ArborLight
 }
 
+
+internal fun resolvedDarkMode(context: Context, themeMode: ThemeMode): Boolean = when (themeMode) {
+    ThemeMode.SYSTEM -> (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+        Configuration.UI_MODE_NIGHT_YES
+    ThemeMode.LIGHT -> false
+    ThemeMode.DARK -> true
+}
+
+internal fun resolvedArborColorScheme(
+    context: Context,
+    palette: ColorPalette,
+    themeMode: ThemeMode,
+    amoled: Boolean,
+): ColorScheme {
+    val dark = resolvedDarkMode(context, themeMode)
+    var colors = paletteColorScheme(palette, dark, context)
+    if (amoled && dark) colors = colors.copy(
+        background = Color.Black,
+        surface = Color.Black,
+        surfaceContainerLowest = Color.Black,
+        surfaceContainerLow = Color(0xFF08090C),
+        surfaceContainer = Color(0xFF0D0F13),
+        surfaceContainerHigh = Color(0xFF15171C),
+        surfaceContainerHighest = Color(0xFF1D2025),
+    )
+    return colors
+}
+
 @Composable
 fun palettePreviewColors(
     palette: ColorPalette,
     themeMode: ThemeMode,
 ): PalettePreviewColors {
     val context = LocalContext.current
-    val dark = when (themeMode) {
-        ThemeMode.SYSTEM -> isSystemInDarkTheme()
-        ThemeMode.LIGHT -> false
-        ThemeMode.DARK -> true
-    }
-    val scheme = paletteColorScheme(palette, dark, context)
+    val scheme = resolvedArborColorScheme(context, palette, themeMode, amoled = false)
     return PalettePreviewColors(
         primary = scheme.primary,
         secondary = scheme.secondary,
@@ -154,21 +177,8 @@ fun ArborTheme(
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
-    val dark = when (themeMode) {
-        ThemeMode.SYSTEM -> isSystemInDarkTheme()
-        ThemeMode.LIGHT -> false
-        ThemeMode.DARK -> true
-    }
-    var colors = paletteColorScheme(palette, dark, context)
-    if (amoled && dark) colors = colors.copy(
-        background = Color.Black,
-        surface = Color.Black,
-        surfaceContainerLowest = Color.Black,
-        surfaceContainerLow = Color(0xFF08090C),
-        surfaceContainer = Color(0xFF0D0F13),
-        surfaceContainerHigh = Color(0xFF15171C),
-        surfaceContainerHighest = Color(0xFF1D2025),
-    )
+    val dark = resolvedDarkMode(context, themeMode)
+    val colors = resolvedArborColorScheme(context, palette, themeMode, amoled)
     val activity = context as? Activity
     activity?.window?.let {
         WindowCompat.getInsetsController(it, it.decorView).isAppearanceLightStatusBars = !dark

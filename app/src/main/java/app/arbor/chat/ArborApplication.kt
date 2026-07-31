@@ -2,7 +2,6 @@ package app.arbor.chat
 
 import android.app.ActivityManager
 import android.app.Application
-import android.content.ComponentCallbacks2
 import android.content.Context
 import android.os.Build
 import android.os.Process
@@ -27,7 +26,8 @@ import app.arbor.chat.sandbox.RunRecordStore
 import app.arbor.chat.security.SecureStore
 import app.arbor.chat.security.CrashReporter
 import app.arbor.chat.settings.AppPreferences
-import app.arbor.chat.settings.LauncherIconManager
+import app.arbor.chat.settings.ComposerDraftStore
+import app.arbor.chat.settings.PersistentUiStateStore
 import app.arbor.chat.generated.GeneratedBlockRepairCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -53,7 +53,6 @@ class ArborApplication : Application() {
             container.database.attachmentDao().clearAssistantImageAnalysis()
             // Builds before 0.11 materialized every tap on New chat. Remove
             // only rows that never acquired a message or attachment.
-            container.database.conversationDao().deleteTrulyEmpty()
             container.database.catalogDao().insertProvidersIfMissing(DefaultCatalog.providers)
             container.database.catalogDao().insertModelsIfMissing(DefaultCatalog.models)
             // 0.19.4 could leave existing official image rows absent or classified as chat.
@@ -78,12 +77,6 @@ class ArborApplication : Application() {
         }
     }
 
-    override fun onTrimMemory(level: Int) {
-        super.onTrimMemory(level)
-        if (!launcherIconProcess && level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
-            LauncherIconManager.flushPending(this)
-        }
-    }
 
     private fun isLauncherIconProcess(): Boolean {
         val processName = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -101,8 +94,10 @@ class ArborApplication : Application() {
     }
 }
 
-class AppContainer(application: Application, val crashReporter: CrashReporter) {
+class AppContainer(val application: Application, val crashReporter: CrashReporter) {
     val appPreferences = AppPreferences(application)
+    val composerDrafts = ComposerDraftStore(application)
+    val persistentUiState = PersistentUiStateStore(application)
     val secureStore = SecureStore(application)
     val database = ArborDatabase.create(application, secureStore.databasePassphrase())
     val repository = ChatRepository(database)

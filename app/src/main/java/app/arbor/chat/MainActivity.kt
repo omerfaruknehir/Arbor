@@ -1,6 +1,9 @@
 package app.arbor.chat
 
+import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Intent
+import android.graphics.drawable.ColorDrawable
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.net.Uri
@@ -11,6 +14,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -28,23 +34,39 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.toArgb
 import app.arbor.chat.ui.ArborApp
 import app.arbor.chat.ui.LocalArborIconPalette
 import app.arbor.chat.ui.ChatViewModel
 import app.arbor.chat.ui.theme.ArborTheme
+import app.arbor.chat.ui.theme.resolvedArborColorScheme
 import app.arbor.chat.settings.ColorPalette
 import app.arbor.chat.settings.LauncherIconManager
+import kotlinx.coroutines.launch
 
 import app.arbor.chat.ui.ArborAlertDialog
 class MainActivity : ComponentActivity() {
+    private var launcherRestartInFlight = false
     private val viewModel: ChatViewModel by viewModels {
         ChatViewModel.factory((application as ArborApplication).container)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val preferences = (application as ArborApplication).container.appPreferences
+        window.setBackgroundDrawable(
+            ColorDrawable(
+                resolvedArborColorScheme(
+                    context = this,
+                    palette = preferences.palette.value,
+                    themeMode = preferences.themeMode.value,
+                    amoled = preferences.amoled.value,
+                ).background.toArgb(),
+            ),
+        )
         enableEdgeToEdge()
         handleIntent(intent)
+        observeLauncherRestarts()
         setContent {
             val amoled by viewModel.amoled.collectAsState()
             val palette by viewModel.palette.collectAsState()
@@ -96,9 +118,43 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        super.onStop()
         if (!isChangingConfigurations) {
-            LauncherIconManager.flushPending(applicationContext)
+            lifecycleScope.launch { viewModel.flushPersistentState() }
+        }
+        super.onStop()
+    }
+
+    private fun observeLauncherRestarts() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.launcherRestartRequests.collect { desiredAlias ->
+                    if (launcherRestartInFlight) return@collect
+                    launcherRestartInFlight = true
+                    viewModel.flushPersistentState()
+                    val relaunch = PendingIntent.getActivity(
+                        this@MainActivity,
+                        20_020,
+                        Intent(Intent.ACTION_MAIN).apply {
+                            component = ComponentName(packageName, desiredAlias)
+                            addCategory(Intent.CATEGORY_LAUNCHER)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                        },
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                    )
+                    if (LauncherIconManager.requestStatefulRestart(
+                            context = applicationContext,
+                            desiredClassName = desiredAlias,
+                            relaunchIntent = relaunch,
+                        )
+                    ) {
+                        finishAffinity()
+                        @Suppress("DEPRECATION")
+                        overridePendingTransition(0, 0)
+                    } else {
+                        launcherRestartInFlight = false
+                    }
+                }
+            }
         }
     }
 

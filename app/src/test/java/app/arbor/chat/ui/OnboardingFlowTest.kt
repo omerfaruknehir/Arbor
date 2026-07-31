@@ -40,7 +40,10 @@ class OnboardingFlowTest {
         assertFalse(source.contains("ColorPalette.SYSTEM -> MaterialTheme.colorScheme.tertiary"))
         assertTrue(source.contains("Open Linux environment manager"))
         assertTrue(source.contains("Exit setup for now"))
-        assertTrue(source.contains("BackHandler(enabled = stepIndex > 0)"))
+        assertTrue(source.contains("HorizontalPager("))
+        assertTrue(source.contains("animateScrollToPage"))
+        assertTrue(source.contains("snapshotFlow { pagerState.settledPage }"))
+        assertTrue(source.contains("BackHandler(enabled = currentPage > 0)"))
     }
 
     @Test
@@ -74,5 +77,18 @@ class OnboardingFlowTest {
         assertFalse(terminal.contains("selectLinuxDistribution"))
         assertFalse(terminal.contains("installUbuntu"))
         assertFalse(terminal.contains("removeUbuntu"))
+    }
+
+
+    @Test
+    fun `provider detours return to the persisted setup step`() {
+        val app = java.io.File("src/main/java/app/arbor/chat/ui/ArborApp.kt").readText()
+        val settings = java.io.File("src/main/java/app/arbor/chat/ui/SettingsScreen.kt").readText()
+        val viewModel = java.io.File("src/main/java/app/arbor/chat/ui/ChatViewModel.kt").readText()
+        assertTrue(app.contains("setupTemporarilyAway"))
+        assertTrue(settings.contains("viewModel.returnToSetup()"))
+        assertTrue(settings.contains("Setup assistant"))
+        assertTrue(viewModel.contains("openProviderSetupFromSetup"))
+        assertTrue(viewModel.contains("setupStepIndex.value = 2"))
     }
 }

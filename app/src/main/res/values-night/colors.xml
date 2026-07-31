@@ -5,4 +5,6 @@
     <color name="widget_text_secondary">#B6BAC5</color>
     <color name="widget_accent">#AFC6FF</color>
     <color name="widget_outline">#3D414B</color>
+    <color name="arbor_splash_fallback">#101411</color>
+    <color name="arbor_splash_system">#101411</color>
 </resources>

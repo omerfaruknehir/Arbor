@@ -57,8 +57,11 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
     val configuredProviders = remember(providers, credentialRevision) {
         viewModel.configuredProviders(providers)
     }
-    var onboardingDismissedForSession by rememberSaveable { mutableStateOf(false) }
     var providerCatalogGraceExpired by rememberSaveable { mutableStateOf(false) }
+    val setupActive by viewModel.setupActive.collectAsState()
+    val setupStepIndex by viewModel.setupStepIndex.collectAsState()
+    val setupTemporarilyAway by viewModel.setupTemporarilyAway.collectAsState()
+    val setupDismissed by viewModel.setupDismissed.collectAsState()
     val performanceMonitor = remember(activity) { ArborPerformanceMonitor(activity) }
     val showPerformanceOverlay = developerSettings.enabled &&
         (developerSettings.performanceOverlayEnabled || developerSettings.diagnosticProfilerEnabled)
@@ -79,13 +82,12 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
         return
     }
     val onboardingCatalogUsable = providerCatalogReady || providerCatalogGraceExpired
-    if (
-        shouldShowProviderOnboarding(
-            catalogReady = onboardingCatalogUsable,
-            hasConfiguredProvider = configuredProviders.isNotEmpty(),
-            dismissedForSession = onboardingDismissedForSession,
-        )
-    ) {
+    LaunchedEffect(onboardingCatalogUsable, configuredProviders.isEmpty(), setupDismissed, setupActive) {
+        if (onboardingCatalogUsable && configuredProviders.isEmpty() && !setupDismissed && !setupActive) {
+            viewModel.startSetup()
+        }
+    }
+    if (onboardingCatalogUsable && setupActive && !setupTemporarilyAway) {
         OnboardingScreen(
             currentThemeMode = themeMode,
             currentPalette = palette,
@@ -93,6 +95,8 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
             amoled = amoled,
             providerCatalogDelayed = !providerCatalogReady,
             pythonEnabled = newChatDefaults.agentPythonEnabled,
+            stepIndex = setupStepIndex,
+            onStepChanged = { viewModel.setupStepIndex.value = it },
             linuxEnabled = newChatDefaults.agentUbuntuEnabled,
             onThemeModeChanged = viewModel::setThemeMode,
             onPaletteChanged = viewModel::setPalette,
@@ -104,15 +108,9 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
             onLinuxEnabledChanged = { enabled ->
                 viewModel.updateNewChatDefaults { it.copy(agentUbuntuEnabled = enabled) }
             },
-            onOpenProviderSetup = {
-                onboardingDismissedForSession = true
-                viewModel.openProviderSetup()
-            },
-            onOpenLinuxSetup = {
-                onboardingDismissedForSession = true
-                viewModel.screen.value = Screen.SANDBOX
-            },
-            onExplore = { onboardingDismissedForSession = true },
+            onOpenProviderSetup = viewModel::openProviderSetupFromSetup,
+            onOpenLinuxSetup = viewModel::openLinuxSetupFromSetup,
+            onExplore = viewModel::finishSetup,
         )
         return
     }
@@ -181,8 +179,11 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
         val content: @Composable () -> Unit = {
             PredictiveNavigationHost(
                 targetState = screen,
-                backTarget = backDestination(screen),
-                onBack = { viewModel.screen.value = it },
+                backTarget = if (setupTemporarilyAway && screen == Screen.SANDBOX) Screen.CHAT else backDestination(screen),
+                onBack = { target ->
+                    if (setupTemporarilyAway && screen == Screen.SANDBOX) viewModel.returnToSetup()
+                    else viewModel.screen.value = target
+                },
                 depth = ::screenDepth,
                 // Once a closing drawer is no longer visible, page Back must immediately
                 // take ownership. Waiting for its spring job to finish creates a gap where
