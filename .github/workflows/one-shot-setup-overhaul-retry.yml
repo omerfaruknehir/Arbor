@@ -62,6 +62,7 @@ jobs:
 
           path = Path('/tmp/fix_0_20_15.py')
           text = path.read_text()
+
           old = """if not changelog.startswith(anchor):
               raise RuntimeError('CHANGELOG.md anchor changed')
           write('CHANGELOG.md', entry + changelog[len(anchor):])"""
@@ -70,7 +71,24 @@ jobs:
           write('CHANGELOG.md', entry + changelog.lstrip('\\n'))"""
           if old not in text:
               raise RuntimeError('Changelog compatibility patch anchor changed')
-          path.write_text(text.replace(old, new, 1))
+          text = text.replace(old, new, 1)
+
+          replacements = {
+              "import androidx.compose.ui.platform.LocalDensity\n":
+                  "import androidx.compose.ui.platform.LocalDensity\nimport androidx.compose.ui.platform.LocalLayoutDirection\n",
+              "    val density = LocalDensity.current\n    val minimumBackEdgePx =":
+                  "    val density = LocalDensity.current\n    val layoutDirection = LocalLayoutDirection.current\n    val minimumBackEdgePx =",
+              "WindowInsets.systemGestures.getLeft(density)":
+                  "WindowInsets.systemGestures.getLeft(density, layoutDirection)",
+              "WindowInsets.systemGestures.getRight(density)":
+                  "WindowInsets.systemGestures.getRight(density, layoutDirection)",
+          }
+          for old_value, new_value in replacements.items():
+              if old_value not in text:
+                  raise RuntimeError(f'Popup layout-direction patch anchor changed: {old_value!r}')
+              text = text.replace(old_value, new_value, 1)
+
+          path.write_text(text)
           PY
           python3 -m py_compile /tmp/fix_0_20_15.py
           python3 /tmp/fix_0_20_15.py
