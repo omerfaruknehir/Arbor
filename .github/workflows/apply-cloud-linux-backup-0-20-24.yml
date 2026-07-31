@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: apply-cloud-linux-backup-0-20-24
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   patch-and-verify:
@@ -39,7 +39,7 @@ jobs:
           cache-read-only: true
 
       - name: Apply source changes
-        run: python scripts/apply_cloud_linux_backup_0_20_24.py
+        run: python scripts/run_cloud_linux_backup_0_20_24.py
 
       - name: Verify patch cleanliness
         run: git diff --check
