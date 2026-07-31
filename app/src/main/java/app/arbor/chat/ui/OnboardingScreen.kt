@@ -31,6 +31,8 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.SettingsBrightness
@@ -40,6 +42,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -62,6 +65,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import app.arbor.chat.sandbox.UbuntuRuntimeStatus
+import app.arbor.chat.sandbox.UbuntuStage
 import app.arbor.chat.settings.ColorPalette
 import app.arbor.chat.settings.ThemeMode
 import app.arbor.chat.ui.theme.palettePreviewColors
@@ -106,8 +111,10 @@ internal fun OnboardingScreen(
     matchLauncherIconToPalette: Boolean,
     amoled: Boolean,
     providerCatalogDelayed: Boolean,
+    configuredProviderCount: Int,
     pythonEnabled: Boolean,
     linuxEnabled: Boolean,
+    linuxStatus: UbuntuRuntimeStatus,
     stepIndex: Int,
     stepOffsetFraction: Float,
     scrollOffsetForStep: (Int) -> Int,
@@ -214,10 +221,14 @@ internal fun OnboardingScreen(
                             onMatchLauncherIconToPaletteChanged = onMatchLauncherIconToPaletteChanged,
                             onAmoledChanged = onAmoledChanged,
                         )
-                        OnboardingStep.PROVIDER -> ProviderStep(providerCatalogDelayed)
+                        OnboardingStep.PROVIDER -> ProviderStep(
+                            providerCatalogDelayed = providerCatalogDelayed,
+                            configuredProviderCount = configuredProviderCount,
+                        )
                         OnboardingStep.TOOLS -> ToolsStep(
                             pythonEnabled = pythonEnabled,
                             linuxEnabled = linuxEnabled,
+                            linuxStatus = linuxStatus,
                             onPythonEnabledChanged = onPythonEnabledChanged,
                             onLinuxEnabledChanged = onLinuxEnabledChanged,
                         )
@@ -225,8 +236,10 @@ internal fun OnboardingScreen(
                             themeMode = currentThemeMode,
                             palette = currentPalette,
                             matchLauncherIconToPalette = matchLauncherIconToPalette,
+                            configuredProviderCount = configuredProviderCount,
                             pythonEnabled = pythonEnabled,
                             linuxEnabled = linuxEnabled,
+                            linuxStatus = linuxStatus,
                         )
                     }
                 }
@@ -236,32 +249,17 @@ internal fun OnboardingScreen(
             when (step) {
                 OnboardingStep.WELCOME -> PrimaryNextButton("Set up Arbor") { moveTo(1) }
                 OnboardingStep.APPEARANCE -> PrimaryNextButton("Continue") { moveTo(2) }
-                OnboardingStep.PROVIDER -> {
-                    Button(
-                        onClick = {
-                            haptics.confirm()
-                            onOpenProviderSetup()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Connect a provider now") }
-                    OutlinedButton(
-                        onClick = {
-                            haptics.selection()
-                            moveTo(3)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Continue and connect later") }
-                }
-                OnboardingStep.TOOLS -> {
-                    PrimaryNextButton("Continue") { moveTo(4) }
-                    OutlinedButton(
-                        onClick = {
-                            haptics.selection()
-                            onOpenLinuxSetup()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Open Linux environment manager") }
-                }
+                OnboardingStep.PROVIDER -> ProviderStepActions(
+                    configuredProviderCount = configuredProviderCount,
+                    onContinue = { moveTo(3) },
+                    onOpenProviderSetup = onOpenProviderSetup,
+                )
+                OnboardingStep.TOOLS -> ToolsStepActions(
+                    linuxEnabled = linuxEnabled,
+                    linuxStatus = linuxStatus,
+                    onContinue = { moveTo(4) },
+                    onOpenLinuxSetup = onOpenLinuxSetup,
+                )
                 OnboardingStep.READY -> {
                     Button(
                         onClick = {
@@ -295,6 +293,90 @@ internal fun OnboardingScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProviderStepActions(
+    configuredProviderCount: Int,
+    onContinue: () -> Unit,
+    onOpenProviderSetup: () -> Unit,
+) {
+    val haptics = rememberArborHaptics()
+    if (configuredProviderCount > 0) {
+        Button(
+            onClick = {
+                haptics.confirm()
+                onContinue()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Continue") }
+        OutlinedButton(
+            onClick = {
+                haptics.selection()
+                onOpenProviderSetup()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Manage providers") }
+    } else {
+        Button(
+            onClick = {
+                haptics.confirm()
+                onOpenProviderSetup()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Connect a provider now") }
+        OutlinedButton(
+            onClick = {
+                haptics.selection()
+                onContinue()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Continue and connect later") }
+    }
+}
+
+@Composable
+private fun ToolsStepActions(
+    linuxEnabled: Boolean,
+    linuxStatus: UbuntuRuntimeStatus,
+    onContinue: () -> Unit,
+    onOpenLinuxSetup: () -> Unit,
+) {
+    val haptics = rememberArborHaptics()
+    val installationRequired = linuxEnabled && !linuxStatus.installed
+    if (installationRequired) {
+        Button(
+            onClick = {
+                haptics.confirm()
+                onOpenLinuxSetup()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(linuxSetupActionLabel(linuxStatus)) }
+        OutlinedButton(
+            onClick = {
+                haptics.selection()
+                onContinue()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Continue without Linux") }
+    } else {
+        PrimaryNextButton("Continue", onContinue)
+        OutlinedButton(
+            onClick = {
+                haptics.selection()
+                onOpenLinuxSetup()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                when {
+                    linuxStatus.installed -> "Manage ${linuxStatus.distribution.displayName}"
+                    linuxStatus.stage.isInstalling -> "View Linux installation progress"
+                    else -> "Choose a Linux distribution"
+                },
             )
         }
     }
@@ -405,7 +487,7 @@ private fun WelcomeStep() {
         Column {
             OnboardingValueRow(Icons.Outlined.Lock, "Private by design", "Chats, credentials, and tool workspaces stay on this device.")
             OnboardingValueRow(Icons.Outlined.Cloud, "Bring your own models", "Use a ChatGPT account, API provider, or local server.")
-            OnboardingValueRow(Icons.Outlined.Code, "Local tools are optional", "Bundled Python works immediately; Linux is installed only when requested.")
+            OnboardingValueRow(Icons.Outlined.Code, "Local tools are optional", "Bundled Python works immediately; Linux requires a separate distribution install.")
         }
     }
 }
@@ -486,7 +568,7 @@ private fun AppearanceStep(
         }
     }
     Text(
-        "Changing the launcher icon briefly restarts Arbor after saving this setup page, every chat draft and file, and the current scroll position. Android themed icons can still override app-selected colors.",
+        "The Android dynamic icon uses the real system accent palette and remains multicolored. Changing launcher aliases briefly restarts Arbor after saving the current page, drafts, files, and scroll position.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth(),
@@ -578,11 +660,41 @@ private fun PaletteChoice(
 }
 
 @Composable
-private fun ProviderStep(providerCatalogDelayed: Boolean) {
+private fun ProviderStep(
+    providerCatalogDelayed: Boolean,
+    configuredProviderCount: Int,
+) {
     SetupHeading(
-        "Connect a model",
-        "A provider is required only when you send a message. You can enter Arbor first and connect one later.",
+        if (configuredProviderCount > 0) "Model access connected" else "Connect a model",
+        if (configuredProviderCount > 0) {
+            "Arbor detected ${providerCountLabel(configuredProviderCount)}. Continue setup or open the provider manager to make changes."
+        } else {
+            "A provider is required only when you send a message. You can enter Arbor first and connect one later."
+        },
     )
+    if (configuredProviderCount > 0) {
+        Surface(
+            color = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            shape = MaterialTheme.shapes.extraLarge,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(Icons.Outlined.CheckCircle, null, Modifier.size(28.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("${providerCountLabel(configuredProviderCount)} ready", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Credentials were found and this step is complete.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+    }
     if (providerCatalogDelayed) {
         Surface(
             color = MaterialTheme.colorScheme.tertiaryContainer,
@@ -626,10 +738,14 @@ private fun ProviderStep(providerCatalogDelayed: Boolean) {
 private fun ToolsStep(
     pythonEnabled: Boolean,
     linuxEnabled: Boolean,
+    linuxStatus: UbuntuRuntimeStatus,
     onPythonEnabledChanged: (Boolean) -> Unit,
     onLinuxEnabledChanged: (Boolean) -> Unit,
 ) {
-    SetupHeading("Local tools", "Choose the defaults for new chats. Existing chats keep their own tool settings.")
+    SetupHeading(
+        "Local tools",
+        "Choose defaults for new chats. Installing Linux is a separate step; this switch does not download a distribution.",
+    )
     SetupToggleCard(
         icon = Icons.Outlined.Code,
         title = "Local Python",
@@ -639,11 +755,16 @@ private fun ToolsStep(
     )
     SetupToggleCard(
         icon = Icons.Outlined.Storage,
-        title = "Linux tooling",
-        subtitle = "Optional rootless distribution for CLIs and native packages. The filesystem downloads only when you install it.",
+        title = "Enable Linux for new chats",
+        subtitle = when {
+            linuxStatus.installed -> "${linuxStatus.distribution.displayName} ${linuxStatus.release} is installed and ready."
+            linuxEnabled -> "Enabled as a default, but a distribution still needs to be chosen and installed."
+            else -> "Optional. Choose Ubuntu, Debian, or Alpine and install it before Linux tools can run."
+        },
         checked = linuxEnabled,
         onCheckedChange = onLinuxEnabledChanged,
     )
+    LinuxInstallationStatusCard(linuxStatus)
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = MaterialTheme.shapes.extraLarge,
@@ -651,10 +772,72 @@ private fun ToolsStep(
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("How Linux setup works", fontWeight = FontWeight.SemiBold)
-            Text("1. Choose a distribution and review its download.", style = MaterialTheme.typography.bodySmall)
-            Text("2. Arbor verifies and extracts it into app-private storage.", style = MaterialTheme.typography.bodySmall)
-            Text("3. Packages and terminal access are managed from one workspace screen.", style = MaterialTheme.typography.bodySmall)
+            Text("1. Open the Linux manager and choose Ubuntu, Debian, or Alpine.", style = MaterialTheme.typography.bodySmall)
+            Text("2. Review the download, then explicitly start installation.", style = MaterialTheme.typography.bodySmall)
+            Text("3. Arbor verifies and extracts it into app-private storage.", style = MaterialTheme.typography.bodySmall)
+            Text("4. Packages and terminal access are managed from the same workspace screen.", style = MaterialTheme.typography.bodySmall)
             Text("Chat files remain in /workspace even if the Linux distribution is removed.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun LinuxInstallationStatusCard(status: UbuntuRuntimeStatus) {
+    val installed = status.installed
+    val installing = status.stage.isInstalling
+    val failed = status.stage == UbuntuStage.ERROR || status.stage == UbuntuStage.UNSUPPORTED
+    val containerColor = when {
+        installed -> MaterialTheme.colorScheme.primaryContainer
+        failed -> MaterialTheme.colorScheme.errorContainer
+        installing -> MaterialTheme.colorScheme.tertiaryContainer
+        else -> MaterialTheme.colorScheme.surfaceContainer
+    }
+    val contentColor = when {
+        installed -> MaterialTheme.colorScheme.onPrimaryContainer
+        failed -> MaterialTheme.colorScheme.onErrorContainer
+        installing -> MaterialTheme.colorScheme.onTertiaryContainer
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    Surface(
+        color = containerColor,
+        contentColor = contentColor,
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(
+                    when {
+                        installed -> Icons.Outlined.CheckCircle
+                        failed -> Icons.Outlined.ErrorOutline
+                        installing -> Icons.Outlined.Download
+                        else -> Icons.Outlined.Storage
+                    },
+                    null,
+                    Modifier.size(28.dp),
+                )
+                Column(Modifier.weight(1f)) {
+                    Text(linuxStatusTitle(status), fontWeight = FontWeight.SemiBold)
+                    Text(linuxStatusDetail(status), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            if (installing) {
+                val progress = status.progress
+                if (progress != null) {
+                    LinearProgressIndicator(
+                        progress = { progress.coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+            }
         }
     }
 }
@@ -693,10 +876,15 @@ private fun ReadyStep(
     themeMode: ThemeMode,
     palette: ColorPalette,
     matchLauncherIconToPalette: Boolean,
+    configuredProviderCount: Int,
     pythonEnabled: Boolean,
     linuxEnabled: Boolean,
+    linuxStatus: UbuntuRuntimeStatus,
 ) {
-    SetupHeading("Arbor is ready", "You can enter the app now. Missing optional pieces are shown as actionable warnings instead of blocking screens.")
+    SetupHeading(
+        "Arbor is ready",
+        "Review the actual setup state below. Optional missing pieces remain actionable instead of blocking entry.",
+    )
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = MaterialTheme.shapes.extraLarge,
@@ -705,12 +893,21 @@ private fun ReadyStep(
         Column {
             OnboardingValueRow(Icons.Outlined.CheckCircle, "Appearance", "${themeMode.setupName} · ${palette.setupName}${if (themeMode != ThemeMode.LIGHT) " · dark surfaces available" else ""}")
             OnboardingValueRow(Icons.Outlined.CheckCircle, "Launcher icon", if (matchLauncherIconToPalette) "Matches ${palette.setupName}" else "Classic Arbor green")
+            OnboardingValueRow(
+                if (configuredProviderCount > 0) Icons.Outlined.CheckCircle else Icons.Outlined.Cloud,
+                "Model provider",
+                if (configuredProviderCount > 0) "${providerCountLabel(configuredProviderCount)} connected" else "Not connected yet",
+            )
             OnboardingValueRow(Icons.Outlined.CheckCircle, "Local Python", if (pythonEnabled) "Enabled for new chats" else "Off by default")
-            OnboardingValueRow(Icons.Outlined.CheckCircle, "Linux tools", if (linuxEnabled) "Enabled when a distribution is installed" else "Optional and off by default")
+            OnboardingValueRow(
+                if (linuxStatus.installed) Icons.Outlined.CheckCircle else Icons.Outlined.Storage,
+                "Linux tools",
+                linuxReadySummary(linuxEnabled, linuxStatus),
+            )
         }
     }
     Text(
-        "Provider and Linux setup buttons remain available below. Neither is required to inspect Arbor or change settings.",
+        "Provider and Linux manager buttons remain available below. Neither is required to inspect Arbor or change settings.",
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
     )
@@ -745,6 +942,45 @@ private fun OnboardingValueRow(icon: ImageVector, title: String, subtitle: Strin
         },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     )
+}
+
+private fun providerCountLabel(count: Int): String =
+    if (count == 1) "1 configured provider" else "$count configured providers"
+
+private val UbuntuStage.isInstalling: Boolean
+    get() = this == UbuntuStage.DOWNLOADING ||
+        this == UbuntuStage.VERIFYING ||
+        this == UbuntuStage.EXTRACTING ||
+        this == UbuntuStage.CONFIGURING
+
+private fun linuxSetupActionLabel(status: UbuntuRuntimeStatus): String = when {
+    status.stage.isInstalling -> "View Linux installation progress"
+    status.stage == UbuntuStage.ERROR -> "Fix Linux installation"
+    status.stage == UbuntuStage.UNSUPPORTED -> "Review Linux compatibility"
+    else -> "Choose and install a distribution"
+}
+
+private fun linuxStatusTitle(status: UbuntuRuntimeStatus): String = when {
+    status.installed -> "${status.distribution.displayName} ${status.release} installed"
+    status.stage.isInstalling -> "Installing ${status.distribution.displayName}"
+    status.stage == UbuntuStage.ERROR -> "Linux installation failed"
+    status.stage == UbuntuStage.UNSUPPORTED -> "Linux is not supported on this device"
+    else -> "No Linux distribution installed"
+}
+
+private fun linuxStatusDetail(status: UbuntuRuntimeStatus): String = when {
+    status.installed -> status.detail.ifBlank { "The distribution is ready for terminals, packages, and native tools." }
+    status.stage.isInstalling -> status.detail.ifBlank { "Keep the Linux manager open to review progress." }
+    status.stage == UbuntuStage.ERROR -> status.detail.ifBlank { "Open the Linux manager to retry or choose another distribution." }
+    status.stage == UbuntuStage.UNSUPPORTED -> status.detail.ifBlank { "Open the Linux manager for architecture details." }
+    else -> "Choose Ubuntu, Debian, or Alpine, review the download, and explicitly install it."
+}
+
+private fun linuxReadySummary(enabled: Boolean, status: UbuntuRuntimeStatus): String = when {
+    status.installed && enabled -> "${status.distribution.displayName} ${status.release} installed · enabled for new chats"
+    status.installed -> "${status.distribution.displayName} ${status.release} installed · off by default"
+    enabled -> "Enabled for new chats, but no distribution is installed"
+    else -> "Not installed · optional and off by default"
 }
 
 private val ThemeMode.setupName: String

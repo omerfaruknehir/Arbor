@@ -100,10 +100,16 @@ class LauncherIconManagerTest {
     fun `dynamic launcher artwork uses actual Android system palette resources`() {
         val background = File("src/main/res/drawable-v31/ic_arbor_background_system.xml").readText()
         val foreground = File("src/main/res/drawable-v31/ic_arbor_foreground_system.xml").readText()
+        val inAppMark = File("src/main/res/drawable-v31/ic_arbor_mark_system.xml").readText()
         assertTrue(background.contains("@android:color/system_accent1_800"))
         assertTrue(background.contains("@android:color/system_accent2_700"))
         assertTrue(foreground.contains("@android:color/system_accent1_200"))
         assertTrue(foreground.contains("@android:color/system_accent3_200"))
+        assertTrue(inAppMark.contains("@android:color/system_accent1_800"))
+        assertTrue(inAppMark.contains("@android:color/system_accent3_200"))
+
+        val adaptiveIcon = File("src/main/res/mipmap-anydpi/ic_launcher_system.xml").readText()
+        assertFalse(adaptiveIcon.contains("<monochrome"))
         val splash = File("src/main/res/values-v31/styles.xml").readText()
         assertTrue(splash.contains("Theme.Arbor.Launcher.System"))
         assertTrue(splash.contains("@mipmap/ic_launcher_system"))
