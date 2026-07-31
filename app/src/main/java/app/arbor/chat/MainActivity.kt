@@ -42,6 +42,10 @@ import app.arbor.chat.ui.theme.ArborTheme
 import app.arbor.chat.ui.theme.resolvedArborColorScheme
 import app.arbor.chat.settings.ColorPalette
 import app.arbor.chat.settings.LauncherIconManager
+import app.arbor.chat.transfer.ARBOR_BACKUP_EXTENSION
+import app.arbor.chat.transfer.ARBOR_BACKUP_MIME
+import app.arbor.chat.transfer.ARBOR_CHAT_EXTENSION
+import app.arbor.chat.transfer.ARBOR_CHAT_MIME
 import kotlinx.coroutines.launch
 
 import app.arbor.chat.ui.ArborAlertDialog
@@ -165,12 +169,28 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent) {
+        if (intent.action == Intent.ACTION_VIEW) {
+            intent.data?.let {
+                viewModel.receivePortableArchive(it)
+                return
+            }
+        }
         val uris: List<Uri> = when (intent.action) {
             Intent.ACTION_SEND -> listOfNotNull(intent.parcelableExtra<Uri>(Intent.EXTRA_STREAM))
             Intent.ACTION_SEND_MULTIPLE -> intent.parcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
             else -> emptyList()
         }
+        if (uris.size == 1 && isPortableArchiveIntent(intent, uris.single())) {
+            viewModel.receivePortableArchive(uris.single())
+            return
+        }
         viewModel.receiveIntent(intent.getStringExtra(EXTRA_CONVERSATION_ID), uris)
+    }
+
+    private fun isPortableArchiveIntent(intent: Intent, uri: Uri): Boolean {
+        if (intent.type == ARBOR_CHAT_MIME || intent.type == ARBOR_BACKUP_MIME) return true
+        val name = uri.lastPathSegment?.lowercase().orEmpty()
+        return name.endsWith(ARBOR_CHAT_EXTENSION) || name.endsWith(ARBOR_BACKUP_EXTENSION)
     }
 
     @Suppress("DEPRECATION")

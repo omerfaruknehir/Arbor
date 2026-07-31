@@ -28,6 +28,7 @@ import app.arbor.chat.security.CrashReporter
 import app.arbor.chat.settings.AppPreferences
 import app.arbor.chat.settings.ComposerDraftStore
 import app.arbor.chat.settings.PersistentUiStateStore
+import app.arbor.chat.transfer.ArborArchiveManager
 import app.arbor.chat.generated.GeneratedBlockRepairCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -107,6 +108,7 @@ class AppContainer(val application: Application, val crashReporter: CrashReporte
     val tokenCounter = HybridTokenCounter()
     val auxiliaryModels = AuxiliaryModelService(repository, providers, secureStore)
     val attachmentStore = AttachmentStore(application, database.attachmentDao())
+    val archiveManager = ArborArchiveManager(application, database)
     val ocrEngine = OcrEngine(application, database.attachmentDao())
     val pythonSandbox = PythonSandbox(application)
     val ubuntuRuntime = UbuntuRuntime(application, pythonSandbox)

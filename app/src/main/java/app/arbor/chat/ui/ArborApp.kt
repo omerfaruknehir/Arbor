@@ -64,6 +64,8 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
     val setupPageOffsetFraction by viewModel.setupPageOffsetFraction.collectAsState()
     val setupTemporarilyAway by viewModel.setupTemporarilyAway.collectAsState()
     val setupDismissed by viewModel.setupDismissed.collectAsState()
+    val shareConversationId by viewModel.shareConversationId.collectAsState()
+    val incomingArchive by viewModel.incomingArchive.collectAsState()
     val performanceMonitor = remember(activity) { ArborPerformanceMonitor(activity) }
     val showPerformanceOverlay = developerSettings.enabled &&
         (developerSettings.performanceOverlayEnabled || developerSettings.diagnosticProfilerEnabled)
@@ -219,6 +221,7 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
                     onArchive = viewModel::archiveConversation,
                     onPin = viewModel::pinConversation,
                     onMove = viewModel::moveConversation,
+                    onShare = viewModel::requestShareConversation,
                     onDelete = viewModel::deleteConversation,
                     onCreateProject = viewModel::createProject,
                     onRenameProject = viewModel::renameProject,
@@ -251,6 +254,7 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
                             onArchive = viewModel::archiveConversation,
                             onPin = viewModel::pinConversation,
                             onMove = viewModel::moveConversation,
+                            onShare = viewModel::requestShareConversation,
                             onDelete = viewModel::deleteConversation,
                             onCreateProject = viewModel::createProject,
                             onRenameProject = viewModel::renameProject,
@@ -279,6 +283,14 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
                     ),
             )
         }
+        shareConversationId?.let { conversationId ->
+            ChatShareDialog(
+                viewModel = viewModel,
+                conversationId = conversationId,
+                onDismiss = viewModel::dismissShareConversation,
+            )
+        }
+        incomingArchive?.let { state -> IncomingArchiveDialog(viewModel, state) }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
 }

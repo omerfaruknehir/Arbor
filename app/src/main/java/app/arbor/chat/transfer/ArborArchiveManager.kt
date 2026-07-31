@@ -22,8 +22,8 @@ import kotlinx.serialization.json.Json
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
-import java.io.CipherInputStream
-import java.io.CipherOutputStream
+import javax.crypto.CipherInputStream
+import javax.crypto.CipherOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -43,6 +43,11 @@ const val ARBOR_CHAT_MIME = "application/vnd.arbor.chat"
 const val ARBOR_BACKUP_MIME = "application/vnd.arbor.backup"
 const val ARBOR_CHAT_EXTENSION = ".arborchat"
 const val ARBOR_BACKUP_EXTENSION = ".arborbackup"
+
+
+private const val ENVELOPE_SCHEMA = "arbor-archive-envelope-v1"
+private const val MANIFEST_SCHEMA = "arbor-portable-archive-v1"
+private const val PBKDF_ITERATIONS = 240_000
 
 @Serializable
 enum class ArchiveKind { CHAT, BACKUP }
@@ -560,7 +565,7 @@ class ArborArchiveManager(
 
     private fun readManifest(file: File): ArchiveManifest = ZipFile(file).use { zip ->
         val entry = requireNotNull(zip.getEntry(MANIFEST_ENTRY)) { "Archive manifest is missing" }
-        require(!entry.isDirectory && entry.size in 1..MAX_MANIFEST_BYTES) { "Archive manifest is invalid" }
+        require(!entry.isDirectory && entry.size in 1L..MAX_MANIFEST_BYTES) { "Archive manifest is invalid" }
         val bytes = zip.getInputStream(entry).use { input -> readBytesWithLimit(input, MAX_MANIFEST_BYTES) }
         json.decodeFromString<ArchiveManifest>(bytes.toString(Charsets.UTF_8)).also {
             require(it.schema == MANIFEST_SCHEMA) { "Unsupported Arbor archive version" }
@@ -635,10 +640,7 @@ class ArborArchiveManager(
     private fun decodeBase64(value: String): ByteArray = Base64.decode(value, Base64.NO_WRAP)
 
     private companion object {
-        const val ENVELOPE_SCHEMA = "arbor-archive-envelope-v1"
-        const val MANIFEST_SCHEMA = "arbor-portable-archive-v1"
         const val MANIFEST_ENTRY = "manifest.json"
-        const val PBKDF_ITERATIONS = 240_000
         const val SALT_BYTES = 16
         const val GCM_IV_BYTES = 12
         const val MAX_HEADER_BYTES = 16 * 1024

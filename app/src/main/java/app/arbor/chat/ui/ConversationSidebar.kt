@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
@@ -80,6 +81,7 @@ fun ConversationSidebar(
     onArchive: (String, Boolean) -> Unit,
     onPin: (String, Boolean) -> Unit,
     onMove: (String, String?) -> Unit,
+    onShare: (String) -> Unit,
     onDelete: (String) -> Unit,
     onCreateProject: (String, String?) -> Unit,
     onRenameProject: (String, String) -> Unit,
@@ -231,6 +233,7 @@ fun ConversationSidebar(
                 onPin(conversation.id, !conversation.pinned); actionTarget = null
             }
             SheetAction(Icons.AutoMirrored.Filled.DriveFileMove, "Move to project") { movingTarget = item; actionTarget = null }
+            SheetAction(Icons.Outlined.Share, "Share portable chat") { onShare(conversation.id); actionTarget = null }
             SheetAction(if (conversation.archived) Icons.Filled.Unarchive else Icons.Filled.Archive, if (conversation.archived) "Unarchive" else "Archive") {
                 onArchive(conversation.id, !conversation.archived); actionTarget = null
             }
