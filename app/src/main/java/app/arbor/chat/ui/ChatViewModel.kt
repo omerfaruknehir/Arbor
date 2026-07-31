@@ -151,6 +151,10 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     private val focusedMessageIndex = savedStateHandle.getMutableStateFlow<Int?>("focused_message_index", null)
     val setupActive = savedStateHandle.getMutableStateFlow("setup_active", restoredUiState.setupActive)
     val setupStepIndex = savedStateHandle.getMutableStateFlow("setup_step", restoredUiState.setupStepIndex)
+    val setupPageOffsetFraction = savedStateHandle.getMutableStateFlow(
+        "setup_page_offset_fraction",
+        restoredUiState.setupPageOffsetFraction,
+    )
     val setupTemporarilyAway = savedStateHandle.getMutableStateFlow(
         "setup_temporarily_away",
         restoredUiState.setupTemporarilyAway,
@@ -165,6 +169,11 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     private val latestSettingsScrollOffsets = mutableMapOf<SettingsRoute, Int>()
     private val settingsScrollUpdates = MutableSharedFlow<Pair<SettingsRoute, Int>>(
         extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    private val latestSetupScrollOffsets = mutableMapOf<Int, Int>()
+    private val setupScrollUpdates = MutableSharedFlow<Pair<Int, Int>>(
+        extraBufferCapacity = 8,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
     val amoled: StateFlow<Boolean> = container.appPreferences.amoled
@@ -219,6 +228,13 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
                 }
         }
         viewModelScope.launch {
+            setupScrollUpdates
+                .debounce(120)
+                .collect { (stepIndex, offset) ->
+                    container.persistentUiState.saveSetupScroll(stepIndex, offset)
+                }
+        }
+        viewModelScope.launch {
             merge(
                 selectedConversationId.map { Unit },
                 newDraftConversationId.map { Unit },
@@ -230,6 +246,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
                 focusedMessageNodeId.map { Unit },
                 setupActive.map { Unit },
                 setupStepIndex.map { Unit },
+                setupPageOffsetFraction.map { Unit },
                 setupTemporarilyAway.map { Unit },
                 setupDismissed.map { Unit },
             )
@@ -255,6 +272,11 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         synchronized(latestSettingsScrollOffsets) {
             latestSettingsScrollOffsets.forEach { (route, offset) ->
                 container.persistentUiState.saveSettingsScroll(route, offset, immediate = true)
+            }
+        }
+        synchronized(latestSetupScrollOffsets) {
+            latestSetupScrollOffsets.forEach { (stepIndex, offset) ->
+                container.persistentUiState.saveSetupScroll(stepIndex, offset, immediate = true)
             }
         }
     }
@@ -296,6 +318,25 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         settingsScrollUpdates.tryEmit(route to normalized)
     }
 
+    fun setupScrollOffset(stepIndex: Int): Int =
+        synchronized(latestSetupScrollOffsets) {
+            latestSetupScrollOffsets[stepIndex]
+        } ?: container.persistentUiState.setupScroll(stepIndex)
+
+    fun saveSetupScrollOffset(stepIndex: Int, offset: Int) {
+        val normalizedStep = stepIndex.coerceIn(0, 4)
+        val normalizedOffset = offset.coerceAtLeast(0)
+        synchronized(latestSetupScrollOffsets) {
+            latestSetupScrollOffsets[normalizedStep] = normalizedOffset
+        }
+        setupScrollUpdates.tryEmit(normalizedStep to normalizedOffset)
+    }
+
+    fun updateSetupPagerPosition(stepIndex: Int, offsetFraction: Float) {
+        setupStepIndex.value = stepIndex.coerceIn(0, 4)
+        setupPageOffsetFraction.value = offsetFraction.coerceIn(-0.499f, 0.499f)
+    }
+
     private suspend fun persistCurrentDraft() {
         val conversationId = activeDraftConversationId.value ?: return
         withContext(Dispatchers.IO) {
@@ -321,6 +362,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
             focusedMessageNodeId = focusedMessageNodeId.value,
             setupActive = setupActive.value,
             setupStepIndex = setupStepIndex.value,
+            setupPageOffsetFraction = setupPageOffsetFraction.value,
             setupTemporarilyAway = setupTemporarilyAway.value,
             setupDismissed = setupDismissed.value,
         )
@@ -328,6 +370,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
 
     fun startSetup(stepIndex: Int = 0) {
         setupStepIndex.value = stepIndex.coerceIn(0, 4)
+        setupPageOffsetFraction.value = 0f
         setupActive.value = true
         setupDismissed.value = false
         setupTemporarilyAway.value = false
@@ -337,6 +380,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
 
     fun finishSetup() {
         setupActive.value = false
+        setupPageOffsetFraction.value = 0f
         setupDismissed.value = true
         setupTemporarilyAway.value = false
         screen.value = Screen.CHAT
@@ -345,6 +389,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     fun openProviderSetupFromSetup() {
         setupActive.value = true
         setupStepIndex.value = 2
+        setupPageOffsetFraction.value = 0f
         setupTemporarilyAway.value = true
         settingsRoute.value = SettingsRoute.PROVIDERS
         providerSetupRequested.value = true
@@ -354,6 +399,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     fun openLinuxSetupFromSetup() {
         setupActive.value = true
         setupStepIndex.value = 3
+        setupPageOffsetFraction.value = 0f
         setupTemporarilyAway.value = true
         screen.value = Screen.SANDBOX
     }

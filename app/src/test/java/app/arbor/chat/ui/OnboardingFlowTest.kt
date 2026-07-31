@@ -1,6 +1,7 @@
 package app.arbor.chat.ui
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -42,8 +43,20 @@ class OnboardingFlowTest {
         assertTrue(source.contains("Exit setup for now"))
         assertTrue(source.contains("HorizontalPager("))
         assertTrue(source.contains("animateScrollToPage"))
-        assertTrue(source.contains("snapshotFlow { pagerState.settledPage }"))
+        assertTrue(source.contains("pagerState.currentPage to pagerState.currentPageOffsetFraction"))
+        assertTrue(source.contains("scrollToPage(initialPage, initialOffset)"))
+        assertTrue(source.contains("verticalScroll(pageScrollStates[page])"))
+        assertTrue(source.contains("setupProgressForSegment(pagePosition, index)"))
         assertTrue(source.contains("BackHandler(enabled = currentPage > 0)"))
+    }
+
+    @Test
+    fun `setup progress maps continuously across swipes and animations`() {
+        assertEquals(1f, setupProgressForSegment(0f, 0), 0f)
+        assertEquals(0f, setupProgressForSegment(0f, 1), 0f)
+        assertEquals(0.35f, setupProgressForSegment(0.35f, 1), 0.0001f)
+        assertEquals(1f, setupProgressForSegment(1f, 1), 0f)
+        assertEquals(0.5f, setupProgressForSegment(1.5f, 2), 0.0001f)
     }
 
     @Test
@@ -87,7 +100,7 @@ class OnboardingFlowTest {
         val viewModel = java.io.File("src/main/java/app/arbor/chat/ui/ChatViewModel.kt").readText()
         assertTrue(app.contains("setupTemporarilyAway"))
         assertTrue(settings.contains("viewModel.returnToSetup()"))
-        assertTrue(settings.contains("Setup assistant"))
+        assertFalse(settings.contains("Setup assistant"))
         assertTrue(viewModel.contains("openProviderSetupFromSetup"))
         assertTrue(viewModel.contains("setupStepIndex.value = 2"))
     }
