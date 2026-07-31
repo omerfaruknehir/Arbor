@@ -3,15 +3,17 @@ package app.arbor.chat.settings
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 
 /**
  * Switches between manifest-declared launcher aliases without restarting Arbor.
  *
- * Android does not allow an arbitrary launcher drawable to be replaced at runtime,
- * so every supported palette has a polished adaptive-icon alias. The desired alias
- * is enabled before the previous one is disabled, preventing a no-icon window while
- * launchers refresh their cache.
+ * Launcher aliases target a zero-UI trampoline instead of MainActivity, so the
+ * foreground task is never rooted at a component being disabled. Android 13+
+ * receives one atomic component-state transaction; older versions retain the
+ * same enable-first ordering and DONT_KILL_APP behavior.
  */
 internal object LauncherIconManager {
     private const val TAG = "ArborLauncherIcon"
@@ -49,27 +51,69 @@ internal object LauncherIconManager {
         val packageManager = appContext.packageManager
         val desiredClassName = aliasClassName(matchPalette, palette)
         return runCatching {
-            // Enable first so launchers never observe Arbor with no launcher component.
-            setEnabled(
-                packageManager = packageManager,
-                component = ComponentName(appContext.packageName, desiredClassName),
-                enabled = true,
-                manifestDefault = desiredClassName == ARBOR_ALIAS,
-            )
-            allAliases.asSequence()
-                .filterNot { it == desiredClassName }
-                .forEach { className ->
-                    setEnabled(
-                        packageManager = packageManager,
-                        component = ComponentName(appContext.packageName, className),
-                        enabled = false,
-                        manifestDefault = className == ARBOR_ALIAS,
-                    )
-                }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                applyAtomically(packageManager, appContext.packageName, desiredClassName)
+            } else {
+                applyEnableFirst(packageManager, appContext.packageName, desiredClassName)
+            }
             true
         }.onFailure { error ->
             Log.w(TAG, "Could not update launcher icon alias", error)
         }.getOrDefault(false)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private fun applyAtomically(
+        packageManager: PackageManager,
+        packageName: String,
+        desiredClassName: String,
+    ) {
+        val changes = allAliases.mapNotNull { className ->
+            val component = ComponentName(packageName, className)
+            val enabled = className == desiredClassName
+            val manifestDefault = className == ARBOR_ALIAS
+            if (isEnabled(packageManager, component, manifestDefault) == enabled) return@mapNotNull null
+            PackageManager.ComponentEnabledSetting(
+                component,
+                if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP,
+            )
+        }
+        if (changes.isNotEmpty()) packageManager.setComponentEnabledSettings(changes)
+    }
+
+    private fun applyEnableFirst(
+        packageManager: PackageManager,
+        packageName: String,
+        desiredClassName: String,
+    ) {
+        setEnabled(
+            packageManager = packageManager,
+            component = ComponentName(packageName, desiredClassName),
+            enabled = true,
+            manifestDefault = desiredClassName == ARBOR_ALIAS,
+        )
+        allAliases.asSequence()
+            .filterNot { it == desiredClassName }
+            .forEach { className ->
+                setEnabled(
+                    packageManager = packageManager,
+                    component = ComponentName(packageName, className),
+                    enabled = false,
+                    manifestDefault = className == ARBOR_ALIAS,
+                )
+            }
+    }
+
+    private fun isEnabled(
+        packageManager: PackageManager,
+        component: ComponentName,
+        manifestDefault: Boolean,
+    ): Boolean = when (packageManager.getComponentEnabledSetting(component)) {
+        PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
+        PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> manifestDefault
+        else -> false
     }
 
     private fun setEnabled(
@@ -78,12 +122,7 @@ internal object LauncherIconManager {
         enabled: Boolean,
         manifestDefault: Boolean,
     ) {
-        val current = when (packageManager.getComponentEnabledSetting(component)) {
-            PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
-            PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> manifestDefault
-            else -> false
-        }
-        if (current == enabled) return
+        if (isEnabled(packageManager, component, manifestDefault) == enabled) return
         packageManager.setComponentEnabledSetting(
             component,
             if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED

@@ -1,9 +1,16 @@
 # Changelog
 
+## 0.20.17 — 2026-07-31
+
+- Route launcher aliases through a transparent trampoline so changing the icon cannot close the active MainActivity task.
+- Reuse the existing single-task app screen when any launcher alias is tapped and apply alias changes atomically on Android 13+.
+- Render the onboarding and drawer Arbor marks from the active Material color scheme, including wallpaper-derived Dynamic Color.
+- Add regression coverage for alias task isolation, no-kill flags, atomic switching, and removal of static in-app green marks.
+
 ## 0.20.16 — 2026-07-31
 
 - Add an opt-in launcher-icon setting that follows Arbor, Dynamic, Graphite, Ocean, Violet, or Sunset while retaining the classic Arbor icon when disabled.
-- Add polished adaptive icons and safe activity-alias switching without killing the running app.
+- Add polished adaptive icons and activity-alias switching with Android's `DONT_KILL_APP` flag.
 - Fix Dynamic palette previews borrowing colors from the currently selected scheme; previews now use the device's actual wallpaper-derived Material palette.
 - Replace single-color preview dots with accurate three-color swatches in onboarding and Appearance.
 - Add launcher alias, manifest, setup, and preview regression coverage.
