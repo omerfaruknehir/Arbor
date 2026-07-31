@@ -53,3 +53,11 @@ settings_text = settings_text.replace(
     "            value.automation?.let { restoreAutomation(it) }\n",
 )
 settings_store.write_text(settings_text)
+
+transfer_ui = Path("app/src/main/java/app/arbor/chat/ui/TransferUi.kt")
+transfer_text = transfer_ui.read_text()
+transfer_text = transfer_text.replace(
+    "Import creates separate local chat copies. It never replaces an existing chat and does not import API keys or OAuth sessions.",
+    "Import creates separate local copies. It never replaces an existing chat and does not import API keys or OAuth sessions.",
+)
+transfer_ui.write_text(transfer_text)
