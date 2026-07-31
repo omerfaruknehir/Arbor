@@ -38,6 +38,7 @@ jobs:
         run: |
           python "$RUNNER_TEMP/apply_icon_theme.py"
           python -c 'from pathlib import Path; p=Path("app/src/main/java/app/arbor/chat/ui/OnboardingScreen.kt"); s=p.read_text(); marker="import androidx.compose.ui.graphics.Color\n"; anchor="import androidx.compose.ui.Alignment\n"; p.write_text(s if marker in s else s.replace(anchor, anchor + marker, 1))'
+          cp .github/tmp/icon-theme/LauncherIconManagerTest.kt.txt app/src/test/java/app/arbor/chat/settings/LauncherIconManagerTest.kt
           rm -rf .github/tmp/icon-theme
           rm -f .github/workflows/apply-icon-theme-branch.yml
           rm -f .github/workflows/apply-icon-theme-0-20-16.yml
