@@ -45,3 +45,11 @@ if patched in text:
     application.write_text(text.replace(patched, final, 1))
 elif final not in text:
     raise RuntimeError("Patched AppContainer transfer-service layout was not recognized")
+
+settings_store = Path("app/src/main/java/app/arbor/chat/transfer/AppSettingsArchiveStore.kt")
+settings_text = settings_store.read_text()
+settings_text = settings_text.replace(
+    "            value.automation?.let(::restoreAutomation)\n",
+    "            value.automation?.let { restoreAutomation(it) }\n",
+)
+settings_store.write_text(settings_text)
