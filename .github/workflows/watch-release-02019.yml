@@ -1,0 +1,54 @@
+name: Watch Arbor 0.20.19 release
+
+on:
+  push:
+    branches:
+      - agent/release-status-0.20.19
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  watch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for merged-main release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: 8ba59cf2b6f397c54830888affa71108bb4b4722
+        run: |
+          run_id=""
+          for attempt in $(seq 1 60); do
+            runs="$(gh api -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&per_page=100")"
+            run_id="$(jq -r '.workflow_runs[] | select(.name == "Release Android") | .id' <<<"$runs" | head -n 1)"
+            if [[ -n "$run_id" && "$run_id" != "null" ]]; then
+              status="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" --jq '.status')"
+              if [[ "$status" == "completed" ]]; then
+                break
+              fi
+            fi
+            sleep 15
+          done
+          if [[ -z "$run_id" || "$run_id" == "null" ]]; then
+            echo "Release workflow for ${TARGET_SHA} was not found" >&2
+            exit 1
+          fi
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" > .github/release-0.20.19-run.json
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?per_page=100" > .github/release-0.20.19-jobs.json
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts?per_page=100" > .github/release-0.20.19-artifacts.json
+          printf '%s\n' "$run_id" > .github/release-0.20.19-run-id.txt
+
+      - name: Record final release status
+        shell: bash
+        run: |
+          rm .github/workflows/watch-release-02019.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Record Arbor 0.20.19 release status [skip ci]"
+          git push
