@@ -62,7 +62,7 @@ jobs:
       - name: Commit verified feature
         shell: bash
         run: |
-          git config user.name "github-actions[bot]]"
+          git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app licenses CHANGELOG.md docs/releases/RELEASE_NOTES_0.20.24.md
           if git diff --cached --quiet; then
