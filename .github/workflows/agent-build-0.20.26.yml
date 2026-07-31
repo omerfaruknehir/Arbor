@@ -1,0 +1,82 @@
+name: Build Arbor 0.20.26
+
+on:
+  push:
+    branches:
+      - agent/widget-snippet-runtime
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arbor-0.20.26-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Install Android 16 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify third-party licenses
+        run: ./ci/verify-third-party-licenses.sh
+
+      - name: Verify offline license catalog
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:generateOfflineLicenseCatalog
+
+      - name: Run release unit tests
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
+
+      - name: Run release lint
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
+
+      - name: Build release artifacts
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease bundleRelease assembleDebugAndroidTest
+
+      - name: Verify release APK signature
+        run: "$ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk"
+
+      - name: Package deliverables
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/arbor-deliverables
+          cp app/build/outputs/apk/release/app-release.apk /tmp/arbor-deliverables/Arbor-0.20.26-release.apk
+          cp app/build/outputs/bundle/release/app-release.aab /tmp/arbor-deliverables/Arbor-0.20.26-release.aab
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk /tmp/arbor-deliverables/Arbor-0.20.26-androidTest.apk
+          git archive --format=zip --output=/tmp/arbor-deliverables/Arbor-0.20.26-source.zip HEAD
+          git archive --format=tar.gz --output=/tmp/arbor-deliverables/Arbor-0.20.26-source.tar.gz HEAD
+          (cd /tmp/arbor-deliverables && sha256sum Arbor-* > Arbor-0.20.26-SHA256.txt)
+
+      - name: Upload release and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arbor-0.20.26-release-and-reports
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            /tmp/arbor-deliverables/*
+            app/build/reports/tests/
+            app/build/reports/lint-results-release.html
