@@ -393,6 +393,13 @@ object ArborProgramParser {
         walk(ui)
     }
 
+    private fun capabilityKey(value: ArborWidgetCapabilityRequest): String = when (value.type) {
+    "network" -> "network:${value.origins.sorted().joinToString(",")}"
+    "location" -> "location:${value.accuracy}"
+    "folder" -> "folder:${value.mode}"
+    else -> value.type
+}
+
     private fun validateWidgetCapabilities(
         capabilities: List<ArborWidgetCapabilityRequest>,
         dataSources: List<ArborWidgetDataSource>,
