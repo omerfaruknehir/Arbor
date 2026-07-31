@@ -50,16 +50,16 @@ jobs:
           cat docs/releases/RELEASE_NOTES_0.20.26.md > release-notes.md
           cat >> release-notes.md <<'EOF'
 
-## Verification
+          ## Verification
 
-- Release unit tests passed.
-- Release lint passed.
-- Android 16 emulator smoke test passed.
-- Optimized APK, AAB, and instrumentation APK built successfully.
-- APK Signature Scheme v2 verified with the established update-compatible certificate SHA-256 `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`.
+          - Release unit tests passed.
+          - Release lint passed.
+          - Android 16 emulator smoke test passed.
+          - Optimized APK, AAB, and instrumentation APK built successfully.
+          - APK Signature Scheme v2 verified with the established update-compatible certificate SHA-256 `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`.
 
-The installable APK intentionally uses Arbor's established update-compatible debug certificate. It is not Google Play production signing.
-EOF
+          The installable APK intentionally uses Arbor's established update-compatible debug certificate. It is not Google Play production signing.
+          EOF
 
           (cd dist && sha256sum Arbor-${VERSION}-release.apk Arbor-${VERSION}-release.aab Arbor-${VERSION}-androidTest.apk Arbor-${VERSION}-source.zip Arbor-${VERSION}-source.tar.gz Arbor-${VERSION}-test-reports.zip > Arbor-${VERSION}-SHA256SUMS.txt)
 
