@@ -1,0 +1,46 @@
+name: Capture Arbor 0.20.21 release run
+
+on:
+  push:
+    branches:
+      - agent/release-status-0.20.21
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  capture:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/release-status-0.20.21
+
+      - name: Find merged-main release run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ee3ecfb1b784a4d87310ccc5a3b1149bb67af87a
+        run: |
+          run_id=""
+          for attempt in $(seq 1 30); do
+            run_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&per_page=20" \
+              --jq '.workflow_runs[] | select(.name == "Release Android" and .event == "push") | .id' \
+              | head -n 1)"
+            [[ -n "$run_id" ]] && break
+            sleep 4
+          done
+          [[ -n "$run_id" ]] || { echo "Release run not found" >&2; exit 1; }
+          printf '%s\n' "$run_id" > .github/release-0.20.21-run-id.txt
+
+      - name: Save run ID and remove helper
+        shell: bash
+        run: |
+          rm -f .github/workflows/capture-release-02021.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Record Arbor 0.20.21 release run"
+          git push
