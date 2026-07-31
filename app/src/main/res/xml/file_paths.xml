@@ -3,5 +3,6 @@
     <files-path name="attachments" path="attachments/" />
     <cache-path name="previews" path="previews/" />
     <cache-path name="shares" path="shares/" />
+    <cache-path name="drive_app_data" path="drive-app-data/" />
     <cache-path name="camera" path="camera/" />
 </paths>

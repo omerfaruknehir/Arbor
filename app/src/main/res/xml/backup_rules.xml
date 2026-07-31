@@ -3,12 +3,4 @@
     <include domain="sharedpref" path="arbor_app_settings.xml" />
     <include domain="sharedpref" path="arbor_ui_session.xml" />
     <include domain="sharedpref" path="arbor_linux_runtime.xml" />
-    <exclude domain="sharedpref" path="arbor_secrets.xml" />
-    <exclude domain="database" path="arbor.db" />
-    <exclude domain="database" path="arbor.db-shm" />
-    <exclude domain="database" path="arbor.db-wal" />
-    <exclude domain="file" path="attachments/" />
-    <exclude domain="file" path="ubuntu/" />
-    <exclude domain="file" path="linux-runtimes/" />
-    <exclude domain="file" path="workspaces/" />
 </full-backup-content>

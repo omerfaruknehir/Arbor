@@ -13,7 +13,7 @@ import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
 @Serializable
-internal data class PortableLinuxEnvironment(
+data class PortableLinuxEnvironment(
     val id: String,
     val displayName: String,
     val release: String,
@@ -24,7 +24,7 @@ internal data class PortableLinuxEnvironment(
     val selected: Boolean,
 )
 
-internal data class PreparedLinuxEnvironment(
+data class PreparedLinuxEnvironment(
     val metadata: PortableLinuxEnvironment,
     val archive: File,
 ) {

@@ -57,6 +57,7 @@ import app.arbor.chat.settings.LauncherIconManager
 import app.arbor.chat.settings.PersistentUiStateStore
 import app.arbor.chat.transfer.ArchiveOptions
 import app.arbor.chat.transfer.ArchivePasswordRequiredException
+import app.arbor.chat.transfer.CloudBackupEntry
 import app.arbor.chat.transfer.IncomingArchiveState
 import app.arbor.chat.generated.GeneratedBlockRepairState
 import app.arbor.chat.generated.GeneratedBlockType
@@ -285,6 +286,48 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         container.archiveManager.writeBackup(uri, options, password)
     }
 
+    fun connectedCloudFolderUri(): Uri? = container.scopedCloudFolder.connectedUri()
+
+    fun connectedCloudFolderLabel(): String? = container.scopedCloudFolder.connectedLabel()
+
+    fun connectCloudFolder(uri: Uri) = container.scopedCloudFolder.connect(uri)
+
+    fun disconnectCloudFolder() = container.scopedCloudFolder.disconnect()
+
+    suspend fun writeConnectedFolderBackup(options: ArchiveOptions, password: String): Uri {
+        val file = container.archiveManager.writeBackupToCache(options, password)
+        return try {
+            container.scopedCloudFolder.saveBackup(file, file.name)
+        } finally {
+            file.delete()
+        }
+    }
+
+    suspend fun listConnectedFolderBackups(): List<CloudBackupEntry> =
+        container.scopedCloudFolder.listBackups()
+
+    fun openConnectedFolderBackup(entry: CloudBackupEntry): Uri =
+        container.scopedCloudFolder.open(entry)
+
+    suspend fun writeGoogleDriveBackup(
+        accessToken: String,
+        options: ArchiveOptions,
+        password: String,
+    ): CloudBackupEntry {
+        val file = container.archiveManager.writeBackupToCache(options, password)
+        return try {
+            container.googleDriveAppData.uploadBackup(accessToken, file, file.name)
+        } finally {
+            file.delete()
+        }
+    }
+
+    suspend fun listGoogleDriveBackups(accessToken: String): List<CloudBackupEntry> =
+        container.googleDriveAppData.listBackups(accessToken)
+
+    suspend fun downloadGoogleDriveBackup(accessToken: String, entry: CloudBackupEntry): Uri =
+        container.googleDriveAppData.downloadBackup(accessToken, entry)
+
     fun receivePortableArchive(uri: Uri) {
         incomingArchive.value = IncomingArchiveState(uri = uri)
         viewModelScope.launch {
@@ -313,11 +356,20 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         incomingArchive.value = state.copy(importing = true, error = null)
         viewModelScope.launch {
             runCatching { container.archiveManager.importArchive(state.uri, password) }
-                .onSuccess { conversationIds ->
+                .onSuccess { result ->
                     incomingArchive.value = null
-                    conversationIds.firstOrNull()?.let(::selectConversation)
-                    screen.value = Screen.CHAT
-                    notices.tryEmit("Imported ${conversationIds.size} chat${if (conversationIds.size == 1) "" else "s"}")
+                    result.conversationIds.firstOrNull()?.let(::selectConversation)
+                    if (result.conversationIds.isNotEmpty()) screen.value = Screen.CHAT
+                    val parts = buildList {
+                        if (result.conversationIds.isNotEmpty()) {
+                            add("${result.conversationIds.size} chat${if (result.conversationIds.size == 1) "" else "s"}")
+                        }
+                        if (result.linuxEnvironmentCount > 0) {
+                            add("${result.linuxEnvironmentCount} Linux environment${if (result.linuxEnvironmentCount == 1) "" else "s"}")
+                        }
+                    }
+                    notices.tryEmit("Imported ${parts.joinToString(" and ")}")
+                    if (result.linuxEnvironmentCount > 0) container.ubuntuRuntime.refresh()
                 }
                 .onFailure { error -> incomingArchive.value = state.copy(importing = false, error = error.message ?: "Import failed") }
         }

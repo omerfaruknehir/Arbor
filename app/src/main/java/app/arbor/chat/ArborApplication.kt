@@ -29,6 +29,9 @@ import app.arbor.chat.settings.AppPreferences
 import app.arbor.chat.settings.ComposerDraftStore
 import app.arbor.chat.settings.PersistentUiStateStore
 import app.arbor.chat.transfer.ArborArchiveManager
+import app.arbor.chat.transfer.GoogleDriveAppDataClient
+import app.arbor.chat.transfer.LinuxEnvironmentArchiveStore
+import app.arbor.chat.transfer.ScopedCloudFolderStore
 import app.arbor.chat.generated.GeneratedBlockRepairCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -108,9 +111,12 @@ class AppContainer(val application: Application, val crashReporter: CrashReporte
     val tokenCounter = HybridTokenCounter()
     val auxiliaryModels = AuxiliaryModelService(repository, providers, secureStore)
     val attachmentStore = AttachmentStore(application, database.attachmentDao())
-    val archiveManager = ArborArchiveManager(application, database)
     val ocrEngine = OcrEngine(application, database.attachmentDao())
     val pythonSandbox = PythonSandbox(application)
+    val linuxEnvironmentArchives = LinuxEnvironmentArchiveStore(application, pythonSandbox)
+    val archiveManager = ArborArchiveManager(application, database, linuxEnvironmentArchives)
+    val scopedCloudFolder = ScopedCloudFolderStore(application)
+    val googleDriveAppData = GoogleDriveAppDataClient(application)
     val ubuntuRuntime = UbuntuRuntime(application, pythonSandbox)
     val runRecords = RunRecordStore(pythonSandbox::workspace)
     val generatedBlockRepairs = GeneratedBlockRepairCoordinator(pythonSandbox::workspace, auxiliaryModels::repairGeneratedBlock)

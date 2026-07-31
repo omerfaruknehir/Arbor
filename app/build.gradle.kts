@@ -182,8 +182,8 @@ android {
         applicationId = "app.arbor.chat"
         minSdk = 26
         targetSdk = 36
-        versionCode = 149
-        versionName = "0.20.23"
+        versionCode = 150
+        versionName = "0.20.24"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -294,6 +294,7 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.google.android.gms:play-services-auth:21.6.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 
     implementation("io.coil-kt:coil-compose:2.7.0")

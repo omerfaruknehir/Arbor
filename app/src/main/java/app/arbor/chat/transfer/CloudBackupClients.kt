@@ -178,7 +178,7 @@ class GoogleDriveAppDataClient(private val context: Context) {
             val metadata = buildJsonObject {
                 put("name", fileName)
                 put("mimeType", ARBOR_BACKUP_MIME)
-                put("parents", kotlinx.serialization.json.buildJsonArray { add("appDataFolder") })
+                put("parents", kotlinx.serialization.json.buildJsonArray { add(kotlinx.serialization.json.JsonPrimitive("appDataFolder")) })
                 put("appProperties", buildJsonObject {
                     put("format", "arborbackup")
                     put("schema", "1")

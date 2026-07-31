@@ -665,3 +665,87 @@ def _is_under(path, parent):
         return path == parent or path.startswith(parent + os.sep)
     except (OSError, TypeError):
         return False
+
+
+
+def _portable_archive_stats(root):
+    file_count = 0
+    size_bytes = 0
+    for directory, _, files in os.walk(root, followlinks=False):
+        for name in files:
+            path = os.path.join(directory, name)
+            file_count += 1
+            if not os.path.islink(path):
+                try:
+                    size_bytes += os.path.getsize(path)
+                except OSError:
+                    pass
+    return {"fileCount": file_count, "sizeBytes": size_bytes}
+
+
+def create_portable_tar(source, destination):
+    source = os.path.realpath(source)
+    destination = os.path.realpath(destination)
+    if not os.path.isdir(source):
+        raise ValueError("Linux environment directory is missing")
+    os.makedirs(os.path.dirname(destination), exist_ok=True)
+    temporary = destination + ".part"
+    try:
+        os.unlink(temporary)
+    except FileNotFoundError:
+        pass
+    try:
+        with tarfile.open(
+            temporary,
+            "w:gz",
+            format=tarfile.PAX_FORMAT,
+            dereference=False,
+            compresslevel=6,
+        ) as archive:
+            archive.add(source, arcname=".", recursive=True)
+        os.replace(temporary, destination)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+    result = _portable_archive_stats(source)
+    result["sizeBytes"] = os.path.getsize(destination)
+    return json.dumps(result)
+
+
+def _safe_portable_tar_member(member, destination):
+    name = member.name.replace("\\", "/")
+    normalized = os.path.normpath(name)
+    if name.startswith("/") or normalized in ("..", ".") or normalized.startswith("../"):
+        if normalized == "." and member.isdir():
+            return member
+        raise ValueError("Linux environment archive contains an unsafe path")
+    if member.isdev() or member.isfifo():
+        raise ValueError("Linux environment archive contains an unsupported device node")
+    if member.islnk():
+        link = member.linkname.replace("\\", "/")
+        if link.startswith("/"):
+            raise ValueError("Linux environment archive contains an absolute hard link")
+        resolved = os.path.normpath(os.path.join(os.path.dirname(normalized), link))
+        if resolved == ".." or resolved.startswith("../"):
+            raise ValueError("Linux environment archive contains a hard link outside its root")
+    target = os.path.realpath(os.path.join(destination, normalized))
+    root = os.path.realpath(destination)
+    if target != root and not target.startswith(root + os.sep):
+        raise ValueError("Linux environment archive escapes its destination")
+    return member
+
+
+def extract_portable_tar(archive_path, destination):
+    archive_path = os.path.realpath(archive_path)
+    destination = os.path.realpath(destination)
+    if not os.path.isfile(archive_path):
+        raise ValueError("Linux environment archive is missing")
+    os.makedirs(destination, exist_ok=True)
+    with tarfile.open(archive_path, "r:*") as archive:
+        archive.extractall(
+            destination,
+            filter=lambda member, path: _safe_portable_tar_member(member, destination),
+        )
+    return json.dumps(_portable_archive_stats(destination))

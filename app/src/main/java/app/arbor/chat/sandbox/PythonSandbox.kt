@@ -61,6 +61,12 @@ data class RootfsExtractionResult(
     val elapsedMs: Long = 0,
 )
 
+@Serializable
+data class PortableArchiveResult(
+    val fileCount: Long = 0,
+    val sizeBytes: Long = 0,
+)
+
 class PythonSandbox(private val context: Context) {
     private val json = Json { ignoreUnknownKeys = true }
     private val mutex = Mutex()
@@ -119,6 +125,28 @@ class PythonSandbox(private val context: Context) {
             .toString()
         json.decodeFromString<RootfsExtractionResult>(raw)
     } }
+
+    suspend fun createPortableTar(source: File, destination: File): PortableArchiveResult =
+        withContext(Dispatchers.IO) { mutex.withLock {
+            require(source.isDirectory) { "Linux environment directory is missing" }
+            destination.parentFile?.mkdirs()
+            startPython()
+            val raw = Python.getInstance().getModule("sandbox_runner")
+                .callAttr("create_portable_tar", source.absolutePath, destination.absolutePath)
+                .toString()
+            json.decodeFromString<PortableArchiveResult>(raw)
+        } }
+
+    suspend fun extractPortableTar(archive: File, destination: File): PortableArchiveResult =
+        withContext(Dispatchers.IO) { mutex.withLock {
+            require(archive.isFile) { "Linux environment archive is missing" }
+            destination.mkdirs()
+            startPython()
+            val raw = Python.getInstance().getModule("sandbox_runner")
+                .callAttr("extract_portable_tar", archive.absolutePath, destination.absolutePath)
+                .toString()
+            json.decodeFromString<PortableArchiveResult>(raw)
+        } }
 
     suspend fun environment(conversationId: String): PythonEnvironmentInfo = withContext(Dispatchers.IO) { mutex.withLock {
         val workspace = workspace(conversationId)
