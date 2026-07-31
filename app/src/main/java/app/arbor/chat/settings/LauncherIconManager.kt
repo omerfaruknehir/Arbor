@@ -2,21 +2,23 @@ package app.arbor.chat.settings
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
 
 /**
- * Switches between manifest-declared launcher aliases without restarting Arbor.
+ * Requests launcher alias changes through a dedicated process.
  *
- * Launcher aliases target a zero-UI trampoline instead of MainActivity, so the
- * foreground task is never rooted at a component being disabled. Android 13+
- * receives one atomic component-state transaction; older versions retain the
- * same enable-first ordering and DONT_KILL_APP behavior.
+ * Some OEM package managers ignore DONT_KILL_APP when aliases are toggled by the
+ * foreground process. The explicit receiver performs the package mutation in
+ * :launcher_icon, keeping MainActivity and its task out of the process which is
+ * touching component state.
  */
 internal object LauncherIconManager {
     private const val TAG = "ArborLauncherIcon"
+    internal const val EXTRA_DESIRED_ALIAS = "app.arbor.chat.extra.DESIRED_LAUNCHER_ALIAS"
 
     internal const val ARBOR_ALIAS = "app.arbor.chat.LauncherArbor"
     internal const val SYSTEM_ALIAS = "app.arbor.chat.LauncherSystem"
@@ -48,8 +50,23 @@ internal object LauncherIconManager {
 
     fun apply(context: Context, matchPalette: Boolean, palette: ColorPalette): Boolean {
         val appContext = context.applicationContext
-        val packageManager = appContext.packageManager
         val desiredClassName = aliasClassName(matchPalette, palette)
+        return runCatching {
+            appContext.sendBroadcast(
+                Intent(appContext, LauncherIconSwitchReceiver::class.java)
+                    .setPackage(appContext.packageName)
+                    .putExtra(EXTRA_DESIRED_ALIAS, desiredClassName),
+            )
+            true
+        }.onFailure { error ->
+            Log.w(TAG, "Could not request launcher icon alias update", error)
+        }.getOrDefault(false)
+    }
+
+    internal fun applyDirect(context: Context, desiredClassName: String): Boolean {
+        if (desiredClassName !in allAliases) return false
+        val appContext = context.applicationContext
+        val packageManager = appContext.packageManager
         return runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 applyAtomically(packageManager, appContext.packageName, desiredClassName)

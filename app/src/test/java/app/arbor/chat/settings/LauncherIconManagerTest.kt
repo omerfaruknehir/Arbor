@@ -60,5 +60,11 @@ class LauncherIconManagerTest {
         assertTrue(source.contains("setComponentEnabledSettings"))
         assertTrue(source.contains("PackageManager.DONT_KILL_APP"))
         assertTrue(source.contains("applyEnableFirst"))
+        assertTrue(source.contains("LauncherIconSwitchReceiver::class.java"))
+        assertTrue(source.contains("applyDirect"))
+
+        val receiver = File("src/main/java/app/arbor/chat/settings/LauncherIconSwitchReceiver.kt").readText()
+        assertTrue(receiver.contains("BroadcastReceiver"))
+        assertTrue(receiver.contains("LauncherIconManager.applyDirect"))
     }
 }

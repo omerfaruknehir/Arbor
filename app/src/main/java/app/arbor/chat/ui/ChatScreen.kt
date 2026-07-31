@@ -1348,6 +1348,7 @@ private fun MessageCard(
                         operationScope = message.nodeId,
                         text = displayContent,
                         streaming = animateStreaming,
+                        staticContent = user,
                         onRunPython = viewModel::executePython,
                         onRunUbuntu = viewModel::executeUbuntu,
                         onReviewPythonPackages = viewModel::reviewPythonPackages,

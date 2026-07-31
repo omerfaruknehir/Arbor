@@ -50,7 +50,13 @@
             android:name=".LauncherActivity"
             android:exported="false"
             android:noHistory="true"
+            android:process=":launcher_icon"
             android:theme="@style/Theme.Arbor.Launcher" />
+
+        <receiver
+            android:name=".settings.LauncherIconSwitchReceiver"
+            android:exported="false"
+            android:process=":launcher_icon" />
 
          <activity-alias
             android:name=".LauncherArbor"
