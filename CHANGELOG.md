@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.18 — 2026-07-31
+
+- Render the drawer, onboarding, and Arbor license entry from the exact active launcher-icon drawable instead of a separately approximated logo.
+- Move launcher alias mutation into an isolated `:launcher_icon` process so OEM package-manager behavior cannot tear down the foreground Arbor process.
+- Give completed user messages a static full-source rendering path and show the complete plain-text fallback while Markdown parsing finishes, preventing prefix-only message bubbles while preserving the editable source.
+- Add regression coverage for icon fidelity, isolated alias switching, dynamic license branding, and completed-message rendering.
+
 ## 0.20.17 — 2026-07-31
 
 - Route launcher aliases through a transparent trampoline so changing the icon cannot close the active MainActivity task.

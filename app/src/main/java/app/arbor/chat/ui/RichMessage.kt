@@ -191,6 +191,7 @@ internal fun RichMessage(
     text: String,
     streaming: Boolean = false,
     displayOnly: Boolean = false,
+    staticContent: Boolean = false,
     onRunPython: suspend (String, suspend (ExecutionProgress) -> Unit) -> ExecutionResult,
     onRunUbuntu: suspend (String, suspend (ExecutionProgress) -> Unit) -> UbuntuExecutionResult,
     onReviewPythonPackages: suspend (String, String) -> PackageReview,
@@ -301,12 +302,19 @@ internal fun RichMessage(
                 }
             }
     }
+    val staticBlocks = remember(operationScope, renderedText, staticContent) {
+        if (!staticContent) emptyList()
+        else parseBlocks(renderedText, streaming = false).mapIndexed { index, block ->
+            StableRichBlock("static-$index", block, liveTail = false)
+        }
+    }
+    val visibleBlocks = if (staticContent) staticBlocks else blocks
     val markwon = remember(context.applicationContext) { ArborMarkwonCache.get(context.applicationContext) }
     Column(
         modifier = Modifier.noOpBringIntoView(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        blocks.forEach { parsed ->
+        visibleBlocks.forEach { parsed ->
             key("$operationScope:${parsed.key}") {
                 val block = parsed.block
                 val live = renderStreaming && parsed.liveTail
@@ -1148,7 +1156,7 @@ private fun MarkdownAndroidView(
     onReference: (LinkReferencePreview) -> Unit,
     modifier: Modifier,
 ) {
-    var parsedMarkdown by remember(markwon) { mutableStateOf<ParsedMarkdownSource?>(null) }
+    var parsedMarkdown by remember(markwon, markdown) { mutableStateOf<ParsedMarkdownSource?>(null) }
     LaunchedEffect(markwon, markdown) {
         val spanned = withContext(Dispatchers.Default) {
             renderMarkdownSafely(markwon, markdown)
@@ -1180,7 +1188,18 @@ private fun MarkdownAndroidView(
                 view.appliedStyleKey = styleKey
             }
             val ready = parsedMarkdown
-            if (ready != null && (view.renderedSource != ready.source || view.renderedStyleKey != styleKey)) {
+            if (ready == null) {
+                if (view.renderedSource != markdown || !view.renderedAsFallback || view.renderedStyleKey != styleKey) {
+                    view.setText(markdownRenderFallbackText(markdown), TextView.BufferType.SPANNABLE)
+                    view.renderedSource = markdown
+                    view.renderedStyleKey = styleKey
+                    view.renderedAsFallback = true
+                }
+            } else if (
+                view.renderedSource != ready.source ||
+                view.renderedStyleKey != styleKey ||
+                view.renderedAsFallback
+            ) {
                 try {
                     markwon.setParsedMarkdown(view, ready.spanned)
                     installReferenceSpans(
@@ -1190,6 +1209,7 @@ private fun MarkdownAndroidView(
                         pillForeground = pillForeground,
                         onClick = onReference,
                     )
+                    view.renderedAsFallback = false
                 } catch (_: Exception) {
                     // Rendering can also fail while Android applies/measures spans,
                     // so guard the UI hand-off as well as parse/render above.
@@ -1197,6 +1217,7 @@ private fun MarkdownAndroidView(
                         markdownRenderFallbackText(ready.source),
                         TextView.BufferType.SPANNABLE,
                     )
+                    view.renderedAsFallback = true
                 }
                 view.renderedSource = ready.source
                 view.renderedStyleKey = styleKey
@@ -1211,6 +1232,7 @@ private class ArborMarkdownTextView(context: Context) : TextView(context) {
     var renderedSource: String = ""
     var renderedStyleKey: Int = 0
     var appliedStyleKey: Int = 0
+    var renderedAsFallback: Boolean = false
     val selectableLinkMovementMethod = SelectableLinkMovementMethod()
 
     fun resetForReuse() {
@@ -1218,6 +1240,7 @@ private class ArborMarkdownTextView(context: Context) : TextView(context) {
         renderedSource = ""
         renderedStyleKey = 0
         appliedStyleKey = 0
+        renderedAsFallback = false
     }
 }
 

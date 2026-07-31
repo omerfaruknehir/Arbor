@@ -12,6 +12,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,8 +29,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.arbor.chat.ui.ArborApp
+import app.arbor.chat.ui.LocalArborIconPalette
 import app.arbor.chat.ui.ChatViewModel
 import app.arbor.chat.ui.theme.ArborTheme
+import app.arbor.chat.settings.ColorPalette
 
 import app.arbor.chat.ui.ArborAlertDialog
 class MainActivity : ComponentActivity() {
@@ -45,37 +48,42 @@ class MainActivity : ComponentActivity() {
             val amoled by viewModel.amoled.collectAsState()
             val palette by viewModel.palette.collectAsState()
             val themeMode by viewModel.themeMode.collectAsState()
+            val matchLauncherIconToPalette by viewModel.matchLauncherIconToPalette.collectAsState()
             ArborTheme(amoled = amoled, palette = palette, themeMode = themeMode) {
-                val appName = stringResource(R.string.app_name)
-                ArborApp(viewModel, this@MainActivity)
-                val container = (application as ArborApplication).container
-                var crashReport by remember { mutableStateOf(container.crashReporter.read()) }
-                val renderSafeMode by viewModel.renderSafeMode.collectAsState()
-                crashReport?.let { report ->
-                    val context = LocalContext.current
-                    ArborAlertDialog(
-                        onDismissRequest = { container.crashReporter.clear(); crashReport = null },
-                        title = { Text("$appName recovered a crash report") },
-                        text = {
-                            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
-                                if (renderSafeMode) {
-                                    Text("$appName reopened safely with generated widgets paused. Your chats and files were not deleted. You can dismiss this report and keep using the app, then retry full rendering when ready.\n")
-                                    OutlinedButton(onClick = { viewModel.setRenderSafeMode(false) }) { Text("Try full rendering again") }
-                                    Text("\n")
+                CompositionLocalProvider(
+                    LocalArborIconPalette provides if (matchLauncherIconToPalette) palette else ColorPalette.ARBOR,
+                ) {
+                    val appName = stringResource(R.string.app_name)
+                    ArborApp(viewModel, this@MainActivity)
+                    val container = (application as ArborApplication).container
+                    var crashReport by remember { mutableStateOf(container.crashReporter.read()) }
+                    val renderSafeMode by viewModel.renderSafeMode.collectAsState()
+                    crashReport?.let { report ->
+                        val context = LocalContext.current
+                        ArborAlertDialog(
+                            onDismissRequest = { container.crashReporter.clear(); crashReport = null },
+                            title = { Text("$appName recovered a crash report") },
+                            text = {
+                                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                                    if (renderSafeMode) {
+                                        Text("$appName reopened safely with generated widgets paused. Your chats and files were not deleted. You can dismiss this report and keep using the app, then retry full rendering when ready.\n")
+                                        OutlinedButton(onClick = { viewModel.setRenderSafeMode(false) }) { Text("Try full rendering again") }
+                                        Text("\n")
+                                    }
+                                    Text("Copy this redacted diagnostic report if you need help diagnosing the failure. Review it before sharing.\n\n$report")
                                 }
-                                Text("Copy this redacted diagnostic report if you need help diagnosing the failure. Review it before sharing.\n\n$report")
-                            }
-                        },
-                        dismissButton = {
-                            OutlinedButton(onClick = { container.crashReporter.clear(); crashReport = null }) { Text("Dismiss") }
-                        },
-                        confirmButton = {
-                            Button(onClick = {
-                                context.getSystemService(ClipboardManager::class.java)
-                                    .setPrimaryClip(ClipData.newPlainText("$appName crash report", report))
-                            }) { Text("Copy report") }
-                        },
-                    )
+                            },
+                            dismissButton = {
+                                OutlinedButton(onClick = { container.crashReporter.clear(); crashReport = null }) { Text("Dismiss") }
+                            },
+                            confirmButton = {
+                                Button(onClick = {
+                                    context.getSystemService(ClipboardManager::class.java)
+                                        .setPrimaryClip(ClipData.newPlainText("$appName crash report", report))
+                                }) { Text("Copy report") }
+                            },
+                        )
+                    }
                 }
             }
         }

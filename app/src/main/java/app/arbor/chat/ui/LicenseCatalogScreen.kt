@@ -288,22 +288,29 @@ private fun LicenseIcon(component: OfflineLicenseComponent, modifier: Modifier =
         shape = RoundedCornerShape(15.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
-        when {
-            svgRequest != null -> SubcomposeAsyncImage(
-                model = svgRequest,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize().padding(9.dp),
-                contentScale = ContentScale.Fit,
-                loading = {},
-                error = { LicenseIconFallback(component.name) },
+        if (component.id == "arbor") {
+            ArborMark(
+                modifier = Modifier.fillMaxSize().padding(4.dp),
+                contentDescription = "Arbor",
             )
-            rasterImage != null -> Image(
-                bitmap = rasterImage,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize().padding(9.dp),
-                contentScale = ContentScale.Fit,
-            )
-            else -> LicenseIconFallback(component.name)
+        } else {
+            when {
+                svgRequest != null -> SubcomposeAsyncImage(
+                    model = svgRequest,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize().padding(9.dp),
+                    contentScale = ContentScale.Fit,
+                    loading = {},
+                    error = { LicenseIconFallback(component.name) },
+                )
+                rasterImage != null -> Image(
+                    bitmap = rasterImage,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize().padding(9.dp),
+                    contentScale = ContentScale.Fit,
+                )
+                else -> LicenseIconFallback(component.name)
+            }
         }
     }
 }
