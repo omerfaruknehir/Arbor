@@ -1,0 +1,180 @@
++        expectedTargets.zip(aliasBlocks).forEach { (target, block) ->
++            assertTrue(block.contains("android:targetActivity=\"$target\""))
+             assertFalse(block.contains("android:targetActivity=\".MainActivity\""))
+         }
+ 
+         val trampoline = File("src/main/java/app/arbor/chat/LauncherActivity.kt").readText()
++        expectedTargets.forEach { target -> assertTrue(trampoline.contains("class ${target.removePrefix(".")}")) }
+         assertTrue(trampoline.contains("Intent(this, MainActivity::class.java)"))
+         assertTrue(trampoline.contains("finish()"))
+     }
+ 
+     @Test
+-    fun `foreground settings only queue icon changes and hidden lifecycle flushes them`() {
++    fun `icon changes use an intentional stateful restart`() {
+         val source = File("src/main/java/app/arbor/chat/settings/LauncherIconManager.kt").readText()
+-        val foregroundApply = source.substringAfter("fun apply(context:")
+-            .substringBefore("fun flushPending")
+-        assertTrue(foregroundApply.contains("KEY_PENDING_ALIAS"))
+-        assertFalse(foregroundApply.contains("sendBroadcast"))
+-        assertFalse(foregroundApply.contains("setComponentEnabledSetting"))
+-        assertTrue(source.contains("fun flushPending"))
+-        assertTrue(source.contains("LauncherIconSwitchReceiver::class.java"))
++        assertTrue(source.contains("requestStatefulRestart"))
++        assertTrue(source.contains("PendingIntent"))
++        assertFalse(source.contains("KEY_PENDING_ALIAS"))
++        assertFalse(source.contains("flushPending"))
+ 
+         val mainActivity = File("src/main/java/app/arbor/chat/MainActivity.kt").readText()
+-        assertTrue(mainActivity.contains("override fun onStop()"))
+-        assertTrue(mainActivity.contains("LauncherIconManager.flushPending"))
++        assertTrue(mainActivity.contains("viewModel.flushPersistentState()"))
++        assertTrue(mainActivity.contains("finishAffinity()"))
++        assertTrue(mainActivity.contains("ComponentName(packageName, desiredAlias)"))
+ 
+         val application = File("src/main/java/app/arbor/chat/ArborApplication.kt").readText()
+-        assertTrue(application.contains("TRIM_MEMORY_UI_HIDDEN"))
+-        assertTrue(application.contains("LauncherIconManager.flushPending"))
++        assertFalse(application.contains("TRIM_MEMORY_UI_HIDDEN"))
++        assertFalse(application.contains("flushPending"))
+     }
+ 
+     @Test
+-    fun `background icon switching is atomic and acknowledges only the applied alias`() {
++    fun `isolated icon switching is atomic and relaunches the saved session`() {
+         val source = File("src/main/java/app/arbor/chat/settings/LauncherIconManager.kt").readText()
+         assertTrue(source.contains("setComponentEnabledSettings"))
+         assertTrue(source.contains("PackageManager.DONT_KILL_APP"))
+         assertTrue(source.contains("applyEnableFirst"))
+-        assertTrue(source.contains("markApplied"))
+ 
+         val receiver = File("src/main/java/app/arbor/chat/settings/LauncherIconSwitchReceiver.kt").readText()
+         assertTrue(receiver.contains("BroadcastReceiver"))
+         assertTrue(receiver.contains("LauncherIconManager.applyDirect"))
+-        assertTrue(receiver.contains("LauncherIconManager.markApplied"))
++        assertTrue(receiver.contains("relaunch.send()"))
++        assertTrue(receiver.contains("AlarmManager.ELAPSED_REALTIME_WAKEUP"))
++        assertTrue(receiver.contains("goAsync()"))
++    }
++
++
++    @Test
++    fun `dynamic launcher artwork uses actual Android system palette resources`() {
++        val background = File("src/main/res/drawable-v31/ic_arbor_background_system.xml").readText()
++        val foreground = File("src/main/res/drawable-v31/ic_arbor_foreground_system.xml").readText()
++        assertTrue(background.contains("@android:color/system_accent1_800"))
++        assertTrue(background.contains("@android:color/system_accent2_700"))
++        assertTrue(foreground.contains("@android:color/system_accent1_200"))
++        assertTrue(foreground.contains("@android:color/system_accent3_200"))
++        val splash = File("src/main/res/values-v31/styles.xml").readText()
++        assertTrue(splash.contains("Theme.Arbor.Launcher.System"))
++        assertTrue(splash.contains("@mipmap/ic_launcher_system"))
++        assertTrue(splash.contains("@color/arbor_splash_system"))
+     }
+ }
+ diff --git a/app/src/test/java/app/arbor/chat/ui/OnboardingFlowTest.kt b/app/src/test/java/app/arbor/chat/ui/OnboardingFlowTest.kt
+index 241573c..9555ef8 100644
+--- a/app/src/test/java/app/arbor/chat/ui/OnboardingFlowTest.kt
++++ b/app/src/test/java/app/arbor/chat/ui/OnboardingFlowTest.kt
+@@ -40,7 +40,10 @@ class OnboardingFlowTest {
+         assertFalse(source.contains("ColorPalette.SYSTEM -> MaterialTheme.colorScheme.tertiary"))
+         assertTrue(source.contains("Open Linux environment manager"))
+         assertTrue(source.contains("Exit setup for now"))
+-        assertTrue(source.contains("BackHandler(enabled = stepIndex > 0)"))
++        assertTrue(source.contains("HorizontalPager("))
++        assertTrue(source.contains("animateScrollToPage"))
++        assertTrue(source.contains("snapshotFlow { pagerState.settledPage }"))
++        assertTrue(source.contains("BackHandler(enabled = currentPage > 0)"))
+     }
+ 
+     @Test
+@@ -75,4 +78,17 @@ class OnboardingFlowTest {
+         assertFalse(terminal.contains("installUbuntu"))
+         assertFalse(terminal.contains("removeUbuntu"))
+     }
++
++
++    @Test
++    fun `provider detours return to the persisted setup step`() {
++        val app = java.io.File("src/main/java/app/arbor/chat/ui/ArborApp.kt").readText()
++        val settings = java.io.File("src/main/java/app/arbor/chat/ui/SettingsScreen.kt").readText()
++        val viewModel = java.io.File("src/main/java/app/arbor/chat/ui/ChatViewModel.kt").readText()
++        assertTrue(app.contains("setupTemporarilyAway"))
++        assertTrue(settings.contains("viewModel.returnToSetup()"))
++        assertTrue(settings.contains("Setup assistant"))
++        assertTrue(viewModel.contains("openProviderSetupFromSetup"))
++        assertTrue(viewModel.contains("setupStepIndex.value = 2"))
++    }
+ }
+ diff --git a/app/src/test/java/app/arbor/chat/ui/PersistentComposerStateTest.kt b/app/src/test/java/app/arbor/chat/ui/PersistentComposerStateTest.kt
+new file mode 100644
+index 0000000..487bb35
+--- /dev/null
++++ b/app/src/test/java/app/arbor/chat/ui/PersistentComposerStateTest.kt
+@@ -0,0 +1,39 @@
++package app.arbor.chat.ui
++
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import java.io.File
++
++class PersistentComposerStateTest {
++    @Test
++    fun `draft text is stored per conversation while attachments remain staged`() {
++        val viewModel = File("src/main/java/app/arbor/chat/ui/ChatViewModel.kt").readText()
++        val draftStore = File("src/main/java/app/arbor/chat/settings/ComposerDraftStore.kt").readText()
++        val attachmentDao = File("src/main/java/app/arbor/chat/data/Daos.kt").readText()
++        assertTrue(viewModel.contains("switchDraftContext"))
++        assertTrue(viewModel.contains("container.composerDrafts.write"))
++        assertTrue(viewModel.contains("stagedForConversation"))
++        assertTrue(draftStore.contains("draft.\$conversationId"))
++        assertTrue(attachmentDao.contains("messageNodeId IS NULL"))
++    }
++
++    @Test
++    fun `restart state includes page setup and chat scroll anchor`() {
++        val stateStore = File("src/main/java/app/arbor/chat/settings/PersistentUiStateStore.kt").readText()
++        val chat = File("src/main/java/app/arbor/chat/ui/ChatScreen.kt").readText()
++        assertTrue(stateStore.contains("settingsRoute"))
++        assertTrue(stateStore.contains("setupStepIndex"))
++        assertTrue(stateStore.contains("ChatScrollSnapshot"))
++        assertTrue(chat.contains("anchorNodeId"))
++        assertTrue(chat.contains("firstVisibleItemOffset"))
++        assertTrue(chat.contains("topBarHeightOffset"))
++    }
++
++    @Test
++    fun `launcher splash uses the active app palette and icon`() {
++        val launcher = File("src/main/java/app/arbor/chat/LauncherActivity.kt").readText()
++        assertTrue(launcher.contains("resolvedArborColorScheme"))
++        assertTrue(launcher.contains("LauncherIconManager.iconResource"))
++        assertTrue(launcher.contains("setBackgroundColor"))
++    }
++}
+ diff --git a/docs/releases/RELEASE_NOTES_0.20.20.md b/docs/releases/RELEASE_NOTES_0.20.20.md
+new file mode 100644
+index 0000000..dc84eba
+--- /dev/null
++++ b/docs/releases/RELEASE_NOTES_0.20.20.md
+@@ -0,0 +1,21 @@
++# Arbor 0.20.20
++
++## Stateful launcher-icon restart
++
++Arbor now treats launcher-icon changes as an intentional restart instead of pretending Android can always update activity aliases without killing the app. Before the switch, Arbor synchronously journals the active screen, selected chat, Settings or setup page, chat and Settings scroll positions, every per-chat draft, and staged file attachments. It then reopens through the newly enabled launcher alias. A system-owned alarm is registered first so the relaunch still happens when One UI kills all Arbor processes during the component change.
++
++## Durable drafts
++
++Composer text is stored separately for every conversation. Switching chats, process death, app updates, and icon changes no longer discard drafts. Staged files were already copied into Arbor private storage and represented by durable database rows; 0.20.20 restores those rows with the corresponding draft instead of treating attachments as transient UI state.
++
++## Palette-correct icon and splash
++
++Each launcher alias now targets a palette-themed splash activity. Android 12 and newer use the selected launcher artwork at the native splash layer. Dynamic uses Android's live wallpaper-derived system accent and neutral resources rather than a fixed placeholder palette. Arbor's custom handoff then resolves the full active light/dark/AMOLED color scheme before opening the restored screen.
++
++## Setup navigation
++
++Setup is now a horizontally swipeable pager with animated page transitions. The settled page is persisted, Provider and Linux setup open as temporary detours, and Back or successful provider connection returns to the same setup step. A Setup assistant entry in Settings makes the flow reopenable at any time.
++
++## Validation focus
++
++Regression coverage checks intentional restart coordination, system-owned relaunch fallback, per-chat draft/file persistence, chat and Settings scroll journaling, dynamic launcher resources, palette-specific splash targets, pager navigation, and resumable setup detours.
