@@ -1,0 +1,48 @@
+as a stable unique launcher alias`() {
+        val aliases = ColorPalette.entries.map {
+            LauncherIconManager.aliasClassName(matchPalette = true, palette = it)
+        }
+        assertEquals(ColorPalette.entries.size, aliases.distinct().size)
+        assertEquals(LauncherIconManager.allAliases.toSet(), aliases.toSet())
+    }
+
+    @Test
+    fun `manifest exposes exactly one default launcher alias`() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        LauncherIconManager.allAliases.forEach { alias ->
+            assertTrue(manifest.contains("android:name=\".${alias.substringAfterLast('.')}\""))
+        }
+        val mainActivity = manifest.substringAfter("android:name=\".MainActivity\"")
+            .substringBefore("</activity>")
+        assertFalse(mainActivity.contains("android.intent.category.LAUNCHER"))
+        val arborAlias = manifest.substringAfter("android:name=\".LauncherArbor\"")
+            .substringBefore("</activity-alias>")
+        assertTrue(arborAlias.contains("android:enabled=\"true\""))
+    }
+}
+''')
+# update OnboardingFlowTest checks
+p='app/src/test/java/app/arbor/chat/ui/OnboardingFlowTest.kt'; s=read(p)
+s=replace_once(s,
+'''        assertTrue(source.contains("ColorPalette.SUNSET"))
+        assertTrue(source.contains("Open Linux environment manager"))
+''',
+'''        assertTrue(source.contains("ColorPalette.SUNSET"))
+        assertTrue(source.contains("Match launcher icon"))
+        assertTrue(source.contains("palettePreviewColors(palette, currentThemeMode)"))
+        assertFalse(source.contains("ColorPalette.SYSTEM -> MaterialTheme.colorScheme.tertiary"))
+        assertTrue(source.contains("Open Linux environment manager"))
+''','Onboarding test')
+write(p,s)
+
+# version and notes
+p='app/build.gradle.kts'; s=read(p)
+s=s.replace('versionCode = 141','versionCode = 142')
+s=s.replace('versionName = "0.20.15"','versionName = "0.20.16"')
+write(p,s)
+notes='''# Arbor 0.20.16
+
+## Theme-matched launcher icons
+
+- Add an opt-in **Match launcher icon to palette** switch in Appearance and first-run setup.
+- Provide polished adaptive launcher icons for Arbor, Dynamic, Graphite, Ocean, Violet, and Sunset while preserving A

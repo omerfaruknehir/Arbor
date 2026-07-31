@@ -1,0 +1,48 @@
+droid:strokeColor">
+            <gradient android:type="linear" android:startX="27" android:startY="84"
+                android:endX="55" android:endY="25"
+                android:startColor="{c['left1']}" android:endColor="{c['left2']}" />
+        </aapt:attr>
+    </path>
+    <path android:fillColor="@android:color/transparent" android:strokeColor="{c['right']}"
+        android:strokeWidth="11" android:strokeLineCap="round" android:pathData="M55,28C65,45 73,64 80,82" />
+    <path android:fillColor="@android:color/transparent" android:strokeColor="{c['accent']}"
+        android:strokeWidth="8" android:strokeLineCap="round" android:pathData="M40,64C49,60 59,60 68,64" />
+    <path android:fillColor="{c['accent']}" android:pathData="M54,29C60,21 69,19 76,24C73,33 65,37 55,33Z" />
+</vector>
+'''
+
+for name,c in palettes.items():
+    write(f'app/src/main/res/drawable/ic_arbor_background_{name}.xml', background(c))
+    write(f'app/src/main/res/drawable/ic_arbor_foreground_{name}.xml', foreground(c))
+    write(f'app/src/main/res/drawable/ic_arbor_mark_{name}.xml', mark(c))
+    write(f'app/src/main/res/mipmap-anydpi/ic_launcher_{name}.xml', f'''<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_arbor_background_{name}" />
+    <foreground android:drawable="@drawable/ic_arbor_foreground_{name}" />
+    <monochrome android:drawable="@drawable/ic_arbor_monochrome" />
+</adaptive-icon>
+''')
+    write(f'app/src/main/res/mipmap/ic_launcher_{name}.xml', mark(c))
+
+# Tests
+write('app/src/test/java/app/arbor/chat/settings/LauncherIconManagerTest.kt', '''package app.arbor.chat.settings
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.io.File
+
+class LauncherIconManagerTest {
+    @Test
+    fun `disabled matching always uses classic Arbor icon`() {
+        ColorPalette.entries.forEach { palette ->
+            assertEquals(
+                LauncherIconManager.ARBOR_ALIAS,
+                LauncherIconManager.aliasClassName(matchPalette = false, palette = palette),
+            )
+        }
+    }
+
+    @Test
+    fun `every palette h

@@ -1,0 +1,47 @@
+k_sunset
+    }
+''')
+
+# SettingsScreen imports and data flow/UI
+p='app/src/main/java/app/arbor/chat/ui/SettingsScreen.kt'; s=read(p)
+s=s
+s=s.replace('import app.arbor.chat.settings.displayedChromeEdgeSoftness\n','import app.arbor.chat.settings.displayedChromeEdgeSoftness\nimport app.arbor.chat.ui.theme.palettePreviewColors\n')
+s=replace_once(s,
+'''    val themeMode by viewModel.themeMode.collectAsState()
+    val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
+''',
+'''    val themeMode by viewModel.themeMode.collectAsState()
+    val matchLauncherIconToPalette by viewModel.matchLauncherIconToPalette.collectAsState()
+    val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
+''','Settings collect')
+s=replace_once(s,
+'''                            amoled = amoled,
+                            palette = palette,
+                            chromeBlurStrength = chromeBlurStrength,
+''',
+'''                            amoled = amoled,
+                            palette = palette,
+                            matchLauncherIconToPalette = matchLauncherIconToPalette,
+                            chromeBlurStrength = chromeBlurStrength,
+''','Settings appearance call')
+s=s.replace('subtitle = "Theme mode, six color palettes, and AMOLED black",','subtitle = "Theme mode, palettes, launcher icon, and AMOLED black",')
+s=replace_once(s,
+'''    amoled: Boolean,
+    palette: ColorPalette,
+    chromeBlurStrength: Float,
+''',
+'''    amoled: Boolean,
+    palette: ColorPalette,
+    matchLauncherIconToPalette: Boolean,
+    chromeBlurStrength: Float,
+''','Appearance args')
+old='''    SectionTitle("Color scheme", "Choose a restrained built-in palette or Android dynamic colors. Changes preview immediately.")
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ColorPalette.entries.forEach { option ->
+            Surface(
+                onClick = { viewModel.setPalette(option) },
+                color = if (palette == option) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                shape = MaterialTheme.shapes.large,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+    

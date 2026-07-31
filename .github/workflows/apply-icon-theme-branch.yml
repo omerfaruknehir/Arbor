@@ -1,0 +1,105 @@
+name: Build theme-matched icons branch
+
+on:
+  push:
+    branches:
+      - agent/theme-matched-icons-0.20.16
+    paths:
+      - .github/workflows/apply-icon-theme-branch.yml
+      - .github/tmp/icon-theme/**
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: theme-matched-icons-0.20.16
+  cancel-in-progress: false
+
+jobs:
+  generate-verify-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct and verify source generator
+        shell: bash
+        run: |
+          cat .github/tmp/icon-theme/part-*.txt > "$RUNNER_TEMP/apply_icon_theme.py"
+          echo "9aadc58c1fbaa587ac42b7e60660f683856b1c29b8159beab044fed431cc63ca  $RUNNER_TEMP/apply_icon_theme.py" | sha256sum --check
+          python -m py_compile "$RUNNER_TEMP/apply_icon_theme.py"
+
+      - name: Generate real source changes and remove helpers
+        shell: bash
+        run: |
+          python "$RUNNER_TEMP/apply_icon_theme.py"
+          rm -rf .github/tmp/icon-theme
+          rm -f .github/workflows/apply-icon-theme-branch.yml
+          rm -f .github/workflows/apply-icon-theme-0-20-16.yml
+          rm -f .github/patches/arbor-0.20.16.patch.gz
+          rmdir .github/patches 2>/dev/null || true
+          rm -f .github/workflows/inspect-icon-theme-source.yml
+          rm -f .github/workflows/one-shot-settings-drawer-source.yml
+          rm -f .github/workflows/one-shot-settings-drawer-source-v2.yml
+          rm -f .github/workflows/one-shot-settings-drawer-source-v3.yml
+          rm -f .github/workflows/one-shot-settings-drawer-source-v4.yml
+          git add -A
+          git diff --cached --check
+          test "$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)" = "0.20.16"
+          test "$(sed -n 's/.*versionCode = \([0-9]*\).*/\1/p' app/build.gradle.kts | head -n1)" = "142"
+          grep -q 'android:name=".LauncherOcean"' app/src/main/AndroidManifest.xml
+          grep -q 'palettePreviewColors(option, themeMode)' app/src/main/java/app/arbor/chat/ui/SettingsScreen.kt
+          grep -q 'palettePreviewColors(palette, currentThemeMode)' app/src/main/java/app/arbor/chat/ui/OnboardingScreen.kt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify third-party licenses
+        run: ./ci/verify-third-party-licenses.sh
+
+      - name: Verify offline license catalog
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:generateOfflineLicenseCatalog
+
+      - name: Run release unit tests
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
+
+      - name: Run release lint
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
+
+      - name: Build release artifacts
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease bundleRelease assembleDebugAndroidTest
+
+      - name: Verify release APK signature
+        run: "$ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk"
+
+      - name: Commit verified source to branch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Add theme-matched launcher icons and accurate previews"
+          git push origin HEAD:agent/theme-matched-icons-0.20.16
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Arbor-0.20.16-branch-build
+          if-no-files-found: error
+          path: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/bundle/release/*.aab
+            app/build/outputs/apk/androidTest/debug/*.apk
+            app/build/reports/tests/
+            app/build/reports/lint-results-release.html

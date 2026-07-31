@@ -1,0 +1,33 @@
+            Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = when (option) {
+                            ColorPalette.ARBOR -> Color(0xFF3B8A62)
+                            ColorPalette.SYSTEM -> MaterialTheme.colorScheme.tertiary
+                            ColorPalette.GRAPHITE -> Color(0xFF60758F)
+                            ColorPalette.OCEAN -> Color(0xFF007C91)
+                            ColorPalette.VIOLET -> Color(0xFF7459A6)
+                            ColorPalette.SUNSET -> Color(0xFFB85C38)
+                        },
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                        modifier = Modifier.size(28.dp),
+                    ) {}
+                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                        Text(if (option == ColorPalette.ARBOR) appName else option.displayName, fontWeight = FontWeight.SemiBold)
+                        Text(if (option == ColorPalette.ARBOR) "$appNamePossessive green Material palette" else option.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (palette == option) Icon(Icons.Outlined.CheckCircle, "Selected", tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+    }
+    SettingsSwitch("AMOLED black", amoled, viewModel::setAmoled, enabled = themeMode != ThemeMode.LIGHT)
+'''
+new='''    SectionTitle("Color scheme", "Choose a restrained built-in palette or Android dynamic colors. Every swatch is rendered from that palette, not the currently selected one.")
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ColorPalette.entries.forEach { option ->
+            val preview = palettePreviewColors(option, themeMode)
+            Surface(
+                onClick = { viewModel.setPalette(option) },
+                color = if (palette == option) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                shape = MaterialTheme.shapes.large,
+                modifier = Modifier.fill

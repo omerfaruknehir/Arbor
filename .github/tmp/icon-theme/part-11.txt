@@ -1,0 +1,57 @@
+moled,
+''',
+'''            currentPalette = palette,
+            matchLauncherIconToPalette = matchLauncherIconToPalette,
+            amoled = amoled,
+''','ArborApp onboard arg')
+s=replace_once(s,
+'''            onPaletteChanged = viewModel::setPalette,
+            onAmoledChanged = viewModel::setAmoled,
+''',
+'''            onPaletteChanged = viewModel::setPalette,
+            onMatchLauncherIconToPaletteChanged = viewModel::setMatchLauncherIconToPalette,
+            onAmoledChanged = viewModel::setAmoled,
+''','ArborApp onboard callback')
+write(p,s)
+
+# Onboarding
+p='app/src/main/java/app/arbor/chat/ui/OnboardingScreen.kt'; s=read(p)
+s=s.replace('import app.arbor.chat.settings.ThemeMode\n','import app.arbor.chat.settings.ThemeMode\nimport app.arbor.chat.ui.theme.palettePreviewColors\n')
+s=replace_once(s,
+'''internal fun OnboardingScreen(
+    currentThemeMode: ThemeMode,
+    currentPalette: ColorPalette,
+    amoled: Boolean,
+''',
+'''internal fun OnboardingScreen(
+    currentThemeMode: ThemeMode,
+    currentPalette: ColorPalette,
+    matchLauncherIconToPalette: Boolean,
+    amoled: Boolean,
+''','Onboarding arg')
+s=replace_once(s,
+'''    onThemeModeChanged: (ThemeMode) -> Unit,
+    onPaletteChanged: (ColorPalette) -> Unit,
+    onAmoledChanged: (Boolean) -> Unit,
+    onPythonEnabledChanged: (Boolean) -> Unit,
+''',
+'''    onThemeModeChanged: (ThemeMode) -> Unit,
+    onPaletteChanged: (ColorPalette) -> Unit,
+    onMatchLauncherIconToPaletteChanged: (Boolean) -> Unit,
+    onAmoledChanged: (Boolean) -> Unit,
+    onPythonEnabledChanged: (Boolean) -> Unit,
+''','Onboarding callback')
+s=replace_once(s,
+'''                        currentPalette = currentPalette,
+                        amoled = amoled,
+''',
+'''                        currentPalette = currentPalette,
+                        matchLauncherIconToPalette = matchLauncherIconToPalette,
+                        amoled = amoled,
+''','Appearance call args')
+s=replace_once(s,
+'''                        onAmoledChanged = onAmoledChanged,
+                    )
+''',
+'''                        onMatchLauncherIconToPaletteChanged = onMatchLauncherIconToPaletteChanged,
+                        onAmoledChanged = onAmoledChanged,

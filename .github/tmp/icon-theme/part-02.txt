@@ -1,0 +1,56 @@
+ext: Context, matchPalette: Boolean, palette: ColorPalette): Boolean {
+        val appContext = context.applicationContext
+        val packageManager = appContext.packageManager
+        val desiredClassName = aliasClassName(matchPalette, palette)
+        return runCatching {
+            // Enable first so launchers never observe Arbor with no launcher component.
+            setEnabled(
+                packageManager = packageManager,
+                component = ComponentName(appContext.packageName, desiredClassName),
+                enabled = true,
+                manifestDefault = desiredClassName == ARBOR_ALIAS,
+            )
+            allAliases.asSequence()
+                .filterNot { it == desiredClassName }
+                .forEach { className ->
+                    setEnabled(
+                        packageManager = packageManager,
+                        component = ComponentName(appContext.packageName, className),
+                        enabled = false,
+                        manifestDefault = className == ARBOR_ALIAS,
+                    )
+                }
+            true
+        }.onFailure { error ->
+            Log.w(TAG, "Could not update launcher icon alias", error)
+        }.getOrDefault(false)
+    }
+
+    private fun setEnabled(
+        packageManager: PackageManager,
+        component: ComponentName,
+        enabled: Boolean,
+        manifestDefault: Boolean,
+    ) {
+        val current = when (packageManager.getComponentEnabledSetting(component)) {
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
+            PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> manifestDefault
+            else -> false
+        }
+        if (current == enabled) return
+        packageManager.setComponentEnabledSetting(
+            component,
+            if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+            PackageManager.DONT_KILL_APP,
+        )
+    }
+}
+''')
+
+# AppPreferences
+p='app/src/main/java/app/arbor/chat/settings/AppPreferences.kt'
+s=read(p)
+s=replace_once(s,
+'''class AppPreferences(context: Context) {
+    private val preferences = context.getSharedPre

@@ -1,0 +1,48 @@
+   palette: ColorPalette,
+    preview: app.arbor.chat.ui.theme.PalettePreviewColors,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+''','PaletteChoice signature')
+s=replace_once(s,
+'''            Surface(color = preview, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.size(30.dp)) {}
+            Column(Modifier.weight(1f)) {
+''',
+'''            PaletteSwatch(preview, Modifier.size(width = 58.dp, height = 24.dp))
+            Column(Modifier.weight(1f)) {
+''','PaletteChoice swatch')
+s=replace_once(s,
+'''private fun ReadyStep(
+    themeMode: ThemeMode,
+    palette: ColorPalette,
+    pythonEnabled: Boolean,
+''',
+'''private fun ReadyStep(
+    themeMode: ThemeMode,
+    palette: ColorPalette,
+    matchLauncherIconToPalette: Boolean,
+    pythonEnabled: Boolean,
+''','Ready signature')
+s=replace_once(s,
+'''            OnboardingValueRow(Icons.Outlined.CheckCircle, "Appearance", "${themeMode.setupName} · ${palette.setupName}${if (themeMode != ThemeMode.LIGHT) " · dark surfaces available" else ""}")
+            OnboardingValueRow(Icons.Outlined.CheckCircle, "Local Python", if (pythonEnabled) "Enabled for new chats" else "Off by default")
+''',
+'''            OnboardingValueRow(Icons.Outlined.CheckCircle, "Appearance", "${themeMode.setupName} · ${palette.setupName}${if (themeMode != ThemeMode.LIGHT) " · dark surfaces available" else ""}")
+            OnboardingValueRow(Icons.Outlined.CheckCircle, "Launcher icon", if (matchLauncherIconToPalette) "Matches ${palette.setupName}" else "Classic Arbor green")
+            OnboardingValueRow(Icons.Outlined.CheckCircle, "Local Python", if (pythonEnabled) "Enabled for new chats" else "Off by default")
+''','Ready row')
+# Remove now-unused Color import only if no other uses
+if 'Color(' not in s:
+    s=s.replace('import androidx.compose.ui.graphics.Color\n','')
+write(p,s)
+
+# Manifest aliases
+p='app/src/main/AndroidManifest.xml'; s=read(p)
+s=replace_once(s,
+'''            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+''','', 'remove launcher from MainActivity')
+aliases='''
+        
