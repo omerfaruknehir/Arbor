@@ -8,12 +8,13 @@ subprocess.run([sys.executable, "scripts/apply_cloud_linux_backup_0_20_24.py"], 
 def replace_once(path: str, old: str, new: str, label: str) -> None:
     file = Path(path)
     text = file.read_text()
-    if new in text:
-        return
     count = text.count(old)
-    if count != 1:
-        raise RuntimeError(f"{label}: expected one anchor in {path}, found {count}")
-    file.write_text(text.replace(old, new, 1))
+    if count == 1:
+        file.write_text(text.replace(old, new, 1))
+        return
+    if count == 0 and new in text:
+        return
+    raise RuntimeError(f"{label}: expected one anchor in {path}, found {count}")
 
 
 # Absolute symbolic links are normal inside Linux root filesystems and are safe
