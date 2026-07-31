@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.20.16 — 2026-07-31
+
+- Add an opt-in launcher-icon setting that follows Arbor, Dynamic, Graphite, Ocean, Violet, or Sunset while retaining the classic Arbor icon when disabled.
+- Add polished adaptive icons and safe activity-alias switching without killing the running app.
+- Fix Dynamic palette previews borrowing colors from the currently selected scheme; previews now use the device's actual wallpaper-derived Material palette.
+- Replace single-color preview dots with accurate three-color swatches in onboarding and Appearance.
+- Add launcher alias, manifest, setup, and preview regression coverage.
+
 ## 0.20.15 — 2026-07-31
 
 - Replace the shallow first-run screen with a five-step setup assistant covering appearance, provider readiness, local Python, optional Linux tooling, and a final readiness summary.

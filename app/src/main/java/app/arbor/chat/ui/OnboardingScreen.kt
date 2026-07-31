@@ -50,8 +50,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import app.arbor.chat.R
 import app.arbor.chat.settings.ColorPalette
 import app.arbor.chat.settings.ThemeMode
+import app.arbor.chat.ui.theme.palettePreviewColors
 
 private enum class OnboardingStep { WELCOME, APPEARANCE, PROVIDER, TOOLS, READY }
 
@@ -95,12 +96,14 @@ internal fun ArborStartupScreen() {
 internal fun OnboardingScreen(
     currentThemeMode: ThemeMode,
     currentPalette: ColorPalette,
+    matchLauncherIconToPalette: Boolean,
     amoled: Boolean,
     providerCatalogDelayed: Boolean,
     pythonEnabled: Boolean,
     linuxEnabled: Boolean,
     onThemeModeChanged: (ThemeMode) -> Unit,
     onPaletteChanged: (ColorPalette) -> Unit,
+    onMatchLauncherIconToPaletteChanged: (Boolean) -> Unit,
     onAmoledChanged: (Boolean) -> Unit,
     onPythonEnabledChanged: (Boolean) -> Unit,
     onLinuxEnabledChanged: (Boolean) -> Unit,
@@ -152,6 +155,7 @@ internal fun OnboardingScreen(
                     OnboardingStep.APPEARANCE -> AppearanceStep(
                         currentThemeMode = currentThemeMode,
                         currentPalette = currentPalette,
+                        matchLauncherIconToPalette = matchLauncherIconToPalette,
                         amoled = amoled,
                         onThemeModeChanged = {
                             haptics.selection()
@@ -161,6 +165,7 @@ internal fun OnboardingScreen(
                             haptics.selection()
                             onPaletteChanged(it)
                         },
+                        onMatchLauncherIconToPaletteChanged = onMatchLauncherIconToPaletteChanged,
                         onAmoledChanged = onAmoledChanged,
                     )
                     OnboardingStep.PROVIDER -> ProviderStep(providerCatalogDelayed)
@@ -173,6 +178,7 @@ internal fun OnboardingScreen(
                     OnboardingStep.READY -> ReadyStep(
                         themeMode = currentThemeMode,
                         palette = currentPalette,
+                        matchLauncherIconToPalette = matchLauncherIconToPalette,
                         pythonEnabled = pythonEnabled,
                         linuxEnabled = linuxEnabled,
                     )
@@ -337,9 +343,11 @@ private fun WelcomeStep() {
 private fun AppearanceStep(
     currentThemeMode: ThemeMode,
     currentPalette: ColorPalette,
+    matchLauncherIconToPalette: Boolean,
     amoled: Boolean,
     onThemeModeChanged: (ThemeMode) -> Unit,
     onPaletteChanged: (ColorPalette) -> Unit,
+    onMatchLauncherIconToPaletteChanged: (Boolean) -> Unit,
     onAmoledChanged: (Boolean) -> Unit,
 ) {
     SetupHeading("Make Arbor yours", "Every choice previews immediately across the entire setup flow.")
@@ -372,11 +380,46 @@ private fun AppearanceStep(
         ColorPalette.entries.forEach { palette ->
             PaletteChoice(
                 palette = palette,
+                preview = palettePreviewColors(palette, currentThemeMode),
                 selected = currentPalette == palette,
                 onClick = { onPaletteChanged(palette) },
             )
         }
     }
+    Surface(
+        color = if (matchLauncherIconToPalette) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+        contentColor = if (matchLauncherIconToPalette) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = Modifier.fillMaxWidth().clickable {
+            onMatchLauncherIconToPaletteChanged(!matchLauncherIconToPalette)
+        },
+    ) {
+        Row(
+            Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            LauncherIconPreview(if (matchLauncherIconToPalette) currentPalette else ColorPalette.ARBOR)
+            Column(Modifier.weight(1f)) {
+                Text("Match launcher icon", fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (matchLauncherIconToPalette) "Use the ${currentPalette.setupName} launcher icon" else "Keep the classic Arbor green icon",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = matchLauncherIconToPalette,
+                onCheckedChange = onMatchLauncherIconToPaletteChanged,
+            )
+        }
+    }
+    Text(
+        "The launcher may take a moment to refresh. Android themed icons can override app-selected colors.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+    )
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = MaterialTheme.shapes.large,
@@ -436,18 +479,11 @@ private fun ThemeModeChoice(
 
 @Composable
 private fun PaletteChoice(
-    palette: ColorPalette,
+     palette: ColorPalette,
+    preview: app.arbor.chat.ui.theme.PalettePreviewColors,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    val preview = when (palette) {
-        ColorPalette.ARBOR -> Color(0xFF3B8A62)
-        ColorPalette.SYSTEM -> MaterialTheme.colorScheme.tertiary
-        ColorPalette.GRAPHITE -> Color(0xFF60758F)
-        ColorPalette.OCEAN -> Color(0xFF007C91)
-        ColorPalette.VIOLET -> Color(0xFF7459A6)
-        ColorPalette.SUNSET -> Color(0xFFB85C38)
-    }
     Surface(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
@@ -460,7 +496,7 @@ private fun PaletteChoice(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Surface(color = preview, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.size(30.dp)) {}
+            PaletteSwatch(preview, Modifier.size(width = 58.dp, height = 24.dp))
             Column(Modifier.weight(1f)) {
                 Text(palette.setupName, fontWeight = FontWeight.SemiBold)
                 Text(palette.setupDescription, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -585,6 +621,7 @@ private fun SetupToggleCard(
 private fun ReadyStep(
     themeMode: ThemeMode,
     palette: ColorPalette,
+    matchLauncherIconToPalette: Boolean,
     pythonEnabled: Boolean,
     linuxEnabled: Boolean,
 ) {
@@ -596,6 +633,7 @@ private fun ReadyStep(
     ) {
         Column {
             OnboardingValueRow(Icons.Outlined.CheckCircle, "Appearance", "${themeMode.setupName} · ${palette.setupName}${if (themeMode != ThemeMode.LIGHT) " · dark surfaces available" else ""}")
+            OnboardingValueRow(Icons.Outlined.CheckCircle, "Launcher icon", if (matchLauncherIconToPalette) "Matches ${palette.setupName}" else "Classic Arbor green")
             OnboardingValueRow(Icons.Outlined.CheckCircle, "Local Python", if (pythonEnabled) "Enabled for new chats" else "Off by default")
             OnboardingValueRow(Icons.Outlined.CheckCircle, "Linux tools", if (linuxEnabled) "Enabled when a distribution is installed" else "Optional and off by default")
         }

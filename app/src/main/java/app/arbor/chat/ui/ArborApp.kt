@@ -51,6 +51,7 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
     val providerCatalogReady by viewModel.providerCatalogReady.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
     val palette by viewModel.palette.collectAsState()
+    val matchLauncherIconToPalette by viewModel.matchLauncherIconToPalette.collectAsState()
     val amoled by viewModel.amoled.collectAsState()
     val newChatDefaults by viewModel.newChatDefaults.collectAsState()
     val configuredProviders = remember(providers, credentialRevision) {
@@ -88,12 +89,14 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
         OnboardingScreen(
             currentThemeMode = themeMode,
             currentPalette = palette,
+            matchLauncherIconToPalette = matchLauncherIconToPalette,
             amoled = amoled,
             providerCatalogDelayed = !providerCatalogReady,
             pythonEnabled = newChatDefaults.agentPythonEnabled,
             linuxEnabled = newChatDefaults.agentUbuntuEnabled,
             onThemeModeChanged = viewModel::setThemeMode,
             onPaletteChanged = viewModel::setPalette,
+            onMatchLauncherIconToPaletteChanged = viewModel::setMatchLauncherIconToPalette,
             onAmoledChanged = viewModel::setAmoled,
             onPythonEnabledChanged = { enabled ->
                 viewModel.updateNewChatDefaults { it.copy(agentPythonEnabled = enabled) }
