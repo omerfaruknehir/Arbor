@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.22 — 2026-07-31
+
+- Make setup immediately acknowledge configured API, ChatGPT, and local providers, with Continue and Manage providers actions instead of presenting the unconfigured state again.
+- Separate the Linux default toggle from distribution installation, show the live install state, require an explicit distro choice/install action when Linux is enabled, and provide a Continue without Linux path.
+- Make the final setup summary report the actual provider count and Linux installation state.
+- Keep the Android Dynamic launcher alias multicolored by removing its monochrome override, while using live Android system accent resources for both the launcher artwork and in-app Arbor mark.
+
 ## 0.20.21 — 2026-07-31
 
 - Keep setup as a dedicated first-run/resume flow and remove the Setup assistant destination from Settings.

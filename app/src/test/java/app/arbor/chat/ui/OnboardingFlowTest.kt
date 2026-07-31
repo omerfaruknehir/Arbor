@@ -39,7 +39,9 @@ class OnboardingFlowTest {
         assertTrue(source.contains("Match launcher icon"))
         assertTrue(source.contains("palettePreviewColors(palette, currentThemeMode)"))
         assertFalse(source.contains("ColorPalette.SYSTEM -> MaterialTheme.colorScheme.tertiary"))
-        assertTrue(source.contains("Open Linux environment manager"))
+        assertTrue(source.contains("Choose a Linux distribution"))
+        assertTrue(source.contains("Choose and install a distribution"))
+        assertTrue(source.contains("this switch does not download a distribution"))
         assertTrue(source.contains("Exit setup for now"))
         assertTrue(source.contains("HorizontalPager("))
         assertTrue(source.contains("animateScrollToPage"))
@@ -48,6 +50,29 @@ class OnboardingFlowTest {
         assertTrue(source.contains("verticalScroll(pageScrollStates[page])"))
         assertTrue(source.contains("setupProgressForSegment(pagePosition, index)"))
         assertTrue(source.contains("BackHandler(enabled = currentPage > 0)"))
+    }
+
+    @Test
+    fun `provider step acknowledges configured credentials`() {
+        val source = java.io.File("src/main/java/app/arbor/chat/ui/OnboardingScreen.kt").readText()
+        val app = java.io.File("src/main/java/app/arbor/chat/ui/ArborApp.kt").readText()
+        assertTrue(source.contains("configuredProviderCount"))
+        assertTrue(source.contains("Model access connected"))
+        assertTrue(source.contains("Credentials were found and this step is complete"))
+        assertTrue(source.contains("Manage providers"))
+        assertTrue(app.contains("configuredProviderCount = configuredProviders.size"))
+    }
+
+    @Test
+    fun `Linux setup distinguishes enablement from installation`() {
+        val source = java.io.File("src/main/java/app/arbor/chat/ui/OnboardingScreen.kt").readText()
+        val app = java.io.File("src/main/java/app/arbor/chat/ui/ArborApp.kt").readText()
+        assertTrue(source.contains("No Linux distribution installed"))
+        assertTrue(source.contains("review the download, and explicitly install it"))
+        assertTrue(source.contains("Continue without Linux"))
+        assertTrue(source.contains("linuxStatus.installed"))
+        assertTrue(app.contains("val ubuntuStatus by viewModel.ubuntuStatus.collectAsState()"))
+        assertTrue(app.contains("linuxStatus = ubuntuStatus"))
     }
 
     @Test

@@ -45,6 +45,7 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
     val showArchived by viewModel.showArchived.collectAsState()
     val pythonRun by viewModel.pythonRun.collectAsState()
     val linuxRun by viewModel.linuxRun.collectAsState()
+    val ubuntuStatus by viewModel.ubuntuStatus.collectAsState()
     val developerSettings by viewModel.developerSettings.collectAsState()
     val providers by viewModel.providers.collectAsState()
     val credentialRevision by viewModel.credentialRevision.collectAsState()
@@ -95,6 +96,7 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
             matchLauncherIconToPalette = matchLauncherIconToPalette,
             amoled = amoled,
             providerCatalogDelayed = !providerCatalogReady,
+            configuredProviderCount = configuredProviders.size,
             pythonEnabled = newChatDefaults.agentPythonEnabled,
             stepIndex = setupStepIndex,
             stepOffsetFraction = setupPageOffsetFraction,
@@ -102,6 +104,7 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
             onPagerPositionChanged = viewModel::updateSetupPagerPosition,
             onStepScrollChanged = viewModel::saveSetupScrollOffset,
             linuxEnabled = newChatDefaults.agentUbuntuEnabled,
+            linuxStatus = ubuntuStatus,
             onThemeModeChanged = viewModel::setThemeMode,
             onPaletteChanged = viewModel::setPalette,
             onMatchLauncherIconToPaletteChanged = viewModel::setMatchLauncherIconToPalette,
