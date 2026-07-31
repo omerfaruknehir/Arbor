@@ -19,6 +19,8 @@ finally:
 
 archive = Path("app/src/main/java/app/arbor/chat/transfer/ArborArchiveManager.kt")
 text = archive.read_text()
+text = text.replace("import java.io.CipherInputStream\n", "import javax.crypto.CipherInputStream\n")
+text = text.replace("import java.io.CipherOutputStream\n", "import javax.crypto.CipherOutputStream\n")
 constants_anchor = 'const val ARBOR_BACKUP_EXTENSION = ".arborbackup"\n'
 top_level_constants = '''
 
