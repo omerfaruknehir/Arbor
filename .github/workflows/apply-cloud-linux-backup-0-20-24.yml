@@ -1,0 +1,73 @@
+name: Apply cloud and Linux backup features
+
+on:
+  push:
+    branches:
+      - feature/linux-cloud-app-folder-backups-0.20.24
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-cloud-linux-backup-0-20-24
+  cancel-in-progress: false
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/linux-cloud-app-folder-backups-0.20.24
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+
+      - name: Apply source changes
+        run: python scripts/apply_cloud_linux_backup_0_20_24.py
+
+      - name: Verify patch cleanliness
+        run: git diff --check
+
+      - name: Verify third-party licenses
+        run: python scripts/verify_third_party_licenses.py
+
+      - name: Verify offline license catalog
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 generateOfflineLicenseCatalog
+
+      - name: Run release unit tests
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
+
+      - name: Run release lint
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
+
+      - name: Assemble optimized release APK
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease
+
+      - name: Commit verified feature
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app licenses CHANGELOG.md docs/releases/RELEASE_NOTES_0.20.24.md
+          if git diff --cached --quiet; then
+            echo "No source changes to commit."
+          else
+            git commit -m "Add Linux and app-scoped cloud backups"
+            git push origin HEAD:feature/linux-cloud-app-folder-backups-0.20.24
+          fi
