@@ -1,0 +1,26 @@
+name: Export Arbor 0.20.20 source
+
+on:
+  push:
+    branches:
+      - agent/stateful-icon-restart-0.20.20
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create source archive
+        run: git archive --format=zip --output=Arbor-stateful-02020-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Arbor-stateful-02020-source
+          path: Arbor-stateful-02020-source.zip
+          if-no-files-found: error
+          retention-days: 1
