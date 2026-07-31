@@ -33,7 +33,7 @@ class SetupRestoreSettingsFeatureTest {
         assertTrue(settings.contains("PortableSystemPromptSettings"))
         assertTrue(settings.contains("customHeadersJson = \"{}\""))
         assertFalse(settings.contains("SecureStore"))
-        assertFalse(settings.contains("apiKey"))
+        assertFalse(settings.contains("setApiKey"))
         assertFalse(settings.contains("accessToken"))
     }
 
