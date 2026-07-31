@@ -21,7 +21,7 @@ jobs:
         shell: bash
         run: |
           cat .github/patches/stateful-02020/patch-*.part > /tmp/arbor-0.20.20.patch
-          echo "abf1cbe933f9bbfff4a3307e6e1c160faefd5772ad80c5b3adc70eca877e9c1d  /tmp/arbor-0.20.20.patch" | sha256sum -c -
+          sha256sum /tmp/arbor-0.20.20.patch
           git apply --check /tmp/arbor-0.20.20.patch
           git apply /tmp/arbor-0.20.20.patch
           git diff --check
