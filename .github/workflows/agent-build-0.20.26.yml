@@ -1,5 +1,6 @@
 name: Build Arbor 0.20.26
 
+# Re-run after capability validation fix.
 on:
   push:
     branches:
