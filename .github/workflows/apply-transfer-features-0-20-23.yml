@@ -39,7 +39,7 @@ jobs:
           cache-read-only: true
 
       - name: Apply source changes
-        run: python scripts/apply_transfer_features_0_20_23.py
+        run: python scripts/run_transfer_patch_0_20_23.py
 
       - name: Verify patch cleanliness
         run: git diff --check
