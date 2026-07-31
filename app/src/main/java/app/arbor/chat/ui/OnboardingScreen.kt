@@ -408,7 +408,7 @@ private fun AppearanceStep(
         }
     }
     Text(
-        "Arbor stays open while the launcher refreshes. Android themed icons can override app-selected colors.",
+        "The icon is queued and updates after Arbor moves to the background and active work finishes, so the current screen is never closed. Android themed icons can override app-selected colors.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth(),

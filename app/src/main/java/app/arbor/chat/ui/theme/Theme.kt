@@ -13,6 +13,8 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -101,6 +103,8 @@ private val SunsetDark = ArborDark.copy(
 )
 
 
+val LocalArborColorPalette = staticCompositionLocalOf { ColorPalette.ARBOR }
+
 data class PalettePreviewColors(
     val primary: Color,
     val secondary: Color,
@@ -173,5 +177,7 @@ fun ArborTheme(
     activity?.window?.let {
         WindowCompat.getInsetsController(it, it.decorView).isAppearanceLightStatusBars = !dark
     }
-    MaterialTheme(colorScheme = colors, shapes = ArborShapes, content = content)
+    CompositionLocalProvider(LocalArborColorPalette provides palette) {
+        MaterialTheme(colorScheme = colors, shapes = ArborShapes, content = content)
+    }
 }

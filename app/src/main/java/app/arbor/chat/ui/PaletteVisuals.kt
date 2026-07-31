@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.arbor.chat.R
 import app.arbor.chat.settings.ColorPalette
+import app.arbor.chat.ui.theme.LocalArborColorPalette
 import app.arbor.chat.ui.theme.PalettePreviewColors
 import kotlin.math.min
 
@@ -52,13 +53,56 @@ private fun PaletteDot(color: Color, modifier: Modifier = Modifier) {
     ) {}
 }
 
-/** Arbor's in-app mark, rendered from the active Material color scheme. */
+private data class ArborMarkColors(
+    val backgroundStart: Color,
+    val backgroundEnd: Color,
+    val leftStemStart: Color,
+    val leftStemEnd: Color,
+    val rightStem: Color,
+    val accent: Color,
+)
+
+private fun arborMarkColors(palette: ColorPalette): ArborMarkColors = when (palette) {
+    ColorPalette.ARBOR -> ArborMarkColors(
+        backgroundStart = Color(0xFF083A2C), backgroundEnd = Color(0xFF0C684F),
+        leftStemStart = Color(0xFF86DFB8), leftStemEnd = Color(0xFFDDFBEA),
+        rightStem = Color(0xFFF1FFF7), accent = Color(0xFFF4C761),
+    )
+    ColorPalette.SYSTEM -> ArborMarkColors(
+        backgroundStart = Color(0xFF293B52), backgroundEnd = Color(0xFF67507E),
+        leftStemStart = Color(0xFFA9D4FF), leftStemEnd = Color(0xFFE8DDFF),
+        rightStem = Color(0xFFFFF8FF), accent = Color(0xFFFFB4A9),
+    )
+    ColorPalette.GRAPHITE -> ArborMarkColors(
+        backgroundStart = Color(0xFF162234), backgroundEnd = Color(0xFF425F86),
+        leftStemStart = Color(0xFFA9C7F8), leftStemEnd = Color(0xFFE7F0FF),
+        rightStem = Color(0xFFF7F9FF), accent = Color(0xFFE5BFA6),
+    )
+    ColorPalette.OCEAN -> ArborMarkColors(
+        backgroundStart = Color(0xFF00363F), backgroundEnd = Color(0xFF00677A),
+        leftStemStart = Color(0xFF54D6F2), leftStemEnd = Color(0xFFD5F7FF),
+        rightStem = Color(0xFFF2FDFF), accent = Color(0xFFBEC6EA),
+    )
+    ColorPalette.VIOLET -> ArborMarkColors(
+        backgroundStart = Color(0xFF2E1D4F), backgroundEnd = Color(0xFF67508F),
+        leftStemStart = Color(0xFFD1BCFF), leftStemEnd = Color(0xFFF0E8FF),
+        rightStem = Color(0xFFFFF8FF), accent = Color(0xFFEFB8C8),
+    )
+    ColorPalette.SUNSET -> ArborMarkColors(
+        backgroundStart = Color(0xFF5C1A07), backgroundEnd = Color(0xFF9B4425),
+        leftStemStart = Color(0xFFFFB59C), leftStemEnd = Color(0xFFFFEDE7),
+        rightStem = Color(0xFFFFF8F6), accent = Color(0xFFD7C58D),
+    )
+}
+
+/** Exact in-app rendering of the selected adaptive launcher artwork. */
 @Composable
 internal fun ArborMark(
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
+    palette: ColorPalette = LocalArborColorPalette.current,
 ) {
-    val colors = MaterialTheme.colorScheme
+    val colors = arborMarkColors(palette)
     val accessibility = if (contentDescription == null) Modifier else Modifier.semantics {
         this.contentDescription = contentDescription
     }
@@ -72,7 +116,7 @@ internal fun ArborMark(
 
         drawRoundRect(
             brush = Brush.linearGradient(
-                colors = listOf(colors.primaryContainer, colors.primary),
+                colors = listOf(colors.backgroundStart, colors.backgroundEnd),
                 start = point(15f, 8f),
                 end = point(96f, 101f),
             ),
@@ -92,7 +136,7 @@ internal fun ArborMark(
         drawPath(
             path = leftStem,
             brush = Brush.linearGradient(
-                colors = listOf(colors.onPrimaryContainer, colors.onPrimary),
+                colors = listOf(colors.leftStemStart, colors.leftStemEnd),
                 start = point(27f, 84f),
                 end = point(55f, 25f),
             ),
@@ -109,7 +153,7 @@ internal fun ArborMark(
         }
         drawPath(
             path = rightStem,
-            color = colors.onPrimary,
+            color = colors.rightStem,
             style = Stroke(width = 11f * unit, cap = StrokeCap.Round),
         )
 
@@ -123,7 +167,7 @@ internal fun ArborMark(
         }
         drawPath(
             path = crossbar,
-            color = colors.tertiary,
+            color = colors.accent,
             style = Stroke(width = 8f * unit, cap = StrokeCap.Round),
         )
 
@@ -141,7 +185,7 @@ internal fun ArborMark(
             )
             close()
         }
-        drawPath(leaf, color = colors.tertiary)
+        drawPath(leaf, color = colors.accent)
     }
 }
 

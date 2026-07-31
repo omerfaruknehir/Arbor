@@ -1150,6 +1150,7 @@ private fun MarkdownAndroidView(
 ) {
     var parsedMarkdown by remember(markwon) { mutableStateOf<ParsedMarkdownSource?>(null) }
     LaunchedEffect(markwon, markdown) {
+        parsedMarkdown = null
         val spanned = withContext(Dispatchers.Default) {
             renderMarkdownSafely(markwon, markdown)
         }
@@ -1179,8 +1180,24 @@ private fun MarkdownAndroidView(
                 view.setHorizontallyScrolling(false)
                 view.appliedStyleKey = styleKey
             }
-            val ready = parsedMarkdown
-            if (ready != null && (view.renderedSource != ready.source || view.renderedStyleKey != styleKey)) {
+            val ready = parsedMarkdown?.takeIf { it.source == markdown }
+            if (ready == null) {
+                // A recycled TextView can otherwise retain a previous short source
+                // until background Markdown parsing completes. Show the complete raw
+                // message immediately, then replace it with the parsed spans.
+                val fallback = markdownRenderFallbackText(markdown)
+                if (view.renderedSource != markdown || view.renderedStyleKey != styleKey || view.text?.length != fallback.length) {
+                    view.setText(fallback, TextView.BufferType.SPANNABLE)
+                    view.renderedSource = markdown
+                    view.renderedStyleKey = styleKey
+                    view.renderedAsFallback = true
+                }
+            } else if (
+                view.renderedSource != ready.source ||
+                view.renderedStyleKey != styleKey ||
+                view.renderedAsFallback ||
+                view.text?.length != ready.spanned.length
+            ) {
                 try {
                     markwon.setParsedMarkdown(view, ready.spanned)
                     installReferenceSpans(
@@ -1200,6 +1217,7 @@ private fun MarkdownAndroidView(
                 }
                 view.renderedSource = ready.source
                 view.renderedStyleKey = styleKey
+                view.renderedAsFallback = false
             }
         },
         modifier = modifier,
@@ -1211,6 +1229,7 @@ private class ArborMarkdownTextView(context: Context) : TextView(context) {
     var renderedSource: String = ""
     var renderedStyleKey: Int = 0
     var appliedStyleKey: Int = 0
+    var renderedAsFallback: Boolean = false
     val selectableLinkMovementMethod = SelectableLinkMovementMethod()
 
     fun resetForReuse() {
@@ -1218,6 +1237,7 @@ private class ArborMarkdownTextView(context: Context) : TextView(context) {
         renderedSource = ""
         renderedStyleKey = 0
         appliedStyleKey = 0
+        renderedAsFallback = false
     }
 }
 

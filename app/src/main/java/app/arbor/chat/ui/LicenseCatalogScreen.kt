@@ -289,6 +289,10 @@ private fun LicenseIcon(component: OfflineLicenseComponent, modifier: Modifier =
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         when {
+            component.id == "arbor" -> ArborMark(
+                modifier = Modifier.fillMaxSize().padding(4.dp),
+                contentDescription = "Arbor",
+            )
             svgRequest != null -> SubcomposeAsyncImage(
                 model = svgRequest,
                 contentDescription = null,

@@ -186,8 +186,8 @@ class AppPreferences(context: Context) {
     val hasNewChatDefaults: Boolean get() = preferences.getBoolean(KEY_DEFAULTS_INITIALIZED, false)
 
     init {
-        // Reconcile aliases after app updates or launcher cache resets.
-        LauncherIconManager.apply(appContext, _matchLauncherIconToPalette.value, _palette.value)
+        // Queue reconciliation; the application applies it only after Arbor is backgrounded.
+        LauncherIconManager.request(appContext, _matchLauncherIconToPalette.value, _palette.value)
     }
 
     private fun readChromeBlurStrength():  Float {
@@ -246,15 +246,17 @@ class AppPreferences(context: Context) {
         _palette.value = value
         preferences.edit { putString(KEY_PALETTE, value.name) }
         if (_matchLauncherIconToPalette.value) {
-            LauncherIconManager.apply(appContext, matchPalette = true, palette = value)
+            LauncherIconManager.request(appContext, matchPalette = true, palette = value)
         }
     }
 
     fun setMatchLauncherIconToPalette(enabled: Boolean) {
         _matchLauncherIconToPalette.value = enabled
         preferences.edit { putBoolean(KEY_MATCH_LAUNCHER_ICON_TO_PALETTE, enabled) }
-        LauncherIconManager.apply(appContext, matchPalette = enabled, palette = _palette.value)
+        LauncherIconManager.request(appContext, matchPalette = enabled, palette = _palette.value)
     }
+
+    fun applyPendingLauncherIcon() = LauncherIconManager.applyPending(appContext)
 
     fun setThemeMode(value: ThemeMode) {
         _themeMode.value = value
