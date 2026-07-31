@@ -25,7 +25,7 @@
         android:ellipsize="end"
         android:maxLines="1"
         android:textColor="@color/widget_text_secondary"
-        android:textSize="10sp" />
+        android:textSize="11sp" />
 
     <ImageView
         android:id="@+id/widget_program_image"
@@ -45,7 +45,7 @@
         android:ellipsize="end"
         android:maxLines="1"
         android:textColor="@color/widget_text_secondary"
-        android:textSize="9sp" />
+        android:textSize="11sp" />
 
     <LinearLayout
         android:layout_width="match_parent"
