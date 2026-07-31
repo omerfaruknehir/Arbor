@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.20.23 — 2026-07-31
+
+- Replace the single, mostly useless model choice in API-provider setup with a searchable multi-select list. Every discovered model starts selected, and Arbor stores only the models left selected.
+- Add Android-native cloud/file backups through the Storage Access Framework, including Google Drive, OneDrive, Dropbox, Nextcloud, USB, and local destinations exposed by the device.
+- Make archive passwords genuinely optional. Unencrypted backups and chat files remain allowed with a prominent disclosure instead of an artificial password requirement.
+- Add a portable `.arborchat` format with configurable attachments, reasoning, tool traces, system prompts, and request metadata; safe fields remain excluded by default.
+- Let Arbor open shared chat and backup files, show a content/privacy preview, unlock encrypted archives, import non-destructive copies, and immediately continue an imported chat.
+- Keep API keys and OAuth sessions out of portable files by design.
+
 ## 0.20.22 — 2026-07-31
 
 - Make setup immediately acknowledge configured API, ChatGPT, and local providers, with Continue and Manage providers actions instead of presenting the unconfigured state again.

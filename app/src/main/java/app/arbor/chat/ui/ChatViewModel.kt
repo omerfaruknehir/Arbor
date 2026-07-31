@@ -55,6 +55,9 @@ import app.arbor.chat.agent.AgentToolRequest
 import app.arbor.chat.settings.NewChatDefaults
 import app.arbor.chat.settings.LauncherIconManager
 import app.arbor.chat.settings.PersistentUiStateStore
+import app.arbor.chat.transfer.ArchiveOptions
+import app.arbor.chat.transfer.ArchivePasswordRequiredException
+import app.arbor.chat.transfer.IncomingArchiveState
 import app.arbor.chat.generated.GeneratedBlockRepairState
 import app.arbor.chat.generated.GeneratedBlockType
 import app.arbor.chat.generated.GeneratedValidationError
@@ -188,6 +191,8 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     val newChatDefaults: StateFlow<NewChatDefaults> = container.appPreferences.newChatDefaults
     val renderSafeMode = container.crashReporter.renderSafeMode
     val notices = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val shareConversationId = MutableStateFlow<String?>(null)
+    val incomingArchive = MutableStateFlow<IncomingArchiveState?>(null)
     private val _credentialRevision = MutableStateFlow(0L)
     val credentialRevision: StateFlow<Long> = _credentialRevision
     val openAiOAuthStates: StateFlow<Map<String, OpenAiOAuthState>> = container.openAiOAuth.accountStates
@@ -256,6 +261,71 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     }
 
     fun setRenderSafeMode(enabled: Boolean) = container.crashReporter.setRenderSafeMode(enabled)
+
+
+    fun postNotice(message: String) {
+        notices.tryEmit(message)
+    }
+
+    fun requestShareConversation(conversationId: String) {
+        shareConversationId.value = conversationId
+    }
+
+    fun dismissShareConversation() {
+        shareConversationId.value = null
+    }
+
+    suspend fun createPortableChatShare(
+        conversationId: String,
+        options: ArchiveOptions,
+        password: String,
+    ): Uri = container.archiveManager.writeChatToCache(conversationId, options, password)
+
+    suspend fun writePortableBackup(uri: Uri, options: ArchiveOptions, password: String) {
+        container.archiveManager.writeBackup(uri, options, password)
+    }
+
+    fun receivePortableArchive(uri: Uri) {
+        incomingArchive.value = IncomingArchiveState(uri = uri)
+        viewModelScope.launch {
+            runCatching { container.archiveManager.inspect(uri) }
+                .onSuccess { preview -> incomingArchive.value = IncomingArchiveState(uri = uri, preview = preview) }
+                .onFailure { error ->
+                    incomingArchive.value = if (error is ArchivePasswordRequiredException) {
+                        IncomingArchiveState(uri = uri, passwordRequired = true)
+                    } else IncomingArchiveState(uri = uri, error = error.message ?: "Could not inspect archive")
+                }
+        }
+    }
+
+    fun unlockIncomingArchive(password: String) {
+        val state = incomingArchive.value ?: return
+        incomingArchive.value = state.copy(importing = true, error = null)
+        viewModelScope.launch {
+            runCatching { container.archiveManager.inspect(state.uri, password) }
+                .onSuccess { preview -> incomingArchive.value = state.copy(preview = preview, passwordRequired = true, importing = false, error = null) }
+                .onFailure { error -> incomingArchive.value = state.copy(importing = false, error = error.message ?: "Could not unlock archive") }
+        }
+    }
+
+    fun importIncomingArchive(password: String) {
+        val state = incomingArchive.value ?: return
+        incomingArchive.value = state.copy(importing = true, error = null)
+        viewModelScope.launch {
+            runCatching { container.archiveManager.importArchive(state.uri, password) }
+                .onSuccess { conversationIds ->
+                    incomingArchive.value = null
+                    conversationIds.firstOrNull()?.let(::selectConversation)
+                    screen.value = Screen.CHAT
+                    notices.tryEmit("Imported ${conversationIds.size} chat${if (conversationIds.size == 1) "" else "s"}")
+                }
+                .onFailure { error -> incomingArchive.value = state.copy(importing = false, error = error.message ?: "Import failed") }
+        }
+    }
+
+    fun dismissIncomingArchive() {
+        incomingArchive.value = null
+    }
 
     fun setDraft(value: String) {
         draft.value = value

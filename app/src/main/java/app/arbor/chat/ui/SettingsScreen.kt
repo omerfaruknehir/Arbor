@@ -46,6 +46,7 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.automirrored.outlined.Login
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
@@ -259,6 +260,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             viewModel = viewModel,
                         )
                         SettingsRoute.PRIVACY -> PrivacySettingsPage(renderSafeMode, generatedRepairMaxAttempts, viewModel)
+                        SettingsRoute.BACKUP -> BackupSettingsPage(viewModel)
                         SettingsRoute.LOCAL_EXECUTION -> LocalCodeExecutionSettingsPage(defaults, automation, configuredProviders, viewModel)
                         SettingsRoute.DEVELOPER -> DeveloperSettingsPage(developerSettings, viewModel)
                         SettingsRoute.SYSTEM_PROMPTS -> SystemPromptProfilesPage(promptProfiles, defaults.systemPromptProfileId, viewModel)
@@ -326,6 +328,12 @@ private fun SettingsHome(
             title = "Privacy & safety",
             subtitle = "Generated UI safety and local-data behavior",
             onClick = { onOpen(SettingsRoute.PRIVACY) },
+        )
+        SettingsDestination(
+            icon = Icons.Outlined.Cloud,
+            title = "Backup & transfer",
+            subtitle = "Cloud/file backups and portable chat archives",
+            onClick = { onOpen(SettingsRoute.BACKUP) },
         )
         SettingsDestination(
             icon = Icons.Outlined.Code,
@@ -1651,8 +1659,7 @@ private fun ProviderSettings(
                 registered = true,
                 apiKeyRequired = draft.apiKeyRequired,
             )
-            val discovered = draft.discoveredModels.ifEmpty { listOf(DiscoveredModel(draft.modelId, draft.modelName)) }
-            val models = discovered.map { candidate ->
+            val models = draft.selectedModels.map { candidate ->
                 val model = DefaultCatalog.models.firstOrNull { it.providerId == id && it.modelId == candidate.id } ?: ModelEntity(
                     providerId = id, modelId = candidate.id, displayName = candidate.displayName,
                     contextWindow = candidate.contextWindow ?: 128_000,
@@ -2047,9 +2054,7 @@ private data class ProviderDraft(
     val apiKey: String,
     val apiKeyRequired: Boolean,
     val headers: String,
-    val modelId: String,
-    val modelName: String,
-    val discoveredModels: List<DiscoveredModel>,
+    val selectedModels: List<DiscoveredModel>,
 )
 
 @Composable
@@ -2069,16 +2074,18 @@ private fun AddProviderDialog(
     var apiKey by remember { mutableStateOf("") }
     var apiKeyRequired by remember { mutableStateOf(true) }
     var headers by remember { mutableStateOf("{}") }
-    var modelId by remember { mutableStateOf("") }
-    var modelName by remember { mutableStateOf("") }
+    var manualModelId by remember { mutableStateOf("") }
+    var manualModelName by remember { mutableStateOf("") }
     var discoveredModels by remember { mutableStateOf<List<DiscoveredModel>>(emptyList()) }
+    var selectedModelIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var discovering by remember { mutableStateOf(false) }
     var discoveryAttempted by remember { mutableStateOf(false) }
     var discoveryError by remember { mutableStateOf<String?>(null) }
     var modelSearch by remember { mutableStateOf("") }
     var showManualModel by remember { mutableStateOf(false) }
     val connectionReady = baseUrl.isNotBlank() && (!apiKeyRequired || apiKey.isNotBlank())
-    val valid = name.isNotBlank() && connectionReady && modelId.isNotBlank() && modelName.isNotBlank()
+    val manualModelReady = showManualModel && manualModelId.isNotBlank() && manualModelName.isNotBlank()
+    val valid = name.isNotBlank() && connectionReady && (selectedModelIds.isNotEmpty() || manualModelReady)
     val visibleModels = remember(discoveredModels, modelSearch) {
         val query = modelSearch.trim()
         if (query.isBlank()) discoveredModels else discoveredModels.filter {
@@ -2090,8 +2097,9 @@ private fun AddProviderDialog(
         discoveredModels = emptyList()
         discoveryAttempted = false
         discoveryError = null
-        modelId = ""
-        modelName = ""
+        selectedModelIds = emptySet()
+        manualModelId = ""
+        manualModelName = ""
     }
 
     ArborAlertDialog(
@@ -2185,11 +2193,9 @@ private fun AddProviderDialog(
                             runCatching { onDiscover(kind, baseUrl, apiKey, headers.ifBlank { "{}" }) }
                                 .onSuccess { models ->
                                     discoveredModels = models
-                                    val preferred = models.firstOrNull { candidate ->
-                                        DefaultCatalog.models.any { it.providerId == templateId && it.modelId == candidate.id }
-                                    } ?: models.firstOrNull()
-                                    modelId = preferred?.id.orEmpty()
-                                    modelName = preferred?.displayName.orEmpty()
+                                    selectedModelIds = models.mapTo(linkedSetOf()) { it.id }
+                                    manualModelId = ""
+                                    manualModelName = ""
                                     showManualModel = false
                                 }
                                 .onFailure { error ->
@@ -2219,13 +2225,24 @@ private fun AddProviderDialog(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Column(Modifier.fillMaxWidth().heightIn(max = 220.dp).verticalScroll(rememberScrollState())) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("${selectedModelIds.size} of ${discoveredModels.size} selected", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        Row {
+                            TextButton(onClick = { selectedModelIds = discoveredModels.mapTo(linkedSetOf()) { it.id } }) { Text("Select all") }
+                            TextButton(onClick = { selectedModelIds = emptySet() }) { Text("Clear") }
+                        }
+                    }
+                    Column(Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
                         visibleModels.forEach { model ->
+                            val checked = model.id in selectedModelIds
+                            val toggle = {
+                                selectedModelIds = if (checked) selectedModelIds - model.id else selectedModelIds + model.id
+                            }
                             Row(
-                                Modifier.fillMaxWidth().clickable { modelId = model.id; modelName = model.displayName }.padding(vertical = 7.dp),
+                                Modifier.fillMaxWidth().clickable(onClick = toggle).padding(vertical = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                RadioButton(selected = modelId == model.id, onClick = { modelId = model.id; modelName = model.displayName })
+                                Checkbox(checked = checked, onCheckedChange = { toggle() })
                                 Column(Modifier.weight(1f)) {
                                     Text(model.displayName, fontWeight = FontWeight.Medium)
                                     Text(model.id, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -2243,13 +2260,14 @@ private fun AddProviderDialog(
                     if (bundled.isNotEmpty()) {
                         Text("Bundled suggestions", style = MaterialTheme.typography.labelLarge)
                         bundled.forEach { model ->
-                            AssistChip(onClick = { modelId = model.modelId; modelName = model.displayName }, label = { Text(model.displayName) })
+                            AssistChip(onClick = { manualModelId = model.modelId; manualModelName = model.displayName }, label = { Text(model.displayName) })
                         }
                     }
-                    OutlinedTextField(modelId, { modelId = it.trim() }, label = { Text("API model ID") }, placeholder = { Text("deepseek-chat") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(modelName, { modelName = it }, label = { Text("Model display name") }, placeholder = { Text("DeepSeek Chat") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(manualModelId, { manualModelId = it.trim() }, label = { Text("API model ID") }, placeholder = { Text("deepseek-chat") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(manualModelName, { manualModelName = it }, label = { Text("Model display name") }, placeholder = { Text("DeepSeek Chat") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    if (manualModelReady) Text("Manual model will also be included", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 }
-                if (modelId.isNotBlank()) Text("Selected: $modelName", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                if (selectedModelIds.isNotEmpty()) Text("Only the selected provider models will be saved.", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             }
         },
         dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } },
@@ -2257,7 +2275,20 @@ private fun AddProviderDialog(
             Button(
                 enabled = valid,
                 onClick = {
-                    onAdd(ProviderDraft(templateId, name.trim(), kind, baseUrl.trim(), apiKey, apiKeyRequired, headers.ifBlank { "{}" }, modelId, modelName.trim(), discoveredModels))
+                    val selected = discoveredModels.filter { it.id in selectedModelIds }
+                    val manual = if (manualModelReady) listOf(DiscoveredModel(manualModelId, manualModelName.trim())) else emptyList()
+                    onAdd(
+                        ProviderDraft(
+                            templateProviderId = templateId,
+                            name = name.trim(),
+                            kind = kind,
+                            baseUrl = baseUrl.trim(),
+                            apiKey = apiKey,
+                            apiKeyRequired = apiKeyRequired,
+                            headers = headers.ifBlank { "{}" },
+                            selectedModels = (selected + manual).distinctBy { it.id },
+                        ),
+                    )
                 },
             ) { Text("Add provider") }
         },
