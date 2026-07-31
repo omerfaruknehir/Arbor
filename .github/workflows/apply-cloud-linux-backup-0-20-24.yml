@@ -45,10 +45,10 @@ jobs:
         run: git diff --check
 
       - name: Verify third-party licenses
-        run: python scripts/verify_third_party_licenses.py
+        run: ./ci/verify-third-party-licenses.sh
 
       - name: Verify offline license catalog
-        run: ./gradlew --no-daemon --stacktrace --max-workers=2 generateOfflineLicenseCatalog
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 :app:generateOfflineLicenseCatalog
 
       - name: Run release unit tests
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
@@ -62,7 +62,7 @@ jobs:
       - name: Commit verified feature
         shell: bash
         run: |
-          git config user.name "github-actions[bot]"
+          git config user.name "github-actions[bot]]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app licenses CHANGELOG.md docs/releases/RELEASE_NOTES_0.20.24.md
           if git diff --cached --quiet; then
