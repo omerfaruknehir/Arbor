@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.18 — 2026-07-31
+
+- Defer launcher-alias mutation until Arbor is fully backgrounded and no generation is active, preventing One UI from closing the visible app or interrupting work while a theme/icon setting is changed.
+- Render onboarding, drawer, and Licenses Arbor marks from the exact palette-specific launcher artwork instead of approximate Material colors.
+- Prevent recycled Markdown views and stale paging placeholder keys from showing only an old short prefix of user messages.
+- Add device-oriented regression coverage for background-only icon application, exact logo colors, themed license branding, and full-message fallback rendering.
+
 ## 0.20.17 — 2026-07-31
 
 - Route launcher aliases through a transparent trampoline so changing the icon cannot close the active MainActivity task.

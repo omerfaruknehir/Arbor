@@ -23,6 +23,9 @@ import app.arbor.chat.security.SecureStore
 import app.arbor.chat.security.CrashReporter
 import app.arbor.chat.settings.AppPreferences
 import app.arbor.chat.generated.GeneratedBlockRepairCoordinator
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -37,6 +40,19 @@ class ArborApplication : Application() {
         super.onCreate()
         val crashReporter = CrashReporter(this).also(CrashReporter::install)
         container = AppContainer(this, crashReporter)
+        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStop(owner: LifecycleOwner) {
+                // Component aliases are changed only after the last Arbor Activity
+                // is no longer visible. This avoids One UI closing the foreground UI.
+                CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                    // Do not risk interrupting an active background generation if
+                    // this launcher chooses to restart the package after mutation.
+                    if (container.database.messageDao().streamingMessages().isEmpty()) {
+                        container.appPreferences.applyPendingLauncherIcon()
+                    }
+                }
+            }
+        })
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             // Generated/returned assistant images are already known to the agent which created them.
             // Keep old installs visually clean instead of retaining an unnecessary OCR overlay.

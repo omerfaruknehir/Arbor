@@ -55,10 +55,18 @@ class LauncherIconManagerTest {
     }
 
     @Test
-    fun `icon switching is atomic where supported and never requests a process kill`() {
+    fun `icon switching is queued until the process lifecycle is backgrounded`() {
         val source = File("src/main/java/app/arbor/chat/settings/LauncherIconManager.kt").readText()
+        assertTrue(source.contains("fun request("))
+        assertTrue(source.contains("fun applyPending("))
         assertTrue(source.contains("setComponentEnabledSettings"))
         assertTrue(source.contains("PackageManager.DONT_KILL_APP"))
-        assertTrue(source.contains("applyEnableFirst"))
+        val preferences = File("src/main/java/app/arbor/chat/settings/AppPreferences.kt").readText()
+        assertTrue(preferences.contains("LauncherIconManager.request"))
+        assertFalse(preferences.contains("LauncherIconManager.apply("))
+        val application = File("src/main/java/app/arbor/chat/ArborApplication.kt").readText()
+        assertTrue(application.contains("ProcessLifecycleOwner"))
+        assertTrue(application.contains("override fun onStop"))
+        assertTrue(application.contains("applyPendingLauncherIcon"))
     }
 }

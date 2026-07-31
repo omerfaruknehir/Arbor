@@ -502,9 +502,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val userDraggingMessageListState = rememberUpdatedState(userDraggingMessageList)
     var searchFocusHandled by remember(conversation?.id, focusedMessageNodeId) { mutableStateOf(false) }
     val streamingAnchorTracker = remember(conversation?.id) { StreamingScrollAnchorTracker() }
-    val stableMessageKeysByUiIndex = remember(conversation?.id) { mutableMapOf<Int, String>() }
     var pagingNodeIds by remember(conversation?.id) { mutableStateOf<List<String>>(emptyList()) }
-    val generatingState = rememberUpdatedState(generating)
     val selectedActiveModel = remember(models, conversation?.selectedModelId) {
         models.firstOrNull { it.modelId == conversation?.selectedModelId }
     }
@@ -517,14 +515,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             .distinctUntilChanged()
             .collect { nodeIds ->
                 pagingNodeIds = nodeIds
-                nodeIds.forEachIndexed { sourceIndex, nodeId ->
-                    stableMessageKeysByUiIndex[
-                        chronologicalUiIndex(sourceIndex, nodeIds.size)
-                    ] = nodeId
-                }
-                if (!generatingState.value && nodeIds.isNotEmpty()) {
-                    stableMessageKeysByUiIndex.keys.removeAll { it !in nodeIds.indices }
-                }
             }
     }
 
@@ -715,7 +705,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         initialPositioned = false
         streamingAnchorTracker.anchor = null
         streamingAnchorTracker.missingAnchorFrames = 0
-        stableMessageKeysByUiIndex.clear()
         topAppBarState.contentOffset = 0f
         topAppBarState.heightOffset = 0f
 
@@ -1042,9 +1031,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         key = { uiIndex ->
                             val sourceIndex = chronologicalSourceIndex(uiIndex, paging.itemCount)
                             paging.peek(sourceIndex)?.nodeId
-                                ?.also { stableMessageKeysByUiIndex[uiIndex] = it }
-                                ?: stableMessageKeysByUiIndex[uiIndex]
-                                ?: "loading-${conversation?.id.orEmpty()}-$uiIndex"
+                                ?: "loading-${conversation?.id.orEmpty()}-$uiIndex-$sourceIndex"
                         },
                         contentType = { uiIndex ->
                             val sourceIndex = chronologicalSourceIndex(uiIndex, paging.itemCount)
