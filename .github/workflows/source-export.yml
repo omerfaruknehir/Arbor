@@ -1,0 +1,43 @@
+name: Temporary Arbor source export
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  export:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create source archive
+        run: git archive --format=zip --output="Arbor-source-${GITHUB_SHA}.zip" HEAD
+
+      - name: Upload source archive
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: arbor-source-${{ github.sha }}
+          path: Arbor-source-${{ github.sha }}.zip
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Record artifact ID
+        env:
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          printf '%s\n%s\n' "$ARTIFACT_ID" "$SOURCE_SHA" > .github/source-artifact-id.txt
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/source-artifact-id.txt
+          git commit -m "Record temporary source artifact [skip ci]"
+          git push
