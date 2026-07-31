@@ -31,53 +31,31 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Recover and apply setup overhaul
+      - name: Reconstruct and apply setup overhaul
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import base64
+          import hashlib
           import zlib
 
-          workflow = Path('.github/workflows/one-shot-setup-overhaul-0-20-15.yml').read_text()
-          pieces = []
-          collecting = False
-          for line in workflow.splitlines():
-              if line.strip() == 'PATCH_Z_B64: >-':
-                  collecting = True
-                  continue
-              if collecting and line.lstrip().startswith('run: |'):
-                  break
-              if collecting:
-                  pieces.append(line.strip())
+          parts = sorted(Path('.github/patches/setup-overhaul').glob('part*.b64'))
+          if len(parts) != 8:
+              raise RuntimeError(f'Expected 8 payload chunks, found {len(parts)}')
 
-          raw = ''.join(pieces)
-          if not raw:
-              raise RuntimeError('Embedded setup payload was not found')
+          payload = ''.join(part.read_text() for part in parts)
+          payload_hash = hashlib.sha256(payload.encode()).hexdigest()
+          if len(payload) != 16008 or payload_hash != '7cc52e3c107be5f0b1e9473fd40e28c5fe8e5edc2d1af994dea38a3a4a099452':
+              raise RuntimeError(f'Payload integrity failure: length={len(payload)}, sha256={payload_hash}')
 
-          candidates = [raw]
-          # The first transport added one Base64 character. Try each possible
-          # single-character deletion; Base64 validation plus zlib checksum
-          # makes the recovered script unambiguous.
-          if len(raw) % 4 == 1:
-              candidates = (raw[:index] + raw[index + 1:] for index in range(len(raw)))
-
-          recovered = None
-          for candidate in candidates:
-              try:
-                  decoded = base64.b64decode(candidate, validate=True)
-                  script = zlib.decompress(decoded)
-              except Exception:
-                  continue
-              if script.startswith(b'from pathlib import Path') and b'RELEASE_DISMISS' in script and b'ONBOARDING' in script:
-                  recovered = script
-                  break
-
-          if recovered is None:
-              raise RuntimeError(f'Unable to recover embedded setup payload of length {len(raw)}')
+          script = zlib.decompress(base64.b64decode(payload, validate=True))
+          script_hash = hashlib.sha256(script).hexdigest()
+          if script_hash != 'c7e105af33af96ef2941640fd6001c2eea0366ca6f017326a78372a0e6fc108f':
+              raise RuntimeError(f'Patch script integrity failure: sha256={script_hash}')
 
           output = Path('/tmp/fix_0_20_15.py')
-          output.write_bytes(recovered)
-          print(f'Recovered {len(recovered)}-byte patch script')
+          output.write_bytes(script)
+          print(f'Reconstructed verified {len(script)}-byte patch script')
           PY
           python3 -m py_compile /tmp/fix_0_20_15.py
           python3 /tmp/fix_0_20_15.py
@@ -124,6 +102,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm -f .github/workflows/one-shot-setup-overhaul-0-20-15.yml \
             .github/workflows/one-shot-setup-overhaul-retry.yml
+          git rm -rf .github/patches/setup-overhaul
           git add app/src/main/java \
             app/src/test/java/app/arbor/chat/ui/OnboardingFlowTest.kt \
             app/build.gradle.kts README.md CHANGELOG.md \
