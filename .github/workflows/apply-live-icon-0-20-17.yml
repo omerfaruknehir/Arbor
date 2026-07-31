@@ -34,6 +34,7 @@ jobs:
           python .github/tmp/live-icon/apply_02017.py
           cp .github/tmp/live-icon/LauncherIconManagerTest.kt.txt app/src/test/java/app/arbor/chat/settings/LauncherIconManagerTest.kt
           python -c "from pathlib import Path; p=Path('app/src/main/java/app/arbor/chat/ui/ConversationSidebar.kt'); s=p.read_text(); anchor='import androidx.compose.ui.graphics.vector.ImageVector\\n'; additions='import androidx.compose.ui.res.stringResource\\nimport app.arbor.chat.R\\n'; assert anchor in s; p.write_text(s if 'import androidx.compose.ui.res.stringResource\\n' in s else s.replace(anchor, anchor + additions, 1))"
+          python -c "from pathlib import Path; p=Path('app/src/main/java/app/arbor/chat/settings/LauncherIconManager.kt'); s=p.read_text(); import_anchor='import android.util.Log\\n'; assert import_anchor in s; s=s if 'import androidx.annotation.RequiresApi\\n' in s else s.replace(import_anchor, import_anchor+'import androidx.annotation.RequiresApi\\n',1); fn='    private fun applyAtomically(\\n'; assert fn in s; s=s if '    @RequiresApi(Build.VERSION_CODES.TIRAMISU)\\n'+fn in s else s.replace(fn,'    @RequiresApi(Build.VERSION_CODES.TIRAMISU)\\n'+fn,1); p.write_text(s)"
           rm -rf .github/tmp/live-icon
           rm -f .github/workflows/apply-live-icon-0-20-17.yml
           git diff --check
@@ -45,6 +46,8 @@ jobs:
           grep -q 'MaterialTheme.colorScheme' app/src/main/java/app/arbor/chat/ui/PaletteVisuals.kt
           grep -q '^import androidx.compose.ui.res.stringResource$' app/src/main/java/app/arbor/chat/ui/ConversationSidebar.kt
           grep -q '^import app.arbor.chat.R$' app/src/main/java/app/arbor/chat/ui/ConversationSidebar.kt
+          grep -q '^import androidx.annotation.RequiresApi$' app/src/main/java/app/arbor/chat/settings/LauncherIconManager.kt
+          grep -q '@RequiresApi(Build.VERSION_CODES.TIRAMISU)' app/src/main/java/app/arbor/chat/settings/LauncherIconManager.kt
 
       - uses: actions/setup-java@v4
         with:
