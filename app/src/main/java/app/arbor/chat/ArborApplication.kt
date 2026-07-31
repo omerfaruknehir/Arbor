@@ -28,7 +28,9 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 
@@ -36,20 +38,34 @@ class ArborApplication : Application() {
     lateinit var container: AppContainer
         private set
 
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var processVisible = false
+    private var pendingIconJob: Job? = null
+
     override fun onCreate() {
         super.onCreate()
         val crashReporter = CrashReporter(this).also(CrashReporter::install)
         container = AppContainer(this, crashReporter)
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) {
+                processVisible = true
+                pendingIconJob?.cancel()
+                pendingIconJob = null
+            }
+
             override fun onStop(owner: LifecycleOwner) {
+                processVisible = false
                 // Component aliases are changed only after the last Arbor Activity
                 // is no longer visible. This avoids One UI closing the foreground UI.
-                CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-                    // Do not risk interrupting an active background generation if
-                    // this launcher chooses to restart the package after mutation.
-                    if (container.database.messageDao().streamingMessages().isEmpty()) {
-                        container.appPreferences.applyPendingLauncherIcon()
+                pendingIconJob?.cancel()
+                pendingIconJob = applicationScope.launch {
+                    // If generation is still running, remain queued in the background
+                    // and apply as soon as it completes. Returning to Arbor cancels this
+                    // job before any PackageManager component mutation can occur.
+                    while (!processVisible && container.database.messageDao().streamingMessages().isNotEmpty()) {
+                        delay(750)
                     }
+                    if (!processVisible) container.appPreferences.applyPendingLauncherIcon()
                 }
             }
         })
