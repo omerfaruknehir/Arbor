@@ -27,9 +27,7 @@ jobs:
           from pathlib import Path
           path = Path('app/src/main/java/app/arbor/chat/widgets/ArborProgramSpec.kt')
           source = path.read_text()
-          needle = '''    private fun validateWidgetCapabilities(
-              capabilities: List<ArborWidgetCapabilityRequest>,
-          '''
+          marker = '    private fun validateWidgetCapabilities('
           insertion = '''    private fun capabilityKey(value: ArborWidgetCapabilityRequest): String = when (value.type) {
               "network" -> "network:${value.origins.sorted().joinToString(",")}"
               "location" -> "location:${value.accuracy}"
@@ -38,10 +36,10 @@ jobs:
           }
 
           '''
-          if insertion not in source:
-              if needle not in source:
+          if 'private fun capabilityKey(' not in source:
+              if marker not in source:
                   raise SystemExit('capability helper insertion point not found')
-              source = source.replace(needle, insertion + needle, 1)
+              source = source.replace(marker, insertion + marker, 1)
           path.write_text(source)
           PY
           rm .github/workflows/agent-fix-capability-key.yml
