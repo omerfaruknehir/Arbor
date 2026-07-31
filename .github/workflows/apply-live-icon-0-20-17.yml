@@ -28,6 +28,7 @@ jobs:
       - name: Generate normal source changes
         shell: bash
         run: |
+          python -c 'from pathlib import Path; p=Path(".github/tmp/live-icon/apply_02017.py"); s=p.read_text(); old="\"The launcher may take a moment to refresh. Android themed icons can override app-selected colors.\""; new="\"Using the ${palette.displayName} icon. Your launcher may take a moment to refresh.\""; i=s.rfind(old); assert i >= 0; p.write_text(s[:i] + new + s[i + len(old):])'
           python -m py_compile .github/tmp/live-icon/apply_02017.py
           python .github/tmp/live-icon/apply_02017.py
           rm -rf .github/tmp/live-icon
