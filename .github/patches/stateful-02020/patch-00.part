@@ -1,0 +1,300 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index fe47f2c..f868a45 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,14 @@
+ # Changelog
+ 
++## 0.20.20 — 2026-07-31
++
++- Replace the unreliable deferred launcher-alias workaround with an intentional stateful restart: synchronously save the active screen, selected chat, settings/setup page, chat and Settings scroll positions, per-chat drafts, and staged file attachments before switching the icon, then reopen Arbor through the selected launcher alias.
++- Add a system-owned alarm fallback so One UI can tear down every Arbor process during the alias change without losing the relaunch.
++- Persist composer text independently for every conversation; staged attachments remain durable in Arbor private storage and reappear with their matching chat draft.
++- Make the Android splash and launcher handoff use the selected palette and launcher artwork. Dynamic now reads the live wallpaper-derived Android system accent and neutral resources.
++- Rebuild setup as a horizontally swipeable pager with animated transitions, persisted step restoration, and resumable Provider/Linux detours.
++- Add a permanent Setup assistant entry in Settings so setup can always be reopened.
++
+ ## 0.20.19 — 2026-07-31
+ 
+ - Stop mutating launcher aliases while Arbor is visible; icon choices are now persisted and committed only after the app leaves the screen.
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 9c09fb2..7e27113 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -182,8 +182,8 @@ android {
+         applicationId = "app.arbor.chat"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 145
+-        versionName = "0.20.19"
++        versionCode = 146
++        versionName = "0.20.20"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+         vectorDrawables.useSupportLibrary = true
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 5f48417..4632f11 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -47,11 +47,41 @@
+         </activity>
+ 
+         <activity
+-            android:name=".LauncherActivity"
++            android:name=".LauncherArborActivity"
+             android:exported="false"
+             android:noHistory="true"
+             android:process=":launcher_icon"
+-            android:theme="@style/Theme.Arbor.Launcher" />
++            android:theme="@style/Theme.Arbor.Launcher.Arbor" />
++        <activity
++            android:name=".LauncherSystemActivity"
++            android:exported="false"
++            android:noHistory="true"
++            android:process=":launcher_icon"
++            android:theme="@style/Theme.Arbor.Launcher.System" />
++        <activity
++            android:name=".LauncherGraphiteActivity"
++            android:exported="false"
++            android:noHistory="true"
++            android:process=":launcher_icon"
++            android:theme="@style/Theme.Arbor.Launcher.Graphite" />
++        <activity
++            android:name=".LauncherOceanActivity"
++            android:exported="false"
++            android:noHistory="true"
++            android:process=":launcher_icon"
++            android:theme="@style/Theme.Arbor.Launcher.Ocean" />
++        <activity
++            android:name=".LauncherVioletActivity"
++            android:exported="false"
++            android:noHistory="true"
++            android:process=":launcher_icon"
++            android:theme="@style/Theme.Arbor.Launcher.Violet" />
++        <activity
++            android:name=".LauncherSunsetActivity"
++            android:exported="false"
++            android:noHistory="true"
++            android:process=":launcher_icon"
++            android:theme="@style/Theme.Arbor.Launcher.Sunset" />
+ 
+         <receiver
+             android:name=".settings.LauncherIconSwitchReceiver"
+@@ -64,7 +94,7 @@
+             android:exported="true"
+             android:icon="@mipmap/ic_launcher"
+             android:label="@string/app_name"
+-            android:targetActivity=".LauncherActivity">
++            android:targetActivity=".LauncherArborActivity">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+                 <category android:name="android.intent.category.LAUNCHER" />
+@@ -77,7 +107,7 @@
+             android:exported="true"
+             android:icon="@mipmap/ic_launcher_system"
+             android:label="@string/app_name"
+-            android:targetActivity=".LauncherActivity">
++            android:targetActivity=".LauncherSystemActivity">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+                 <category android:name="android.intent.category.LAUNCHER" />
+@@ -90,7 +120,7 @@
+             android:exported="true"
+             android:icon="@mipmap/ic_launcher_graphite"
+             android:label="@string/app_name"
+-            android:targetActivity=".LauncherActivity">
++            android:targetActivity=".LauncherGraphiteActivity">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+                 <category android:name="android.intent.category.LAUNCHER" />
+@@ -103,7 +133,7 @@
+             android:exported="true"
+             android:icon="@mipmap/ic_launcher_ocean"
+             android:label="@string/app_name"
+-            android:targetActivity=".LauncherActivity">
++            android:targetActivity=".LauncherOceanActivity">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+                 <category android:name="android.intent.category.LAUNCHER" />
+@@ -116,7 +146,7 @@
+             android:exported="true"
+             android:icon="@mipmap/ic_launcher_violet"
+             android:label="@string/app_name"
+-            android:targetActivity=".LauncherActivity">
++            android:targetActivity=".LauncherVioletActivity">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+                 <category android:name="android.intent.category.LAUNCHER" />
+@@ -129,7 +159,7 @@
+             android:exported="true"
+             android:icon="@mipmap/ic_launcher_sunset"
+             android:label="@string/app_name"
+-            android:targetActivity=".LauncherActivity">
++            android:targetActivity=".LauncherSunsetActivity">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+                 <category android:name="android.intent.category.LAUNCHER" />
+diff --git a/app/src/main/java/app/arbor/chat/ArborApplication.kt b/app/src/main/java/app/arbor/chat/ArborApplication.kt
+index 9060eff..97634e7 100644
+--- a/app/src/main/java/app/arbor/chat/ArborApplication.kt
++++ b/app/src/main/java/app/arbor/chat/ArborApplication.kt
+@@ -2,7 +2,6 @@ package app.arbor.chat
+ 
+ import android.app.ActivityManager
+ import android.app.Application
+-import android.content.ComponentCallbacks2
+ import android.content.Context
+ import android.os.Build
+ import android.os.Process
+@@ -27,7 +26,8 @@ import app.arbor.chat.sandbox.RunRecordStore
+ import app.arbor.chat.security.SecureStore
+ import app.arbor.chat.security.CrashReporter
+ import app.arbor.chat.settings.AppPreferences
+-import app.arbor.chat.settings.LauncherIconManager
++import app.arbor.chat.settings.ComposerDraftStore
++import app.arbor.chat.settings.PersistentUiStateStore
+ import app.arbor.chat.generated.GeneratedBlockRepairCoordinator
+ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.Dispatchers
+@@ -53,7 +53,6 @@ class ArborApplication : Application() {
+             container.database.attachmentDao().clearAssistantImageAnalysis()
+             // Builds before 0.11 materialized every tap on New chat. Remove
+             // only rows that never acquired a message or attachment.
+-            container.database.conversationDao().deleteTrulyEmpty()
+             container.database.catalogDao().insertProvidersIfMissing(DefaultCatalog.providers)
+             container.database.catalogDao().insertModelsIfMissing(DefaultCatalog.models)
+             // 0.19.4 could leave existing official image rows absent or classified as chat.
+@@ -78,12 +77,6 @@ class ArborApplication : Application() {
+         }
+     }
+ 
+-    override fun onTrimMemory(level: Int) {
+-        super.onTrimMemory(level)
+-        if (!launcherIconProcess && level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
+-            LauncherIconManager.flushPending(this)
+-        }
+-    }
+ 
+     private fun isLauncherIconProcess(): Boolean {
+         val processName = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+@@ -101,8 +94,10 @@ class ArborApplication : Application() {
+     }
+ }
+ 
+-class AppContainer(application: Application, val crashReporter: CrashReporter) {
++class AppContainer(val application: Application, val crashReporter: CrashReporter) {
+     val appPreferences = AppPreferences(application)
++    val composerDrafts = ComposerDraftStore(application)
++    val persistentUiState = PersistentUiStateStore(application)
+     val secureStore = SecureStore(application)
+     val database = ArborDatabase.create(application, secureStore.databasePassphrase())
+     val repository = ChatRepository(database)
+diff --git a/app/src/main/java/app/arbor/chat/LauncherActivity.kt b/app/src/main/java/app/arbor/chat/LauncherActivity.kt
+index 62e2719..ddde3c3 100644
+--- a/app/src/main/java/app/arbor/chat/LauncherActivity.kt
++++ b/app/src/main/java/app/arbor/chat/LauncherActivity.kt
+@@ -2,28 +2,89 @@ package app.arbor.chat
+ 
+ import android.app.Activity
+ import android.content.Intent
++import android.graphics.drawable.ColorDrawable
+ import android.os.Bundle
++import android.view.Gravity
++import android.view.ViewGroup
++import android.widget.FrameLayout
++import android.widget.ImageView
++import androidx.compose.ui.graphics.toArgb
++import androidx.core.view.WindowCompat
++import app.arbor.chat.settings.AppPreferences
++import app.arbor.chat.settings.LauncherIconManager
++import app.arbor.chat.ui.theme.resolvedArborColorScheme
++import app.arbor.chat.ui.theme.resolvedDarkMode
+ 
+ /**
+- * Zero-UI entry point used only by launcher aliases.
++ * Palette-aware launcher handoff and splash surface.
+  *
+- * The real app task is rooted at [MainActivity], never at an alias component.
+- * Changing or disabling a launcher alias therefore cannot close the screen the
+- * user is currently using. [MainActivity] is singleTask, so tapping any alias
+- * also brings the existing Arbor task forward instead of creating a duplicate.
++ * This process remains independent from MainActivity, so it can reopen Arbor
++ * after One UI tears down the old task while refreshing a launcher alias.
+  */
+-class LauncherActivity : Activity() {
++open class LauncherActivity : Activity() {
+     override fun onCreate(savedInstanceState: Bundle?) {
++        val preferences = AppPreferences(this)
++        val palette = preferences.palette.value
++        val themeMode = preferences.themeMode.value
++        val amoled = preferences.amoled.value
++        val matchIcon = preferences.matchLauncherIconToPalette.value
++        val colors = resolvedArborColorScheme(this, palette, themeMode, amoled)
++        val dark = resolvedDarkMode(this, themeMode)
++
++        window.setBackgroundDrawable(ColorDrawable(colors.background.toArgb()))
++        window.statusBarColor = colors.background.toArgb()
++        window.navigationBarColor = colors.background.toArgb()
+         super.onCreate(savedInstanceState)
+-        startActivity(
+-            Intent(this, MainActivity::class.java).apply {
+-                action = Intent.ACTION_MAIN
+-                addCategory(Intent.CATEGORY_LAUNCHER)
+-                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+-            },
++        WindowCompat.getInsetsController(window, window.decorView).apply {
++            isAppearanceLightStatusBars = !dark
++            isAppearanceLightNavigationBars = !dark
++        }
++
++        val density = resources.displayMetrics.density
++        val iconSize = (104f * density).toInt()
++        val icon = ImageView(this).apply {
++            setImageResource(LauncherIconManager.iconResource(matchIcon, palette))
++            scaleType = ImageView.ScaleType.FIT_CENTER
++            contentDescription = getString(R.string.app_name)
++        }
++        val root = FrameLayout(this).apply {
++            setBackgroundColor(colors.background.toArgb())
++            addView(
++                icon,
++                FrameLayout.LayoutParams(iconSize, iconSize, Gravity.CENTER),
++            )
++        }
++        setContentView(
++            root,
++            ViewGroup.LayoutParams(
++                ViewGroup.LayoutParams.MATCH_PARENT,
++                ViewGroup.LayoutParams.MATCH_PARENT,
++            ),
+         )
+-        finish()
+-        @Suppress("DEPRECATION")
+-        overridePendingTransition(0, 0)
++
++        root.postDelayed({
++            startActivity(
++                Intent(this, MainActivity::class.java).apply {
++                    action = Intent.ACTION_MAIN
++                    addCategory(Intent.CATEGORY_LAUNCHER)
++                    addFlags(
++                        Intent.FLAG_ACTIVITY_NEW_TASK or
++                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
++                            Intent.FLAG_ACTIVITY_SINGLE_TOP,
++                    )
++                },
++            )
++            finish()
++            @Suppress("DEPRECATION")
++            overridePendingTransition(0, 0)
++        }, 110L)
+     }
+ }
++
++
++class LauncherArborActivity : LauncherActivity()
++class LauncherSystemActivity : LauncherActivity()
++class LauncherGraphiteActivity : LauncherActivity()
++class LauncherOceanActivity : LauncherActivity()
++class LauncherVioletActivity : LauncherActivity()
++class LauncherSunsetActivity : LauncherActivity()
