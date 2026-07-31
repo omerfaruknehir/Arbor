@@ -37,6 +37,7 @@ jobs:
         shell: bash
         run: |
           python "$RUNNER_TEMP/apply_icon_theme.py"
+          python -c 'from pathlib import Path; p=Path("app/src/main/java/app/arbor/chat/ui/OnboardingScreen.kt"); s=p.read_text(); marker="import androidx.compose.ui.graphics.Color\n"; anchor="import androidx.compose.ui.Alignment\n"; p.write_text(s if marker in s else s.replace(anchor, anchor + marker, 1))'
           rm -rf .github/tmp/icon-theme
           rm -f .github/workflows/apply-icon-theme-branch.yml
           rm -f .github/workflows/apply-icon-theme-0-20-16.yml
@@ -54,6 +55,7 @@ jobs:
           grep -q 'android:name=".LauncherOcean"' app/src/main/AndroidManifest.xml
           grep -q 'palettePreviewColors(option, themeMode)' app/src/main/java/app/arbor/chat/ui/SettingsScreen.kt
           grep -q 'palettePreviewColors(palette, currentThemeMode)' app/src/main/java/app/arbor/chat/ui/OnboardingScreen.kt
+          grep -q '^import androidx.compose.ui.graphics.Color$' app/src/main/java/app/arbor/chat/ui/OnboardingScreen.kt
 
       - uses: actions/setup-java@v4
         with:
