@@ -1,4 +1,50 @@
-ext: Context, matchPalette: Boolean, palette: ColorPalette): Boolean {
+package app.arbor.chat.settings
+
+import android.content.ComponentName
+import android.content.Context
+import android.content.pm.PackageManager
+import android.util.Log
+
+/**
+ * Switches between manifest-declared launcher aliases without restarting Arbor.
+ *
+ * Android does not allow an arbitrary launcher drawable to be replaced at runtime,
+ * so every supported palette has a polished adaptive-icon alias. The desired alias
+ * is enabled before the previous one is disabled, preventing a no-icon window while
+ * launchers refresh their cache.
+ */
+internal object LauncherIconManager {
+    private const val TAG = "ArborLauncherIcon"
+
+    internal const val ARBOR_ALIAS = "app.arbor.chat.LauncherArbor"
+    internal const val SYSTEM_ALIAS = "app.arbor.chat.LauncherSystem"
+    internal const val GRAPHITE_ALIAS = "app.arbor.chat.LauncherGraphite"
+    internal const val OCEAN_ALIAS = "app.arbor.chat.LauncherOcean"
+    internal const val VIOLET_ALIAS = "app.arbor.chat.LauncherViolet"
+    internal const val SUNSET_ALIAS = "app.arbor.chat.LauncherSunset"
+
+    internal val allAliases = listOf(
+        ARBOR_ALIAS,
+        SYSTEM_ALIAS,
+        GRAPHITE_ALIAS,
+        OCEAN_ALIAS,
+        VIOLET_ALIAS,
+        SUNSET_ALIAS,
+    )
+
+    internal fun aliasClassName(matchPalette: Boolean, palette: ColorPalette): String {
+        if (!matchPalette) return ARBOR_ALIAS
+        return when (palette) {
+            ColorPalette.ARBOR -> ARBOR_ALIAS
+            ColorPalette.SYSTEM -> SYSTEM_ALIAS
+            ColorPalette.GRAPHITE -> GRAPHITE_ALIAS
+            ColorPalette.OCEAN -> OCEAN_ALIAS
+            ColorPalette.VIOLET -> VIOLET_ALIAS
+            ColorPalette.SUNSET -> SUNSET_ALIAS
+        }
+    }
+
+    fun apply(context: Context, matchPalette: Boolean, palette: ColorPalette): Boolean {
         val appContext = context.applicationContext
         val packageManager = appContext.packageManager
         val desiredClassName = aliasClassName(matchPalette, palette)
@@ -46,11 +92,3 @@ ext: Context, matchPalette: Boolean, palette: ColorPalette): Boolean {
         )
     }
 }
-''')
-
-# AppPreferences
-p='app/src/main/java/app/arbor/chat/settings/AppPreferences.kt'
-s=read(p)
-s=replace_once(s,
-'''class AppPreferences(context: Context) {
-    private val preferences = context.getSharedPre

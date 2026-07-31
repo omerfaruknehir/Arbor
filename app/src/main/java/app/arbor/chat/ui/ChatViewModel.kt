@@ -131,6 +131,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     val developerSettings: StateFlow<app.arbor.chat.settings.DeveloperSettings> = container.appPreferences.developerSettings
     val palette = container.appPreferences.palette
     val themeMode = container.appPreferences.themeMode
+    val matchLauncherIconToPalette = container.appPreferences.matchLauncherIconToPalette
     val newChatDefaults: StateFlow<NewChatDefaults> = container.appPreferences.newChatDefaults
     val renderSafeMode = container.crashReporter.renderSafeMode
     val notices = MutableSharedFlow<String>(extraBufferCapacity = 8)
@@ -738,6 +739,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
 
     fun setAmoled(enabled: Boolean) = container.appPreferences.setAmoled(enabled)
     fun setPalette(value: app.arbor.chat.settings.ColorPalette) = container.appPreferences.setPalette(value)
+    fun setMatchLauncherIconToPalette(enabled: Boolean) = container.appPreferences.setMatchLauncherIconToPalette(enabled)
     fun setThemeMode(value: app.arbor.chat.settings.ThemeMode) = container.appPreferences.setThemeMode(value)
     fun setChromeBlurStrength(value: Float) = container.appPreferences.setChromeBlurStrength(value)
     fun setChromeEdgeSoftness(value: Float) = container.appPreferences.setChromeEdgeSoftness(value)

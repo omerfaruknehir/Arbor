@@ -127,6 +127,7 @@ import app.arbor.chat.settings.NewChatDefaults
 import app.arbor.chat.settings.ThemeMode
 import app.arbor.chat.settings.chromeEdgeControlPositionForSoftness
 import app.arbor.chat.settings.displayedChromeEdgeSoftness
+import app.arbor.chat.ui.theme.palettePreviewColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
@@ -166,6 +167,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val amoled by viewModel.amoled.collectAsState()
     val palette by viewModel.palette.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
+    val matchLauncherIconToPalette by viewModel.matchLauncherIconToPalette.collectAsState()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
     val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsState()
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsState()
@@ -250,6 +252,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             themeMode = themeMode,
                             amoled = amoled,
                             palette = palette,
+                            matchLauncherIconToPalette = matchLauncherIconToPalette,
                             chromeBlurStrength = chromeBlurStrength,
                             chromeEdgeSoftness = chromeEdgeSoftness,
                             chromeOverlayOpacity = chromeOverlayOpacity,
@@ -312,7 +315,7 @@ private fun SettingsHome(providerCount: Int, onOpen: (SettingsRoute) -> Unit) = 
         SettingsDestination(
             icon = Icons.Outlined.Palette,
             title = "Appearance",
-            subtitle = "Theme mode, six color palettes, and AMOLED black",
+            subtitle = "Theme mode, palettes, launcher icon, and AMOLED black",
             onClick = { onOpen(SettingsRoute.APPEARANCE) },
         )
         SettingsDestination(
@@ -475,6 +478,7 @@ private fun AppearanceSettingsPage(
     themeMode: ThemeMode,
     amoled: Boolean,
     palette: ColorPalette,
+    matchLauncherIconToPalette: Boolean,
     chromeBlurStrength: Float,
     chromeEdgeSoftness: Float,
     chromeOverlayOpacity: Float,
@@ -495,9 +499,10 @@ private fun AppearanceSettingsPage(
     }
 
     HorizontalDivider()
-    SectionTitle("Color scheme", "Choose a restrained built-in palette or Android dynamic colors. Changes preview immediately.")
+    SectionTitle("Color scheme", "Choose a restrained built-in palette or Android dynamic colors. Every swatch is rendered from that palette, not the currently selected one.")
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         ColorPalette.entries.forEach { option ->
+            val preview = palettePreviewColors(option, themeMode)
             Surface(
                 onClick = { viewModel.setPalette(option) },
                 color = if (palette == option) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
@@ -505,19 +510,8 @@ private fun AppearanceSettingsPage(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(
-                        color = when (option) {
-                            ColorPalette.ARBOR -> Color(0xFF3B8A62)
-                            ColorPalette.SYSTEM -> MaterialTheme.colorScheme.tertiary
-                            ColorPalette.GRAPHITE -> Color(0xFF60758F)
-                            ColorPalette.OCEAN -> Color(0xFF007C91)
-                            ColorPalette.VIOLET -> Color(0xFF7459A6)
-                            ColorPalette.SUNSET -> Color(0xFFB85C38)
-                        },
-                        shape = androidx.compose.foundation.shape.CircleShape,
-                        modifier = Modifier.size(28.dp),
-                    ) {}
-                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    PaletteSwatch(preview, Modifier.width(58.dp))
+                    Column(Modifier.weight(1f).padding(start = 8.dp)) {
                         Text(if (option == ColorPalette.ARBOR) appName else option.displayName, fontWeight = FontWeight.SemiBold)
                         Text(if (option == ColorPalette.ARBOR) "$appNamePossessive green Material palette" else option.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -526,6 +520,45 @@ private fun AppearanceSettingsPage(
             }
         }
     }
+
+    Surface(
+        color = if (matchLauncherIconToPalette) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+        contentColor = if (matchLauncherIconToPalette) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = Modifier.fillMaxWidth().clickable {
+            viewModel.setMatchLauncherIconToPalette(!matchLauncherIconToPalette)
+        },
+    ) {
+        Row(
+            Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            LauncherIconPreview(if (matchLauncherIconToPalette) palette else ColorPalette.ARBOR)
+            Column(Modifier.weight(1f)) {
+                Text("Match launcher icon to palette", fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (matchLauncherIconToPalette) {
+                        "Using the ${palette.displayName} icon. Your launcher may take a moment to refresh."
+                    } else {
+                        "Keep the classic Arbor green icon regardless of the selected palette."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = matchLauncherIconToPalette,
+                onCheckedChange = viewModel::setMatchLauncherIconToPalette,
+            )
+        }
+    }
+    Text(
+        "Android themed icons can recolor Arbor's monochrome layer. Dynamic uses a Material You base when themed icons are off.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
     SettingsSwitch("AMOLED black", amoled, viewModel::setAmoled, enabled = themeMode != ThemeMode.LIGHT)
     Text("AMOLED black only changes dark mode surfaces.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 

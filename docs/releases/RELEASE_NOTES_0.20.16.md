@@ -1,4 +1,9 @@
-rbor's recognizable mark.
+# Arbor 0.20.16
+
+## Theme-matched launcher icons
+
+- Add an opt-in **Match launcher icon to palette** switch in Appearance and first-run setup.
+- Provide polished adaptive launcher icons for Arbor, Dynamic, Graphite, Ocean, Violet, and Sunset while preserving Arbor's recognizable mark.
 - Change aliases without killing the app, enabling the next icon before disabling the previous one so launchers never see an iconless state.
 - Keep the classic Arbor green icon whenever matching is disabled.
 - Reconcile the selected alias after app updates and explain launcher refresh delay and Android themed-icon overrides.
@@ -13,19 +18,3 @@ rbor's recognizable mark.
 
 - Added launcher-alias mapping and manifest regression tests.
 - Release unit tests, lint, APK, AAB, instrumentation APK, and APK signature verification are required before publication.
-'''
-write('docs/releases/RELEASE_NOTES_0.20.16.md',notes)
-p='CHANGELOG.md'; s=read(p)
-entry='''## 0.20.16 — 2026-07-31
-
-- Add an opt-in launcher-icon setting that follows Arbor, Dynamic, Graphite, Ocean, Violet, or Sunset while retaining the classic Arbor icon when disabled.
-- Add polished adaptive icons and safe activity-alias switching without killing the running app.
-- Fix Dynamic palette previews borrowing colors from the currently selected scheme; previews now use the device's actual wallpaper-derived Material palette.
-- Replace single-color preview dots with accurate three-color swatches in onboarding and Appearance.
-- Add launcher alias, manifest, setup, and preview regression coverage.
-
-'''
-s=replace_once(s,'# Changelog\n\n','# Changelog\n\n'+entry,'changelog')
-write(p,s)
-
-print('modified')

@@ -1,4 +1,15 @@
-3.Surface
+package app.arbor.chat.ui
+
+import androidx.annotation.DrawableRes
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,4 +71,5 @@ private val ColorPalette.launcherPreviewDrawable: Int
         ColorPalette.GRAPHITE -> R.drawable.ic_arbor_mark_graphite
         ColorPalette.OCEAN -> R.drawable.ic_arbor_mark_ocean
         ColorPalette.VIOLET -> R.drawable.ic_arbor_mark_violet
-        ColorPalette.SUNSET -> R.drawable.ic_arbor_mar
+        ColorPalette.SUNSET -> R.drawable.ic_arbor_mark_sunset
+    }

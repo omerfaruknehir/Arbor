@@ -1,9 +1,11 @@
 package app.arbor.chat.ui.theme
 
 import android.app.Activity
+import android.content.Context
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
@@ -98,6 +100,47 @@ private val SunsetDark = ArborDark.copy(
     tertiary = Color(0xFFD7C58D), tertiaryContainer = Color(0xFF514619), onTertiaryContainer = Color(0xFFF4E1A7),
 )
 
+
+data class PalettePreviewColors(
+    val primary: Color,
+    val secondary: Color,
+    val tertiary: Color,
+)
+
+private fun paletteColorScheme(
+    palette: ColorPalette,
+    dark: Boolean,
+    context: Context,
+): ColorScheme = when (palette) {
+    ColorPalette.ARBOR -> if (dark) ArborDark else ArborLight
+    ColorPalette.GRAPHITE -> if (dark) GraphiteDark else GraphiteLight
+    ColorPalette.OCEAN -> if (dark) OceanDark else OceanLight
+    ColorPalette.VIOLET -> if (dark) VioletDark else VioletLight
+    ColorPalette.SUNSET -> if (dark) SunsetDark else SunsetLight
+    ColorPalette.SYSTEM -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    } else if (dark) ArborDark else ArborLight
+}
+
+@Composable
+fun palettePreviewColors(
+    palette: ColorPalette,
+    themeMode: ThemeMode,
+): PalettePreviewColors {
+    val context = LocalContext.current
+    val dark = when (themeMode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+    val scheme = paletteColorScheme(palette, dark, context)
+    return PalettePreviewColors(
+        primary = scheme.primary,
+        secondary = scheme.secondary,
+        tertiary = scheme.tertiary,
+    )
+}
+
 private val ArborShapes = Shapes(
     extraSmall = RoundedCornerShape(6.dp), small = RoundedCornerShape(10.dp),
     medium = RoundedCornerShape(14.dp), large = RoundedCornerShape(18.dp), extraLarge = RoundedCornerShape(24.dp),
@@ -116,16 +159,7 @@ fun ArborTheme(
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    var colors = when (palette) {
-        ColorPalette.ARBOR -> if (dark) ArborDark else ArborLight
-        ColorPalette.GRAPHITE -> if (dark) GraphiteDark else GraphiteLight
-        ColorPalette.OCEAN -> if (dark) OceanDark else OceanLight
-        ColorPalette.VIOLET -> if (dark) VioletDark else VioletLight
-        ColorPalette.SUNSET -> if (dark) SunsetDark else SunsetLight
-        ColorPalette.SYSTEM -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        } else if (dark) ArborDark else ArborLight
-    }
+    var colors = paletteColorScheme(palette, dark, context)
     if (amoled && dark) colors = colors.copy(
         background = Color.Black,
         surface = Color.Black,

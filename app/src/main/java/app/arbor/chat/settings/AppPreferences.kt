@@ -158,10 +158,14 @@ data class NewChatDefaults(
 }
 
 class AppPreferences(context: Context) {
-    private val preferences = context.getSharedPreferences("arbor_app_settings", Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val preferences = appContext.getSharedPreferences("arbor_app_settings", Context.MODE_PRIVATE)
     private val _amoled = MutableStateFlow(preferences.getBoolean(KEY_AMOLED, false))
     private val _palette = MutableStateFlow(enumValue(KEY_PALETTE, ColorPalette.ARBOR))
     private val _themeMode = MutableStateFlow(enumValue(KEY_THEME_MODE, ThemeMode.SYSTEM))
+    private val _matchLauncherIconToPalette = MutableStateFlow(
+        preferences.getBoolean(KEY_MATCH_LAUNCHER_ICON_TO_PALETTE, false),
+    )
     private val _chromeBlurStrength = MutableStateFlow(readChromeBlurStrength())
     private val _chromeEdgeSoftness = MutableStateFlow(readChromeEdgeSoftness())
     private val _chromeOverlayOpacity = MutableStateFlow(preferences.getFloat(KEY_CHROME_OVERLAY_OPACITY, 1f).coerceIn(0f, 1f))
@@ -172,6 +176,7 @@ class AppPreferences(context: Context) {
     val amoled: StateFlow<Boolean> = _amoled.asStateFlow()
     val palette: StateFlow<ColorPalette> = _palette.asStateFlow()
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
+    val matchLauncherIconToPalette: StateFlow<Boolean> = _matchLauncherIconToPalette.asStateFlow()
     val chromeBlurStrength: StateFlow<Float> = _chromeBlurStrength.asStateFlow()
     val chromeEdgeSoftness: StateFlow<Float> = _chromeEdgeSoftness.asStateFlow()
     val chromeOverlayOpacity: StateFlow<Float> = _chromeOverlayOpacity.asStateFlow()
@@ -180,7 +185,12 @@ class AppPreferences(context: Context) {
     val developerSettings: StateFlow<DeveloperSettings> = _developerSettings.asStateFlow()
     val hasNewChatDefaults: Boolean get() = preferences.getBoolean(KEY_DEFAULTS_INITIALIZED, false)
 
-    private fun readChromeBlurStrength(): Float {
+    init {
+        // Reconcile aliases after app updates or launcher cache resets.
+        LauncherIconManager.apply(appContext, _matchLauncherIconToPalette.value, _palette.value)
+    }
+
+    private fun readChromeBlurStrength():  Float {
         val saved = preferences.getFloat(KEY_CHROME_BLUR_STRENGTH, 0.7f).coerceIn(0f, 1f)
         if (!preferences.contains(KEY_CHROME_BLUR_ENABLED)) return saved
         val migrated = if (preferences.getBoolean(KEY_CHROME_BLUR_ENABLED, true)) saved else 0f
@@ -235,6 +245,15 @@ class AppPreferences(context: Context) {
     fun setPalette(value: ColorPalette) {
         _palette.value = value
         preferences.edit { putString(KEY_PALETTE, value.name) }
+        if (_matchLauncherIconToPalette.value) {
+            LauncherIconManager.apply(appContext, matchPalette = true, palette = value)
+        }
+    }
+
+    fun setMatchLauncherIconToPalette(enabled: Boolean) {
+        _matchLauncherIconToPalette.value = enabled
+        preferences.edit { putBoolean(KEY_MATCH_LAUNCHER_ICON_TO_PALETTE, enabled) }
+        LauncherIconManager.apply(appContext, matchPalette = enabled, palette = _palette.value)
     }
 
     fun setThemeMode(value: ThemeMode) {
@@ -365,6 +384,7 @@ class AppPreferences(context: Context) {
         const val KEY_AMOLED = "amoled_black"
         const val KEY_PALETTE = "color_palette"
         const val KEY_THEME_MODE = "theme_mode"
+        const val KEY_MATCH_LAUNCHER_ICON_TO_PALETTE = "match_launcher_icon_to_palette"
         const val KEY_CHROME_BLUR_ENABLED = "chrome_blur_enabled" // legacy migration only
         const val KEY_CHROME_GRADUAL_ENABLED = "chrome_gradual_enabled" // legacy migration only
         const val KEY_CHROME_BLUR_STRENGTH = "chrome_blur_strength"
