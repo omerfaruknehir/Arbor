@@ -63,17 +63,13 @@ class DsmlToolProtocolTest {
         )
         val streamed = chunks.joinToString(separator = "") { adapter.accept(it) }
         val result = adapter.finish()
+        val arguments = Json.parseToJsonElement(result.calls.single().argumentsJson).jsonObject
+        val widgetSource = Json.parseToJsonElement(arguments.getValue("source").jsonPrimitive.content).jsonObject
 
         assertEquals("", streamed + result.visibleText)
         assertEquals(1, result.calls.size)
         assertEquals("compile_widget", result.calls.single().name)
-        assertEquals(
-            "namaz-vakti",
-            Json.parseToJsonElement(result.calls.single().argumentsJson)
-                .jsonObject.getValue("source").jsonPrimitive.content
-                .let(Json::parseToJsonElement)
-                .jsonObject.getValue("id").jsonPrimitive.content,
-        )
+        assertEquals("namaz-vakti", widgetSource.getValue("id").jsonPrimitive.content)
     }
 
     @Test
