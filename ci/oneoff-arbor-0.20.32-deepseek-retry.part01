@@ -1,0 +1,110 @@
+from pathlib import Path
+
+
+def replace_once(path: Path, old: str, new: str) -> None:
+    text = path.read_text()
+    if old not in text:
+        raise SystemExit(f"Expected source fragment not found in {path}: {old[:120]!r}")
+    path.write_text(text.replace(old, new, 1))
+
+
+# Add rollback semantics to provider chunks.
+provider_models = Path("app/src/main/java/app/arbor/chat/provider/ProviderModels.kt")
+replace_once(
+    provider_models,
+    '''    val toolCalls: List<NativeToolCall> = emptyList(),
+    val nativeProviderPayloadJson: String = "",
+    val generatedImages: List<GeneratedImageOutput> = emptyList(),
+)''',
+    '''    val toolCalls: List<NativeToolCall> = emptyList(),
+    val nativeProviderPayloadJson: String = "",
+    /**
+     * Internal provider signal: discard output emitted by the current HTTP attempt before
+     * transparently retrying the same model turn.
+     */
+    val resetCurrentAttempt: Boolean = false,
+    val generatedImages: List<GeneratedImageOutput> = emptyList(),
+)''',
+)
+
+# Add conservative recovery for trailing plain-text function calls.
+dsml_path = Path("app/src/main/java/app/arbor/chat/provider/DsmlToolProtocol.kt")
+dsml_text = dsml_path.read_text()
+marker = "/** Incrementally removes DSML from streamed assistant text and emits native calls at EOF. */"
+if marker not in dsml_text:
+    raise SystemExit("DSML stream marker not found")
+detector = r'''
+/**
+ * Extracts only an exact, valid sequence of allowed function calls appended to the end of
+ * assistant content. Calls inside Markdown fences or followed by ordinary prose are ignored.
+ *
+ * This is intentionally a last-resort recovery path. DeepSeek text-encoded calls are retried
+ * with a correction prompt first; Arbor executes this parsed form only if that retry also fails.
+ */
+internal object PlainTextToolCallDetector {
+    private val json = Json { ignoreUnknownKeys = false }
+
+    fun extractTrailingCalls(value: String, allowedTools: Set<String>): List<NativeToolCall> {
+        if (value.isBlank() || allowedTools.isEmpty()) return emptyList()
+        val canonical = allowedTools.associateBy { it.lowercase() }
+        val alternatives = canonical.keys
+            .sortedByDescending(String::length)
+            .joinToString("|") { Regex.escape(it) }
+        val callStart = Regex(
+            "(?<![A-Za-z0-9_])($alternatives)\\s*(?=\\{)",
+            RegexOption.IGNORE_CASE,
+        )
+
+        callStart.findAll(value).forEach { first ->
+            if (insideCodeFence(value, first.range.first)) return@forEach
+            val calls = mutableListOf<NativeToolCall>()
+            var cursor = first.range.first
+
+            while (true) {
+                while (cursor < value.length && value[cursor].isWhitespace()) cursor++
+                val match = callStart.find(value, cursor)
+                    ?.takeIf { it.range.first == cursor }
+                    ?: break
+                if (insideCodeFence(value, match.range.first)) break
+
+                val name = canonical[match.groupValues[1].lowercase()] ?: break
+                val objectStart = value.indexOf('{', match.range.last + 1)
+                if (objectStart < 0) break
+                val objectEnd = findJsonObjectEnd(value, objectStart) ?: break
+                val rawArguments = value.substring(objectStart, objectEnd + 1)
+                val arguments = runCatching {
+                    json.parseToJsonElement(rawArguments) as? JsonObject
+                }.getOrNull() ?: break
+
+                calls += NativeToolCall(
+                    id = "text-${calls.size + 1}-${rawArguments.hashCode().toUInt().toString(16)}",
+                    name = name,
+                    argumentsJson = arguments.toString(),
+                )
+                cursor = objectEnd + 1
+                while (cursor < value.length && value[cursor].isWhitespace()) cursor++
+                if (cursor == value.length) return calls
+            }
+        }
+        return emptyList()
+    }
+
+    private fun findJsonObjectEnd(value: String, start: Int): Int? {
+        var depth = 0
+        var insideString = false
+        var escaped = false
+        for (index in start until value.length) {
+            val character = value[index]
+            if (insideString) {
+                when {
+                    escaped -> escaped = false
+                    character == '\\' -> escaped = true
+                    character == '"' -> insideString = false
+                }
+                continue
+            }
+            when (character) {
+                '"' -> insideString = true
+                '{' -> depth++
+                '}' -> {
+                    depth--
