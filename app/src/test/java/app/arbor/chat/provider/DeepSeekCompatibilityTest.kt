@@ -55,6 +55,38 @@ class DeepSeekCompatibilityTest {
     }
 
     @Test
+    fun disabledToolRetryAddsNoProtocolFinalizationReminder() {
+        val base = ChatRequest(
+            provider = ProviderEntity("deepseek", "DeepSeek", ProviderKind.OPENAI_COMPATIBLE, "https://api.deepseek.com"),
+            model = ModelEntity(
+                providerId = "deepseek",
+                modelId = "deepseek-v4-pro",
+                displayName = "DeepSeek V4 Pro",
+                contextWindow = 1_000_000,
+                maxOutputTokens = 384_000,
+                inputCacheHitUsdPerMillion = 0.0,
+                inputCacheMissUsdPerMillion = 0.0,
+                outputUsdPerMillion = 0.0,
+                supportsThinking = true,
+                supportsTools = true,
+            ),
+            apiKey = "test",
+            messages = listOf(InputMessage(MessageRole.USER, "Finish from current evidence")),
+            maxOutputTokens = 1_024,
+            thinkingEnabled = true,
+            tools = emptyList(),
+            toolProtocolNames = setOf("web_fetch"),
+        )
+
+        val guarded = OpenAiCompatibleProvider().deepSeekToolGuardedRequest(base, correctionAttempt = 1)
+        val system = guarded.messages.first { it.role == MessageRole.SYSTEM }.content
+
+        assertTrue(system.contains("Tools are unavailable for this finalization turn"))
+        assertTrue(system.contains("Do not print DSML"))
+        assertTrue(guarded.tools.isEmpty())
+    }
+
+    @Test
     fun correctionRetryAddsStrictStructuredToolReminder() {
         val request = ChatRequest(
             provider = ProviderEntity("deepseek", "DeepSeek", ProviderKind.OPENAI_COMPATIBLE, "https://api.deepseek.com"),

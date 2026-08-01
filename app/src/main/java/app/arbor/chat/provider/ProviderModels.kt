@@ -30,6 +30,8 @@ data class ChatRequest(
     val continuation: Boolean = false,
     val customHeaders: Map<String, String> = emptyMap(),
     val tools: List<NativeToolDefinition> = emptyList(),
+    /** Names recognized only by the protocol firewall; these are never serialized as callable tools. */
+    val toolProtocolNames: Set<String> = emptySet(),
 )
 
 

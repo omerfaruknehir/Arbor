@@ -8,6 +8,16 @@ import app.arbor.chat.data.ThinkingEffort
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.coroutines.runBlocking
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.RequestBody
+import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.Buffer
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -307,6 +317,61 @@ class NativeProviderProtocolTest {
         assertTrue(final!!.nativeProviderPayloadJson.contains("encrypted_content"))
         assertFalse(final.nativeProviderPayloadJson.contains(encoded))
         assertFalse(final.nativeProviderPayloadJson.contains("image_generation_call"))
+    }
+
+    @Test
+    fun disabledToolFinalizationQuarantinesPrayerTimeDsmlAndRetriesCleanly() = runBlocking {
+        fun sse(text: String): String =
+            "data: {\"choices\":[{\"delta\":{\"content\":${JsonPrimitive(text)}}}]}\n\ndata: [DONE]\n\n"
+
+        val attempt = AtomicInteger(0)
+        val requestBodies = mutableListOf<String>()
+        val responses = listOf(
+            sse(
+                "Aladhan API'sine compile_widget erişemiyor. Alternatif bir API deneyeyim.\n" +
+                    "< | | DSML | | tool_calls>< | | DSML | | invoke name=\"web_fetch\">" +
+                    "< | | DSML | | parameter name=\"url\" string=\"true\">" +
+                    "https://api.pray.zone/v2/times/today.json?latitude=39.9334&longitude=32.8597&method=13" +
+                    "< / | | DSML | | parameter>< / | | DSML | | invoke>< / | | DSML | | tool_calls>",
+            ),
+            sse("Mevcut araç sonuçları yeterli değil; eksik veriyi açıkça belirterek devam ediyorum."),
+        )
+        val client = OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val buffer = Buffer()
+                chain.request().body?.writeTo(buffer)
+                requestBodies += buffer.readUtf8()
+                val index = attempt.getAndIncrement().coerceAtMost(responses.lastIndex)
+                Response.Builder()
+                    .request(chain.request())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(responses[index].toResponseBody("text/event-stream".toMediaType()))
+                    .build()
+            }
+            .build()
+        val guardedRequest = request(
+            ProviderKind.OPENAI_COMPATIBLE,
+            listOf(InputMessage(MessageRole.USER, "Namaz vakti widget'i yap")),
+            modelId = "deepseek-v4-pro",
+            providerId = "deepseek",
+        ).copy(
+            tools = emptyList(),
+            toolProtocolNames = setOf("compile_widget", "web_search", "web_fetch"),
+        )
+        val chunks = mutableListOf<StreamChunk>()
+
+        OpenAiCompatibleProvider(client).stream(guardedRequest) { chunks += it }
+
+        val visible = chunks.joinToString(separator = "") { it.text + it.reasoning }
+        assertEquals(2, attempt.get())
+        assertTrue(chunks.any { it.resetCurrentAttempt })
+        assertFalse(visible.contains("DSML", ignoreCase = true))
+        assertFalse(visible.contains("web_fetch", ignoreCase = true))
+        assertTrue(visible.contains("Mevcut araç sonuçları"))
+        assertTrue(requestBodies.none { it.contains("\"tools\"") })
+        assertTrue(requestBodies.last().contains("Tools are unavailable for this finalization turn"))
     }
 
     @Test

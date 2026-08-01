@@ -58,14 +58,21 @@ class OpenAiCompatibleProvider(
             val httpRequest = builder.build()
 
             val calls = linkedMapOf<Int, ToolCallAccumulator>()
-            val allowedTools = attemptRequest.tools.mapTo(linkedSetOf()) { it.name.lowercase() }
-            val dsmlChannels = allowedTools.takeIf { it.isNotEmpty() }?.let(::DsmlChannelsAdapter)
+            val exposedTools = attemptRequest.tools.mapTo(linkedSetOf()) { it.name.lowercase() }
+            val protocolTools = linkedSetOf<String>().apply {
+                addAll(exposedTools)
+                attemptRequest.toolProtocolNames.mapTo(this) { it.lowercase() }
+            }
+            val dsmlChannels = protocolTools.takeIf { it.isNotEmpty() }?.let(::DsmlChannelsAdapter)
             val rawText = StringBuilder()
             val rawReasoning = StringBuilder()
             val bufferedVisibleText = StringBuilder()
             val bufferedVisibleReasoning = StringBuilder()
-            val isDeepSeekToolTurn = attemptRequest.isDeepSeekToolTurn()
-            val quarantineToolText = isDeepSeekToolTurn
+            // DeepSeek tool turns and no-tool finalization turns are held until EOF.
+            // The latter is the critical case: after the execution budget is exhausted,
+            // a stale DSML request must never be streamed into the conversation.
+            val quarantineToolText = attemptRequest.isDeepSeekFamily() ||
+                (exposedTools.isEmpty() && protocolTools.isNotEmpty())
             var meaningfulPayloadReceived = false
             var finishReason: String? = null
             var attemptInputTokens: Long? = null
@@ -115,9 +122,9 @@ class OpenAiCompatibleProvider(
             }
             val completedStructuredCalls = calls.toSortedMap()
             val recoveredProtocolCalls = adapted?.calls.orEmpty()
-            val recoveredPlainTextCalls = if (completedStructuredCalls.isEmpty() && allowedTools.isNotEmpty()) {
-                PlainTextToolCallDetector.extractTrailingCalls(rawText.toString(), allowedTools)
-                    .ifEmpty { PlainTextToolCallDetector.extractTrailingCalls(rawReasoning.toString(), allowedTools) }
+            val recoveredPlainTextCalls = if (completedStructuredCalls.isEmpty() && protocolTools.isNotEmpty()) {
+                PlainTextToolCallDetector.extractTrailingCalls(rawText.toString(), protocolTools)
+                    .ifEmpty { PlainTextToolCallDetector.extractTrailingCalls(rawReasoning.toString(), protocolTools) }
             } else {
                 emptyList()
             }
@@ -125,7 +132,7 @@ class OpenAiCompatibleProvider(
             val protocolHint = DsmlToolProtocol.containsProtocolHint(rawText) ||
                 DsmlToolProtocol.containsProtocolHint(rawReasoning)
             val textEncodedToolFailure = completedStructuredCalls.isEmpty() &&
-                allowedTools.isNotEmpty() &&
+                protocolTools.isNotEmpty() &&
                 (recoveredTextCalls.isNotEmpty() || adapted?.malformed == true || protocolHint)
 
             if (textEncodedToolFailure) {
@@ -140,14 +147,23 @@ class OpenAiCompatibleProvider(
                     continue
                 }
 
-                if (recoveredTextCalls.isEmpty()) {
+                if (exposedTools.isEmpty()) {
                     throw ProviderProtocolException(
-                        "The provider repeatedly serialized a tool request into assistant text or reasoning, and Arbor could not safely recover its arguments.",
+                        "The provider repeatedly printed a tool request after Arbor disabled tools for finalization. " +
+                            "Arbor discarded the protocol instead of displaying or executing it.",
+                    )
+                }
+                val executableRecoveredCalls = recoveredTextCalls.filter { call ->
+                    call.name.lowercase() in exposedTools
+                }
+                if (executableRecoveredCalls.isEmpty()) {
+                    throw ProviderProtocolException(
+                        "The provider repeatedly serialized a tool request into assistant text or reasoning, and Arbor could not safely recover an exposed tool call.",
                     )
                 }
                 emit(
                     StreamChunk(
-                        toolCalls = recoveredTextCalls,
+                        toolCalls = executableRecoveredCalls,
                         inputTokens = attemptInputTokens.plusUsage(discardedInputTokens),
                         outputTokens = attemptOutputTokens.plusUsage(discardedOutputTokens),
                         cachedInputTokens = attemptCachedTokens.plusUsage(discardedCachedTokens),
@@ -260,12 +276,18 @@ class OpenAiCompatibleProvider(
         request: ChatRequest,
         correctionAttempt: Int,
     ): ChatRequest {
-        if (!request.isDeepSeekToolTurn() && correctionAttempt == 0) return request
+        val hasExposedTools = request.tools.isNotEmpty()
+        val hasProtocolGuard = request.toolProtocolNames.isNotEmpty()
+        if (correctionAttempt == 0 && !(request.isDeepSeekFamily() && hasExposedTools)) return request
+        if (!hasExposedTools && !hasProtocolGuard) return request
         val instruction = buildString {
-            append(DEEPSEEK_TOOL_CALL_GUARD)
+            if (hasExposedTools) append(DEEPSEEK_TOOL_CALL_GUARD)
             if (correctionAttempt > 0) {
-                append("\n\n")
-                append(DEEPSEEK_TOOL_CALL_CORRECTION)
+                if (isNotEmpty()) append("\n\n")
+                append(
+                    if (hasExposedTools) DEEPSEEK_TOOL_CALL_CORRECTION
+                    else TOOL_DISABLED_PROTOCOL_CORRECTION
+                )
             }
         }
         val messages = request.messages.toMutableList()
@@ -283,16 +305,13 @@ class OpenAiCompatibleProvider(
         return request.copy(messages = messages)
     }
 
-    private fun ChatRequest.isDeepSeekToolTurn(): Boolean {
-        if (tools.isEmpty()) return false
-        return listOf(
-            provider.id,
-            provider.displayName,
-            provider.baseUrl,
-            model.modelId,
-            model.displayName,
-        ).any { it.contains("deepseek", ignoreCase = true) }
-    }
+    private fun ChatRequest.isDeepSeekFamily(): Boolean = listOf(
+        provider.id,
+        provider.displayName,
+        provider.baseUrl,
+        model.modelId,
+        model.displayName,
+    ).any { it.contains("deepseek", ignoreCase = true) }
 
     private fun Long?.plusUsage(extra: Long): Long? = when {
         this != null -> this + extra
@@ -559,6 +578,10 @@ class OpenAiCompatibleProvider(
         const val DEEPSEEK_TOOL_CALL_CORRECTION =
             "Retry the current turn from scratch. Your previous attempt serialized a tool request into content. " +
                 "Use structured tool_calls only, with no preamble; otherwise answer normally without tool syntax."
+        const val TOOL_DISABLED_PROTOCOL_CORRECTION =
+            "Retry the current turn from scratch. Tools are unavailable for this finalization turn. " +
+                "Do not print DSML, XML-like tool markup, function names, or tool arguments. " +
+                "Answer only from the evidence already present and state any concrete limitation."
     }
 
 private val app.arbor.chat.data.ThinkingEffort.apiValue: String

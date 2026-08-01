@@ -699,6 +699,9 @@ class GenerationWorker(
                         continuation = effectiveContinuation && round == 0 && !universalFallback,
                         customHeaders = parseHeaders(provider.customHeadersJson),
                         tools = if (nativeToolsDisabled) emptyList() else nativeToolDefinitions,
+                        // Tool execution can be disabled for the final synthesis turn, but
+                        // stale text-encoded calls must still be recognized and suppressed.
+                        toolProtocolNames = nativeToolDefinitions.mapTo(linkedSetOf()) { it.name },
                     )
                     val (request, preflightInputTokens) = prepareCountedRequest(baseRequest)
                     passInput = preflightInputTokens
