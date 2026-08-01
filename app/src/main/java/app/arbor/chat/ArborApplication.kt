@@ -129,6 +129,6 @@ class AppContainer(val application: Application, val crashReporter: CrashReporte
         requestRepair = auxiliaryModels::repairGeneratedBlock,
     )
     val packageApprovals = PackageApprovalService(repository, auxiliaryModels)
-    val agentTools = AgentTools(pythonSandbox, ubuntuRuntime, repository, runRecords)
+    val agentTools = AgentTools(pythonSandbox, ubuntuRuntime, repository, generatedBlockCompiler, runRecords)
     val scheduler = GenerationScheduler(application, repository)
 }

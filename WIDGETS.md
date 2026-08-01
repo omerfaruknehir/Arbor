@@ -1,7 +1,7 @@
 # Arbor snippets and programmable widgets
 
 Contract family: `arbor-generated-content/2`
-Validator: `2.2.0`
+Validator: `2.3.0`
 
 `GeneratedContentCapabilityRegistry` is the prompt-time and validation-time authority. This document is the human-readable skill specification supplied with the app.
 
@@ -216,3 +216,8 @@ Network grants expose the device IP address to only the listed origin. Location 
 Arbor injects an always-on compact widget manifest into the system context and selects the full schema from up to sixteen recent conversation messages. This preserves capability awareness across follow-ups and multilingual requests instead of relying only on the latest user sentence.
 
 Generated widgets should be glanceable, honest about unavailable live data, usable when resized, and limited to a small set of meaningful launcher actions. The compiler enforces readable launcher typography (normally 15sp+, supporting text 13sp+, primary metrics around 28–32sp), bounded rows/actions, and representative resize checks before display. The chat install card provides an interactive local preview, grant progress, grouped origin approval, clearer launcher feedback, and per-instance permission explanations. The launcher widget uses a dedicated refresh affordance and avoids drawing duplicate action controls into the bitmap.
+## Native compiler tool protocol
+
+Tool-capable models receive a native `compile_widget` function. A candidate is passed as the complete JSON `source` argument without a Markdown fence. Arbor returns `arbor-widget-compiler-result/1` with `success`, the active contract version, a source SHA-256, bounded structured diagnostics, and an exact next instruction.
+
+The model must keep failed candidates inside tool calls, replace the complete source, and call the compiler again. It may emit an `arbor-widget` fence only after `success=true`, using the exact source from the successful call (or `compiledSource` when the compiler supplies a normalized replacement). Models without native tool support continue through the post-generation compiler and repair fallback.

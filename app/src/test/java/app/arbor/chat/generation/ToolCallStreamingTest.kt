@@ -17,6 +17,18 @@ class ToolCallStreamingTest {
         assertEquals("printf \"hello\"\nnext", value)
     }
 
+
+    @Test fun widgetCompilerHidesRawCandidateFromActivitySummary() {
+        val presentation = toolCallPresentation(
+            "compile_widget",
+            """{"source":"{\"schema\":\"arbor-widget/1\"}"}""",
+        )
+        assertEquals("widget_compile", presentation.kind)
+        assertTrue(presentation.input.startsWith("Internal widget candidate"))
+        assertTrue(!presentation.input.contains("arbor-widget/1"))
+        assertEquals("Compiling Home widget", presentation.runningLabel)
+    }
+
     @Test fun unknownToolsStillExposeBoundedRawArguments() {
         val presentation = toolCallPresentation("custom_tool", "{" + "x".repeat(5_000))
         assertEquals("tool_call", presentation.kind)

@@ -9,6 +9,9 @@ import app.arbor.chat.sandbox.RunRecordStore
 import app.arbor.chat.sandbox.ScriptRuntime
 import app.arbor.chat.sandbox.ExecutionProgress
 import app.arbor.chat.files.AttachmentStore
+import app.arbor.chat.generated.GeneratedBlockCompiler
+import app.arbor.chat.generated.GeneratedBlockType
+import app.arbor.chat.generated.WidgetCompilerToolProtocol
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
@@ -32,6 +35,7 @@ data class AgentToolRequest(
     val type: String,
     val query: String? = null,
     val code: String? = null,
+    val source: String? = null,
     val url: String? = null,
     val command: String? = null,
     val path: String? = null,
@@ -178,6 +182,7 @@ class AgentTools(
     private val python: PythonSandbox,
     private val ubuntu: UbuntuRuntime,
     private val repository: ChatRepository,
+    private val generatedBlockCompiler: GeneratedBlockCompiler,
     val runRecords: RunRecordStore = RunRecordStore(ubuntu::workspace),
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -195,6 +200,12 @@ class AgentTools(
         // Permissions are intentionally re-read immediately before every side effect.
         val conversation = requireNotNull(repository.conversationNow(conversationId)) { "Conversation no longer exists" }
         return when (request.type.lowercase()) {
+        "compile_widget", "widget_compile" -> {
+            val source = requireNotNull(request.source) { "Widget source is missing" }
+            val compilation = generatedBlockCompiler.compile(GeneratedBlockType.HOME_WIDGET, source)
+            val result = WidgetCompilerToolProtocol.result(source, compilation)
+            AgentToolOutcome(json.encodeToString(result), isError = !result.success)
+        }
         "web_search", "search" -> {
             check(conversation.webSearchEnabled) { "Web search is disabled for this conversation." }
             AgentToolOutcome(search(requireNotNull(request.query) { "Search query is missing" }))
