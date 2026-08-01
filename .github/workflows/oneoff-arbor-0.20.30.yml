@@ -42,9 +42,28 @@ jobs:
           lines = source_path.read_text().splitlines()
           start = next(i for i, line in enumerate(lines) if line.strip() == "python3 - <<'PY'")
           end = next(i for i in range(start + 1, len(lines)) if lines[i].strip() == "PY")
+
           extracted = []
-          for line in lines[start + 1:end]:
-              extracted.append(line[10:] if line.startswith("          ") else line)
+          active_quote = None
+          for raw in lines[start + 1:end]:
+              if active_quote is None:
+                  line = raw[10:] if raw.startswith("          ") else raw
+                  extracted.append(line)
+                  single_count = line.count("'''")
+                  double_count = line.count('\"\"\"')
+                  if single_count % 2 == 1:
+                      active_quote = "'''"
+                  elif double_count % 2 == 1:
+                      active_quote = '\"\"\"'
+              else:
+                  # The original invalid YAML preserved these lines exactly as
+                  # intended string/file contents. Do not strip their indentation.
+                  extracted.append(raw)
+                  if raw.count(active_quote) % 2 == 1:
+                      active_quote = None
+
+          if active_quote is not None:
+              raise SystemExit(f"Unclosed embedded Python string: {active_quote}")
           Path("/tmp/arbor-0.20.30-repair.py").write_text("\n".join(extracted) + "\n")
           PY
           python3 /tmp/arbor-0.20.30-repair.py
