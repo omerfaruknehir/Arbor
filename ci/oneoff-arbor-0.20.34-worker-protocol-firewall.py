@@ -193,10 +193,12 @@ replace_once(
 
 release_notes = Path("docs/releases/RELEASE_NOTES_0.20.34.md")
 release_notes.write_text(
-    """# Arbor 0.20.34\n\n"
-    "- Moves DSML filtering to the generation worker, the final boundary before streamed text or reasoning is persisted.\n"
-    "- Covers every provider implementation and gateway path, not only OpenAI-compatible provider parsing.\n"
-    "- Reconstructs valid `web_fetch`, `compile_widget`, and other allowed native calls from spaced DSML while keeping protocol text out of chat and titles.\n"
-    "- Blocks malformed protocol before persistence and refuses tool calls emitted after tool-budget finalization.\n"
-    "- Adds a regression fixture matching the on-device prayer-time failure where prose is followed by `< | | DSML | | tool_calls>`.\n"
+    """# Arbor 0.20.34
+
+- Moves DSML filtering to the generation worker, the final boundary before streamed text or reasoning is persisted.
+- Covers every provider implementation and gateway path, not only OpenAI-compatible provider parsing.
+- Reconstructs valid `web_fetch`, `compile_widget`, and other allowed native calls from spaced DSML while keeping protocol text out of chat and titles.
+- Blocks malformed protocol before persistence and refuses tool calls emitted after tool-budget finalization.
+- Adds a regression fixture matching the on-device prayer-time failure where prose is followed by `< | | DSML | | tool_calls>`.
+"""
 )
