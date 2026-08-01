@@ -37,9 +37,25 @@ object WidgetCompilerToolProtocol {
                 compilation.valid ->
                     "Compilation passed. Emit exactly the source argument from this successful call, unchanged, inside one arbor-widget fence. Do not regenerate or edit it after this successful call."
                 else ->
-                    "Compilation failed. Do not emit an arbor-widget block yet. Fix every diagnostic in the complete candidate and call compile_widget again."
+                    "Compilation failed. Do not emit an arbor-widget block yet. Fix every diagnostic in the complete candidate and call compile_widget again." +
+                        repairGuidance(visible)
             },
         )
+    }
+
+    private fun repairGuidance(diagnostics: List<GeneratedValidationError>): String {
+        val hints = buildList {
+            if (diagnostics.any { "/items/" in it.path && ("unknown fields" in it.message || "type" in it.message || "text" in it.message) }) {
+                add("For `/items/...`: entries are data records, never UI nodes. Use only `label`, optional `value`, optional `detail`, and optional `action`; move nested nodes into a layout node's `children` array.")
+            }
+            if (diagnostics.any { "/options/" in it.path && "unknown fields" in it.message }) {
+                add("For `/options/...`: use only `label`, `value`, and optional `action`.")
+            }
+            if (diagnostics.any { "unknown fields" in it.message }) {
+                add("Delete every field named by an unknown-fields diagnostic instead of renaming or preserving it elsewhere unless the exact node grammar permits it.")
+            }
+        }
+        return hints.distinct().joinToString(separator = " ", prefix = if (hints.isEmpty()) "" else " Repair rules: ")
     }
 
     private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")

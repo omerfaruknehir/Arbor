@@ -25,6 +25,27 @@ class WidgetCompilerToolProtocolTest {
     }
 
     @Test
+    fun itemShapeFailureExplainsChildrenVersusRecords() {
+        val result = WidgetCompilerToolProtocol.result(
+            source = "{}",
+            compilation = GeneratedCompilationResult(
+                compiledSource = "{}",
+                errors = listOf(
+                    GeneratedValidationError(
+                        "schema",
+                        "/ui/children/1/items/0",
+                        "/ui/children/1/items/0 has unknown fields: text, type",
+                    ),
+                ),
+            ),
+        )
+
+        assertTrue(result.instruction.contains("data records, never UI nodes"))
+        assertTrue(result.instruction.contains("move nested nodes"))
+        assertTrue(result.instruction.contains("label"))
+    }
+
+    @Test
     fun successfulCompileRequiresExactTestedSource() {
         val source = """{"schema":"arbor-widget/1"}"""
         val result = WidgetCompilerToolProtocol.result(

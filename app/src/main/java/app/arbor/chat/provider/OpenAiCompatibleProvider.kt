@@ -51,6 +51,9 @@ class OpenAiCompatibleProvider(
         var emptyAttempt = 0
         while (true) {
             val calls = linkedMapOf<Int, ToolCallAccumulator>()
+            val dsmlAdapter = request.tools.takeIf { it.isNotEmpty() }?.let { tools ->
+                DsmlToolStreamAdapter(tools.mapTo(linkedSetOf()) { it.name.lowercase() })
+            }
             var meaningfulPayloadReceived = false
             var finishReason: String? = null
             client.newCall(httpRequest).useCancellable { response ->
@@ -66,10 +69,19 @@ class OpenAiCompatibleProvider(
                     val payload = line.removePrefix("data:").trim()
                     if (payload == "[DONE]") break
                     parseChunk(payload, calls)?.let { chunk ->
-                        if (chunk.hasMeaningfulPayload()) meaningfulPayloadReceived = true
-                        finishReason = chunk.finishReason ?: finishReason
-                        emit(chunk)
+                        val adapted = dsmlAdapter?.accept(chunk.text) ?: chunk.text
+                        val outgoing = if (adapted == chunk.text) chunk else chunk.copy(text = adapted)
+                        if (outgoing.hasMeaningfulPayload()) meaningfulPayloadReceived = true
+                        finishReason = outgoing.finishReason ?: finishReason
+                        emit(outgoing)
                     }
+                }
+            }
+            dsmlAdapter?.finish()?.let { adapted ->
+                if (adapted.visibleText.isNotEmpty() || adapted.calls.isNotEmpty()) {
+                    val finalChunk = StreamChunk(text = adapted.visibleText, toolCalls = adapted.calls)
+                    if (finalChunk.hasMeaningfulPayload()) meaningfulPayloadReceived = true
+                    emit(finalChunk)
                 }
             }
             if (calls.isNotEmpty()) {

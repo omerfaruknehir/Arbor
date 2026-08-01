@@ -1,3 +1,7 @@
+## 0.20.30
+
+- Repair widget-schema guidance, DeepSeek DSML tool-call handling, and collapsed chat-title action spacing.
+
 ## 0.20.29
 
 - Added `compile_widget` as a first-class native model tool. Widget drafts stay inside tool calls until the compiler returns success.

@@ -63,6 +63,7 @@ fun ChatCollapsingTranslucentTopBar(
             ),
     ) {
         LargeTopAppBar(
+            modifier = Modifier.zIndex(4f),
             title = {},
             navigationIcon = navigationIcon,
             actions = actions,
@@ -82,13 +83,16 @@ fun ChatCollapsingTranslucentTopBar(
         ) {
             val titleTranslationY = with(density) { (61.dp * (1f - travel)).toPx() }
             val titleScale = 1f + 0.20f * (1f - travel)
+            // Expanded mode needs one symmetric icon gutter. Collapsed mode also
+            // reserves the Share slot, so a long title can never sit below actions.
+            val titleEndPadding = 72.dp + (48.dp * travel)
             Text(
                 text = title,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
                     .offset(y = 11.dp)
-                    .padding(horizontal = 72.dp)
+                    .padding(start = 72.dp, end = titleEndPadding)
                     .graphicsLayer {
                         translationY = titleTranslationY
                         scaleX = titleScale

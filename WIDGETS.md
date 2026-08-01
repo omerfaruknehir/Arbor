@@ -1,7 +1,7 @@
 # Arbor snippets and programmable widgets
 
 Contract family: `arbor-generated-content/2`
-Validator: `2.3.0`
+Validator: `2.4.0`
 
 `GeneratedContentCapabilityRegistry` is the prompt-time and validation-time authority. This document is the human-readable skill specification supplied with the app.
 
@@ -63,6 +63,14 @@ Every node supports the relevant subset of:
   }
 }
 ```
+
+Container fields are deliberately not interchangeable:
+
+- `column`, `row`, and `stack` use `children`; every child is a complete node object containing `type`.
+- `list` and `chart` use `items`; every item is a data record containing only `label`, optional `value`, optional `detail`, and optional `action`. `type`, `text`, `children`, `style`, `options`, and nested `items` are invalid there.
+- `choice` uses `options`; every option contains only `label`, `value`, and optional `action`.
+
+For example, a prayer-time row is `{"label":"Sabah","value":"05:42","detail":"Güneş 07:14"}`, not `{"type":"text","text":"Sabah 05:42"}` inside an `items` array.
 
 Theme color tokens are `primary`, `secondary`, `tertiary`, `surface`, `surface_variant`, `on_surface`, `error`, and `transparent`. `#RRGGBB` and `#AARRGGBB` are also accepted.
 
