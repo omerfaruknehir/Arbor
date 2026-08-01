@@ -37,25 +37,36 @@ class OpenAiCompatibleProvider(
             generateImage(request, emit)
             return@withContext
         }
-        val bodyJson = buildRequestBody(request)
-        val endpoint = endpointFor(request)
-        val builder = Request.Builder()
-            .url(endpoint)
-            .header("Accept", "text/event-stream")
-            .header("Content-Type", "application/json")
-            .post(bodyJson.toString().toRequestBody("application/json".toMediaType()))
-        if (request.apiKey.isNotBlank()) builder.header("Authorization", "Bearer ${request.apiKey}")
-        request.customHeaders.forEach(builder::header)
-        val httpRequest = builder.build()
 
+        val endpoint = endpointFor(request)
         var emptyAttempt = 0
+        var deepSeekCorrectionAttempt = 0
+        var discardedInputTokens = 0L
+        var discardedOutputTokens = 0L
+        var discardedCachedTokens = 0L
+
         while (true) {
+            val attemptRequest = deepSeekToolGuardedRequest(request, deepSeekCorrectionAttempt)
+            val bodyJson = buildRequestBody(attemptRequest)
+            val builder = Request.Builder()
+                .url(endpoint)
+                .header("Accept", "text/event-stream")
+                .header("Content-Type", "application/json")
+                .post(bodyJson.toString().toRequestBody("application/json".toMediaType()))
+            if (attemptRequest.apiKey.isNotBlank()) builder.header("Authorization", "Bearer ${attemptRequest.apiKey}")
+            attemptRequest.customHeaders.forEach(builder::header)
+            val httpRequest = builder.build()
+
             val calls = linkedMapOf<Int, ToolCallAccumulator>()
-            val dsmlAdapter = request.tools.takeIf { it.isNotEmpty() }?.let { tools ->
-                DsmlToolStreamAdapter(tools.mapTo(linkedSetOf()) { it.name.lowercase() })
-            }
+            val allowedTools = attemptRequest.tools.mapTo(linkedSetOf()) { it.name.lowercase() }
+            val dsmlAdapter = allowedTools.takeIf { it.isNotEmpty() }?.let(::DsmlToolStreamAdapter)
+            val rawText = StringBuilder()
             var meaningfulPayloadReceived = false
             var finishReason: String? = null
+            var attemptInputTokens: Long? = null
+            var attemptOutputTokens: Long? = null
+            var attemptCachedTokens: Long? = null
+
             client.newCall(httpRequest).useCancellable { response ->
                 if (!response.isSuccessful) {
                     val error = response.body?.readErrorSnippet().orEmpty()
@@ -69,33 +80,100 @@ class OpenAiCompatibleProvider(
                     val payload = line.removePrefix("data:").trim()
                     if (payload == "[DONE]") break
                     parseChunk(payload, calls)?.let { chunk ->
+                        rawText.append(chunk.text)
                         val adapted = dsmlAdapter?.accept(chunk.text) ?: chunk.text
                         val outgoing = if (adapted == chunk.text) chunk else chunk.copy(text = adapted)
                         if (outgoing.hasMeaningfulPayload()) meaningfulPayloadReceived = true
                         finishReason = outgoing.finishReason ?: finishReason
+                        attemptInputTokens = outgoing.inputTokens ?: attemptInputTokens
+                        attemptOutputTokens = outgoing.outputTokens ?: attemptOutputTokens
+                        attemptCachedTokens = outgoing.cachedInputTokens ?: attemptCachedTokens
                         emit(outgoing)
                     }
                 }
             }
-            dsmlAdapter?.finish()?.let { adapted ->
-                if (adapted.visibleText.isNotEmpty() || adapted.calls.isNotEmpty()) {
-                    val finalChunk = StreamChunk(text = adapted.visibleText, toolCalls = adapted.calls)
-                    if (finalChunk.hasMeaningfulPayload()) meaningfulPayloadReceived = true
+
+            val adapted = dsmlAdapter?.finish()
+            val completedStructuredCalls = calls.toSortedMap()
+            val isDeepSeekToolTurn = attemptRequest.isDeepSeekToolTurn()
+            val recoveredTextCalls = if (completedStructuredCalls.isEmpty() && isDeepSeekToolTurn) {
+                adapted?.calls?.takeIf { it.isNotEmpty() }
+                    ?: PlainTextToolCallDetector.extractTrailingCalls(rawText.toString(), allowedTools)
+            } else {
+                emptyList()
+            }
+            val textEncodedToolFailure = completedStructuredCalls.isEmpty() &&
+                isDeepSeekToolTurn &&
+                (recoveredTextCalls.isNotEmpty() || adapted?.malformed == true)
+
+            if (textEncodedToolFailure) {
+                emit(StreamChunk(resetCurrentAttempt = true))
+
+                if (deepSeekCorrectionAttempt < MAX_DEEPSEEK_TOOL_CORRECTION_RETRIES) {
+                    discardedInputTokens += attemptInputTokens ?: 0L
+                    discardedOutputTokens += attemptOutputTokens ?: 0L
+                    discardedCachedTokens += attemptCachedTokens ?: 0L
+                    deepSeekCorrectionAttempt++
+                    delay(DEEPSEEK_TOOL_CORRECTION_RETRY_DELAY_MS)
+                    continue
+                }
+
+                if (recoveredTextCalls.isEmpty()) {
+                    throw ProviderProtocolException(
+                        "DeepSeek repeatedly serialized a tool request into assistant content, and Arbor could not safely recover its arguments.",
+                    )
+                }
+                emit(
+                    StreamChunk(
+                        toolCalls = recoveredTextCalls,
+                        inputTokens = attemptInputTokens.plusUsage(discardedInputTokens),
+                        outputTokens = attemptOutputTokens.plusUsage(discardedOutputTokens),
+                        cachedInputTokens = attemptCachedTokens.plusUsage(discardedCachedTokens),
+                        finishReason = "tool_calls",
+                    ),
+                )
+                break
+            }
+
+            adapted?.let { result ->
+                val finalChunk = StreamChunk(
+                    text = result.visibleText,
+                    toolCalls = if (completedStructuredCalls.isEmpty()) result.calls else emptyList(),
+                )
+                if (finalChunk.hasMeaningfulPayload()) {
+                    meaningfulPayloadReceived = true
                     emit(finalChunk)
                 }
             }
-            if (calls.isNotEmpty()) {
-                val completed = calls.toSortedMap()
-                emit(StreamChunk(
-                    toolCallProgress = completed.map { (index, call) -> call.progress(index, complete = true) },
-                    toolCalls = completed.values.map { it.complete() },
-                ))
+
+            if (completedStructuredCalls.isNotEmpty()) {
+                emit(
+                    StreamChunk(
+                        toolCallProgress = completedStructuredCalls.map { (index, call) ->
+                            call.progress(index, complete = true)
+                        },
+                        toolCalls = completedStructuredCalls.values.map { it.complete() },
+                    ),
+                )
                 meaningfulPayloadReceived = true
             }
+
+            if (discardedInputTokens > 0L || discardedOutputTokens > 0L || discardedCachedTokens > 0L) {
+                emit(
+                    StreamChunk(
+                        inputTokens = attemptInputTokens.plusUsage(discardedInputTokens),
+                        outputTokens = attemptOutputTokens.plusUsage(discardedOutputTokens),
+                        cachedInputTokens = attemptCachedTokens.plusUsage(discardedCachedTokens),
+                    ),
+                )
+            }
+
             if (meaningfulPayloadReceived) break
             if (emptyAttempt >= MAX_EMPTY_STREAM_RETRIES) {
                 val suffix = finishReason?.takeIf(String::isNotBlank)?.let { " (finish reason: $it)" }.orEmpty()
-                throw ProviderProtocolException("Provider completed without returning content after ${emptyAttempt + 1} attempts$suffix")
+                throw ProviderProtocolException(
+                    "Provider completed without returning content after ${emptyAttempt + 1} attempts$suffix",
+                )
             }
             emptyAttempt++
             delay(EMPTY_STREAM_RETRY_DELAY_MS * emptyAttempt)
@@ -142,6 +220,44 @@ class OpenAiCompatibleProvider(
                 ),
             )
         }
+    }
+
+    internal fun deepSeekToolGuardedRequest(
+        request: ChatRequest,
+        correctionAttempt: Int,
+    ): ChatRequest {
+        if (!request.isDeepSeekToolTurn()) return request
+        val instruction = buildString {
+            append(DEEPSEEK_TOOL_CALL_GUARD)
+            if (correctionAttempt > 0) {
+                append("\n\n")
+                append(DEEPSEEK_TOOL_CALL_CORRECTION)
+            }
+        }
+        val messages = request.messages.toMutableList()
+        val systemIndex = messages.indexOfFirst { it.role == MessageRole.SYSTEM }
+        if (systemIndex >= 0) {
+            val system = messages[systemIndex]
+            messages[systemIndex] = system.copy(
+                content = listOf(system.content, instruction)
+                    .filter(String::isNotBlank)
+                    .joinToString("\n\n"),
+            )
+        } else {
+            messages.add(0, InputMessage(MessageRole.SYSTEM, instruction))
+        }
+        return request.copy(messages = messages)
+    }
+
+    private fun ChatRequest.isDeepSeekToolTurn(): Boolean =
+        tools.isNotEmpty() &&
+            (provider.id.equals("deepseek", ignoreCase = true) ||
+                model.modelId.contains("deepseek", ignoreCase = true))
+
+    private fun Long?.plusUsage(extra: Long): Long? = when {
+        this != null -> this + extra
+        extra > 0L -> extra
+        else -> null
     }
 
     internal fun endpointFor(request: ChatRequest): String =
@@ -395,6 +511,14 @@ class OpenAiCompatibleProvider(
         const val MAX_EMPTY_STREAM_RETRIES = 2
         const val EMPTY_STREAM_RETRY_DELAY_MS = 750L
         const val MAX_IMAGE_RESPONSE_BYTES = 96L * 1024 * 1024
+        const val MAX_DEEPSEEK_TOOL_CORRECTION_RETRIES = 1
+        const val DEEPSEEK_TOOL_CORRECTION_RETRY_DELAY_MS = 350L
+        const val DEEPSEEK_TOOL_CALL_GUARD =
+            "When a tool is needed, return ONLY the API's structured tool_calls field for that turn. " +
+                "Never write function names, DSML tags, XML-like tool markup, or JSON tool arguments in content."
+        const val DEEPSEEK_TOOL_CALL_CORRECTION =
+            "Retry the current turn from scratch. Your previous attempt serialized a tool request into content. " +
+                "Use structured tool_calls only, with no preamble; otherwise answer normally without tool syntax."
     }
 
 private val app.arbor.chat.data.ThinkingEffort.apiValue: String

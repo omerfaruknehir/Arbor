@@ -90,6 +90,34 @@ class DsmlToolProtocolTest {
     }
 
     @Test
+    fun extractsOnlyTrailingAllowedPlainTextCalls() {
+        val result = PlainTextToolCallDetector.extractTrailingCalls(
+            "I need fresh data before answering.\ncompile_widget{\"source\":\"widget-json\"}",
+            setOf("compile_widget"),
+        )
+
+        assertEquals(1, result.size)
+        assertEquals("compile_widget", result.single().name)
+        assertEquals("{\"source\":\"widget-json\"}", result.single().argumentsJson)
+    }
+
+    @Test
+    fun ignoresToolSyntaxInsideCodeFenceOrFollowedByProse() {
+        assertTrue(
+            PlainTextToolCallDetector.extractTrailingCalls(
+                "Example:\n```text\ncompile_widget{\"source\":\"example\"}\n```\nThis is documentation.",
+                setOf("compile_widget"),
+            ).isEmpty(),
+        )
+        assertTrue(
+            PlainTextToolCallDetector.extractTrailingCalls(
+                "compile_widget{\"source\":\"example\"} but do not execute it",
+                setOf("compile_widget"),
+            ).isEmpty(),
+        )
+    }
+
+    @Test
     fun malformedOrUnapprovedProtocolIsNotRenderedOrExecuted() {
         val adapter = DsmlToolStreamAdapter(setOf("web_fetch"))
         val visible = adapter.accept(

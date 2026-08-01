@@ -106,12 +106,109 @@ internal object DsmlToolProtocol {
         "\n\n*The provider returned a malformed tool request. Arbor ignored the protocol text instead of displaying or executing it.*\n\n"
 }
 
+
+/**
+ * Extracts only an exact, valid sequence of allowed function calls appended to the end of
+ * assistant content. Calls inside Markdown fences or followed by ordinary prose are ignored.
+ *
+ * This is intentionally a last-resort recovery path. DeepSeek text-encoded calls are retried
+ * with a correction prompt first; Arbor executes this parsed form only if that retry also fails.
+ */
+internal object PlainTextToolCallDetector {
+    private val json = Json { ignoreUnknownKeys = false }
+
+    fun extractTrailingCalls(value: String, allowedTools: Set<String>): List<NativeToolCall> {
+        if (value.isBlank() || allowedTools.isEmpty()) return emptyList()
+        val canonical = allowedTools.associateBy { it.lowercase() }
+        val alternatives = canonical.keys
+            .sortedByDescending(String::length)
+            .joinToString("|") { Regex.escape(it) }
+        val callStart = Regex(
+            "(?<![A-Za-z0-9_])($alternatives)\\s*(?=\\{)",
+            RegexOption.IGNORE_CASE,
+        )
+
+        callStart.findAll(value).forEach { first ->
+            if (insideCodeFence(value, first.range.first)) return@forEach
+            val calls = mutableListOf<NativeToolCall>()
+            var cursor = first.range.first
+
+            while (true) {
+                while (cursor < value.length && value[cursor].isWhitespace()) cursor++
+                val match = callStart.find(value, cursor)
+                    ?.takeIf { it.range.first == cursor }
+                    ?: break
+                if (insideCodeFence(value, match.range.first)) break
+
+                val name = canonical[match.groupValues[1].lowercase()] ?: break
+                val objectStart = value.indexOf('{', match.range.last + 1)
+                if (objectStart < 0) break
+                val objectEnd = findJsonObjectEnd(value, objectStart) ?: break
+                val rawArguments = value.substring(objectStart, objectEnd + 1)
+                val arguments = runCatching {
+                    json.parseToJsonElement(rawArguments) as? JsonObject
+                }.getOrNull() ?: break
+
+                calls += NativeToolCall(
+                    id = "text-${calls.size + 1}-${rawArguments.hashCode().toUInt().toString(16)}",
+                    name = name,
+                    argumentsJson = arguments.toString(),
+                )
+                cursor = objectEnd + 1
+                while (cursor < value.length && value[cursor].isWhitespace()) cursor++
+                if (cursor == value.length) return calls
+            }
+        }
+        return emptyList()
+    }
+
+    private fun findJsonObjectEnd(value: String, start: Int): Int? {
+        var depth = 0
+        var insideString = false
+        var escaped = false
+        for (index in start until value.length) {
+            val character = value[index]
+            if (insideString) {
+                when {
+                    escaped -> escaped = false
+                    character == '\\' -> escaped = true
+                    character == '"' -> insideString = false
+                }
+                continue
+            }
+            when (character) {
+                '"' -> insideString = true
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return index
+                    if (depth < 0) return null
+                }
+            }
+        }
+        return null
+    }
+
+    private fun insideCodeFence(value: String, index: Int): Boolean {
+        var cursor = 0
+        var fences = 0
+        while (true) {
+            val next = value.indexOf("```", cursor)
+            if (next < 0 || next >= index) break
+            fences++
+            cursor = next + 3
+        }
+        return fences % 2 == 1
+    }
+}
+
 /** Incrementally removes DSML from streamed assistant text and emits native calls at EOF. */
 internal class DsmlToolStreamAdapter(private val allowedTools: Set<String>) {
     private val pending = StringBuilder()
     private val protocol = StringBuilder()
     private val calls = mutableListOf<NativeToolCall>()
     private var insideProtocol = false
+    private var malformed = false
 
     fun accept(delta: String): String {
         if (delta.isEmpty()) return ""
@@ -140,7 +237,7 @@ internal class DsmlToolStreamAdapter(private val allowedTools: Set<String>) {
                 protocol.append(pending.substring(0, end.range.last + 1))
                 pending.delete(0, end.range.last + 1)
                 val parsed = DsmlToolProtocol.parseBlock(protocol.toString(), allowedTools)
-                if (parsed.malformed || parsed.calls.isEmpty()) visible.append(DsmlToolProtocol.MALFORMED_NOTICE)
+                if (parsed.malformed || parsed.calls.isEmpty()) malformed = true
                 else calls += parsed.calls
                 protocol.clear()
                 insideProtocol = false
@@ -160,14 +257,23 @@ internal class DsmlToolStreamAdapter(private val allowedTools: Set<String>) {
         val visible = StringBuilder()
         if (insideProtocol) {
             protocol.append(pending)
-            visible.append(DsmlToolProtocol.MALFORMED_NOTICE)
+            malformed = true
         } else {
             visible.append(pending)
         }
+        val wasMalformed = malformed
+        val completedCalls = calls.toList()
+        if (wasMalformed) visible.append(DsmlToolProtocol.MALFORMED_NOTICE)
         pending.clear()
         protocol.clear()
+        calls.clear()
         insideProtocol = false
-        return DsmlToolProtocolResult(visible.toString(), calls.toList())
+        malformed = false
+        return DsmlToolProtocolResult(
+            visibleText = visible.toString(),
+            calls = completedCalls,
+            malformed = wasMalformed,
+        )
     }
 
     private companion object {

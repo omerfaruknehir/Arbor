@@ -681,6 +681,7 @@ class GenerationWorker(
                 val callStartedAt = System.currentTimeMillis()
                 val callContentStart = savedContent.length
                 val callReasoningStart = savedReasoning.length
+                val callTimelineStart = timeline.size
                 var passInput: Long? = null
                 var passOutput: Long? = null
                 var passCached: Long? = null
@@ -702,6 +703,28 @@ class GenerationWorker(
                     val (request, preflightInputTokens) = prepareCountedRequest(baseRequest)
                     passInput = preflightInputTokens
                     container.providers.get(provider.kind).stream(request) { chunk ->
+                        if (chunk.resetCurrentAttempt) {
+                            closeOpenStreamEvents()
+                            savedContent = savedContent.substring(0, callContentStart.coerceAtMost(savedContent.length))
+                            savedReasoning = savedReasoning.substring(0, callReasoningStart.coerceAtMost(savedReasoning.length))
+                            if (timeline.size > callTimelineStart) {
+                                timeline.subList(callTimelineStart, timeline.size).clear()
+                            }
+                            passToolCalls.clear()
+                            passNativePayload = ""
+                            progressEventIds.clear()
+                            progressWeights.clear()
+                            pendingCharacters = 0
+                            passReceived = false
+                            passInput = null
+                            passOutput = null
+                            passCached = null
+                            passFinishReason = null
+                            timelineDirty = true
+                            lastFlush = System.currentTimeMillis()
+                            persistTimeline(forceMetadata = true)
+                            return@stream
+                        }
                         if (chunk.text.isNotEmpty() || chunk.reasoning.isNotEmpty() || chunk.toolCallProgress.isNotEmpty() || chunk.toolCalls.isNotEmpty() || chunk.generatedImages.isNotEmpty()) passReceived = true
                         chunk.generatedImages.forEach { image ->
                             closeOpenStreamEvents()

@@ -50,6 +50,11 @@ data class StreamChunk(
     val toolCallProgress: List<NativeToolCallProgress> = emptyList(),
     val toolCalls: List<NativeToolCall> = emptyList(),
     val nativeProviderPayloadJson: String = "",
+    /**
+     * Internal provider signal: discard output emitted by the current HTTP attempt before
+     * transparently retrying the same model turn.
+     */
+    val resetCurrentAttempt: Boolean = false,
     val generatedImages: List<GeneratedImageOutput> = emptyList(),
 )
 
