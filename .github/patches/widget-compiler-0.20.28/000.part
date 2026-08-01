@@ -1,0 +1,84 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 6648034..9c89afa 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,18 @@
+ # Changelog
+ 
++## 0.20.28 — 2026-08-01
++
++- Compile every AI-generated Home widget before display using typed parsing, capability validation, action execution, public HTTP JSON preflight, binding verification, and representative launcher rendering.
++- Feed compile/runtime/network/layout diagnostics back into the bounded auxiliary-model repair loop and show only a candidate that passes; apply the same gate to manual edits.
++- Safely follow declared HTTPS redirects, seed representative location/folder values to avoid false HTTP 400s, support `{{urlencode:key}}`, and reject deterministic endpoint or JSON-shape failures before pinning.
++- Use real device density/font scale, larger typography and touch targets, and compact/expanded plus post-action render checks to prevent tiny, clipped, cramped, or empty widgets.
++
++## 0.20.27 — 2026-08-01
++
++- Preserve Home-widget capability awareness across follow-up messages with an explicit always-on model manifest and recent-conversation schema selection.
++- Add an interactive install preview, clearer per-widget grant progress, grouped network approval, improved pin feedback, dedicated refresh controls, and richer launcher status.
++- Remove duplicated bitmap actions and expose native button, toggle, choice, and list-item actions in launcher widgets.
++
+ ## 0.20.26 — 2026-07-31
+ 
+ - Replace category-based generated widgets and the `mini_app` compatibility layer with separate `arbor-snippet/1` and `arbor-widget/1` program surfaces.
+diff --git a/WIDGETS.md b/WIDGETS.md
+index 3fe5622..a0cef8c 100644
+--- a/WIDGETS.md
++++ b/WIDGETS.md
+@@ -1,7 +1,7 @@
+ # Arbor snippets and programmable widgets
+ 
+ Contract family: `arbor-generated-content/2`
+-Validator: `2.0.0`
++Validator: `2.2.0`
+ 
+ `GeneratedContentCapabilityRegistry` is the prompt-time and validation-time authority. This document is the human-readable skill specification supplied with the app.
+ 
+@@ -68,7 +68,7 @@ Theme color tokens are `primary`, `secondary`, `tertiary`, `surface`, `surface_v
+ 
+ ## State, templates, conditions, and actions
+ 
+-State is a flat map of at most 64 primitive values. `{{name}}` inserts a state value. `{{=count*2}}` evaluates Arbor's numeric expression language.
++State is a flat map of at most 64 primitive values. `{{name}}` inserts a state value. `{{=count*2}}` evaluates Arbor's numeric expression language. `{{urlencode:name}}` percent-encodes a state value for an HTTP query parameter.
+ 
+ Expressions allow numbers, state identifiers, `+ - * / % ^`, parentheses, and `min`, `max`, `abs`, `round`, and `pow`. There are no loops, imports, user-defined functions, or object access.
+ 
+@@ -126,11 +126,25 @@ Use a snippet only when the interaction belongs in the answer itself. Snippets c
+ 
+ A widget requires a stable `id`, a general UI tree, named actions, an explicit capability manifest, optional data sources, and optional scheduled refresh.
+ 
++
++### Compile before display
++
++Arbor does not present a raw `arbor-widget` block as a usable widget. It first compiles the definition into the typed widget runtime and runs a bounded preflight:
++
++1. Parse and validate the complete schema and capability graph.
++2. Seed representative location/folder values, then execute public HTTP JSON sources in dependency order.
++3. Follow safe declared HTTPS redirects, reject deterministic HTTP 4xx responses, invalid JSON, and missing binding paths, while allowing transient outages only when honest fallbacks exist.
++4. Execute every action group against the compiled state.
++5. Render the initial state and representative post-action states at standard and expanded launcher sizes.
++6. Reject clipped, cramped, empty, or undersized layouts and feed the exact compiler diagnostics back to the auxiliary model.
++
++Only a candidate that passes this cycle is shown with its install/preview card. The compiler is declarative: it does not build or execute JavaScript, bytecode, shell code, or downloaded code.
++
+ ### Capability manifest
+ 
+ Each capability has a user-facing `reason`. Arbor rejects a data source unless its matching capability is present, then asks the user to grant it for that pinned widget instance.
+ 
+-- `network`: exact HTTPS origins only, for example `https://api.open-meteo.com`. No wildcards, path grants, redirects, embedded credentials, or private/local IPs.
++- `network`: exact HTTPS origins only, for example `https://api.open-meteo.com`. No wildcards, path grants, embedded credentials, or private/local IPs. HTTPS redirects are followed for at most five hops only when every destination origin is explicitly declared.
+ - `location`: `approximate` or `precise`; the Android runtime permission must still exist when the widget refreshes.
+ - `folder`: `read` or `read_write`; the user chooses one Storage Access Framework document tree. Relative paths cannot escape it.
+ - `background_refresh`: permits WorkManager scheduling. The interval is 15–1440 minutes and Android may defer execution.
+@@ -139,7 +153,7 @@ A widget that requests no capabilities remains fully local.
+ 
+ ### Data sources
+ 
+-- `http_json`: GET-only HTTPS JSON, maximum 1 MB. Bindings copy explicit JSON paths into state.
++- `http_json`: GET-only HTTPS JSON, maximum 1 MB. Bindings copy explicit JSON paths into state. Every binding needs a useful fallback, and query values containing text should use `{{urlencode:key}}`.
+ - `location`: binds `latitude`, `longitude`, `accuracy`, or `updatedAt` into state.
+ - `folder_text`: reads one relative UTF-8 file from the selected tree and binds `text`, `size`, or `lineCount`.
+ 
+@@ -201,4 +215,4 @@ Network grants expose the device IP address to only the listed origin. Location
+ 
+ Arbor injects an always-on compact widget manifest into the system context and selects the full schema from up to sixteen recent conversation messages. This preserves capability awareness across follow-ups and multiling
