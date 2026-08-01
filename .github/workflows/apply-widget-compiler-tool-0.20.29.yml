@@ -1,0 +1,201 @@
+name: Apply and verify widget compiler tool 0.20.29
+
+on:
+  push:
+    branches: [ agent/widget-compiler-tool-0.20.29 ]
+    paths:
+      - .github/workflows/apply-widget-compiler-tool-0.20.29.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-verify-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/widget-compiler-tool-0.20.29
+          fetch-depth: 0
+
+      - name: Apply product patch and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/widget-tool.patch.gz.b64 <<'PATCH64'
+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
+PATCH64
+          base64 -d /tmp/widget-tool.patch.gz.b64 | gzip -d > /tmp/widget-tool.patch
+          git apply --check /tmp/widget-tool.patch
+          git apply --whitespace=error-all /tmp/widget-tool.patch
+          rm -f .github/workflows/apply-widget-compiler-tool-0.20.29.yml
+          git diff --check
+          test ! -e .github/workflows/apply-widget-compiler-tool-0.20.29.yml
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify third-party licenses
+        run: ./ci/verify-third-party-licenses.sh
+
+      - name: Verify offline license catalog
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:generateOfflineLicenseCatalog
+
+      - name: Run release unit tests
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
+
+      - name: Run release lint
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
+
+      - name: Assemble optimized release APK
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease
+
+      - name: Assemble optimized release AAB
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process bundleRelease
+
+      - name: Assemble instrumentation APK
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleDebugAndroidTest
+
+      - name: Verify release APK signature
+        run: "$ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk"
+
+      - name: Commit verified product changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          test -n "$(git status --porcelain)"
+          git commit -m 'feat: expose widget compiler as a native AI tool'
+          git push origin HEAD:agent/widget-compiler-tool-0.20.29
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: arbor-0.20.29-widget-tool-release-and-reports
+          path: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/bundle/release/*.aab
+            app/build/outputs/apk/androidTest/debug/*.apk
+            app/build/reports/tests/
+            app/build/reports/lint-results-release.html
