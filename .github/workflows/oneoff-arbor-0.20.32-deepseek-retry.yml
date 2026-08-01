@@ -1,0 +1,67 @@
+name: One-off Arbor 0.20.32 DeepSeek retry
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - .github/workflows/oneoff-arbor-0.20.32-deepseek-retry.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair-test-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply DeepSeek retry repair
+        shell: bash
+        run: |
+          cat ci/oneoff-arbor-0.20.32-deepseek-retry.part* > /tmp/arbor-0.20.32-deepseek-retry.py
+          python3 -m py_compile /tmp/arbor-0.20.32-deepseek-retry.py
+          python3 /tmp/arbor-0.20.32-deepseek-retry.py
+
+      - name: Verify third-party licenses
+        run: ./ci/verify-third-party-licenses.sh
+
+      - name: Run release unit tests
+        run: ./gradlew --no-daemon --stacktrace --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
+
+      - name: Run release lint
+        run: ./gradlew --no-daemon --stacktrace --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process lintRelease
+
+      - name: Build optimized release APK
+        run: ./gradlew --no-daemon --stacktrace --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process assembleRelease
+
+      - name: Commit verified repair
+        shell: bash
+        run: |
+          rm -f ci/oneoff-arbor-0.20.32-deepseek-retry.part*
+          rm -f .github/workflows/oneoff-arbor-0.20.32-deepseek-retry.yml
+          git config user.name "Arbor Release Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Recover DeepSeek text-encoded tool calls
+
+          Release Arbor 0.20.32 with detect, rollback, correction retry, and validated fallback recovery for DeepSeek tool-call mode failures."
+          git push origin HEAD:main
