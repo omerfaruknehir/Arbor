@@ -22,24 +22,49 @@ internal data class DsmlToolProtocolResult(
 internal object DsmlToolProtocol {
     private val json = Json { ignoreUnknownKeys = false }
 
-    // DeepSeek-compatible endpoints currently emit both <|DSML|...> and
-    // <||DSML||...>. Some gateways also insert whitespace around each pipe.
-    // Treat a run of ASCII or full-width pipes as the protocol fence while still
-    // requiring the DSML namespace and an exact supported element name.
-    private const val PIPE_RUN = "(?:[|｜]\\s*)+"
-    private val startMarker = Regex("(?is)<\\s*$PIPE_RUN\\s*DSML\\s*$PIPE_RUN\\s*tool_calls\\s*>")
-    private val endMarker = Regex("(?is)<\\s*/\\s*$PIPE_RUN\\s*DSML\\s*$PIPE_RUN\\s*tool_calls\\s*>")
+    // DeepSeek-compatible gateways vary the fence glyphs, HTML-escape angle
+    // brackets, and sometimes insert Unicode format/space characters. Match only
+    // the exact DSML namespace and known element names, but tolerate those wire
+    // representation differences.
+    private const val GAP = "[\\s\\p{Z}\\p{Cf}]*"
+    private const val PIPE_TOKEN =
+        "(?:[|｜¦∣│❘￨]|&(?:vert|VerticalLine);|&#0*124;|&#x0*7c;)"
+    private const val PIPE_RUN = "(?:$PIPE_TOKEN$GAP)+"
+    private const val OPEN_ANGLE = "(?:<|&lt;|&#0*60;|&#x0*3c;)"
+    private const val CLOSE_ANGLE = "(?:>|&gt;|&#0*62;|&#x0*3e;)"
+    private const val SLASH = "(?:/|&#0*47;|&#x0*2f;)"
+
+    private fun openingTag(element: String, captureAttributes: Boolean = false): String {
+        val attributes = if (captureAttributes) "\\b(.*?)" else ""
+        return "$OPEN_ANGLE$GAP$PIPE_RUN${GAP}DSML$GAP$PIPE_RUN$GAP$element$attributes$GAP$CLOSE_ANGLE"
+    }
+
+    private fun closingTag(element: String): String =
+        "$OPEN_ANGLE$GAP$SLASH$GAP$PIPE_RUN${GAP}DSML$GAP$PIPE_RUN$GAP$element$GAP$CLOSE_ANGLE"
+
+    private val startMarker = Regex("(?is)${openingTag("tool_calls")}")
+    private val endMarker = Regex("(?is)${closingTag("tool_calls")}")
     private val invokeMarker = Regex(
-        "(?is)<\\s*$PIPE_RUN\\s*DSML\\s*$PIPE_RUN\\s*invoke\\b([^>]*)>(.*?)" +
-            "<\\s*/\\s*$PIPE_RUN\\s*DSML\\s*$PIPE_RUN\\s*invoke\\s*>",
+        "(?is)${openingTag("invoke", captureAttributes = true)}(.*?)${closingTag("invoke")}",
     )
     private val parameterMarker = Regex(
-        "(?is)<\\s*$PIPE_RUN\\s*DSML\\s*$PIPE_RUN\\s*parameter\\b([^>]*)>(.*?)" +
-            "<\\s*/\\s*$PIPE_RUN\\s*DSML\\s*$PIPE_RUN\\s*parameter\\s*>",
+        "(?is)${openingTag("parameter", captureAttributes = true)}(.*?)${closingTag("parameter")}",
     )
 
     internal fun findStart(value: CharSequence): MatchResult? = startMarker.find(value)
     internal fun findEnd(value: CharSequence): MatchResult? = endMarker.find(value)
+
+    internal fun containsProtocolHint(value: CharSequence): Boolean {
+        if (value.isEmpty()) return false
+        val compact = buildString(value.length) {
+            value.forEach { character ->
+                if (character.isLetterOrDigit()) append(character.lowercaseChar())
+            }
+        }
+        return compact.contains("dsml") &&
+            compact.contains("toolcalls") &&
+            (compact.contains("invoke") || compact.contains("parameter"))
+    }
 
     fun parseBlock(block: String, allowedTools: Set<String>): DsmlToolProtocolResult {
         val start = startMarker.find(block) ?: return malformed()
@@ -86,11 +111,12 @@ internal object DsmlToolProtocol {
     }
 
     private fun decodeEntities(value: String): String = value
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&amp;", "&")
+        .replace(Regex("(?i)&quot;"), "\"")
+        .replace(Regex("(?i)&#(?:0*39|x0*27);"), "'")
+        .replace(Regex("(?i)&lt;|&#(?:0*60|x0*3c);"), "<")
+        .replace(Regex("(?i)&gt;|&#(?:0*62|x0*3e);"), ">")
+        .replace(Regex("(?i)&vert;|&VerticalLine;|&#(?:0*124|x0*7c);"), "|")
+        .replace(Regex("(?i)&amp;"), "&")
 
     private fun malformed() = DsmlToolProtocolResult(
         visibleText = MALFORMED_NOTICE,
@@ -202,6 +228,43 @@ internal object PlainTextToolCallDetector {
     }
 }
 
+internal data class DsmlChannelDelta(
+    val text: String,
+    val reasoning: String,
+)
+
+internal data class DsmlChannelsResult(
+    val tailText: String,
+    val tailReasoning: String,
+    val calls: List<NativeToolCall>,
+    val malformed: Boolean,
+)
+
+/** Applies the DSML quarantine independently to assistant content and reasoning. */
+internal class DsmlChannelsAdapter(allowedTools: Set<String>) {
+    private val text = DsmlToolStreamAdapter(allowedTools)
+    private val reasoning = DsmlToolStreamAdapter(allowedTools)
+
+    fun accept(textDelta: String, reasoningDelta: String): DsmlChannelDelta = DsmlChannelDelta(
+        text = text.accept(textDelta),
+        reasoning = reasoning.accept(reasoningDelta),
+    )
+
+    fun finish(): DsmlChannelsResult {
+        val textResult = text.finish()
+        val reasoningResult = reasoning.finish()
+        val calls = (textResult.calls + reasoningResult.calls).distinctBy { call ->
+            "${call.name.lowercase()}\u0000${call.argumentsJson}"
+        }
+        return DsmlChannelsResult(
+            tailText = textResult.visibleText,
+            tailReasoning = reasoningResult.visibleText,
+            calls = calls,
+            malformed = textResult.malformed || reasoningResult.malformed,
+        )
+    }
+}
+
 /** Incrementally removes DSML from streamed assistant text and emits native calls at EOF. */
 internal class DsmlToolStreamAdapter(private val allowedTools: Set<String>) {
     private val pending = StringBuilder()
@@ -277,6 +340,6 @@ internal class DsmlToolStreamAdapter(private val allowedTools: Set<String>) {
     }
 
     private companion object {
-        const val MARKER_LOOKBEHIND = 96
+        const val MARKER_LOOKBEHIND = 256
     }
 }

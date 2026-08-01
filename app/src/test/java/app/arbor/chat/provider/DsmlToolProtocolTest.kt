@@ -118,6 +118,50 @@ class DsmlToolProtocolTest {
     }
 
     @Test
+    fun reasoningChannelProtocolIsQuarantinedAndRecovered() {
+        val adapter = DsmlChannelsAdapter(setOf("web_fetch"))
+        val source = """
+            < | | DSML | | tool_calls >
+            < | | DSML | | invoke name="web_fetch" >
+            < | | DSML | | parameter name="url" string="true" >https://example.com< / | | DSML | | parameter >
+            < / | | DSML | | invoke >
+            < / | | DSML | | tool_calls >
+        """.trimIndent()
+
+        val delta = adapter.accept(textDelta = "", reasoningDelta = source)
+        val result = adapter.finish()
+
+        assertEquals("", delta.text + delta.reasoning + result.tailText + result.tailReasoning)
+        assertFalse(result.malformed)
+        assertEquals(1, result.calls.size)
+        assertEquals("web_fetch", result.calls.single().name)
+    }
+
+    @Test
+    fun htmlEscapedUnicodeFenceIsRecovered() {
+        val source = """
+            &lt;​│​│DSML││tool_calls&gt;
+            &lt;││DSML││invoke name="web_fetch"&gt;
+            &lt;││DSML││parameter name="url" string="true"&gt;https://example.com?a=1&amp;b=2&lt;/││DSML││parameter&gt;
+            &lt;/││DSML││invoke&gt;
+            &lt;/││DSML││tool_calls&gt;
+        """.trimIndent()
+
+        val result = DsmlToolProtocol.parseBlock(source, setOf("web_fetch"))
+        val url = Json.parseToJsonElement(result.calls.single().argumentsJson)
+            .jsonObject.getValue("url").jsonPrimitive.content
+
+        assertFalse(result.malformed)
+        assertEquals("https://example.com?a=1&b=2", url)
+    }
+
+    @Test
+    fun unparseableDsmlStillTriggersProtocolHint() {
+        val source = "<broken DSML marker tool_calls><broken DSML invoke>"
+        assertTrue(DsmlToolProtocol.containsProtocolHint(source))
+    }
+
+    @Test
     fun malformedOrUnapprovedProtocolIsNotRenderedOrExecuted() {
         val adapter = DsmlToolStreamAdapter(setOf("web_fetch"))
         val visible = adapter.accept(

@@ -59,8 +59,13 @@ class OpenAiCompatibleProvider(
 
             val calls = linkedMapOf<Int, ToolCallAccumulator>()
             val allowedTools = attemptRequest.tools.mapTo(linkedSetOf()) { it.name.lowercase() }
-            val dsmlAdapter = allowedTools.takeIf { it.isNotEmpty() }?.let(::DsmlToolStreamAdapter)
+            val dsmlChannels = allowedTools.takeIf { it.isNotEmpty() }?.let(::DsmlChannelsAdapter)
             val rawText = StringBuilder()
+            val rawReasoning = StringBuilder()
+            val bufferedVisibleText = StringBuilder()
+            val bufferedVisibleReasoning = StringBuilder()
+            val isDeepSeekToolTurn = attemptRequest.isDeepSeekToolTurn()
+            val quarantineToolText = isDeepSeekToolTurn
             var meaningfulPayloadReceived = false
             var finishReason: String? = null
             var attemptInputTokens: Long? = null
@@ -81,8 +86,18 @@ class OpenAiCompatibleProvider(
                     if (payload == "[DONE]") break
                     parseChunk(payload, calls)?.let { chunk ->
                         rawText.append(chunk.text)
-                        val adapted = dsmlAdapter?.accept(chunk.text) ?: chunk.text
-                        val outgoing = if (adapted == chunk.text) chunk else chunk.copy(text = adapted)
+                        rawReasoning.append(chunk.reasoning)
+                        val adapted = dsmlChannels?.accept(chunk.text, chunk.reasoning)
+                            ?: DsmlChannelDelta(chunk.text, chunk.reasoning)
+                        val outgoing = if (quarantineToolText) {
+                            bufferedVisibleText.append(adapted.text)
+                            bufferedVisibleReasoning.append(adapted.reasoning)
+                            chunk.copy(text = "", reasoning = "")
+                        } else if (adapted.text == chunk.text && adapted.reasoning == chunk.reasoning) {
+                            chunk
+                        } else {
+                            chunk.copy(text = adapted.text, reasoning = adapted.reasoning)
+                        }
                         if (outgoing.hasMeaningfulPayload()) meaningfulPayloadReceived = true
                         finishReason = outgoing.finishReason ?: finishReason
                         attemptInputTokens = outgoing.inputTokens ?: attemptInputTokens
@@ -93,18 +108,25 @@ class OpenAiCompatibleProvider(
                 }
             }
 
-            val adapted = dsmlAdapter?.finish()
+            val adapted = dsmlChannels?.finish()
+            if (quarantineToolText) {
+                bufferedVisibleText.append(adapted?.tailText.orEmpty())
+                bufferedVisibleReasoning.append(adapted?.tailReasoning.orEmpty())
+            }
             val completedStructuredCalls = calls.toSortedMap()
-            val isDeepSeekToolTurn = attemptRequest.isDeepSeekToolTurn()
-            val recoveredTextCalls = if (completedStructuredCalls.isEmpty() && isDeepSeekToolTurn) {
-                adapted?.calls?.takeIf { it.isNotEmpty() }
-                    ?: PlainTextToolCallDetector.extractTrailingCalls(rawText.toString(), allowedTools)
+            val recoveredProtocolCalls = adapted?.calls.orEmpty()
+            val recoveredPlainTextCalls = if (completedStructuredCalls.isEmpty() && allowedTools.isNotEmpty()) {
+                PlainTextToolCallDetector.extractTrailingCalls(rawText.toString(), allowedTools)
+                    .ifEmpty { PlainTextToolCallDetector.extractTrailingCalls(rawReasoning.toString(), allowedTools) }
             } else {
                 emptyList()
             }
+            val recoveredTextCalls = recoveredProtocolCalls.ifEmpty { recoveredPlainTextCalls }
+            val protocolHint = DsmlToolProtocol.containsProtocolHint(rawText) ||
+                DsmlToolProtocol.containsProtocolHint(rawReasoning)
             val textEncodedToolFailure = completedStructuredCalls.isEmpty() &&
-                isDeepSeekToolTurn &&
-                (recoveredTextCalls.isNotEmpty() || adapted?.malformed == true)
+                allowedTools.isNotEmpty() &&
+                (recoveredTextCalls.isNotEmpty() || adapted?.malformed == true || protocolHint)
 
             if (textEncodedToolFailure) {
                 emit(StreamChunk(resetCurrentAttempt = true))
@@ -120,7 +142,7 @@ class OpenAiCompatibleProvider(
 
                 if (recoveredTextCalls.isEmpty()) {
                     throw ProviderProtocolException(
-                        "DeepSeek repeatedly serialized a tool request into assistant content, and Arbor could not safely recover its arguments.",
+                        "The provider repeatedly serialized a tool request into assistant text or reasoning, and Arbor could not safely recover its arguments.",
                     )
                 }
                 emit(
@@ -135,14 +157,26 @@ class OpenAiCompatibleProvider(
                 break
             }
 
-            adapted?.let { result ->
+            if (quarantineToolText) {
                 val finalChunk = StreamChunk(
-                    text = result.visibleText,
-                    toolCalls = if (completedStructuredCalls.isEmpty()) result.calls else emptyList(),
+                    text = bufferedVisibleText.toString(),
+                    reasoning = bufferedVisibleReasoning.toString(),
                 )
                 if (finalChunk.hasMeaningfulPayload()) {
                     meaningfulPayloadReceived = true
                     emit(finalChunk)
+                }
+            } else {
+                adapted?.let { result ->
+                    val finalChunk = StreamChunk(
+                        text = result.tailText,
+                        reasoning = result.tailReasoning,
+                        toolCalls = if (completedStructuredCalls.isEmpty()) result.calls else emptyList(),
+                    )
+                    if (finalChunk.hasMeaningfulPayload()) {
+                        meaningfulPayloadReceived = true
+                        emit(finalChunk)
+                    }
                 }
             }
 
@@ -226,7 +260,7 @@ class OpenAiCompatibleProvider(
         request: ChatRequest,
         correctionAttempt: Int,
     ): ChatRequest {
-        if (!request.isDeepSeekToolTurn()) return request
+        if (!request.isDeepSeekToolTurn() && correctionAttempt == 0) return request
         val instruction = buildString {
             append(DEEPSEEK_TOOL_CALL_GUARD)
             if (correctionAttempt > 0) {
@@ -249,10 +283,16 @@ class OpenAiCompatibleProvider(
         return request.copy(messages = messages)
     }
 
-    private fun ChatRequest.isDeepSeekToolTurn(): Boolean =
-        tools.isNotEmpty() &&
-            (provider.id.equals("deepseek", ignoreCase = true) ||
-                model.modelId.contains("deepseek", ignoreCase = true))
+    private fun ChatRequest.isDeepSeekToolTurn(): Boolean {
+        if (tools.isEmpty()) return false
+        return listOf(
+            provider.id,
+            provider.displayName,
+            provider.baseUrl,
+            model.modelId,
+            model.displayName,
+        ).any { it.contains("deepseek", ignoreCase = true) }
+    }
 
     private fun Long?.plusUsage(extra: Long): Long? = when {
         this != null -> this + extra
