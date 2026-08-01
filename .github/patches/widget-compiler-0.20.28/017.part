@@ -1,0 +1,75 @@
+100644
+--- a/app/src/test/java/app/arbor/chat/widgets/ArborProgramSpecTest.kt
++++ b/app/src/test/java/app/arbor/chat/widgets/ArborProgramSpecTest.kt
+@@ -88,6 +88,18 @@ class ArborProgramSpecTest {
+         assertEquals("Count 10", transition.submitMessage)
+     }
+ 
++
++    @Test fun runtimeUrlEncodesTemplateValuesForHttpQueries() {
++        val rendered = ArborProgramRuntime.render(
++            "https://example.com/search?q={{urlencode:query}}&raw={{query}}",
++            mapOf("query" to "İstanbul weather + rain"),
++        )
++        assertEquals(
++            "https://example.com/search?q=%C4%B0stanbul%20weather%20%2B%20rain&raw=İstanbul weather + rain",
++            rendered,
++        )
++    }
++
+     @Test fun grantsAreCheckedPerWidgetInstance() {
+         val definition = ArborProgramParser.parse(
+             """{
+diff --git a/docs/SNIPPET_WIDGET_SKILL.md b/docs/SNIPPET_WIDGET_SKILL.md
+index b1124b9..8f34d2e 100644
+--- a/docs/SNIPPET_WIDGET_SKILL.md
++++ b/docs/SNIPPET_WIDGET_SKILL.md
+@@ -10,12 +10,18 @@ Treat `GeneratedContentCapabilityRegistry` as authoritative. Its compact widget
+ 4. When the request is satisfiable, generate the fenced program. Do not merely explain that widgets are possible, and do not claim Arbor lacks the capability.
+ 5. Never convert a snippet into a widget merely because it is interactive. Never use removed fences or category-specific root types.
+ 
++## Compile-before-display contract
++
++A Home-widget response is not immediately exposed to the user. Arbor compiles it into the typed declarative runtime, preflights declared public HTTP JSON sources (including safe redirects and binding paths), executes every action, and renders initial/post-action states at representative launcher sizes. Compiler diagnostics are returned to the repair model, which must emit a complete replacement. Only a passing candidate is displayed.
++
++For HTTP query values, use `{{urlencode:key}}`. Give every HTTP binding a useful fallback. Prefer the final JSON URL; if a redirect is unavoidable, declare every HTTPS destination origin. A deterministic 4xx response, incompatible JSON, missing binding, clipped text, empty canvas, or undersized typography is a compile failure, not something to hide.
++
+ ## Widget design quality
+ 
+-- Lead with one glanceable primary value or status.
+-- Keep supporting labels short and make the default state honest; use `—`, `Not updated`, or another explicit fallback instead of invented live values.
++- Lead with one glanceable primary value or status, normally around 28–32sp.
++- Use at least 15sp for ordinary content and 13sp for supporting labels. Keep supporting labels short and make the default state honest; use `—`, `Not updated`, or another explicit fallback instead of invented live values.
+ - Use two to four high-value launcher actions. Avoid duplicating decorative controls or exposing actions that do nothing.
+ - Prefer a fully local widget. Add exact network, location, folder, and background-refresh grants only when the user’s requested behavior requires them.
+ - Match every data source to its capability and explain the reason in plain language.
+-- Design for small and large resize states: important content first, secondary details later, no keyboard-dependent input.
++- Design for both the compact compiled viewport and expanded resize state: important content first, secondary details later, no keyboard-dependent input.
+ - Use general nodes and named actions to compose the requested experience. Widgets are programmable surfaces, not a fixed template catalogue.
+diff --git a/docs/releases/RELEASE_NOTES_0.20.28.md b/docs/releases/RELEASE_NOTES_0.20.28.md
+new file mode 100644
+index 0000000..ad98595
+--- /dev/null
++++ b/docs/releases/RELEASE_NOTES_0.20.28.md
+@@ -0,0 +1,21 @@
++# Arbor 0.20.28
++
++## Compiled AI widgets
++
++- Home-widget definitions are now withheld until Arbor compiles them into its typed declarative runtime.
++- The compiler validates the schema/capability graph, executes every action, preflights live public HTTP JSON sources, verifies binding paths, and renders initial and post-action states at representative launcher sizes.
++- Compiler diagnostics are sent back through the bounded auxiliary-model repair loop; only a passing replacement is shown to the user.
++- Manual widget-source edits use the same compile gate.
++
++## HTTP reliability
++
++- Safely follow up to five HTTPS redirects while rechecking exact declared origins and blocking private/local addresses at every hop.
++- Seed representative location and folder state during compilation so location-dependent APIs are not incorrectly tested with blank coordinates.
++- Reject deterministic HTTP 4xx responses, invalid JSON, and missing live binding paths before display, while retaining honest fallbacks for transient network failures.
++- Add `{{urlencode:key}}` for safe query-parameter interpolation and return sanitized server response details to the repair model.
++
++## Widget readability
++
++- Replace fixed pseudo-density rendering with the device's actual density and font scale.
++- Compile compact and expanded launcher layouts and reject clipped, cramped, empty, or sub-13sp output.
++- Increase default content, metric, title, subtitle, status, and action typography; enlarge padding and touch targets; and render post-action states to catch conditional-layout failures.
