@@ -1,0 +1,102 @@
+/item>
+-        <item name="android:minHeight">36dp</item>
+-        <item name="android:paddingHorizontal">4dp</item>
++        <item name="android:minHeight">40dp</item>
++        <item name="android:paddingHorizontal">6dp</item>
+         <item name="android:background">@drawable/widget_action_background</item>
+         <item name="android:textAllCaps">false</item>
+         <item name="android:textColor">@color/widget_accent</item>
+-        <item name="android:textSize">11sp</item>
++        <item name="android:textSize">13sp</item>
+         <item name="android:textStyle">bold</item>
+     </style>
+ </resources>
+diff --git a/app/src/test/java/app/arbor/chat/generated/GeneratedBlockRepairCoordinatorTest.kt b/app/src/test/java/app/arbor/chat/generated/GeneratedBlockRepairCoordinatorTest.kt
+index 6b6e342..c202b0b 100644
+--- a/app/src/test/java/app/arbor/chat/generated/GeneratedBlockRepairCoordinatorTest.kt
++++ b/app/src/test/java/app/arbor/chat/generated/GeneratedBlockRepairCoordinatorTest.kt
+@@ -59,6 +59,60 @@ class GeneratedBlockRepairCoordinatorTest {
+         assertEquals(0, calls)
+     }
+ 
++
++    @Test fun validWidgetIsCompiledBeforeItCanBeAccepted() = runTest {
++        var compileCalls = 0
++        var repairCalls = 0
++        val source = GeneratedContentCapabilityRegistry.validExamples.getValue(GeneratedBlockType.HOME_WIDGET).first()
++        val coordinator = GeneratedBlockRepairCoordinator(
++            workspace = ::workspace,
++            compileCandidate = { type, candidate ->
++                compileCalls++
++                assertEquals(GeneratedBlockType.HOME_WIDGET, type)
++                GeneratedCompilationResult(candidate, emptyList())
++            },
++            requestRepair = {
++                repairCalls++
++                error("A valid compiled widget must not be submitted for repair")
++            },
++        )
++        val result = coordinator.repair("c", "m", "compiled-widget", GeneratedBlockType.HOME_WIDGET, source, emptyList(), 3)
++        assertEquals(GeneratedRepairStatus.ACCEPTED, result.status)
++        assertEquals(0, result.attemptCount)
++        assertEquals(1, compileCalls)
++        assertEquals(0, repairCalls)
++    }
++
++    @Test fun compilerErrorsAreFedBackToAiAndReplacementIsRecompiled() = runTest {
++        var compileCalls = 0
++        var repairCalls = 0
++        val original = GeneratedContentCapabilityRegistry.validExamples.getValue(GeneratedBlockType.HOME_WIDGET).first()
++        val replacement = original.replace("\"title\":\"Counter\"", "\"title\":\"Recompiled Counter\"")
++        val coordinator = GeneratedBlockRepairCoordinator(
++            workspace = ::workspace,
++            compileCandidate = { _, candidate ->
++                compileCalls++
++                if (compileCalls == 1) {
++                    GeneratedCompilationResult(
++                        candidate,
++                        listOf(GeneratedValidationError("network_compile", "/dataSources/weather", "weather returned HTTP 400")),
++                    )
++                } else GeneratedCompilationResult(candidate, emptyList())
++            },
++            requestRepair = { state ->
++                repairCalls++
++                assertTrue(state.errors.any { it.phase == "network_compile" && it.message.contains("HTTP 400") })
++                "```arbor-widget\n$replacement\n```"
++            },
++        )
++        val result = coordinator.repair("c", "m", "recompiled-widget", GeneratedBlockType.HOME_WIDGET, original, emptyList(), 3)
++        assertEquals(GeneratedRepairStatus.ACCEPTED, result.status)
++        assertEquals(1, result.attemptCount)
++        assertEquals(2, compileCalls)
++        assertEquals(1, repairCalls)
++        assertEquals(replacement, result.acceptedSource)
++    }
++
+     @Test fun proseAndMultipleBlocksAreRejectedAsMalformedRepairResponses() {
+         assertTrue(GeneratedContentCapabilityRegistry.extractSingleReplacement("Here:\n```arbor-snippet\n{}\n```", "arbor-snippet").isFailure)
+         assertTrue(GeneratedContentCapabilityRegistry.extractSingleReplacement("```arbor-snippet\n{}\n```\n```arbor-snippet\n{}\n```", "arbor-snippet").isFailure)
+diff --git a/app/src/test/java/app/arbor/chat/generated/GeneratedContentCapabilityRegistryTest.kt b/app/src/test/java/app/arbor/chat/generated/GeneratedContentCapabilityRegistryTest.kt
+index 5d299d3..4eecc61 100644
+--- a/app/src/test/java/app/arbor/chat/generated/GeneratedContentCapabilityRegistryTest.kt
++++ b/app/src/test/java/app/arbor/chat/generated/GeneratedContentCapabilityRegistryTest.kt
+@@ -52,7 +52,7 @@ class GeneratedContentCapabilityRegistryTest {
+ 
+     @Test fun contractAndValidatorVersionsAreExplicit() {
+         assertTrue(GeneratedContentCapabilityRegistry.CONTRACT_VERSION.startsWith("arbor-generated-content/2-"))
+-        assertEquals("2.1.0", GeneratedContentCapabilityRegistry.VALIDATOR_VERSION)
++        assertEquals("2.2.0", GeneratedContentCapabilityRegistry.VALIDATOR_VERSION)
+         assertTrue(GeneratedContentCapabilityRegistry.compactSummary().contains(GeneratedContentCapabilityRegistry.CONTRACT_VERSION))
+         assertFalse(
+             GeneratedContentCapabilityRegistry.contractVersionForShape(GeneratedContentCapabilityRegistry.contractShape()) ==
+@@ -68,6 +68,8 @@ class GeneratedContentCapabilityRegistryTest {
+ 
+         val widget = GeneratedContentCapabilityRegistry.promptForRequest("Make a live home screen widget")
+         assertTrue(widget.contains("`arbor-widget` schema"))
++        assertTrue(widget.contains("compiled before it is shown", ignoreCase = true))
++        assertTrue(widget.contains("{{urlencode:key}}"))
+ 
+         val turkishWidget = GeneratedContentCapabilityRegistry.promptForRequest("Ana ekran için canlı hava durumu bileşeni yap")
+         assertTrue(turkishWidget.contains("`arbor-widget` schema"))
+diff --git a/app/src/test/java/app/arbor/chat/widgets/ArborProgramSpecTest.kt b/app/src/test/java/app/arbor/chat/widgets/ArborProgramSpecTest.kt
+index ccd4497..76df53a 
