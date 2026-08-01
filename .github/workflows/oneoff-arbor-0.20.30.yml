@@ -78,8 +78,19 @@ jobs:
       - name: Run release lint
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
 
-      - name: Build release artifacts
-        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease bundleRelease assembleDebugAndroidTest
+      - name: Build optimized release artifacts
+        run: >-
+          ./gradlew --no-daemon --stacktrace --max-workers=2
+          -Dorg.gradle.jvmargs="-Xmx5g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
+          -Pkotlin.compiler.execution.strategy=in-process
+          assembleRelease bundleRelease
+
+      - name: Build instrumentation APK
+        run: >-
+          ./gradlew --no-daemon --stacktrace --max-workers=2
+          -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
+          -Pkotlin.compiler.execution.strategy=in-process
+          assembleDebugAndroidTest
 
       - name: Commit verified repairs
         shell: bash
