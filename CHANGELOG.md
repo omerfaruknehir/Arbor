@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.20.28 — 2026-08-01
+
+- Compile every AI-generated Home widget before display using typed parsing, capability validation, action execution, public HTTP JSON preflight, binding verification, and representative launcher rendering.
+- Feed compile/runtime/network/layout diagnostics back into the bounded auxiliary-model repair loop and show only a candidate that passes; apply the same gate to manual edits.
+- Safely follow declared HTTPS redirects, seed representative location/folder values to avoid false HTTP 400s, support `{{urlencode:key}}`, and reject deterministic endpoint or JSON-shape failures before pinning.
+- Use real device density/font scale, larger typography and touch targets, and compact/expanded plus post-action render checks to prevent tiny, clipped, cramped, or empty widgets.
+
+## 0.20.27 — 2026-08-01
+
+- Preserve Home-widget capability awareness across follow-up messages with an explicit always-on model manifest and recent-conversation schema selection.
+- Add an interactive install preview, clearer per-widget grant progress, grouped network approval, improved pin feedback, dedicated refresh controls, and richer launcher status.
+- Remove duplicated bitmap actions and expose native button, toggle, choice, and list-item actions in launcher widgets.
+
 ## 0.20.26 — 2026-07-31
 
 - Replace category-based generated widgets and the `mini_app` compatibility layer with separate `arbor-snippet/1` and `arbor-widget/1` program surfaces.

@@ -95,6 +95,7 @@ fun SnippetBlock(
                 state.clear(); state.putAll(transition.state)
                 transition.submitMessage?.takeIf(String::isNotBlank)?.let(onSubmit)
             },
+            minimumFontSp = 14,
         )
     }
 }
@@ -122,7 +123,7 @@ fun WidgetInstallBlock(
     var folderUri by remember(source) { mutableStateOf<Uri?>(null) }
     var backgroundGranted by remember(source) { mutableStateOf(false) }
     var permissionsExpanded by remember(source) { mutableStateOf(definition.capabilities.isNotEmpty()) }
-    var previewStatus by remember(source) { mutableStateOf("") }
+    var previewStatus by remember(source) { mutableStateOf("Compiled and tested before display") }
     var pinStatus by remember(source) { mutableStateOf("") }
     var pinStatusError by remember(source) { mutableStateOf(false) }
 
@@ -159,6 +160,7 @@ fun WidgetInstallBlock(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            WidgetInfoPill("Compiled & tested")
             WidgetInfoPill(if (hasLiveData) "Live data" else "Works offline")
             WidgetInfoPill("$visibleActionCount action${if (visibleActionCount == 1) "" else "s"}")
             definition.refreshMinutes?.let { WidgetInfoPill("Refreshes every $it min") }
@@ -175,8 +177,8 @@ fun WidgetInstallBlock(
                     Column(Modifier.weight(1f)) {
                         Text("Interactive preview", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                         Text(
-                            "Try local controls before adding it. Network, folder, location, and app-opening actions are simulated here.",
-                            style = MaterialTheme.typography.bodySmall,
+                            "This is the compiled launcher program. Local controls run here; live HTTP data and JSON bindings were preflighted before this card appeared.",
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -206,9 +208,10 @@ fun WidgetInstallBlock(
                             else -> "Preview updated"
                         }
                     },
+                    minimumFontSp = 15,
                 )
                 if (previewStatus.isNotBlank()) {
-                    Text(previewStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    Text(previewStatus, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 }
             }
         }
@@ -444,9 +447,9 @@ private fun ProgramSurface(title: String, description: String, content: @Composa
         shape = MaterialTheme.shapes.extraLarge,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            if (description.isNotBlank()) Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            if (description.isNotBlank()) Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             content()
         }
     }
@@ -459,13 +462,14 @@ private fun ProgramNodeView(
     interactive: Boolean,
     onStateChange: (String, String) -> Unit,
     onAction: (String) -> Unit,
+    minimumFontSp: Int,
 ) {
     if (!ArborProgramRuntime.visible(node.visibleWhen, state)) return
     val modifier = nodeModifier(node.style)
     when (node.type) {
         "column" -> Surface(color = nodeColor(node.style.background), shape = RoundedCornerShape(node.style.cornerRadius.dp), modifier = modifier.fillMaxWidth()) {
             Column(Modifier.padding(node.style.padding.dp), verticalArrangement = Arrangement.spacedBy(node.style.gap.dp)) {
-                node.children.forEach { ProgramNodeView(it, state, interactive, onStateChange, onAction) }
+                node.children.forEach { ProgramNodeView(it, state, interactive, onStateChange, onAction, minimumFontSp) }
             }
         }
         "row" -> Surface(color = nodeColor(node.style.background), shape = RoundedCornerShape(node.style.cornerRadius.dp), modifier = modifier.fillMaxWidth()) {
@@ -476,33 +480,33 @@ private fun ProgramNodeView(
             ) {
                 node.children.forEach { child ->
                     Box(Modifier.width(if (child.style.weight > 0f) 180.dp else 140.dp)) {
-                        ProgramNodeView(child, state, interactive, onStateChange, onAction)
+                        ProgramNodeView(child, state, interactive, onStateChange, onAction, minimumFontSp)
                     }
                 }
             }
         }
-        "stack" -> Box(modifier.fillMaxWidth()) { node.children.forEach { ProgramNodeView(it, state, interactive, onStateChange, onAction) } }
+        "stack" -> Box(modifier.fillMaxWidth()) { node.children.forEach { ProgramNodeView(it, state, interactive, onStateChange, onAction, minimumFontSp) } }
         "text" -> Text(
             ArborProgramRuntime.render(node.text.ifBlank { node.value }, state),
             color = nodeTextColor(node.style.foreground),
             fontWeight = nodeFontWeight(node.style.emphasis),
-            style = if (node.style.fontSize > 0) MaterialTheme.typography.bodyMedium.copy(fontSize = node.style.fontSize.sp) else MaterialTheme.typography.bodyMedium,
+            style = if (node.style.fontSize > 0) MaterialTheme.typography.bodyLarge.copy(fontSize = node.style.fontSize.coerceAtLeast(minimumFontSp).sp) else MaterialTheme.typography.bodyLarge,
             modifier = modifier,
         )
         "metric" -> Column(modifier) {
-            if (node.label.isNotBlank()) Text(ArborProgramRuntime.render(node.label, state), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (node.label.isNotBlank()) Text(ArborProgramRuntime.render(node.label, state), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
                 ArborProgramRuntime.render(node.value.ifBlank { node.text }, state),
-                style = MaterialTheme.typography.headlineSmall,
+                style = if (node.style.fontSize > 0) MaterialTheme.typography.headlineMedium.copy(fontSize = node.style.fontSize.coerceAtLeast(28).sp) else MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = nodeTextColor(node.style.foreground),
             )
         }
         "button" -> Button(onClick = { if (interactive) onAction(node.action) }, enabled = interactive, modifier = modifier.fillMaxWidth()) {
-            Text(ArborProgramRuntime.render(node.label, state))
+            Text(ArborProgramRuntime.render(node.label, state), style = MaterialTheme.typography.labelLarge)
         }
         "toggle" -> Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(ArborProgramRuntime.render(node.label.ifBlank { node.value }, state), Modifier.weight(1f))
+            Text(ArborProgramRuntime.render(node.label.ifBlank { node.value }, state), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
             Switch(
                 checked = ArborProgramRuntime.truthy(state[node.value]),
                 onCheckedChange = { checked ->
@@ -515,7 +519,7 @@ private fun ProgramNodeView(
             )
         }
         "choice" -> Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (node.label.isNotBlank()) Text(ArborProgramRuntime.render(node.label, state), fontWeight = FontWeight.SemiBold)
+            if (node.label.isNotBlank()) Text(ArborProgramRuntime.render(node.label, state), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyLarge)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 node.options.forEach { option ->
                     val value = ArborProgramRuntime.render(option.value, state)
@@ -528,7 +532,7 @@ private fun ProgramNodeView(
                             }
                         },
                         enabled = interactive,
-                        label = { Text(ArborProgramRuntime.render(option.label, state)) },
+                        label = { Text(ArborProgramRuntime.render(option.label, state), style = MaterialTheme.typography.labelLarge) },
                     )
                 }
             }
@@ -543,7 +547,7 @@ private fun ProgramNodeView(
         )
         "slider" -> Column(modifier) {
             val raw = state[node.value]?.toDoubleOrNull()?.coerceIn(node.min, node.max) ?: node.min
-            Text("${ArborProgramRuntime.render(node.label.ifBlank { node.value }, state)}: ${formatNumber(raw, node.decimals)}")
+            Text("${ArborProgramRuntime.render(node.label.ifBlank { node.value }, state)}: ${formatNumber(raw, node.decimals)}", style = MaterialTheme.typography.bodyMedium)
             Slider(
                 value = raw.toFloat(),
                 onValueChange = { value ->
@@ -557,7 +561,7 @@ private fun ProgramNodeView(
             )
         }
         "progress" -> Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (node.label.isNotBlank()) Text(ArborProgramRuntime.render(node.label, state), style = MaterialTheme.typography.labelMedium)
+            if (node.label.isNotBlank()) Text(ArborProgramRuntime.render(node.label, state), style = MaterialTheme.typography.bodyMedium)
             val value = ArborProgramRuntime.render(node.value, state).toDoubleOrNull()?.coerceIn(node.min, node.max) ?: node.min
             LinearProgressIndicator(progress = { ((value - node.min) / (node.max - node.min).coerceAtLeast(0.000001)).toFloat() }, modifier = Modifier.fillMaxWidth())
         }
@@ -570,15 +574,15 @@ private fun ProgramNodeView(
                     shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Column(Modifier.padding(10.dp)) {
-                        Text(ArborProgramRuntime.render(item.label, state), fontWeight = FontWeight.SemiBold)
-                        if (item.value.isNotBlank()) Text(ArborProgramRuntime.render(item.value, state))
-                        if (item.detail.isNotBlank()) Text(ArborProgramRuntime.render(item.detail, state), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(Modifier.padding(12.dp)) {
+                        Text(ArborProgramRuntime.render(item.label, state), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyLarge)
+                        if (item.value.isNotBlank()) Text(ArborProgramRuntime.render(item.value, state), style = MaterialTheme.typography.bodyMedium)
+                        if (item.detail.isNotBlank()) Text(ArborProgramRuntime.render(item.detail, state), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
         }
-        "chart" -> ProgramChart(node, state, modifier.fillMaxWidth().height(150.dp))
+        "chart" -> ProgramChart(node, state, modifier.fillMaxWidth().height(180.dp))
         "divider" -> HorizontalDivider(modifier)
         "spacer" -> Spacer(modifier.height((node.style.padding.takeIf { it > 0 } ?: 12).dp))
     }
@@ -622,7 +626,7 @@ private fun WidgetInfoPill(label: String) {
         Text(
             label,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }

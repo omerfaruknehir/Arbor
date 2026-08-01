@@ -88,6 +88,18 @@ class ArborProgramSpecTest {
         assertEquals("Count 10", transition.submitMessage)
     }
 
+
+    @Test fun runtimeUrlEncodesTemplateValuesForHttpQueries() {
+        val rendered = ArborProgramRuntime.render(
+            "https://example.com/search?q={{urlencode:query}}&raw={{query}}",
+            mapOf("query" to "İstanbul weather + rain"),
+        )
+        assertEquals(
+            "https://example.com/search?q=%C4%B0stanbul%20weather%20%2B%20rain&raw=İstanbul weather + rain",
+            rendered,
+        )
+    }
+
     @Test fun grantsAreCheckedPerWidgetInstance() {
         val definition = ArborProgramParser.parse(
             """{

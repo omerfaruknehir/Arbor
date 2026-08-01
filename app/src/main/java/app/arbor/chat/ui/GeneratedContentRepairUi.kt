@@ -69,7 +69,8 @@ internal fun RepairableGeneratedContent(
         val registry = GeneratedContentCapabilityRegistry.validate(type, source)
         registry.errors + preparationErrors
     }
-    if (localValidation.isEmpty()) {
+    val requiresCompilation = type == GeneratedBlockType.HOME_WIDGET
+    if (localValidation.isEmpty() && !requiresCompilation) {
         render(source)
         return
     }
@@ -104,7 +105,11 @@ internal fun RepairableGeneratedContent(
             Surface(color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .45f), shape = MaterialTheme.shapes.medium) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.Build, null, tint = MaterialTheme.colorScheme.primary)
-                    Text("AI repaired ${type.displayLabel} · ${current.attemptCount} attempt${if (current.attemptCount == 1) "" else "s"}", Modifier.weight(1f).padding(start = 7.dp), style = MaterialTheme.typography.labelMedium)
+                    Text(
+                        if (current.attemptCount == 0) "Compiled and tested ${type.displayLabel}" else "AI rebuilt and compiled ${type.displayLabel} · ${current.attemptCount} attempt${if (current.attemptCount == 1) "" else "s"}",
+                        Modifier.weight(1f).padding(start = 7.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
                     IconButton(onClick = {
                         workingCardViewport.applyMutation(WorkingCardMutation.AUTO_EXPAND, { cardBounds }) { details = !details }
                     }) { Icon(Icons.Outlined.Edit, "Inspect repair") }
@@ -141,7 +146,7 @@ internal fun RepairableGeneratedContent(
                     maxLines = 20,
                     modifier = Modifier.fillMaxWidth(),
                     isError = editError.isNotBlank(),
-                    supportingText = { Text(editError.ifBlank { "Declarative source only; no arbitrary code is executed." }) },
+                    supportingText = { Text(editError.ifBlank { "The edited source is compiled, executed in the bounded runtime, and rendered before use." }) },
                 )
             }
         },
@@ -156,7 +161,7 @@ internal fun RepairableGeneratedContent(
                         }
                         .onFailure { editError = it.message.orEmpty() }
                 }
-            }) { Text("Validate & use") }
+            }) { Text("Compile & use") }
         },
     )
 }
@@ -174,11 +179,18 @@ private fun RepairStatusCard(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val repairing = state == null || state.status in setOf(GeneratedRepairStatus.PENDING, GeneratedRepairStatus.REPAIRING)
+    val repairing = state == null || state.status in setOf(
+        GeneratedRepairStatus.PENDING,
+        GeneratedRepairStatus.COMPILING,
+        GeneratedRepairStatus.REPAIRING,
+    )
     val title = when (state?.status) {
-        GeneratedRepairStatus.EXHAUSTED -> "Could not render this ${type.displayLabel} after ${state.attemptCount} repair attempts."
+        null, GeneratedRepairStatus.COMPILING -> "Compiling and testing ${type.displayLabel}…"
+        GeneratedRepairStatus.REPAIRING -> "Rebuilding ${type.displayLabel} from compiler feedback… attempt ${(state.attemptCount + 1).coerceAtMost(maxAttempts)} of $maxAttempts"
+        GeneratedRepairStatus.PENDING -> "Preparing another ${type.displayLabel} build…"
+        GeneratedRepairStatus.EXHAUSTED -> "Could not compile this ${type.displayLabel} after ${state.attemptCount} repair attempts."
         GeneratedRepairStatus.PROVIDER_FAILED -> "Automatic ${type.displayLabel} repair is unavailable."
-        else -> "Fixing ${type.displayLabel}… attempt ${(state?.attemptCount ?: 0) + 1} of ${maxOf(maxAttempts, (state?.attemptCount ?: 0) + 1)}"
+        GeneratedRepairStatus.ACCEPTED -> "Compiled ${type.displayLabel}"
     }
     Surface(color = if (repairing) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .45f) else MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.large, modifier = modifier.fillMaxWidth().noOpBringIntoView()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

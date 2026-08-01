@@ -8,6 +8,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import app.arbor.chat.MainActivity
@@ -140,21 +141,41 @@ class ArborHomeWidgetProvider : AppWidgetProvider() {
             val storage = WidgetStorage(context)
             val state = if (preview || id == AppWidgetManager.INVALID_APPWIDGET_ID) definition.state else storage.state(id).ifEmpty { definition.state }
             val options = if (id == AppWidgetManager.INVALID_APPWIDGET_ID) Bundle.EMPTY else AppWidgetManager.getInstance(context).getAppWidgetOptions(id)
-            val widthDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 300).coerceIn(180, 600)
-            val heightDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 180).coerceIn(100, 500)
-            val density = context.resources.displayMetrics.density
+            val widthDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, if (preview) 320 else 300).coerceIn(180, 600)
+            val heightDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, if (preview) 240 else 180).coerceIn(100, 500)
+            val compact = heightDp < 220
+            val veryCompact = heightDp < 150
+            val showSubtitle = definition.description.isNotBlank() && !compact
+            val showStatus = !veryCompact
+            val actionLimit = when {
+                widthDp < 260 -> 2
+                widthDp < 360 -> 3
+                else -> 4
+            }
+            val actions = visibleActions(definition, state).take(actionLimit)
+            val showActions = actions.isNotEmpty() && heightDp >= 130
+            val chromeDp = 24 + 30 +
+                (if (showSubtitle) 20 else 0) +
+                (if (showStatus) 18 else 0) +
+                (if (showActions) 46 else 0) + 12
+            val canvasHeightDp = (heightDp - chromeDp).coerceAtLeast(64)
+            val metrics = context.resources.displayMetrics
             val bitmap = WidgetCanvasRenderer.render(
                 definition = definition,
                 state = state,
-                widthPx = (widthDp * density).toInt().coerceAtLeast(360),
-                heightPx = ((heightDp - 72).coerceAtLeast(80) * density).toInt().coerceAtLeast(160),
+                widthPx = (widthDp * metrics.density).toInt().coerceAtLeast(240),
+                heightPx = (canvasHeightDp * metrics.density).toInt().coerceAtLeast(120),
                 dark = isDark(context),
                 suppressActionControls = true,
+                density = metrics.density,
+                scaledDensity = metrics.scaledDensity,
             )
             return RemoteViews(context.packageName, R.layout.arbor_home_widget_program).apply {
                 setTextViewText(R.id.widget_title, definition.title)
+                setTextViewTextSize(R.id.widget_title, TypedValue.COMPLEX_UNIT_SP, if (compact) 16f else 18f)
                 setTextViewText(R.id.widget_subtitle, definition.description)
-                setViewVisibility(R.id.widget_subtitle, if (definition.description.isBlank()) View.GONE else View.VISIBLE)
+                setTextViewTextSize(R.id.widget_subtitle, TypedValue.COMPLEX_UNIT_SP, 13f)
+                setViewVisibility(R.id.widget_subtitle, if (showSubtitle) View.VISIBLE else View.GONE)
                 setImageViewBitmap(R.id.widget_program_image, bitmap)
                 val error = if (preview) null else storage.error(id)?.takeIf(String::isNotBlank)
                 val status = when {
@@ -165,6 +186,8 @@ class ArborHomeWidgetProvider : AppWidgetProvider() {
                     else -> "Ready · works offline"
                 }
                 setTextViewText(R.id.widget_status, status)
+                setTextViewTextSize(R.id.widget_status, TypedValue.COMPLEX_UNIT_SP, 12f)
+                setViewVisibility(R.id.widget_status, if (showStatus) View.VISIBLE else View.GONE)
                 bindOpen(context, this, id, preview)
 
                 val hasRefresh = definition.dataSources.isNotEmpty()
@@ -184,13 +207,13 @@ class ArborHomeWidgetProvider : AppWidgetProvider() {
                     )
                 }
 
-                val actions = visibleActions(definition, state)
-                setViewVisibility(R.id.widget_actions, if (actions.isEmpty()) View.GONE else View.VISIBLE)
+                setViewVisibility(R.id.widget_actions, if (showActions) View.VISIBLE else View.GONE)
                 ACTION_IDS.forEachIndexed { index, viewId ->
                     val action = actions.getOrNull(index)
                     setViewVisibility(viewId, if (action == null) View.GONE else View.VISIBLE)
                     if (action != null) {
                         setTextViewText(viewId, action.label)
+                        setTextViewTextSize(viewId, TypedValue.COMPLEX_UNIT_SP, 13f)
                         if (!preview && id != AppWidgetManager.INVALID_APPWIDGET_ID) {
                             val intent = Intent(context, ArborHomeWidgetProvider::class.java)
                                 .setAction(ACTION_PROGRAM_ACTION)

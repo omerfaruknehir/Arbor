@@ -33,7 +33,7 @@ data class GeneratedFenceCapability(
 /** Authoritative prompt and validator registry for native generated content. */
 object GeneratedContentCapabilityRegistry {
     const val CONTRACT_FAMILY = "arbor-generated-content/2"
-    const val VALIDATOR_VERSION = "2.1.0"
+    const val VALIDATOR_VERSION = "2.2.0"
     val chartTypes = setOf("bar", "line", "area", "scatter", "pie", "donut")
     val programNodeTypes: Set<String> get() = ArborProgramParser.nodeTypes
     val programActionTypes: Set<String> get() = ArborProgramParser.actionOps
@@ -59,7 +59,7 @@ object GeneratedContentCapabilityRegistry {
         append("sources=").append(widgetDataSourceTypes.sorted()).append('|')
         append("charts=").append(chartTypes.sorted()).append('|')
         append("limits=nodes160,depth12,state64,actionGroups64,sources12,origins8,series8,points80,diagramLines240")
-        append("|security=no-html-js-jsx-webview-reflection-shell-downloaded-code;widget-grants-instance-scoped")
+        append("|compiler=typed-ir+actions+http-preflight+binding-checks+launcher-renders;security=no-html-js-jsx-webview-reflection-shell-downloaded-code;widget-grants-instance-scoped")
     }
 
     fun contractVersionForShape(shape: String): String {
@@ -74,6 +74,7 @@ object GeneratedContentCapabilityRegistry {
         Use `arbor-snippet` only for interactive content inside a chat message. Use `arbor-widget` for a real installable Android Home-screen program. They have separate schemas and are never interchangeable. Do not claim that Home-screen widgets are unavailable: Arbor can render, permission, pin, refresh, and run bounded actions for them.
         Snippets have no Android permissions, background jobs, network, location, or folder access. Widgets must declare every capability with a user-facing reason and receive a per-widget grant before pinning. Network grants are exact HTTPS origins; folder grants are one user-selected document tree; location is approximate or precise; scheduled refresh is explicit and Android-limited to 15 minutes or slower.
         Both surfaces use one bounded component tree (${programNodeTypes.sorted().joinToString()}) and one bounded action language (${programActionTypes.sorted().joinToString()}). Build quizzes, forms, calculators, trackers, dashboards, and other experiences by composing nodes; never invent category-specific widget types.
+        Every Home widget is compiled before it is shown: Arbor parses it into typed IR, executes every bounded action, preflights public HTTP JSON and binding paths, and renders representative launcher sizes. Compiler feedback is automatically returned for repair, so emit a finished widget rather than an untested sketch.
         Never emit the removed `arbor-ui`, `ui`, `arbor-form`, `widget`, or `mini_app` formats. Never emit HTML, JavaScript, JSX, WebView content, reflection, shell commands, downloaded code, or an executable fallback.
     """.trimIndent()
 
@@ -223,8 +224,9 @@ object GeneratedContentCapabilityRegistry {
         - Produce a widget as exactly one fenced `arbor-widget` JSON object when the user asks for a persistent Android Home-screen surface. The root schema is `arbor-widget/1`; use a stable lowercase id, title, optional description, initial state, one ui tree, named actions, capabilities, dataSources, and optional refreshMinutes.
         - Layout nodes: column/row/stack use children. Content nodes: text uses text; metric uses label+value; progress uses value+min+max; list and chart use items; divider/spacer are structural. Controls: button uses label+action; toggle uses label+value state key+optional action; choice uses a value state key and options; slider uses value/min/max/step. `input` is chat-only because launchers cannot show a keyboard.
         - State actions: set, add, multiply, toggle, append, backspace, evaluate, reset. External actions: refresh a declared source, write_folder through a declared read_write folder source, or open_app to a bounded app route. `submit` belongs to snippets, not launcher widgets.
-        - Live data is declarative, not executable: http_json is HTTPS GET JSON with bindings into state; location binds device location fields; folder_text reads one relative text file. Declare matching network/location/folder capabilities with plain-language reasons. background_refresh is required for refreshMinutes, which must be 15–1440.
-        - Design for a glance: lead with the main value, keep labels short, use 2–4 meaningful actions, provide honest initial/fallback values such as `—` or `Not updated`, and avoid fake live values. Keep important content useful at small sizes and place secondary detail below it.
+        - Live data is declarative, not executable: http_json is HTTPS GET JSON with bindings into state; location binds device location fields; folder_text reads one relative text file. Declare matching network/location/folder capabilities with plain-language reasons. background_refresh is required for refreshMinutes, which must be 15–1440. Every HTTP binding needs a useful fallback. Use `{{urlencode:key}}` for a state value inserted into a query parameter.
+        - Arbor compiles each widget before showing it: typed parse, every action group, public HTTP/redirect/JSON binding preflight, then launcher renders at standard and expanded sizes. A failed compile is returned to you for another complete replacement. Fix the reported cause; never conceal it with invented live data.
+        - Design for a glance: lead with the main value, keep labels short, use 2–4 meaningful actions, no more than 6 list rows, at least 15sp for ordinary text, at least 13sp for supporting text, and roughly 28–32sp for the primary metric. Provide honest initial/fallback values such as `—` or `Not updated`. Keep important content useful at small sizes and place secondary detail below it.
         - Widgets are general programmable surfaces, not a fixed list of weather/counter templates. Compose the supported nodes and actions to fit the user's request. Never invent a category-specific root type, JavaScript, HTML, WebView, shell command, hidden permission, or unsupported API.
         - When the request is satisfiable, emit the widget instead of merely describing how one could be made. Brief prose may surround the fence, but the JSON itself must be valid and complete.
     """.trimIndent()
@@ -246,7 +248,8 @@ object GeneratedContentCapabilityRegistry {
         Root: schema=`arbor-widget/1`; stable id required; title/description; state; ui; actions; capabilities; dataSources; optional refreshMinutes (15–1440).
         UI nodes and actions are the same bounded declarative program used by snippets: nodes=${programNodeTypes.sorted().joinToString()}; actions=${programActionTypes.sorted().joinToString()}. Home widgets cannot use input because launchers cannot host a keyboard. The launcher renders the component tree and exposes at most four visible button/toggle actions.
         Capabilities are explicit objects with type and reason. Supported: network (exact HTTPS origins), location (approximate|precise), folder (read|read_write, one user-selected tree), background_refresh. Data sources: http_json, location, folder_text. A data source is rejected unless its exact capability is declared; the user must grant it again for each pinned widget instance.
-        http_json is GET-only, max 1 MB, no redirects, no credentials, no private/local IPs. Bindings copy bounded JSON paths into state. location binds latitude/longitude/accuracy/updatedAt. folder_text reads one relative file inside the selected tree and binds text/size/lineCount. Scheduled refresh requires background_refresh and is 15 minutes or slower.
+        http_json is GET-only, max 1 MB, no credentials, and no private/local IPs. Safe redirects are followed for at most five hops, but every final/cross-origin HTTPS destination must also be declared. Bindings copy bounded JSON paths into state and every HTTP binding needs a useful fallback. Use `{{urlencode:key}}` when inserting user/state text into a URL query. The internal compiler performs a real public HTTP JSON preflight and rejects deterministic 4xx responses, redirect errors, incompatible JSON, and missing binding paths before the widget is shown. location binds latitude/longitude/accuracy/updatedAt. folder_text reads one relative file inside the selected tree and binds text/size/lineCount. Scheduled refresh requires background_refresh and is 15 minutes or slower.
+        The compiler also executes every action and renders standard and expanded launcher sizes. Keep at most four visible actions, at most six list rows, ordinary text at 15sp or larger, supporting text at 13sp or larger, and primary metrics near 28–32sp. Shorten content instead of relying on ellipsis.
         No HTML, JavaScript, WebView, code download, shell, reflection, arbitrary Android intents, hidden permissions, unrestricted network, or unrestricted file access.
         Exact local example:
         ```arbor-widget

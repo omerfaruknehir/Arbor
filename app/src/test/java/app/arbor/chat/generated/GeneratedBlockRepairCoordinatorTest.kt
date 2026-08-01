@@ -59,6 +59,60 @@ class GeneratedBlockRepairCoordinatorTest {
         assertEquals(0, calls)
     }
 
+
+    @Test fun validWidgetIsCompiledBeforeItCanBeAccepted() = runTest {
+        var compileCalls = 0
+        var repairCalls = 0
+        val source = GeneratedContentCapabilityRegistry.validExamples.getValue(GeneratedBlockType.HOME_WIDGET).first()
+        val coordinator = GeneratedBlockRepairCoordinator(
+            workspace = ::workspace,
+            compileCandidate = { type, candidate ->
+                compileCalls++
+                assertEquals(GeneratedBlockType.HOME_WIDGET, type)
+                GeneratedCompilationResult(candidate, emptyList())
+            },
+            requestRepair = {
+                repairCalls++
+                error("A valid compiled widget must not be submitted for repair")
+            },
+        )
+        val result = coordinator.repair("c", "m", "compiled-widget", GeneratedBlockType.HOME_WIDGET, source, emptyList(), 3)
+        assertEquals(GeneratedRepairStatus.ACCEPTED, result.status)
+        assertEquals(0, result.attemptCount)
+        assertEquals(1, compileCalls)
+        assertEquals(0, repairCalls)
+    }
+
+    @Test fun compilerErrorsAreFedBackToAiAndReplacementIsRecompiled() = runTest {
+        var compileCalls = 0
+        var repairCalls = 0
+        val original = GeneratedContentCapabilityRegistry.validExamples.getValue(GeneratedBlockType.HOME_WIDGET).first()
+        val replacement = original.replace("\"title\":\"Counter\"", "\"title\":\"Recompiled Counter\"")
+        val coordinator = GeneratedBlockRepairCoordinator(
+            workspace = ::workspace,
+            compileCandidate = { _, candidate ->
+                compileCalls++
+                if (compileCalls == 1) {
+                    GeneratedCompilationResult(
+                        candidate,
+                        listOf(GeneratedValidationError("network_compile", "/dataSources/weather", "weather returned HTTP 400")),
+                    )
+                } else GeneratedCompilationResult(candidate, emptyList())
+            },
+            requestRepair = { state ->
+                repairCalls++
+                assertTrue(state.errors.any { it.phase == "network_compile" && it.message.contains("HTTP 400") })
+                "```arbor-widget\n$replacement\n```"
+            },
+        )
+        val result = coordinator.repair("c", "m", "recompiled-widget", GeneratedBlockType.HOME_WIDGET, original, emptyList(), 3)
+        assertEquals(GeneratedRepairStatus.ACCEPTED, result.status)
+        assertEquals(1, result.attemptCount)
+        assertEquals(2, compileCalls)
+        assertEquals(1, repairCalls)
+        assertEquals(replacement, result.acceptedSource)
+    }
+
     @Test fun proseAndMultipleBlocksAreRejectedAsMalformedRepairResponses() {
         assertTrue(GeneratedContentCapabilityRegistry.extractSingleReplacement("Here:\n```arbor-snippet\n{}\n```", "arbor-snippet").isFailure)
         assertTrue(GeneratedContentCapabilityRegistry.extractSingleReplacement("```arbor-snippet\n{}\n```\n```arbor-snippet\n{}\n```", "arbor-snippet").isFailure)
