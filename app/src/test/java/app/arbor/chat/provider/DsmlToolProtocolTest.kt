@@ -53,6 +53,47 @@ class DsmlToolProtocolTest {
     }
 
     @Test
+    fun doublePipeMarkersFromDeepSeekV4StayHiddenAndBecomeNativeCalls() {
+        val adapter = DsmlToolStreamAdapter(setOf("compile_widget"))
+        val chunks = listOf(
+            "<||DSML||tool_calls><||DSML||invoke name=\"compile_widget\"><||DSML||parameter ",
+            "name=\"source\" string=\"true\">{\"schema\":\"arbor-widget/1\",",
+            "\"id\":\"namaz-vakti\"}</||DSML||parameter></||DSML||invoke>",
+            "</||DSML||tool_calls>",
+        )
+        val streamed = chunks.joinToString(separator = "") { adapter.accept(it) }
+        val result = adapter.finish()
+
+        assertEquals("", streamed + result.visibleText)
+        assertEquals(1, result.calls.size)
+        assertEquals("compile_widget", result.calls.single().name)
+        assertEquals(
+            "namaz-vakti",
+            Json.parseToJsonElement(result.calls.single().argumentsJson)
+                .jsonObject.getValue("source").jsonPrimitive.content
+                .let(Json::parseToJsonElement)
+                .jsonObject.getValue("id").jsonPrimitive.content,
+        )
+    }
+
+    @Test
+    fun whitespaceSeparatedDoublePipeMarkersAreAccepted() {
+        val source = """
+            < | | DSML | | tool_calls >
+            < | | DSML | | invoke name="compile_widget" >
+            < | | DSML | | parameter name="source" string="true" >{"id":"clock"}< / | | DSML | | parameter >
+            < / | | DSML | | invoke >
+            < / | | DSML | | tool_calls >
+        """.trimIndent()
+
+        val result = DsmlToolProtocol.parseBlock(source, setOf("compile_widget"))
+
+        assertFalse(result.malformed)
+        assertEquals("", result.visibleText)
+        assertEquals(1, result.calls.size)
+    }
+
+    @Test
     fun malformedOrUnapprovedProtocolIsNotRenderedOrExecuted() {
         val adapter = DsmlToolStreamAdapter(setOf("web_fetch"))
         val visible = adapter.accept(
