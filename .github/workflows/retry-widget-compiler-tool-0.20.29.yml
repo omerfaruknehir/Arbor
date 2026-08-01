@@ -1,0 +1,93 @@
+name: Retry widget compiler tool 0.20.29
+
+on:
+  push:
+    branches: [ agent/widget-compiler-tool-0.20.29 ]
+    paths:
+      - .github/workflows/retry-widget-compiler-tool-0.20.29.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-verify-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/widget-compiler-tool-0.20.29
+          fetch-depth: 0
+
+      - name: Apply product patch and remove temporary workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          PAYLOAD="$(sed -n 's/^      WIDGET_TOOL_PATCH_B64: //p' .github/workflows/apply-widget-compiler-tool-0.20.29.yml)"
+          test -n "$PAYLOAD"
+          printf '%s' "$PAYLOAD" | base64 -d | gzip -d > /tmp/widget-tool.patch
+          git apply --check --whitespace=fix /tmp/widget-tool.patch
+          git apply --whitespace=fix /tmp/widget-tool.patch
+          rm -f \
+            .github/workflows/apply-widget-compiler-tool-0.20.29.yml \
+            .github/workflows/retry-widget-compiler-tool-0.20.29.yml
+          git diff --check
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify third-party licenses
+        run: ./ci/verify-third-party-licenses.sh
+
+      - name: Verify offline license catalog
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:generateOfflineLicenseCatalog
+
+      - name: Run release unit tests
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
+
+      - name: Run release lint
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
+
+      - name: Assemble optimized release APK
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease
+
+      - name: Assemble optimized release AAB
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process bundleRelease
+
+      - name: Assemble instrumentation APK
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleDebugAndroidTest
+
+      - name: Verify release APK signature
+        run: "$ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk"
+
+      - name: Commit verified product changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          test -n "$(git status --porcelain)"
+          git commit -m 'feat: expose widget compiler as a native AI tool'
+          git push origin HEAD:agent/widget-compiler-tool-0.20.29
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: arbor-0.20.29-widget-tool-release-and-reports
+          path: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/bundle/release/*.aab
+            app/build/outputs/apk/androidTest/debug/*.apk
+            app/build/reports/tests/
+            app/build/reports/lint-results-release.html
