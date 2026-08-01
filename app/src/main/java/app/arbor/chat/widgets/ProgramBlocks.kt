@@ -26,11 +26,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddToHomeScreen
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.Security
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
@@ -108,15 +113,18 @@ fun WidgetInstallBlock(
 
     val state = remember(source) { mutableStateMapOf<String, String>().also { it.putAll(definition.state) } }
     val networkOrigins = remember(source) { mutableStateMapOf<String, Boolean>() }
-    definition.capabilities.filter { it.type == "network" }.flatMap { it.origins }.forEach { origin ->
-        networkOrigins.putIfAbsent(origin, false)
+    val requiredOrigins = remember(source) {
+        definition.capabilities.filter { it.type == "network" }.flatMap { it.origins }.distinct()
     }
+    requiredOrigins.forEach { origin -> networkOrigins.putIfAbsent(origin, false) }
     var locationGranted by remember(source) { mutableStateOf(hasLocationPermission(context, precise = false)) }
     var preciseLocationGranted by remember(source) { mutableStateOf(hasLocationPermission(context, precise = true)) }
     var folderUri by remember(source) { mutableStateOf<Uri?>(null) }
     var backgroundGranted by remember(source) { mutableStateOf(false) }
-    var permissionsExpanded by remember(source) { mutableStateOf(true) }
+    var permissionsExpanded by remember(source) { mutableStateOf(definition.capabilities.isNotEmpty()) }
+    var previewStatus by remember(source) { mutableStateOf("") }
     var pinStatus by remember(source) { mutableStateOf("") }
+    var pinStatusError by remember(source) { mutableStateOf(false) }
 
     val locationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         locationGranted = result[Manifest.permission.ACCESS_COARSE_LOCATION] == true || hasLocationPermission(context, false)
@@ -131,34 +139,77 @@ fun WidgetInstallBlock(
         }
     }
 
-    val capabilityReady = definition.capabilities.all { capability ->
-        when (capability.type) {
-            "network" -> capability.origins.all { networkOrigins[it] == true }
-            "location" -> if (capability.accuracy == "precise") preciseLocationGranted else locationGranted
-            "folder" -> folderUri != null
-            "background_refresh" -> backgroundGranted
-            else -> false
-        }
-    }
+    fun granted(capability: ArborWidgetCapabilityRequest): Boolean = capabilityGranted(
+        capability = capability,
+        networkOrigins = networkOrigins,
+        locationGranted = locationGranted,
+        preciseLocationGranted = preciseLocationGranted,
+        folderUri = folderUri,
+        backgroundGranted = backgroundGranted,
+    )
+
+    val capabilityReady = definition.capabilities.all(::granted)
+    val grantedCount = definition.capabilities.count(::granted)
+    val missing = definition.capabilities.filterNot(::granted)
+    val visibleActionCount = widgetActionCount(definition.ui).coerceAtMost(4)
+    val hasLiveData = definition.dataSources.isNotEmpty()
 
     ProgramSurface(definition.title, definition.description) {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            WidgetInfoPill(if (hasLiveData) "Live data" else "Works offline")
+            WidgetInfoPill("$visibleActionCount action${if (visibleActionCount == 1) "" else "s"}")
+            definition.refreshMinutes?.let { WidgetInfoPill("Refreshes every $it min") }
+            if (definition.capabilities.isEmpty()) WidgetInfoPill("No permissions")
+        }
+
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainerLowest,
             shape = MaterialTheme.shapes.large,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Home-screen preview", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Interactive preview", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Try local controls before adding it. Network, folder, location, and app-opening actions are simulated here.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = {
+                        state.clear()
+                        state.putAll(definition.state)
+                        previewStatus = "Preview reset"
+                    }) {
+                        Icon(Icons.Outlined.RestartAlt, null, modifier = Modifier.size(18.dp))
+                        Text(" Reset")
+                    }
+                }
                 ProgramNodeView(
                     node = definition.ui,
                     state = state,
-                    interactive = false,
-                    onStateChange = { _, _ -> },
+                    interactive = true,
+                    onStateChange = { key, value -> state[key] = value.take(1_000) },
                     onAction = { actionId ->
                         val transition = ArborProgramRuntime.apply(actionId, definition, state)
-                        state.clear(); state.putAll(transition.state)
+                        state.clear()
+                        state.putAll(transition.state)
+                        previewStatus = when {
+                            transition.refreshSources.isNotEmpty() -> "Live refresh will run from the installed widget."
+                            transition.folderWrites.isNotEmpty() -> "Folder writing will run only after the selected-folder grant."
+                            transition.openRoute != null -> "This action will open the matching Arbor screen after installation."
+                            transition.submitMessage != null -> "Submit actions are chat-only and are ignored by Home widgets."
+                            else -> "Preview updated"
+                        }
                     },
                 )
+                if (previewStatus.isNotBlank()) {
+                    Text(previewStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                }
             }
         }
 
@@ -170,25 +221,50 @@ fun WidgetInstallBlock(
         ) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.Security, null, tint = MaterialTheme.colorScheme.primary)
+                    Icon(
+                        if (capabilityReady) Icons.Outlined.CheckCircle else Icons.Outlined.Security,
+                        null,
+                        tint = if (capabilityReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                        Text("Widget capabilities", fontWeight = FontWeight.SemiBold)
+                        Text("Permissions and data access", fontWeight = FontWeight.SemiBold)
                         Text(
-                            if (capabilityReady) "All requested grants are ready" else "Review every persistent grant before adding",
+                            when {
+                                definition.capabilities.isEmpty() -> "Nothing extra is required"
+                                capabilityReady -> "All $grantedCount requested grants are ready"
+                                else -> "$grantedCount of ${definition.capabilities.size} grants ready"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Text(if (permissionsExpanded) "Hide" else "Review", color = MaterialTheme.colorScheme.primary)
+                    Icon(
+                        if (permissionsExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                        null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 AnimatedVisibility(permissionsExpanded) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (definition.capabilities.isEmpty()) {
-                            Text("This widget requests no network, location, folder, or background capability.", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "This widget stays on-device and requests no network, location, folder, or scheduled-refresh access.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        if (requiredOrigins.isNotEmpty() && requiredOrigins.any { networkOrigins[it] != true }) {
+                            OutlinedButton(
+                                onClick = { requiredOrigins.forEach { networkOrigins[it] = true } },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Icon(Icons.Outlined.Public, null, modifier = Modifier.size(18.dp))
+                                Text(" Allow ${requiredOrigins.size} listed network origin${if (requiredOrigins.size == 1) "" else "s"}")
+                            }
                         }
                         definition.capabilities.forEach { capability ->
                             CapabilityGrantRow(
                                 capability = capability,
+                                granted = granted(capability),
                                 networkOrigins = networkOrigins,
                                 locationGranted = locationGranted,
                                 preciseLocationGranted = preciseLocationGranted,
@@ -206,7 +282,7 @@ fun WidgetInstallBlock(
                             )
                         }
                         Text(
-                            "Grants belong to this widget instance. Network access is restricted to the listed HTTPS origins; a folder grant stays inside the selected document tree.",
+                            "Every grant belongs only to this pinned copy. Network access is limited to the listed HTTPS origins, and folder access cannot leave the selected document tree.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -228,25 +304,63 @@ fun WidgetInstallBlock(
                     folderWrite = definition.capabilities.any { it.type == "folder" && it.mode == "read_write" },
                     backgroundRefresh = backgroundGranted,
                 )
-                pinStatus = when (WidgetPinning.request(context, source, grants)) {
-                    WidgetPinResult.REQUESTED -> "Choose Add in the launcher prompt."
-                    WidgetPinResult.UNSUPPORTED -> "This launcher does not support direct widget pinning."
-                    WidgetPinResult.INVALID -> "The widget definition or grants are invalid."
+                when (WidgetPinning.request(context, source, grants)) {
+                    WidgetPinResult.REQUESTED -> {
+                        pinStatusError = false
+                        pinStatus = "Launcher confirmation opened. Tap Add to place the configured widget."
+                    }
+                    WidgetPinResult.UNSUPPORTED -> {
+                        pinStatusError = true
+                        pinStatus = "This launcher blocks Android's one-tap widget pinning flow, so Arbor cannot safely transfer this configured copy."
+                    }
+                    WidgetPinResult.INVALID -> {
+                        pinStatusError = true
+                        pinStatus = "The widget or one of its required grants is no longer valid. Review the permissions and try again."
+                    }
                 }
             },
             enabled = capabilityReady,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Icon(Icons.Outlined.AddToHomeScreen, null)
-            Text(" Add to Home screen")
+            Text(if (capabilityReady) " Add configured widget" else " Review required permissions")
         }
-        if (pinStatus.isNotBlank()) Text(pinStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+        if (!capabilityReady && missing.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.Top) {
+                Icon(
+                    Icons.Outlined.WarningAmber,
+                    null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    " Still needed: ${missing.joinToString { capabilityShortTitle(it) }}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (pinStatus.isNotBlank()) {
+            Surface(
+                color = if (pinStatusError) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    pinStatus,
+                    modifier = Modifier.padding(12.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (pinStatusError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+        }
     }
 }
 
 @Composable
 private fun CapabilityGrantRow(
     capability: ArborWidgetCapabilityRequest,
+    granted: Boolean,
     networkOrigins: Map<String, Boolean>,
     locationGranted: Boolean,
     preciseLocationGranted: Boolean,
@@ -257,7 +371,7 @@ private fun CapabilityGrantRow(
     onFolder: () -> Unit,
     onBackgroundChange: (Boolean) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 when (capability.type) {
@@ -274,29 +388,49 @@ private fun CapabilityGrantRow(
                 Text(capabilityTitle(capability), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
                 Text(capability.reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            WidgetGrantBadge(granted)
         }
         when (capability.type) {
             "network" -> capability.origins.forEach { origin ->
-                Row(Modifier.fillMaxWidth().clickable { onNetworkChange(origin, networkOrigins[origin] != true) }, verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = networkOrigins[origin] == true, onCheckedChange = { onNetworkChange(origin, it) })
-                    Text(origin, style = MaterialTheme.typography.bodySmall)
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth().clickable { onNetworkChange(origin, networkOrigins[origin] != true) },
+                ) {
+                    Row(Modifier.padding(horizontal = 8.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = networkOrigins[origin] == true, onCheckedChange = { onNetworkChange(origin, it) })
+                        Column(Modifier.weight(1f)) {
+                            Text(origin, style = MaterialTheme.typography.bodySmall)
+                            Text("HTTPS GET only", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
             }
             "location" -> OutlinedButton(onClick = onLocation, modifier = Modifier.fillMaxWidth()) {
                 Text(
                     when {
-                        capability.accuracy == "precise" && preciseLocationGranted -> "Precise location granted"
-                        locationGranted -> "Approximate location granted"
-                        else -> "Grant ${capability.accuracy} location"
+                        capability.accuracy == "precise" && preciseLocationGranted -> "Precise location allowed"
+                        locationGranted -> "Approximate location allowed"
+                        else -> "Allow ${capability.accuracy} location"
                     },
                 )
             }
             "folder" -> OutlinedButton(onClick = onFolder, modifier = Modifier.fillMaxWidth()) {
-                Text(folderUri?.lastPathSegment?.let { "Folder selected: ${it.takeLast(40)}" } ?: "Choose one folder")
+                Icon(Icons.Outlined.FolderOpen, null, modifier = Modifier.size(18.dp))
+                Text(folderUri?.lastPathSegment?.let { " ${it.takeLast(44)}" } ?: " Choose one folder")
             }
-            "background_refresh" -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Allow scheduled refresh", Modifier.weight(1f))
-                Switch(checked = backgroundGranted, onCheckedChange = onBackgroundChange)
+            "background_refresh" -> Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Keep data current", fontWeight = FontWeight.Medium)
+                        Text("Android may delay work to protect battery.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = backgroundGranted, onCheckedChange = onBackgroundChange)
+                }
             }
         }
         HorizontalDivider()
@@ -477,6 +611,66 @@ private fun InvalidProgramBlock(title: String, message: String?) {
             Text(message ?: "The generated program could not be read.", style = MaterialTheme.typography.bodySmall)
         }
     }
+}
+
+@Composable
+private fun WidgetInfoPill(label: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        shape = RoundedCornerShape(100.dp),
+    ) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun WidgetGrantBadge(granted: Boolean) {
+    Surface(
+        color = if (granted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(100.dp),
+    ) {
+        Text(
+            if (granted) "Ready" else "Required",
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = if (granted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun capabilityGranted(
+    capability: ArborWidgetCapabilityRequest,
+    networkOrigins: Map<String, Boolean>,
+    locationGranted: Boolean,
+    preciseLocationGranted: Boolean,
+    folderUri: Uri?,
+    backgroundGranted: Boolean,
+): Boolean = when (capability.type) {
+    "network" -> capability.origins.all { networkOrigins[it] == true }
+    "location" -> if (capability.accuracy == "precise") preciseLocationGranted else locationGranted
+    "folder" -> folderUri != null
+    "background_refresh" -> backgroundGranted
+    else -> false
+}
+
+private fun widgetActionCount(node: ArborProgramNode): Int = when (node.type) {
+    "button", "toggle" -> if (node.action.isNotBlank()) 1 else 0
+    "choice" -> node.options.count { it.action.isNotBlank() }
+    "list" -> node.items.count { it.action.isNotBlank() }
+    else -> 0
+} + node.children.sumOf(::widgetActionCount)
+
+private fun capabilityShortTitle(value: ArborWidgetCapabilityRequest): String = when (value.type) {
+    "network" -> if (value.origins.size == 1) value.origins.first() else "${value.origins.size} network origins"
+    "location" -> "${value.accuracy} location"
+    "folder" -> if (value.mode == "read_write") "folder read/write" else "folder access"
+    "background_refresh" -> "scheduled refresh"
+    else -> value.type
 }
 
 private fun nodeModifier(style: ArborProgramStyle): Modifier = Modifier

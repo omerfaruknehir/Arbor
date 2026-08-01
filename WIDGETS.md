@@ -195,3 +195,10 @@ Location and folder sources run before HTTP sources, so their state can safely p
 Generated programs never execute HTML, JavaScript, JSX, WebViews, downloaded bytecode, reflection, shell commands, Python, Linux commands, arbitrary Android intents, or hidden permissions.
 
 Network grants expose the device IP address to only the listed origin. Location and folder data can enter a granted network request only when the same widget declares and receives both capabilities. Home-screen content is visible to anyone who can view the unlocked launcher. Removing a widget deletes its private program state and cancels its scheduled work.
+
+
+## Model capability delivery
+
+Arbor injects an always-on compact widget manifest into the system context and selects the full schema from up to sixteen recent conversation messages. This preserves capability awareness across follow-ups and multilingual requests instead of relying only on the latest user sentence.
+
+Generated widgets should be glanceable, honest about unavailable live data, usable when resized, and limited to a small set of meaningful launcher actions. The chat install card provides an interactive local preview, grant progress, grouped origin approval, clearer launcher feedback, and per-instance permission explanations. The launcher widget uses a dedicated refresh affordance and avoids drawing duplicate action controls into the bitmap.

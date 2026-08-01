@@ -52,7 +52,7 @@ class GeneratedContentCapabilityRegistryTest {
 
     @Test fun contractAndValidatorVersionsAreExplicit() {
         assertTrue(GeneratedContentCapabilityRegistry.CONTRACT_VERSION.startsWith("arbor-generated-content/2-"))
-        assertEquals("2.0.0", GeneratedContentCapabilityRegistry.VALIDATOR_VERSION)
+        assertEquals("2.1.0", GeneratedContentCapabilityRegistry.VALIDATOR_VERSION)
         assertTrue(GeneratedContentCapabilityRegistry.compactSummary().contains(GeneratedContentCapabilityRegistry.CONTRACT_VERSION))
         assertFalse(
             GeneratedContentCapabilityRegistry.contractVersionForShape(GeneratedContentCapabilityRegistry.contractShape()) ==
@@ -64,11 +64,22 @@ class GeneratedContentCapabilityRegistryTest {
         val quiz = GeneratedContentCapabilityRegistry.promptForRequest("Make a quiz inside chat")
         assertTrue(quiz.contains("`arbor-snippet` schema"))
         assertFalse(quiz.contains("`arbor-widget` schema"))
+        assertTrue(quiz.contains("Arbor Home-widget skill manifest"))
 
         val widget = GeneratedContentCapabilityRegistry.promptForRequest("Make a live home screen widget")
         assertTrue(widget.contains("`arbor-widget` schema"))
 
+        val turkishWidget = GeneratedContentCapabilityRegistry.promptForRequest("Ana ekran için canlı hava durumu bileşeni yap")
+        assertTrue(turkishWidget.contains("`arbor-widget` schema"))
+
+        val continuation = GeneratedContentCapabilityRegistry.promptForConversation(
+            listOf("Make a home screen widget for my habits", "Make it cleaner and add one more action"),
+        )
+        assertTrue(continuation.contains("`arbor-widget` schema"))
+
         val ordinary = GeneratedContentCapabilityRegistry.promptForRequest("Explain why the sky is blue")
-        assertEquals(GeneratedContentCapabilityRegistry.compactSummary(), ordinary)
+        assertTrue(ordinary.startsWith(GeneratedContentCapabilityRegistry.compactSummary()))
+        assertTrue(ordinary.contains("Arbor Home-widget skill manifest"))
+        assertFalse(ordinary.contains("`arbor-widget` schema"))
     }
 }

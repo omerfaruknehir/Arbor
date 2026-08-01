@@ -18,12 +18,13 @@ internal object WidgetCanvasRenderer {
         widthPx: Int,
         heightPx: Int,
         dark: Boolean,
+        suppressActionControls: Boolean = false,
     ): Bitmap {
         val bitmap = createBitmap(widthPx.coerceIn(360, 1600), heightPx.coerceIn(160, 1200))
         val canvas = Canvas(bitmap)
         val palette = Palette(dark)
         canvas.drawColor(Color.TRANSPARENT)
-        Renderer(canvas, palette, state).renderNode(
+        Renderer(canvas, palette, state, suppressActionControls).renderNode(
             definition.ui,
             RectF(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat()),
             0,
@@ -35,12 +36,14 @@ internal object WidgetCanvasRenderer {
         private val canvas: Canvas,
         private val palette: Palette,
         private val state: Map<String, String>,
+        private val suppressActionControls: Boolean,
     ) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 
         fun renderNode(node: ArborProgramNode, bounds: RectF, depth: Int) {
             if (depth > 12 || !ArborProgramRuntime.visible(node.visibleWhen, state) || bounds.width() <= 2f || bounds.height() <= 2f) return
+            if (suppressActionControls && isActionControl(node)) return
             val padding = dp(node.style.padding)
             val content = RectF(bounds.left + padding, bounds.top + padding, bounds.right - padding, bounds.bottom - padding)
             drawBackground(node.style, bounds)
@@ -63,7 +66,7 @@ internal object WidgetCanvasRenderer {
         }
 
         private fun renderColumn(node: ArborProgramNode, bounds: RectF, depth: Int) {
-            val visible = node.children.filter { ArborProgramRuntime.visible(it.visibleWhen, state) }
+            val visible = node.children.filter { ArborProgramRuntime.visible(it.visibleWhen, state) && !(suppressActionControls && isActionControl(it)) }
             if (visible.isEmpty()) return
             val gap = dp(node.style.gap)
             val available = (bounds.height() - gap * (visible.size - 1)).coerceAtLeast(1f)
@@ -78,7 +81,7 @@ internal object WidgetCanvasRenderer {
         }
 
         private fun renderRow(node: ArborProgramNode, bounds: RectF, depth: Int) {
-            val visible = node.children.filter { ArborProgramRuntime.visible(it.visibleWhen, state) }
+            val visible = node.children.filter { ArborProgramRuntime.visible(it.visibleWhen, state) && !(suppressActionControls && isActionControl(it)) }
             if (visible.isEmpty()) return
             val gap = dp(node.style.gap)
             val available = (bounds.width() - gap * (visible.size - 1)).coerceAtLeast(1f)
@@ -252,6 +255,13 @@ internal object WidgetCanvasRenderer {
             canvas.clipRect(bounds)
             canvas.drawText(clipped, x, y, paint)
             canvas.restore()
+        }
+
+        private fun isActionControl(node: ArborProgramNode): Boolean = when (node.type) {
+            "button", "toggle" -> node.action.isNotBlank()
+            "choice" -> node.action.isNotBlank() || node.options.any { it.action.isNotBlank() }
+            "list" -> node.items.any { it.action.isNotBlank() }
+            else -> false
         }
 
         private fun childWeight(node: ArborProgramNode): Float = node.style.weight.takeIf { it > 0f } ?: when (node.type) {
