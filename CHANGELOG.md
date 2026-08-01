@@ -1,3 +1,10 @@
+## 0.20.29
+
+- Added `compile_widget` as a first-class native model tool. Widget drafts stay inside tool calls until the compiler returns success.
+- Compiler failures now return trusted structured phase/path/message diagnostics directly to the active model so it can revise and retry in the same response.
+- Successful compiler results instruct the model to emit the exact tested source unchanged; Arbor's existing post-generation compiler remains a safety fallback.
+- Added dedicated widget-compiler activity labels and prevented internal compiler results from being marked as untrusted external data.
+
 # Changelog
 
 ## 0.20.28 — 2026-08-01

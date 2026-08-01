@@ -2,6 +2,7 @@ package app.arbor.chat.agent
 
 import app.arbor.chat.data.ConversationEntity
 import app.arbor.chat.provider.NativeToolCall
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
@@ -15,7 +16,7 @@ class ArborNativeToolsTest {
         val definitions = ArborNativeTools.definitions(conversation(web = true, python = false, linux = true))
 
         assertEquals(
-            listOf("web_search", "web_fetch", "workspace_read", "apply_patch", "rerun_script", "linux_exec", "send_file"),
+            listOf("compile_widget", "web_search", "web_fetch", "workspace_read", "apply_patch", "rerun_script", "linux_exec", "send_file"),
             definitions.map { it.name },
         )
         definitions.forEach { definition ->
@@ -44,6 +45,19 @@ class ArborNativeToolsTest {
         assertEquals(null, patch.code)
         assertEquals(null, rerun.code)
         assertEquals("run-12345678", rerun.runId)
+    }
+
+
+    @Test
+    fun convertsWidgetCompilerCallToInternalSourceRequest() {
+        val source = """{"schema":"arbor-widget/1","id":"counter"}"""
+        val request = ArborNativeTools.request(
+            NativeToolCall("call-widget", "compile_widget", """{"source":${Json.encodeToString(source)}}"""),
+        )
+
+        assertEquals("compile_widget", request.type)
+        assertEquals(source, request.source)
+        assertEquals(null, request.code)
     }
 
     @Test(expected = IllegalStateException::class)

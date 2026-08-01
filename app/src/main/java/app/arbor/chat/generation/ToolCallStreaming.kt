@@ -51,6 +51,14 @@ internal fun toolCallPresentation(name: String, argumentsJson: String): ToolCall
             runningLabel = "Running Python",
             input = value("code"),
         )
+        "compile_widget", "widget_compile" -> ToolCallPresentation(
+            kind = "widget_compile",
+            preparingLabel = "Preparing widget compile",
+            runningLabel = "Compiling Home widget",
+            input = value("source").let { source ->
+                if (source.isBlank()) "Internal widget candidate" else "Internal widget candidate • ${source.length} characters"
+            },
+        )
         else -> ToolCallPresentation(
             kind = "tool_call",
             preparingLabel = if (name.isBlank()) "Preparing tool call" else "Preparing $name tool call",

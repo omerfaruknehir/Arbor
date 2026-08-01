@@ -52,7 +52,7 @@ class GeneratedContentCapabilityRegistryTest {
 
     @Test fun contractAndValidatorVersionsAreExplicit() {
         assertTrue(GeneratedContentCapabilityRegistry.CONTRACT_VERSION.startsWith("arbor-generated-content/2-"))
-        assertEquals("2.2.0", GeneratedContentCapabilityRegistry.VALIDATOR_VERSION)
+        assertEquals("2.3.0", GeneratedContentCapabilityRegistry.VALIDATOR_VERSION)
         assertTrue(GeneratedContentCapabilityRegistry.compactSummary().contains(GeneratedContentCapabilityRegistry.CONTRACT_VERSION))
         assertFalse(
             GeneratedContentCapabilityRegistry.contractVersionForShape(GeneratedContentCapabilityRegistry.contractShape()) ==
@@ -68,7 +68,7 @@ class GeneratedContentCapabilityRegistryTest {
 
         val widget = GeneratedContentCapabilityRegistry.promptForRequest("Make a live home screen widget")
         assertTrue(widget.contains("`arbor-widget` schema"))
-        assertTrue(widget.contains("compiled before it is shown", ignoreCase = true))
+        assertTrue(widget.contains("compile_widget"))
         assertTrue(widget.contains("{{urlencode:key}}"))
 
         val turkishWidget = GeneratedContentCapabilityRegistry.promptForRequest("Ana ekran için canlı hava durumu bileşeni yap")

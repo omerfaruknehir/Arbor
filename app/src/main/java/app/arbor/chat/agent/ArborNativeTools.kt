@@ -14,6 +14,12 @@ object ArborNativeTools {
     private val json = Json { ignoreUnknownKeys = true }
 
     fun definitions(conversation: ConversationEntity): List<NativeToolDefinition> = buildList {
+        add(tool(
+            name = "compile_widget",
+            description = "Compile and test one complete arbor-widget/1 JSON candidate before showing it to the user. This is mandatory for Home-screen widgets. The tool returns trusted structured schema, action, HTTP, binding, and launcher-layout diagnostics. Keep candidates inside tool calls; on failure revise the complete source and call again. After success, emit exactly the successful source unchanged in one arbor-widget fence.",
+            properties = """"source":{"type":"string","description":"Complete arbor-widget/1 JSON object, without Markdown fences","minLength":2,"maxLength":96000}""",
+            required = listOf("source"),
+        ))
         if (conversation.webSearchEnabled) {
             add(tool(
                 name = "web_search",
@@ -81,6 +87,7 @@ object ArborNativeTools {
         fun int(name: String): Int? = args[name]?.jsonPrimitive?.intOrNull
         fun strings(name: String): List<String> = runCatching { args[name]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } }.getOrNull().orEmpty()
         return when (call.name.lowercase()) {
+            "compile_widget", "widget_compile" -> AgentToolRequest(type = "compile_widget", source = string("source"))
             "web_search", "search" -> AgentToolRequest(type = "web_search", query = string("query"))
             "web_fetch", "fetch" -> AgentToolRequest(type = "web_fetch", url = string("url"))
             "python", "python_exec" -> AgentToolRequest(type = "python", code = string("code"), timeoutSeconds = int("timeoutSeconds"))
