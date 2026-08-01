@@ -1,0 +1,123 @@
+ ->
++                    runCatching { bodySource.readUtf8(4_096) }.getOrDefault("")
++                }.orEmpty()
++                val detail = sanitizeHttpExcerpt(excerpt)
++                throw WidgetHttpFailure(
++                    statusCode = response.code,
++                    isTransient = response.code in setOf(408, 425, 429) || response.code >= 500,
++                    message = buildString {
++                        append(source.id).append(" returned HTTP ").append(response.code)
++                        if (response.message.isNotBlank()) append(' ').append(response.message)
++                        if (detail.isNotBlank()) append(" — ").append(detail)
++                    },
++                )
++            }
+             val body = requireNotNull(response.body) { "${source.id} returned no content" }
+             val declared = body.contentLength()
+             require(declared < 0 || declared <= MAX_BODY_BYTES) { "${source.id} is larger than 1 MB" }
+             val content = body.source().readUtf8(MAX_BODY_BYTES + 1)
+             require(content.toByteArray().size <= MAX_BODY_BYTES) { "${source.id} is larger than 1 MB" }
+-            val root = json.parseToJsonElement(content)
++            val root = runCatching { json.parseToJsonElement(content) }.getOrElse { error ->
++                throw WidgetHttpFailure(message = "${source.id} did not return valid JSON: ${error.message ?: "parse failed"}")
++            }
+             source.bindings.associate { binding ->
+-                binding.state to (valueAt(root, binding.path) ?: binding.fallback)
++                val resolved = valueAt(root, binding.path)
++                if (strictBindings && resolved == null) {
++                    throw WidgetHttpFailure(message = "${source.id} JSON path '${binding.path}' was not found in the live response")
++                }
++                binding.state to (resolved ?: binding.fallback)
++            }
++        }
++    }
++
++    private fun executeGet(initialUrl: String, grants: WidgetCapabilityGrants): Response {
++        var currentUrl = initialUrl
++        val visited = linkedSetOf<String>()
++        repeat(MAX_REDIRECTS + 1) { hop ->
++            validateGrantedPublicHttpsUrl(currentUrl, grants.networkOrigins)
++            if (!visited.add(currentUrl)) throw WidgetHttpFailure(message = "Widget HTTP redirect loop detected")
++            val request = Request.Builder()
++                .url(currentUrl)
++                .header("Accept", "application/json, text/json;q=0.9, */*;q=0.1")
++                .header("Cache-Control", "no-cache")
++                .header("User-Agent", "Arbor-HomeWidget/3 (Android)")
++                .get()
++                .build()
++            val response = client.newCall(request).execute()
++            if (!response.isRedirect) return response
++            if (hop >= MAX_REDIRECTS) {
++                response.close()
++                throw WidgetHttpFailure(statusCode = response.code, message = "Widget HTTP redirect limit exceeded")
+             }
++            val location = response.header("Location")
++            val next = location?.let { response.request.url.resolve(it) }
++            val status = response.code
++            response.close()
++            if (next == null) throw WidgetHttpFailure(statusCode = status, message = "Widget HTTP $status redirect did not include a valid Location")
++            currentUrl = next.toString()
++            validateGrantedPublicHttpsUrl(currentUrl, grants.networkOrigins)
+         }
++        throw WidgetHttpFailure(message = "Widget HTTP redirect limit exceeded")
+     }
+ 
+     private fun folderValues(
+@@ -212,7 +343,7 @@ internal object WidgetDataRuntime {
+         val host = requireNotNull(uri.host) { "Widget data-source host is missing" }
+         val port = if (uri.port == -1 || uri.port == 443) "" else ":${uri.port}"
+         val origin = "https://${host.lowercase()}$port"
+-        require(origin in grantedOrigins) { "$origin was not granted to this widget" }
++        require(origin in grantedOrigins) { "$origin was not declared for this widget; add the final redirect origin or use its final HTTPS URL" }
+         val addresses = InetAddress.getAllByName(host)
+         require(addresses.isNotEmpty() && addresses.all(::isPublicAddress)) { "Private and local widget addresses are blocked" }
+     }
+@@ -226,6 +357,12 @@ internal object WidgetDataRuntime {
+         return true
+     }
+ 
++    private fun sanitizeHttpExcerpt(value: String): String = value
++        .replace(Regex("<[^>]{0,200}>"), " ")
++        .replace(Regex("\\s+"), " ")
++        .trim()
++        .take(240)
++
+     private fun sourceOrder(type: String): Int = when (type) {
+         "location" -> 0
+         "folder_text" -> 1
+diff --git a/app/src/main/java/app/arbor/chat/widgets/WidgetProgramCompiler.kt b/app/src/main/java/app/arbor/chat/widgets/WidgetProgramCompiler.kt
+new file mode 100644
+index 0000000..c67616c
+--- /dev/null
++++ b/app/src/main/java/app/arbor/chat/widgets/WidgetProgramCompiler.kt
+@@ -0,0 +1,208 @@
++package app.arbor.chat.widgets
++
++import android.content.Context
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.withContext
++
++internal data class WidgetCompileIssue(
++    val phase: String,
++    val path: String,
++    val message: String,
++)
++
++internal data class WidgetCompileResult(
++    val compiledSource: String,
++    val issues: List<WidgetCompileIssue>,
++)
++
++private data class ActionCompileResult(
++    val issues: List<WidgetCompileIssue>,
++    val states: List<Pair<String, Map<String, String>>>,
++)
++
++/**
++ * Compiles an arbor-widget/1 definition into Arbor's typed runtime and executes a
++ * bounded preflight before the definition can be shown as usable content.
++ */
++internal object WidgetProgramCompiler {
++    suspend fun compile(context: Context, source: String): WidgetCompileResult {
++        val definition = ArborProgramParser.parse(source, ArborProgramSurface.WIDGET).getOrElse { error ->
++            return WidgetCo
