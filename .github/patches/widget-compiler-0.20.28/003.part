@@ -1,0 +1,106 @@
+                 status = GeneratedRepairStatus.PENDING,
+                     acceptedSource = null,
+                     providerError = null,
+@@ -115,6 +119,38 @@ class GeneratedBlockRepairCoordinator(
+             return state
+         }
+ 
++        // Every newly generated widget enters here even when its JSON schema is already valid.
++        // The compiler executes actions, preflights HTTP data, and renders launcher viewports
++        // before the block is allowed to appear as usable content.
++        if (state.attemptCount == 0) {
++            state = state.copy(status = GeneratedRepairStatus.COMPILING, updatedAt = System.currentTimeMillis()).also {
++                withContext(Dispatchers.IO) { save(it) }
++                progress(it)
++            }
++            val compilation = compileSafely(type, state.currentCandidate)
++            if (compilation.valid) {
++                val accepted = state.copy(
++                    currentCandidate = compilation.compiledSource,
++                    errors = emptyList(),
++                    status = GeneratedRepairStatus.ACCEPTED,
++                    acceptedSource = compilation.compiledSource,
++                    updatedAt = System.currentTimeMillis(),
++                )
++                withContext(Dispatchers.IO) { save(accepted) }
++                progress(accepted)
++                return accepted
++            }
++            state = state.copy(
++                currentCandidate = compilation.compiledSource.ifBlank { state.currentCandidate },
++                errors = compilation.errors,
++                status = GeneratedRepairStatus.PENDING,
++                updatedAt = System.currentTimeMillis(),
++            ).also {
++                withContext(Dispatchers.IO) { save(it) }
++                progress(it)
++            }
++        }
++
+         while (state.attemptCount < maximum) {
+             state = state.copy(status = GeneratedRepairStatus.REPAIRING, updatedAt = System.currentTimeMillis()).also {
+                 withContext(Dispatchers.IO) { save(it) }
+@@ -137,35 +173,49 @@ class GeneratedBlockRepairCoordinator(
+ 
+             val extracted = GeneratedContentCapabilityRegistry.extractSingleReplacement(raw, state.canonicalFence)
+             val candidate = extracted.getOrNull().orEmpty()
+-            val validation = if (extracted.isSuccess) withContext(Dispatchers.Default) {
+-                GeneratedContentCapabilityRegistry.validate(type, candidate)
+-            } else GeneratedValidationResult(listOf(
+-                GeneratedValidationError("repair_response", "/", extracted.exceptionOrNull()?.message ?: "Malformed repair response"),
+-            ))
+-            val rawFingerprint = fingerprint(candidate.ifEmpty { raw })
+-            val normalizedFingerprint = fingerprint(candidate.ifEmpty { raw }.trim().replace(Regex("\\s+"), " "))
++            val compilation = if (extracted.isSuccess) {
++                state = state.copy(
++                    currentCandidate = candidate,
++                    status = GeneratedRepairStatus.COMPILING,
++                    updatedAt = System.currentTimeMillis(),
++                ).also {
++                    withContext(Dispatchers.IO) { save(it) }
++                    progress(it)
++                }
++                compileSafely(type, candidate)
++            } else GeneratedCompilationResult(
++                candidate,
++                listOf(GeneratedValidationError(
++                    "repair_response",
++                    "/",
++                    extracted.exceptionOrNull()?.message ?: "Malformed repair response",
++                )),
++            )
++            val compiled = compilation.compiledSource.ifBlank { candidate }
++            val rawFingerprint = fingerprint(compiled.ifEmpty { raw })
++            val normalizedFingerprint = fingerprint(compiled.ifEmpty { raw }.trim().replace(Regex("\\s+"), " "))
+             val repeated = normalizedFingerprint in state.attempts.map { it.normalizedFingerprint }
+             val attempt = GeneratedRepairAttempt(
+                 number = state.attemptCount + 1,
+                 candidateFingerprint = rawFingerprint,
+                 normalizedFingerprint = normalizedFingerprint,
+-                errors = validation.errors,
++                errors = compilation.errors,
+                 malformedResponse = extracted.isFailure,
+                 repeatedCandidate = repeated,
+             )
+             state = state.copy(
+-                currentCandidate = candidate.ifBlank { state.currentCandidate },
++                currentCandidate = compiled.ifBlank { state.currentCandidate },
+                 attemptCount = state.attemptCount + 1,
+-                errors = validation.errors,
++                errors = compilation.errors,
+                 attempts = state.attempts + attempt,
+                 candidateFingerprints = state.candidateFingerprints + rawFingerprint,
+-                status = if (validation.valid) GeneratedRepairStatus.ACCEPTED else if (state.attemptCount + 1 >= maximum) GeneratedRepairStatus.EXHAUSTED else GeneratedRepairStatus.PENDING,
+-                acceptedSource = candidate.takeIf { validation.valid },
++                status = if (compilation.valid) GeneratedRepairStatus.ACCEPTED else if (state.attemptCount + 1 >= maximum) GeneratedRepairStatus.EXHAUSTED else GeneratedRepairStatus.PENDING,
++                acceptedSource = compiled.takeIf { compilation.valid },
+                 updatedAt = System.currentTimeMillis(),
+             )
+             withContext(Dispatchers.IO) { save(state) }
+             progress(state)
+-            if (validation.valid || state.status == GeneratedRepairStatus.EXHAUSTED) return state
++            if (compilation.valid || state.status == GeneratedRepairStatus.EXHAUSTED) return state
+         }
+         return state.copy(status = GeneratedRepairStatus.EXHAUSTED, updatedAt = System.currentTimeMillis()).also {
+             withContext(Dispatchers.IO) { save(it) }
+@@ -174,17 +224,28 @@ cl
