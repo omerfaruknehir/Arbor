@@ -33,7 +33,7 @@ data class GeneratedFenceCapability(
 /** Authoritative prompt and validator registry for native generated content. */
 object GeneratedContentCapabilityRegistry {
     const val CONTRACT_FAMILY = "arbor-generated-content/2"
-    const val VALIDATOR_VERSION = "2.0.0"
+    const val VALIDATOR_VERSION = "2.1.0"
     val chartTypes = setOf("bar", "line", "area", "scatter", "pie", "donut")
     val programNodeTypes: Set<String> get() = ArborProgramParser.nodeTypes
     val programActionTypes: Set<String> get() = ArborProgramParser.actionOps
@@ -71,28 +71,44 @@ object GeneratedContentCapabilityRegistry {
 
     fun compactSummary(): String = """
         Arbor generated-content contract: $CONTRACT_VERSION; validator $VALIDATOR_VERSION.
-        Use `arbor-snippet` only for interactive content inside a chat message. Use `arbor-widget` only for an installable Android Home-screen program. They have separate schemas and are never interchangeable.
+        Use `arbor-snippet` only for interactive content inside a chat message. Use `arbor-widget` for a real installable Android Home-screen program. They have separate schemas and are never interchangeable. Do not claim that Home-screen widgets are unavailable: Arbor can render, permission, pin, refresh, and run bounded actions for them.
         Snippets have no Android permissions, background jobs, network, location, or folder access. Widgets must declare every capability with a user-facing reason and receive a per-widget grant before pinning. Network grants are exact HTTPS origins; folder grants are one user-selected document tree; location is approximate or precise; scheduled refresh is explicit and Android-limited to 15 minutes or slower.
         Both surfaces use one bounded component tree (${programNodeTypes.sorted().joinToString()}) and one bounded action language (${programActionTypes.sorted().joinToString()}). Build quizzes, forms, calculators, trackers, dashboards, and other experiences by composing nodes; never invent category-specific widget types.
         Never emit the removed `arbor-ui`, `ui`, `arbor-form`, `widget`, or `mini_app` formats. Never emit HTML, JavaScript, JSX, WebView content, reflection, shell commands, downloaded code, or an executable fallback.
     """.trimIndent()
 
-    fun promptForRequest(userText: String): String = buildString {
+    fun promptForRequest(userText: String): String = promptForConversation(listOf(userText))
+
+    fun promptForConversation(recentMessages: List<String>): String = buildString {
         append(compactSummary())
-        relevantTypes(userText).forEach { append("\n\n").append(fullSchema(it)) }
+        append("\n\n").append(widgetCapabilityManifest())
+        val context = recentMessages.takeLast(16).joinToString("\n").takeLast(48_000)
+        relevantTypes(context).forEach { append("\n\n").append(fullSchema(it)) }
     }
 
     fun relevantTypes(userText: String): Set<GeneratedBlockType> {
         val value = userText.lowercase()
         return buildSet {
-            if (listOf("quiz", "question", "interactive", "form", "questionnaire", "calculator", "snippet", "inside chat").any(value::contains)) {
+            if (listOf(
+                    "arbor-snippet", "quiz", "question", "interactive", "form", "questionnaire",
+                    "calculator", "snippet", "inside chat", "in chat", "checklist", "poll",
+                    "sınav", "soru", "etkileşimli", "form", "hesap makinesi", "sohbet içinde",
+                ).any(value::contains)
+            ) {
                 add(GeneratedBlockType.CHAT_UI)
             }
-            if (listOf("widget", "home screen", "launcher", "live update", "background refresh").any(value::contains)) {
+            if (listOf(
+                    "arbor-widget", "widget", "home screen", "homescreen", "launcher", "outside app",
+                    "persistent surface", "live update", "background refresh", "add to home", "pin to home",
+                    "glanceable", "dashboard", "habit tracker", "counter", "weather widget", "shortcut widget",
+                    "ana ekran", "başlatıcı", "uygulama dışında", "canlı güncelle", "arka plan yenile",
+                    "ana ekrana ekle", "ana ekrana sabitle", "bileşen", "sayaç", "hava durumu", "takip aracı",
+                ).any(value::contains)
+            ) {
                 add(GeneratedBlockType.HOME_WIDGET)
             }
-            if (listOf("chart", "plot", "graph of", "visualize data", "grafik").any(value::contains)) add(GeneratedBlockType.CHART)
-            if (listOf("diagram", "mermaid", "flowchart", "sequence diagram", "architecture graph").any(value::contains)) add(GeneratedBlockType.DIAGRAM)
+            if (listOf("chart", "plot", "graph of", "visualize data", "grafik", "çizelge").any(value::contains)) add(GeneratedBlockType.CHART)
+            if (listOf("diagram", "mermaid", "flowchart", "sequence diagram", "architecture graph", "diyagram", "akış şeması").any(value::contains)) add(GeneratedBlockType.DIAGRAM)
         }
     }
 
@@ -200,6 +216,18 @@ object GeneratedContentCapabilityRegistry {
 
     private fun parseObject(source: String): JsonObject? = runCatching { Json.parseToJsonElement(source) as? JsonObject }.getOrNull()
     private fun error(phase: String, path: String, message: String) = GeneratedValidationResult(listOf(GeneratedValidationError(phase, path, message)))
+
+
+    private fun widgetCapabilityManifest() = """
+        Arbor Home-widget skill manifest (always available; do not claim that Arbor cannot create widgets):
+        - Produce a widget as exactly one fenced `arbor-widget` JSON object when the user asks for a persistent Android Home-screen surface. The root schema is `arbor-widget/1`; use a stable lowercase id, title, optional description, initial state, one ui tree, named actions, capabilities, dataSources, and optional refreshMinutes.
+        - Layout nodes: column/row/stack use children. Content nodes: text uses text; metric uses label+value; progress uses value+min+max; list and chart use items; divider/spacer are structural. Controls: button uses label+action; toggle uses label+value state key+optional action; choice uses a value state key and options; slider uses value/min/max/step. `input` is chat-only because launchers cannot show a keyboard.
+        - State actions: set, add, multiply, toggle, append, backspace, evaluate, reset. External actions: refresh a declared source, write_folder through a declared read_write folder source, or open_app to a bounded app route. `submit` belongs to snippets, not launcher widgets.
+        - Live data is declarative, not executable: http_json is HTTPS GET JSON with bindings into state; location binds device location fields; folder_text reads one relative text file. Declare matching network/location/folder capabilities with plain-language reasons. background_refresh is required for refreshMinutes, which must be 15–1440.
+        - Design for a glance: lead with the main value, keep labels short, use 2–4 meaningful actions, provide honest initial/fallback values such as `—` or `Not updated`, and avoid fake live values. Keep important content useful at small sizes and place secondary detail below it.
+        - Widgets are general programmable surfaces, not a fixed list of weather/counter templates. Compose the supported nodes and actions to fit the user's request. Never invent a category-specific root type, JavaScript, HTML, WebView, shell command, hidden permission, or unsupported API.
+        - When the request is satisfiable, emit the widget instead of merely describing how one could be made. Brief prose may surround the fence, but the JSON itself must be valid and complete.
+    """.trimIndent()
 
     private fun snippetSchema() = """
         `arbor-snippet` schema — $CONTRACT_VERSION

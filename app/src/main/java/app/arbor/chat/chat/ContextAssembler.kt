@@ -68,8 +68,12 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
             Arbor renders compact, tappable reference pills inside answers. Cite a website actually used with exactly `[[source|short source label|https://full-url]]`. Cite an uploaded or generated file actually used with exactly `[[file|short file label|file name or Arbor reference]]`. Put these notations immediately after the supported claim. Do not use a reference pill for a source you only saw in a search-results list but did not rely on. Ordinary Markdown links are allowed, but Arbor will show their destination to the user before opening them.
             """.trimIndent()
         } else ""
-        val latestUserIntent = newestFirst.firstOrNull { it.role == MessageRole.USER }?.content.orEmpty().take(8_000)
-        val generatedContentInstructions = GeneratedContentCapabilityRegistry.promptForRequest(latestUserIntent)
+        val recentGeneratedContentContext = newestFirst.asSequence()
+            .take(16)
+            .map { it.content.take(4_000) }
+            .toList()
+            .asReversed()
+        val generatedContentInstructions = GeneratedContentCapabilityRegistry.promptForConversation(recentGeneratedContentContext)
         // Arbor's core prompt is a versioned part of the app. Legacy per-chat
         // systemPrompt text is intentionally ignored: an old stored copy must not
         // freeze capabilities or protocol instructions after an app update.

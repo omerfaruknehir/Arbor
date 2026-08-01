@@ -6,4 +6,5 @@
     <string name="home_widget_name">Arbor generated widget</string>
     <string name="home_widget_description">A native home-screen widget generated in an Arbor conversation</string>
     <string name="home_widget_program_content">Programmable widget content</string>
+    <string name="home_widget_refresh">Refresh widget</string>
 </resources>

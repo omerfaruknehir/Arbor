@@ -6,4 +6,5 @@
     <string name="home_widget_name">Arbor programmable widget</string>
     <string name="home_widget_description">A permissioned programmable Home-screen widget created by Arbor</string>
     <string name="home_widget_program_content">Programmable widget content</string>
+    <string name="home_widget_refresh">Refresh widget</string>
 </resources>

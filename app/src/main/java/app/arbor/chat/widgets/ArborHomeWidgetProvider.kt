@@ -149,23 +149,43 @@ class ArborHomeWidgetProvider : AppWidgetProvider() {
                 widthPx = (widthDp * density).toInt().coerceAtLeast(360),
                 heightPx = ((heightDp - 72).coerceAtLeast(80) * density).toInt().coerceAtLeast(160),
                 dark = isDark(context),
+                suppressActionControls = true,
             )
             return RemoteViews(context.packageName, R.layout.arbor_home_widget_program).apply {
                 setTextViewText(R.id.widget_title, definition.title)
                 setTextViewText(R.id.widget_subtitle, definition.description)
                 setViewVisibility(R.id.widget_subtitle, if (definition.description.isBlank()) View.GONE else View.VISIBLE)
                 setImageViewBitmap(R.id.widget_program_image, bitmap)
+                val error = if (preview) null else storage.error(id)?.takeIf(String::isNotBlank)
                 val status = when {
-                    preview -> "Preview"
-                    storage.error(id)?.isNotBlank() == true -> storage.error(id)
-                    storage.updatedAt(id) > 0L -> "Updated ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(storage.updatedAt(id)))}"
-                    definition.dataSources.isNotEmpty() -> "Waiting for first refresh"
-                    else -> "Local widget"
+                    preview -> "Preview · configured"
+                    error != null -> "Needs attention · ${error.take(80)}"
+                    storage.updatedAt(id) > 0L -> "Live · updated ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(storage.updatedAt(id)))}"
+                    definition.dataSources.isNotEmpty() -> "Live · waiting for first refresh"
+                    else -> "Ready · works offline"
                 }
                 setTextViewText(R.id.widget_status, status)
                 bindOpen(context, this, id, preview)
-                val actions = visibleActions(definition, state).toMutableList()
-                if (definition.dataSources.isNotEmpty() && actions.size < ACTION_IDS.size) actions += WidgetVisibleAction("Refresh", REFRESH_ACTION_ID)
+
+                val hasRefresh = definition.dataSources.isNotEmpty()
+                setViewVisibility(R.id.widget_refresh, if (hasRefresh) View.VISIBLE else View.GONE)
+                if (hasRefresh && !preview && id != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                    val refreshIntent = Intent(context, ArborHomeWidgetProvider::class.java)
+                        .setAction(ACTION_REFRESH)
+                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+                    setOnClickPendingIntent(
+                        R.id.widget_refresh,
+                        PendingIntent.getBroadcast(
+                            context,
+                            41_000 + id,
+                            refreshIntent,
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                        ),
+                    )
+                }
+
+                val actions = visibleActions(definition, state)
+                setViewVisibility(R.id.widget_actions, if (actions.isEmpty()) View.GONE else View.VISIBLE)
                 ACTION_IDS.forEachIndexed { index, viewId ->
                     val action = actions.getOrNull(index)
                     setViewVisibility(viewId, if (action == null) View.GONE else View.VISIBLE)
@@ -173,7 +193,7 @@ class ArborHomeWidgetProvider : AppWidgetProvider() {
                         setTextViewText(viewId, action.label)
                         if (!preview && id != AppWidgetManager.INVALID_APPWIDGET_ID) {
                             val intent = Intent(context, ArborHomeWidgetProvider::class.java)
-                                .setAction(if (action.id == REFRESH_ACTION_ID) ACTION_REFRESH else ACTION_PROGRAM_ACTION)
+                                .setAction(ACTION_PROGRAM_ACTION)
                                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
                                 .putExtra(EXTRA_ACTION_ID, action.id)
                             setOnClickPendingIntent(
@@ -194,8 +214,10 @@ class ArborHomeWidgetProvider : AppWidgetProvider() {
         private fun emptyViews(context: Context) = RemoteViews(context.packageName, R.layout.arbor_home_widget_program).apply {
             setTextViewText(R.id.widget_title, context.getString(R.string.app_name))
             setTextViewText(R.id.widget_subtitle, "Add an arbor-widget/1 program from a conversation")
-            setTextViewText(R.id.widget_status, "No compatible widget configured")
+            setTextViewText(R.id.widget_status, "Create and add a configured widget from a conversation")
             setImageViewResource(R.id.widget_program_image, R.drawable.ic_arbor_mark)
+            setViewVisibility(R.id.widget_refresh, View.GONE)
+            setViewVisibility(R.id.widget_actions, View.GONE)
             ACTION_IDS.forEach { setViewVisibility(it, View.GONE) }
         }
 
@@ -210,8 +232,11 @@ class ArborHomeWidgetProvider : AppWidgetProvider() {
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
+            views.setOnClickPendingIntent(R.id.widget_root, pending)
             views.setOnClickPendingIntent(R.id.widget_program_image, pending)
             views.setOnClickPendingIntent(R.id.widget_title, pending)
+            views.setOnClickPendingIntent(R.id.widget_subtitle, pending)
+            views.setOnClickPendingIntent(R.id.widget_status, pending)
         }
 
         private fun visibleActions(definition: ArborProgramDefinition, state: Map<String, String>): List<WidgetVisibleAction> {
@@ -222,7 +247,19 @@ class ArborHomeWidgetProvider : AppWidgetProvider() {
                     values += WidgetVisibleAction(ArborProgramRuntime.render(node.label, state).take(32), node.action)
                 }
                 if (node.type == "toggle" && node.action.isNotBlank()) {
-                    values += WidgetVisibleAction(ArborProgramRuntime.render(node.label.ifBlank { node.value }, state).take(32), node.action)
+                    val label = ArborProgramRuntime.render(node.label.ifBlank { node.value }, state)
+                    val stateLabel = if (ArborProgramRuntime.truthy(state[node.value])) "On" else "Off"
+                    values += WidgetVisibleAction("$label · $stateLabel".take(32), node.action)
+                }
+                if (node.type == "choice") {
+                    node.options.filter { it.action.isNotBlank() }.forEach { option ->
+                        values += WidgetVisibleAction(ArborProgramRuntime.render(option.label, state).take(32), option.action)
+                    }
+                }
+                if (node.type == "list") {
+                    node.items.filter { it.action.isNotBlank() }.forEach { item ->
+                        values += WidgetVisibleAction(ArborProgramRuntime.render(item.label, state).take(32), item.action)
+                    }
                 }
                 node.children.forEach(::walk)
             }
@@ -258,4 +295,3 @@ private const val EXTRA_ACTION_ID = "arbor_widget_action_id"
 internal const val EXTRA_WIDGET_ROUTE = "arbor_widget_route"
 private const val ACTION_PROGRAM_ACTION = "app.arbor.chat.widget.PROGRAM_ACTION_V2"
 private const val ACTION_REFRESH = "app.arbor.chat.widget.REFRESH_V2"
-private const val REFRESH_ACTION_ID = "__refresh__"
