@@ -36,6 +36,20 @@ jobs:
 
       - name: Apply DSML quarantine repair
         run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          script = Path('ci/oneoff-arbor-0.20.33-dsml-quarantine.py')
+          text = script.read_text()
+          old = '''        return compact.contains("dsmltoolcalls") &&
+                      (compact.contains("dsmlinvoke") || compact.contains("dsmlparameter"))'''
+          new = '''        return compact.contains("dsml") &&
+                      compact.contains("toolcalls") &&
+                      (compact.contains("invoke") || compact.contains("parameter"))'''
+          if old not in text:
+              raise SystemExit('DSML protocol-hint patch anchor missing')
+          script.write_text(text.replace(old, new, 1))
+          PY
           python3 -m py_compile ci/oneoff-arbor-0.20.33-dsml-quarantine.py
           python3 ci/oneoff-arbor-0.20.33-dsml-quarantine.py
 
