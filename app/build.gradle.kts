@@ -182,8 +182,8 @@ android {
         applicationId = "app.arbor.chat"
         minSdk = 26
         targetSdk = 36
-        versionCode = 153
-        versionName = "0.20.27"
+        versionCode = 154
+        versionName = "0.20.28"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

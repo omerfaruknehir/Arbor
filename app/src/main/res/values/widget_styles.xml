@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="ArborWidgetButton" parent="android:style/Widget.Material.Button.Borderless.Small">
-        <item name="android:layout_height">38dp</item>
-        <item name="android:layout_marginHorizontal">2dp</item>
+        <item name="android:layout_height">42dp</item>
+        <item name="android:layout_marginHorizontal">3dp</item>
         <item name="android:minWidth">0dp</item>
-        <item name="android:minHeight">36dp</item>
-        <item name="android:paddingHorizontal">4dp</item>
+        <item name="android:minHeight">40dp</item>
+        <item name="android:paddingHorizontal">6dp</item>
         <item name="android:background">@drawable/widget_action_background</item>
         <item name="android:textAllCaps">false</item>
         <item name="android:textColor">@color/widget_accent</item>
-        <item name="android:textSize">11sp</item>
+        <item name="android:textSize">13sp</item>
         <item name="android:textStyle">bold</item>
     </style>
 </resources>

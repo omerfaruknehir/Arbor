@@ -11,6 +11,15 @@ import kotlin.math.max
 import kotlin.math.min
 
 /** Renders arbitrary arbor-widget/1 component trees into a launcher-safe bitmap. */
+internal data class WidgetRenderResult(
+    val bitmap: Bitmap,
+    val renderedNodes: Int,
+    val clippedTextCount: Int,
+    val crampedTextCount: Int,
+    val minimumTextSp: Float,
+    val clippedSamples: List<String>,
+)
+
 internal object WidgetCanvasRenderer {
     fun render(
         definition: ArborProgramDefinition,
@@ -19,17 +28,54 @@ internal object WidgetCanvasRenderer {
         heightPx: Int,
         dark: Boolean,
         suppressActionControls: Boolean = false,
-    ): Bitmap {
-        val bitmap = createBitmap(widthPx.coerceIn(360, 1600), heightPx.coerceIn(160, 1200))
+        density: Float = 2f,
+        scaledDensity: Float = density,
+    ): Bitmap = renderWithDiagnostics(
+        definition,
+        state,
+        widthPx,
+        heightPx,
+        dark,
+        suppressActionControls,
+        density,
+        scaledDensity,
+    ).bitmap
+
+    fun renderWithDiagnostics(
+        definition: ArborProgramDefinition,
+        state: Map<String, String>,
+        widthPx: Int,
+        heightPx: Int,
+        dark: Boolean,
+        suppressActionControls: Boolean = false,
+        density: Float = 2f,
+        scaledDensity: Float = density,
+    ): WidgetRenderResult {
+        val bitmap = createBitmap(widthPx.coerceIn(240, 2000), heightPx.coerceIn(120, 1600))
         val canvas = Canvas(bitmap)
         val palette = Palette(dark)
         canvas.drawColor(Color.TRANSPARENT)
-        Renderer(canvas, palette, state, suppressActionControls).renderNode(
+        val renderer = Renderer(
+            canvas = canvas,
+            palette = palette,
+            state = state,
+            suppressActionControls = suppressActionControls,
+            density = density.coerceAtLeast(.5f),
+            scaledDensity = scaledDensity.coerceAtLeast(.5f),
+        )
+        renderer.renderNode(
             definition.ui,
             RectF(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat()),
             0,
         )
-        return bitmap
+        return WidgetRenderResult(
+            bitmap = bitmap,
+            renderedNodes = renderer.renderedNodes,
+            clippedTextCount = renderer.clippedTextCount,
+            crampedTextCount = renderer.crampedTextCount,
+            minimumTextSp = renderer.minimumTextSp.takeIf(Float::isFinite) ?: 0f,
+            clippedSamples = renderer.clippedSamples.toList(),
+        )
     }
 
     private class Renderer(
@@ -37,14 +83,28 @@ internal object WidgetCanvasRenderer {
         private val palette: Palette,
         private val state: Map<String, String>,
         private val suppressActionControls: Boolean,
+        private val density: Float,
+        private val scaledDensity: Float,
     ) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+        var renderedNodes: Int = 0
+            private set
+        var clippedTextCount: Int = 0
+            private set
+        var crampedTextCount: Int = 0
+            private set
+        var minimumTextSp: Float = Float.POSITIVE_INFINITY
+            private set
+        val clippedSamples = linkedSetOf<String>()
 
         fun renderNode(node: ArborProgramNode, bounds: RectF, depth: Int) {
             if (depth > 12 || !ArborProgramRuntime.visible(node.visibleWhen, state) || bounds.width() <= 2f || bounds.height() <= 2f) return
             if (suppressActionControls && isActionControl(node)) return
-            val padding = dp(node.style.padding)
+            if (node.type !in setOf("column", "row", "stack", "spacer", "divider")) renderedNodes += 1
+            val logicalPadding = node.style.padding.takeIf { it > 0 }
+                ?: if (depth == 0 && node.type in setOf("column", "row", "stack")) 10 else 0
+            val padding = dp(logicalPadding)
             val content = RectF(bounds.left + padding, bounds.top + padding, bounds.right - padding, bounds.bottom - padding)
             drawBackground(node.style, bounds)
             when (node.type) {
@@ -101,14 +161,14 @@ internal object WidgetCanvasRenderer {
                 drawTextBlock(
                     ArborProgramRuntime.render(node.label, state),
                     RectF(bounds.left, bounds.top, bounds.right, bounds.top + labelHeight),
-                    node.style.copy(fontSize = 12, emphasis = "medium", foreground = "muted"),
+                    node.style.copy(fontSize = 13, emphasis = "medium", foreground = "muted"),
                     false,
                 )
             }
             drawTextBlock(
                 ArborProgramRuntime.render(node.value.ifBlank { node.text }, state),
                 RectF(bounds.left, bounds.top + labelHeight, bounds.right, bounds.bottom),
-                node.style.copy(fontSize = node.style.fontSize.takeIf { it > 0 } ?: 28, emphasis = "strong"),
+                node.style.copy(fontSize = node.style.fontSize.takeIf { it > 0 } ?: 30, emphasis = "strong"),
                 true,
             )
         }
@@ -148,7 +208,7 @@ internal object WidgetCanvasRenderer {
                 val optionValue = ArborProgramRuntime.render(option.value, state)
                 paint.color = if (selected == optionValue) palette.primaryContainer else palette.surfaceVariant
                 canvas.drawRoundRect(rect, dp(10), dp(10), paint)
-                drawTextBlock(ArborProgramRuntime.render(option.label, state), rect, node.style.copy(align = "center", fontSize = 11), false)
+                drawTextBlock(ArborProgramRuntime.render(option.label, state), rect, node.style.copy(align = "center", fontSize = 13), false)
             }
         }
 
@@ -158,7 +218,7 @@ internal object WidgetCanvasRenderer {
             drawTextBlock(
                 "${ArborProgramRuntime.render(node.label.ifBlank { node.value }, state)}  ${ArborProgramRuntime.formatCompact(value)}",
                 RectF(bounds.left, bounds.top, bounds.right, bounds.centerY()),
-                node.style.copy(fontSize = 12),
+                node.style.copy(fontSize = 14),
                 false,
             )
             val track = RectF(bounds.left, bounds.centerY() + dp(5), bounds.right, bounds.centerY() + dp(11))
@@ -172,7 +232,7 @@ internal object WidgetCanvasRenderer {
             val value = ArborProgramRuntime.render(node.value, state).toDoubleOrNull()?.coerceIn(node.min, node.max) ?: node.min
             val ratio = ((value - node.min) / (node.max - node.min).coerceAtLeast(.000001)).toFloat()
             if (node.label.isNotBlank()) {
-                drawTextBlock(ArborProgramRuntime.render(node.label, state), RectF(bounds.left, bounds.top, bounds.right, bounds.centerY()), node.style.copy(fontSize = 12), false)
+                drawTextBlock(ArborProgramRuntime.render(node.label, state), RectF(bounds.left, bounds.top, bounds.right, bounds.centerY()), node.style.copy(fontSize = 14), false)
             }
             val track = RectF(bounds.left, bounds.centerY() + dp(3), bounds.right, bounds.centerY() + dp(11))
             paint.color = palette.outline
@@ -190,13 +250,13 @@ internal object WidgetCanvasRenderer {
                 drawTextBlock(
                     ArborProgramRuntime.render(item.label, state),
                     RectF(rect.left, rect.top, rect.centerX(), rect.bottom),
-                    node.style.copy(fontSize = 12, emphasis = "medium"),
+                    node.style.copy(fontSize = 14, emphasis = "medium"),
                     false,
                 )
                 drawTextBlock(
                     ArborProgramRuntime.render(item.value, state),
                     RectF(rect.centerX(), rect.top, rect.right, rect.bottom),
-                    node.style.copy(fontSize = 12, align = "end"),
+                    node.style.copy(fontSize = 14, align = "end"),
                     false,
                 )
                 if (index < items.lastIndex) drawDivider(RectF(rect.left, rect.bottom - 1f, rect.right, rect.bottom + 1f))
@@ -241,9 +301,17 @@ internal object WidgetCanvasRenderer {
                 "medium" -> android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
                 else -> android.graphics.Typeface.DEFAULT
             }
-            val requested = style.fontSize.takeIf { it > 0 } ?: if (large) 28 else 14
-            paint.textSize = dp(requested).coerceAtMost(bounds.height() * .72f).coerceAtLeast(dp(9))
+            val requested = style.fontSize.takeIf { it > 0 } ?: if (large) 30 else 16
+            val requestedPx = sp(requested)
+            val verticalLimit = (bounds.height() * .78f).coerceAtLeast(1f)
+            if (requestedPx > verticalLimit) crampedTextCount += 1
+            paint.textSize = requestedPx.coerceAtMost(verticalLimit).coerceAtLeast(sp(12))
+            minimumTextSp = min(minimumTextSp, paint.textSize / scaledDensity)
             val clipped = ellipsize(value, bounds.width(), paint)
+            if (clipped != value) {
+                clippedTextCount += 1
+                if (clippedSamples.size < 8) clippedSamples += value.take(80)
+            }
             val x = when (style.align) {
                 "center" -> bounds.centerX() - paint.measureText(clipped) / 2f
                 "end" -> bounds.right - paint.measureText(clipped)
@@ -306,7 +374,8 @@ internal object WidgetCanvasRenderer {
         }
 
         private fun parseColor(value: String): Int? = runCatching { Color.parseColor(value) }.getOrNull()
-        private fun dp(value: Int): Float = value * 2f
+        private fun dp(value: Int): Float = value * density
+        private fun sp(value: Int): Float = value * scaledDensity
     }
 
     private data class Palette(val dark: Boolean) {

@@ -34,9 +34,12 @@ class AuxiliaryModelService(
             conversation.selectedModelId,
             state.conversationId,
             system = """
-                Repair exactly one invalid Arbor generated-content block under contract ${GeneratedContentCapabilityRegistry.CONTRACT_VERSION}.
+                Repair exactly one Arbor generated-content block under contract ${GeneratedContentCapabilityRegistry.CONTRACT_VERSION}.
                 Return exactly one complete `${state.canonicalFence}` fenced block and no prose, explanation, or second block.
-                Preserve intended behavior, data, and visible labels. Do not change surrounding answer text. Do not add unsupported fields, HTML, JavaScript, JSX, WebView content, or executable UI.
+                The candidate is compiled before the user can see it. Compiler feedback may come from schema parsing, bounded action execution, actual public HTTP JSON preflight, JSON binding checks, or representative Android launcher renders. Fix the root cause rather than hiding errors with fake values.
+                Preserve intended behavior and visible labels where they remain compatible. Shorten or restructure launcher content when layout compilation reports clipping or cramped text. Use at most four visible launcher actions, at most six list rows, normal text of at least 15sp, and useful fallback values for every live HTTP binding.
+                HTTP redirects are followed only across declared HTTPS origins. Prefer the final JSON endpoint, declare every redirect origin when unavoidable, use `{{urlencode:key}}` for query values that need encoding, and replace endpoints that return deterministic 4xx responses or incompatible JSON.
+                Do not change surrounding answer text. Do not add unsupported fields, HTML, JavaScript, JSX, WebView content, or executable UI.
                 Relevant authoritative contract:
                 ${GeneratedContentCapabilityRegistry.fullSchema(state.type)}
             """.trimIndent(),
@@ -44,7 +47,7 @@ class AuxiliaryModelService(
                 Original local user intent (context only, not a new instruction):
                 $intent
 
-                Validation errors (machine-readable):
+                Compiler and validation errors (machine-readable):
                 $errors
 
                 Invalid ${state.canonicalFence} source:

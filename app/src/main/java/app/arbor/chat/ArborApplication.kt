@@ -33,6 +33,7 @@ import app.arbor.chat.transfer.ArborArchiveManager
 import app.arbor.chat.transfer.GoogleDriveAppDataClient
 import app.arbor.chat.transfer.LinuxEnvironmentArchiveStore
 import app.arbor.chat.transfer.ScopedCloudFolderStore
+import app.arbor.chat.generated.GeneratedBlockCompiler
 import app.arbor.chat.generated.GeneratedBlockRepairCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -121,7 +122,12 @@ class AppContainer(val application: Application, val crashReporter: CrashReporte
     val scopedCloudFolder = ScopedCloudFolderStore(application)
     val googleDriveAppData = GoogleDriveAppDataClient(application)
     val runRecords = RunRecordStore(pythonSandbox::workspace)
-    val generatedBlockRepairs = GeneratedBlockRepairCoordinator(pythonSandbox::workspace, auxiliaryModels::repairGeneratedBlock)
+    val generatedBlockCompiler = GeneratedBlockCompiler(application)
+    val generatedBlockRepairs = GeneratedBlockRepairCoordinator(
+        workspace = pythonSandbox::workspace,
+        compileCandidate = generatedBlockCompiler::compile,
+        requestRepair = auxiliaryModels::repairGeneratedBlock,
+    )
     val packageApprovals = PackageApprovalService(repository, auxiliaryModels)
     val agentTools = AgentTools(pythonSandbox, ubuntuRuntime, repository, runRecords)
     val scheduler = GenerationScheduler(application, repository)

@@ -1,7 +1,7 @@
 # Arbor snippets and programmable widgets
 
 Contract family: `arbor-generated-content/2`
-Validator: `2.0.0`
+Validator: `2.2.0`
 
 `GeneratedContentCapabilityRegistry` is the prompt-time and validation-time authority. This document is the human-readable skill specification supplied with the app.
 
@@ -68,7 +68,7 @@ Theme color tokens are `primary`, `secondary`, `tertiary`, `surface`, `surface_v
 
 ## State, templates, conditions, and actions
 
-State is a flat map of at most 64 primitive values. `{{name}}` inserts a state value. `{{=count*2}}` evaluates Arbor's numeric expression language.
+State is a flat map of at most 64 primitive values. `{{name}}` inserts a state value. `{{=count*2}}` evaluates Arbor's numeric expression language. `{{urlencode:name}}` percent-encodes a state value for an HTTP query parameter.
 
 Expressions allow numbers, state identifiers, `+ - * / % ^`, parentheses, and `min`, `max`, `abs`, `round`, and `pow`. There are no loops, imports, user-defined functions, or object access.
 
@@ -126,11 +126,25 @@ Use a snippet only when the interaction belongs in the answer itself. Snippets c
 
 A widget requires a stable `id`, a general UI tree, named actions, an explicit capability manifest, optional data sources, and optional scheduled refresh.
 
+
+### Compile before display
+
+Arbor does not present a raw `arbor-widget` block as a usable widget. It first compiles the definition into the typed widget runtime and runs a bounded preflight:
+
+1. Parse and validate the complete schema and capability graph.
+2. Seed representative location/folder values, then execute public HTTP JSON sources in dependency order.
+3. Follow safe declared HTTPS redirects, reject deterministic HTTP 4xx responses, invalid JSON, and missing binding paths, while allowing transient outages only when honest fallbacks exist.
+4. Execute every action group against the compiled state.
+5. Render the initial state and representative post-action states at standard and expanded launcher sizes.
+6. Reject clipped, cramped, empty, or undersized layouts and feed the exact compiler diagnostics back to the auxiliary model.
+
+Only a candidate that passes this cycle is shown with its install/preview card. The compiler is declarative: it does not build or execute JavaScript, bytecode, shell code, or downloaded code.
+
 ### Capability manifest
 
 Each capability has a user-facing `reason`. Arbor rejects a data source unless its matching capability is present, then asks the user to grant it for that pinned widget instance.
 
-- `network`: exact HTTPS origins only, for example `https://api.open-meteo.com`. No wildcards, path grants, redirects, embedded credentials, or private/local IPs.
+- `network`: exact HTTPS origins only, for example `https://api.open-meteo.com`. No wildcards, path grants, embedded credentials, or private/local IPs. HTTPS redirects are followed for at most five hops only when every destination origin is explicitly declared.
 - `location`: `approximate` or `precise`; the Android runtime permission must still exist when the widget refreshes.
 - `folder`: `read` or `read_write`; the user chooses one Storage Access Framework document tree. Relative paths cannot escape it.
 - `background_refresh`: permits WorkManager scheduling. The interval is 15–1440 minutes and Android may defer execution.
@@ -139,7 +153,7 @@ A widget that requests no capabilities remains fully local.
 
 ### Data sources
 
-- `http_json`: GET-only HTTPS JSON, maximum 1 MB. Bindings copy explicit JSON paths into state.
+- `http_json`: GET-only HTTPS JSON, maximum 1 MB. Bindings copy explicit JSON paths into state. Every binding needs a useful fallback, and query values containing text should use `{{urlencode:key}}`.
 - `location`: binds `latitude`, `longitude`, `accuracy`, or `updatedAt` into state.
 - `folder_text`: reads one relative UTF-8 file from the selected tree and binds `text`, `size`, or `lineCount`.
 
@@ -201,4 +215,4 @@ Network grants expose the device IP address to only the listed origin. Location 
 
 Arbor injects an always-on compact widget manifest into the system context and selects the full schema from up to sixteen recent conversation messages. This preserves capability awareness across follow-ups and multilingual requests instead of relying only on the latest user sentence.
 
-Generated widgets should be glanceable, honest about unavailable live data, usable when resized, and limited to a small set of meaningful launcher actions. The chat install card provides an interactive local preview, grant progress, grouped origin approval, clearer launcher feedback, and per-instance permission explanations. The launcher widget uses a dedicated refresh affordance and avoids drawing duplicate action controls into the bitmap.
+Generated widgets should be glanceable, honest about unavailable live data, usable when resized, and limited to a small set of meaningful launcher actions. The compiler enforces readable launcher typography (normally 15sp+, supporting text 13sp+, primary metrics around 28–32sp), bounded rows/actions, and representative resize checks before display. The chat install card provides an interactive local preview, grant progress, grouped origin approval, clearer launcher feedback, and per-instance permission explanations. The launcher widget uses a dedicated refresh affordance and avoids drawing duplicate action controls into the bitmap.

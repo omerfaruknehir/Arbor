@@ -16,7 +16,7 @@ import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 
 @Serializable
-enum class GeneratedRepairStatus { PENDING, REPAIRING, ACCEPTED, EXHAUSTED, PROVIDER_FAILED }
+enum class GeneratedRepairStatus { PENDING, COMPILING, REPAIRING, ACCEPTED, EXHAUSTED, PROVIDER_FAILED }
 
 @Serializable
 data class GeneratedRepairAttempt(
@@ -52,9 +52,13 @@ data class GeneratedBlockRepairState(
     val updatedAt: Long = System.currentTimeMillis(),
 )
 
-/** Persisted, bounded repair loop for a single stable generated block. */
+/** Persisted, bounded compile-and-repair loop for a single stable generated block. */
 class GeneratedBlockRepairCoordinator(
     private val workspace: (String) -> File,
+    private val compileCandidate: suspend (GeneratedBlockType, String) -> GeneratedCompilationResult = { type, source ->
+        val validation = GeneratedContentCapabilityRegistry.validate(type, source)
+        GeneratedCompilationResult(source, validation.errors)
+    },
     private val requestRepair: suspend (GeneratedBlockRepairState) -> String,
 ) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; prettyPrint = true }
@@ -101,7 +105,7 @@ class GeneratedBlockRepairCoordinator(
                     attemptCount = 0,
                     maxAttempts = maximum,
                     cycle = saved.cycle + 1,
-                    errors = if (saved.errors.isEmpty()) initialErrors else saved.errors,
+                    errors = initialErrors,
                     status = GeneratedRepairStatus.PENDING,
                     acceptedSource = null,
                     providerError = null,
@@ -113,6 +117,38 @@ class GeneratedBlockRepairCoordinator(
         if (!newCycle && state.status in setOf(GeneratedRepairStatus.ACCEPTED, GeneratedRepairStatus.EXHAUSTED, GeneratedRepairStatus.PROVIDER_FAILED)) {
             progress(state)
             return state
+        }
+
+        // Every newly generated widget enters here even when its JSON schema is already valid.
+        // The compiler executes actions, preflights HTTP data, and renders launcher viewports
+        // before the block is allowed to appear as usable content.
+        if (state.attemptCount == 0) {
+            state = state.copy(status = GeneratedRepairStatus.COMPILING, updatedAt = System.currentTimeMillis()).also {
+                withContext(Dispatchers.IO) { save(it) }
+                progress(it)
+            }
+            val compilation = compileSafely(type, state.currentCandidate)
+            if (compilation.valid) {
+                val accepted = state.copy(
+                    currentCandidate = compilation.compiledSource,
+                    errors = emptyList(),
+                    status = GeneratedRepairStatus.ACCEPTED,
+                    acceptedSource = compilation.compiledSource,
+                    updatedAt = System.currentTimeMillis(),
+                )
+                withContext(Dispatchers.IO) { save(accepted) }
+                progress(accepted)
+                return accepted
+            }
+            state = state.copy(
+                currentCandidate = compilation.compiledSource.ifBlank { state.currentCandidate },
+                errors = compilation.errors,
+                status = GeneratedRepairStatus.PENDING,
+                updatedAt = System.currentTimeMillis(),
+            ).also {
+                withContext(Dispatchers.IO) { save(it) }
+                progress(it)
+            }
         }
 
         while (state.attemptCount < maximum) {
@@ -137,35 +173,49 @@ class GeneratedBlockRepairCoordinator(
 
             val extracted = GeneratedContentCapabilityRegistry.extractSingleReplacement(raw, state.canonicalFence)
             val candidate = extracted.getOrNull().orEmpty()
-            val validation = if (extracted.isSuccess) withContext(Dispatchers.Default) {
-                GeneratedContentCapabilityRegistry.validate(type, candidate)
-            } else GeneratedValidationResult(listOf(
-                GeneratedValidationError("repair_response", "/", extracted.exceptionOrNull()?.message ?: "Malformed repair response"),
-            ))
-            val rawFingerprint = fingerprint(candidate.ifEmpty { raw })
-            val normalizedFingerprint = fingerprint(candidate.ifEmpty { raw }.trim().replace(Regex("\\s+"), " "))
+            val compilation = if (extracted.isSuccess) {
+                state = state.copy(
+                    currentCandidate = candidate,
+                    status = GeneratedRepairStatus.COMPILING,
+                    updatedAt = System.currentTimeMillis(),
+                ).also {
+                    withContext(Dispatchers.IO) { save(it) }
+                    progress(it)
+                }
+                compileSafely(type, candidate)
+            } else GeneratedCompilationResult(
+                candidate,
+                listOf(GeneratedValidationError(
+                    "repair_response",
+                    "/",
+                    extracted.exceptionOrNull()?.message ?: "Malformed repair response",
+                )),
+            )
+            val compiled = compilation.compiledSource.ifBlank { candidate }
+            val rawFingerprint = fingerprint(compiled.ifEmpty { raw })
+            val normalizedFingerprint = fingerprint(compiled.ifEmpty { raw }.trim().replace(Regex("\\s+"), " "))
             val repeated = normalizedFingerprint in state.attempts.map { it.normalizedFingerprint }
             val attempt = GeneratedRepairAttempt(
                 number = state.attemptCount + 1,
                 candidateFingerprint = rawFingerprint,
                 normalizedFingerprint = normalizedFingerprint,
-                errors = validation.errors,
+                errors = compilation.errors,
                 malformedResponse = extracted.isFailure,
                 repeatedCandidate = repeated,
             )
             state = state.copy(
-                currentCandidate = candidate.ifBlank { state.currentCandidate },
+                currentCandidate = compiled.ifBlank { state.currentCandidate },
                 attemptCount = state.attemptCount + 1,
-                errors = validation.errors,
+                errors = compilation.errors,
                 attempts = state.attempts + attempt,
                 candidateFingerprints = state.candidateFingerprints + rawFingerprint,
-                status = if (validation.valid) GeneratedRepairStatus.ACCEPTED else if (state.attemptCount + 1 >= maximum) GeneratedRepairStatus.EXHAUSTED else GeneratedRepairStatus.PENDING,
-                acceptedSource = candidate.takeIf { validation.valid },
+                status = if (compilation.valid) GeneratedRepairStatus.ACCEPTED else if (state.attemptCount + 1 >= maximum) GeneratedRepairStatus.EXHAUSTED else GeneratedRepairStatus.PENDING,
+                acceptedSource = compiled.takeIf { compilation.valid },
                 updatedAt = System.currentTimeMillis(),
             )
             withContext(Dispatchers.IO) { save(state) }
             progress(state)
-            if (validation.valid || state.status == GeneratedRepairStatus.EXHAUSTED) return state
+            if (compilation.valid || state.status == GeneratedRepairStatus.EXHAUSTED) return state
         }
         return state.copy(status = GeneratedRepairStatus.EXHAUSTED, updatedAt = System.currentTimeMillis()).also {
             withContext(Dispatchers.IO) { save(it) }
@@ -174,15 +224,26 @@ class GeneratedBlockRepairCoordinator(
     }
 
     suspend fun acceptManualEdit(state: GeneratedBlockRepairState, source: String): GeneratedBlockRepairState {
-        val validation = withContext(Dispatchers.Default) { GeneratedContentCapabilityRegistry.validate(state.type, source) }
-        require(validation.valid) { validation.summary() }
+        val compilation = compileSafely(state.type, source)
+        require(compilation.valid) { compilation.errors.joinToString("\n") { "${it.path}: ${it.message} (${it.phase})" } }
         return state.copy(
-            currentCandidate = source,
-            acceptedSource = source,
+            currentCandidate = compilation.compiledSource,
+            acceptedSource = compilation.compiledSource,
             errors = emptyList(),
             status = GeneratedRepairStatus.ACCEPTED,
             updatedAt = System.currentTimeMillis(),
         ).also { withContext(Dispatchers.IO) { save(it) } }
+    }
+
+    private suspend fun compileSafely(type: GeneratedBlockType, source: String): GeneratedCompilationResult = try {
+        compileCandidate(type, source)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Throwable) {
+        GeneratedCompilationResult(
+            source,
+            listOf(GeneratedValidationError("compiler", "/", (error.message ?: error::class.java.simpleName).take(500))),
+        )
     }
 
     private fun stateFile(conversationId: String, blockId: String): File {

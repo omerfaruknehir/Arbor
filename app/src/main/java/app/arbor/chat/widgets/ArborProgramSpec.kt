@@ -13,6 +13,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.net.URI
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
@@ -535,8 +537,14 @@ object ArborProgramParser {
 object ArborProgramRuntime {
     fun render(template: String, state: Map<String, String>): String = TEMPLATE.replace(template) { match ->
         val token = match.groupValues[1].trim()
-        val direct = state[token]
-        if (direct != null) direct else SafeExpression.evaluate(token.removePrefix("="), numericState(state)).getOrNull()?.let(::formatCompact).orEmpty()
+        when {
+            token.startsWith("urlencode:", ignoreCase = true) -> {
+                val key = token.substringAfter(':').trim()
+                URLEncoder.encode(state[key].orEmpty(), StandardCharsets.UTF_8.name()).replace("+", "%20")
+            }
+            state[token] != null -> state.getValue(token)
+            else -> SafeExpression.evaluate(token.removePrefix("="), numericState(state)).getOrNull()?.let(::formatCompact).orEmpty()
+        }
     }
 
     fun visible(condition: String, state: Map<String, String>): Boolean {
