@@ -21,15 +21,21 @@ internal data class DsmlToolProtocolResult(
  */
 internal object DsmlToolProtocol {
     private val json = Json { ignoreUnknownKeys = false }
-    private val startMarker = Regex("(?is)<\\s*[|｜]\\s*DSML\\s*[|｜]\\s*tool_calls\\s*>")
-    private val endMarker = Regex("(?is)<\\s*/\\s*[|｜]\\s*DSML\\s*[|｜]\\s*tool_calls\\s*>")
+
+    // DeepSeek-compatible endpoints currently emit both <|DSML|...> and
+    // <||DSML||...>. Some gateways also insert whitespace around each pipe.
+    // Treat a run of ASCII or full-width pipes as the protocol fence while still
+    // requiring the DSML namespace and an exact supported element name.
+    private const val PIPE_RUN = "(?:[|｜]\\s*)+"
+    private val startMarker = Regex("(?is)<\\s*$PIPE_RUN\\s*DSML\\s*$PIPE_RUN\\s*tool_calls\\s*>")
+    private val endMarker = Regex("(?is)<\\s*/\\s*$PIPE_RUN\\s*DSML\\s*$PIPE_RUN\\s*tool_calls\\s*>")
     private val invokeMarker = Regex(
-        "(?is)<\\s*[|｜]\\s*DSML\\s*[|｜]\\s*invoke\\b([^>]*)>(.*?)" +
-            "<\\s*/\\s*[|｜]\\s*DSML\\s*[|｜]\\s*invoke\\s*>",
+        "(?is)<\\s*$PIPE_RUN\\s*DSML\\s*$PIPE_RUN\\s*invoke\\b([^>]*)>(.*?)" +
+            "<\\s*/\\s*$PIPE_RUN\\s*DSML\\s*$PIPE_RUN\\s*invoke\\s*>",
     )
     private val parameterMarker = Regex(
-        "(?is)<\\s*[|｜]\\s*DSML\\s*[|｜]\\s*parameter\\b([^>]*)>(.*?)" +
-            "<\\s*/\\s*[|｜]\\s*DSML\\s*[|｜]\\s*parameter\\s*>",
+        "(?is)<\\s*$PIPE_RUN\\s*DSML\\s*$PIPE_RUN\\s*parameter\\b([^>]*)>(.*?)" +
+            "<\\s*/\\s*$PIPE_RUN\\s*DSML\\s*$PIPE_RUN\\s*parameter\\s*>",
     )
 
     internal fun findStart(value: CharSequence): MatchResult? = startMarker.find(value)
@@ -165,6 +171,6 @@ internal class DsmlToolStreamAdapter(private val allowedTools: Set<String>) {
     }
 
     private companion object {
-        const val MARKER_LOOKBEHIND = 48
+        const val MARKER_LOOKBEHIND = 96
     }
 }
