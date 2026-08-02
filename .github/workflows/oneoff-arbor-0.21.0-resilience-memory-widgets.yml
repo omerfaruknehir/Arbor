@@ -36,8 +36,9 @@ jobs:
 
       - name: Apply Arbor 0.21.0 repair
         run: |
-          python3 -m py_compile ci/oneoff-arbor-0.21.0-resilience-memory-widgets.py
+          python3 -m py_compile ci/oneoff-arbor-0.21.0-resilience-memory-widgets.py ci/oneoff-arbor-0.21.0-fixup.py
           python3 ci/oneoff-arbor-0.21.0-resilience-memory-widgets.py
+          python3 ci/oneoff-arbor-0.21.0-fixup.py
 
       - name: Verify third-party licenses
         run: ./ci/verify-third-party-licenses.sh
@@ -58,6 +59,7 @@ jobs:
         shell: bash
         run: |
           rm -f ci/oneoff-arbor-0.21.0-resilience-memory-widgets.py
+          rm -f ci/oneoff-arbor-0.21.0-fixup.py
           rm -f .github/workflows/oneoff-arbor-0.21.0-resilience-memory-widgets.yml
           find ci -type d -name __pycache__ -prune -exec rm -rf {} +
           git config user.name "Arbor Release Bot"
