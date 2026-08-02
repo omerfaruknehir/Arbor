@@ -1,5 +1,7 @@
 # Arbor 0.22.0
 
+Version code: `164`
+
 This release ships the adaptive Home-widget renderer and substantially upgrades Arbor's cross-chat memory management.
 
 ## Memory management
