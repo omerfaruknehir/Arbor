@@ -2,6 +2,7 @@ package app.arbor.chat.generated
 
 import android.content.Context
 import app.arbor.chat.widgets.WidgetProgramCompiler
+import app.arbor.chat.widgets.WidgetSourceNormalizer
 
 /** Result of turning generated source into a tested runtime artifact. */
 data class GeneratedCompilationResult(
@@ -20,11 +21,16 @@ data class GeneratedCompilationResult(
  */
 class GeneratedBlockCompiler(private val context: Context) {
     suspend fun compile(type: GeneratedBlockType, source: String): GeneratedCompilationResult {
-        val validation = GeneratedContentCapabilityRegistry.validate(type, source)
-        if (!validation.valid) return GeneratedCompilationResult(source, validation.errors)
-        if (type != GeneratedBlockType.HOME_WIDGET) return GeneratedCompilationResult(source, emptyList())
+        val canonicalSource = if (type == GeneratedBlockType.HOME_WIDGET) {
+            WidgetSourceNormalizer.normalize(source)
+        } else {
+            source
+        }
+        val validation = GeneratedContentCapabilityRegistry.validate(type, canonicalSource)
+        if (!validation.valid) return GeneratedCompilationResult(canonicalSource, validation.errors)
+        if (type != GeneratedBlockType.HOME_WIDGET) return GeneratedCompilationResult(canonicalSource, emptyList())
 
-        val result = WidgetProgramCompiler.compile(context, source)
+        val result = WidgetProgramCompiler.compile(context, canonicalSource)
         return GeneratedCompilationResult(
             compiledSource = result.compiledSource,
             errors = result.issues.map { issue ->
