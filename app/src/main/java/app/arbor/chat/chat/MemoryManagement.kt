@@ -7,7 +7,7 @@ import java.text.Normalizer
 import java.util.Locale
 import kotlin.math.min
 
-internal data class MemoryWriteResult(
+data class MemoryWriteResult(
     val memory: MemoryEntity,
     val created: Boolean,
     val mergedMemoryId: String? = null,
