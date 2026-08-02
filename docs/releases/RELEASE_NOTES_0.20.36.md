@@ -9,3 +9,7 @@ This release repairs the widget compiler network layer falsely reporting `EOFExc
 - Probes one byte beyond the ceiling so chunked and unknown-length oversized responses are still rejected without unbounded buffering.
 - Treats genuine I/O failures, including premature EOF and TLS truncation, as transient during compiler preflight when complete offline fallbacks exist.
 - Adds regression tests for short JSON, exact-limit, and oversized response bodies.
+
+## Verification
+
+Release unit tests, release lint, the optimized release APK build, and the widget HTTP body regression suite passed before publication.
