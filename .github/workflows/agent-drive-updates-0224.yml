@@ -42,6 +42,7 @@ jobs:
         run: |
           python3 tools/apply-drive-updates-0224.py
           python3 tools/fix-drive-updates-0224.py
+          python3 tools/fix-drive-updates-0224-gradle.py
 
       - name: Verify third-party licenses
         run: ./ci/verify-third-party-licenses.sh
@@ -61,7 +62,7 @@ jobs:
       - name: Commit verified release changes
         shell: bash
         run: |
-          git rm .github/workflows/agent-drive-updates-0224.yml tools/apply-drive-updates-0224.py tools/fix-drive-updates-0224.py
+          git rm .github/workflows/agent-drive-updates-0224.yml tools/apply-drive-updates-0224.py tools/fix-drive-updates-0224.py tools/fix-drive-updates-0224-gradle.py
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app .github/workflows/release.yml docs
