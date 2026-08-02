@@ -100,4 +100,24 @@ class WidgetProgramCompilerTest {
         val result = GeneratedBlockCompiler(ApplicationProvider.getApplicationContext()).compile(GeneratedBlockType.HOME_WIDGET, source)
         assertTrue(result.errors.joinToString("\n") { "${it.phase} ${it.path}: ${it.message}" }, result.errors.isEmpty())
     }
+
+    @Test fun intuitiveStyleAliasesAreCanonicalizedBeforeValidation() = runBlocking {
+        val source = """{
+          "schema":"arbor-widget/1",
+          "id":"style_aliases",
+          "title":"Aliases",
+          "state":{},
+          "ui":{"type":"text","text":"Bold compact text","style":{"size":12,"fontWeight":"bold"}},
+          "actions":{},
+          "capabilities":[],
+          "dataSources":[]
+        }""".trimIndent()
+
+        val result = GeneratedBlockCompiler(ApplicationProvider.getApplicationContext()).compile(GeneratedBlockType.HOME_WIDGET, source)
+        assertTrue(result.errors.joinToString("\n") { "${it.phase} ${it.path}: ${it.message}" }, result.errors.isEmpty())
+        assertTrue("Canonical source should contain fontSize", "\"fontSize\":12" in result.compiledSource)
+        assertTrue("Canonical source should contain strong emphasis", "\"emphasis\":\"strong\"" in result.compiledSource)
+        assertTrue("Canonical source should remove size alias", "\"size\"" !in result.compiledSource)
+        assertTrue("Canonical source should remove fontWeight alias", "\"fontWeight\"" !in result.compiledSource)
+    }
 }
