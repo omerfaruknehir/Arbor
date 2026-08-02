@@ -73,8 +73,7 @@ replace_once(
     source,
     '''    private fun sourceSafe(value: String): String = value.take(120)
     private val INDEX = Regex("\\[(\\d+)]")
-}
-''',
+}''',
     '''    private fun sourceSafe(value: String): String = value.take(120)
     private val INDEX = Regex("\\[(\\d+)]")
 }
