@@ -37,6 +37,7 @@ jobs:
         run: |
           python3 tools/apply-keyboard-search-drive-0222.py
           python3 tools/fix-keyboard-search-drive-0222.py
+          python3 tools/fix-keyboard-search-drive-0222-compile.py
 
       - name: Run release unit tests
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
@@ -50,7 +51,7 @@ jobs:
       - name: Commit verified release changes
         shell: bash
         run: |
-          git rm .github/workflows/agent-keyboard-search-drive-0222.yml tools/apply-keyboard-search-drive-0222.py tools/fix-keyboard-search-drive-0222.py
+          git rm .github/workflows/agent-keyboard-search-drive-0222.yml tools/apply-keyboard-search-drive-0222.py tools/fix-keyboard-search-drive-0222.py tools/fix-keyboard-search-drive-0222-compile.py
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app docs/releases/RELEASE_NOTES_0.22.2.md
