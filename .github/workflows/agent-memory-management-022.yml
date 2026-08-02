@@ -1,0 +1,709 @@
+name: Apply Arbor 0.22.0 memory management
+
+on:
+  push:
+    branches: [ agent/memory-management-0.22.0 ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/memory-management-0.22.0
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Apply memory-management and version changes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"Expected block not found in {path}: {old[:160]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          def replace_regex(path: str, pattern: str, replacement: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+              if count != 1:
+                  raise SystemExit(f"Expected one regex match in {path}, found {count}: {pattern[:160]!r}")
+              p.write_text(updated)
+
+          daos = 'app/src/main/java/app/arbor/chat/data/Daos.kt'
+          replace_once(daos,
+          '''    @Query("DELETE FROM memories WHERE id = :id")
+              suspend fun delete(id: String)
+
+              @Query("UPDATE memories SET enabled = :enabled, updatedAt = :now WHERE id = :id")
+              suspend fun setEnabled(id: String, enabled: Boolean, now: Long)
+          ''',
+          '''    @Query("DELETE FROM memories WHERE id = :id")
+              suspend fun delete(id: String): Int
+
+              @Query("UPDATE memories SET enabled = :enabled, updatedAt = :now WHERE id = :id")
+              suspend fun setEnabled(id: String, enabled: Boolean, now: Long)
+
+              @Query("UPDATE memories SET enabled = :enabled, updatedAt = :now")
+              suspend fun setAllEnabled(enabled: Boolean, now: Long): Int
+
+              @Query("DELETE FROM memories WHERE enabled = 0")
+              suspend fun deleteDisabled(): Int
+          ''')
+
+          repository = 'app/src/main/java/app/arbor/chat/chat/ChatRepository.kt'
+          replace_once(repository,
+          '''    suspend fun enabledMemories(limit: Int = 100): List<MemoryEntity> = database.memoryDao().enabled(limit)
+
+              suspend fun saveMemory(content: String, category: String = "general", sourceConversationId: String? = null): MemoryEntity {
+                  val clean = content.trim().replace(Regex("\\s+"), " ").take(2_000)
+                  require(clean.isNotBlank()) { "Memory content cannot be empty" }
+                  val normalized = clean.lowercase().take(512)
+                  val cleanCategory = category.trim().replace(Regex("[^A-Za-z0-9 _.-]"), "").take(40).ifBlank { "general" }
+                  val now = System.currentTimeMillis()
+                  val existing = database.memoryDao().byNormalizedKey(normalized)
+                  val value = if (existing == null) {
+                      MemoryEntity(
+                          id = UUID.randomUUID().toString(),
+                          normalizedKey = normalized,
+                          content = clean,
+                          category = cleanCategory,
+                          sourceConversationId = sourceConversationId,
+                          createdAt = now,
+                          updatedAt = now,
+                      )
+                  } else existing.copy(
+                      content = clean,
+                      category = cleanCategory,
+                      sourceConversationId = sourceConversationId ?: existing.sourceConversationId,
+                      enabled = true,
+                      updatedAt = now,
+                  )
+                  database.memoryDao().upsert(value)
+                  return value
+              }
+
+              suspend fun deleteMemory(id: String) = database.memoryDao().delete(id)
+              suspend fun setMemoryEnabled(id: String, enabled: Boolean) =
+                  database.memoryDao().setEnabled(id, enabled, System.currentTimeMillis())
+          ''',
+          '''    suspend fun enabledMemories(limit: Int = 500): List<MemoryEntity> = database.memoryDao().enabled(limit)
+
+              suspend fun memoriesForContext(
+                  messagesNewestFirst: List<MessageEntity>,
+                  currentConversationId: String?,
+                  maxItems: Int = MemoryManagement.DEFAULT_CONTEXT_ITEMS,
+                  maxCharacters: Int = MemoryManagement.DEFAULT_CONTEXT_CHARACTERS,
+              ): List<MemoryEntity> = MemoryManagement.selectForContext(
+                  memories = database.memoryDao().enabled(500),
+                  messagesNewestFirst = messagesNewestFirst,
+                  currentConversationId = currentConversationId,
+                  maxItems = maxItems,
+                  maxCharacters = maxCharacters,
+              )
+
+              suspend fun searchMemories(
+                  query: String,
+                  includeDisabled: Boolean = false,
+                  limit: Int = 100,
+              ): List<MemoryEntity> = MemoryManagement.search(
+                  memories = database.memoryDao().all(),
+                  query = query,
+                  includeDisabled = includeDisabled,
+                  limit = limit,
+              )
+
+              suspend fun saveMemory(
+                  content: String,
+                  category: String = "general",
+                  sourceConversationId: String? = null,
+              ): MemoryEntity = saveMemoryManaged(content, category, sourceConversationId).memory
+
+              suspend fun saveMemoryManaged(
+                  content: String,
+                  category: String = "general",
+                  sourceConversationId: String? = null,
+              ): MemoryWriteResult = writeMemory(
+                  existingId = null,
+                  content = content,
+                  category = category,
+                  sourceConversationId = sourceConversationId,
+              )
+
+              suspend fun updateMemory(id: String, content: String, category: String): MemoryWriteResult = writeMemory(
+                  existingId = id,
+                  content = content,
+                  category = category,
+                  sourceConversationId = null,
+              )
+
+              private suspend fun writeMemory(
+                  existingId: String?,
+                  content: String,
+                  category: String,
+                  sourceConversationId: String?,
+              ): MemoryWriteResult = database.withTransaction {
+                  val clean = MemoryManagement.cleanContent(content)
+                  require(clean.isNotBlank()) { "Memory content cannot be empty" }
+                  val cleanCategory = MemoryManagement.cleanCategory(category)
+                  val canonicalKey = MemoryManagement.canonicalKey(clean, cleanCategory)
+                  val dao = database.memoryDao()
+                  val target = existingId?.let { id -> requireNotNull(dao.get(id)) { "Memory no longer exists" } }
+                  val all = dao.all()
+                  val keyOwner = dao.byNormalizedKey(canonicalKey)?.takeIf { it.id != target?.id }
+                  val duplicate = keyOwner ?: MemoryManagement.findDuplicate(
+                      memories = all,
+                      content = clean,
+                      category = cleanCategory,
+                      excludingId = target?.id,
+                  )
+                  val now = System.currentTimeMillis()
+
+                  if (target != null && duplicate != null && target.id != duplicate.id) {
+                      val merged = duplicate.copy(
+                          normalizedKey = canonicalKey,
+                          content = clean,
+                          category = cleanCategory,
+                          sourceConversationId = sourceConversationId
+                              ?: target.sourceConversationId
+                              ?: duplicate.sourceConversationId,
+                          enabled = target.enabled || duplicate.enabled,
+                          updatedAt = now,
+                      )
+                      dao.upsert(merged)
+                      dao.delete(target.id)
+                      return@withTransaction MemoryWriteResult(
+                          memory = merged,
+                          created = false,
+                          mergedMemoryId = target.id,
+                      )
+                  }
+
+                  val base = duplicate ?: target
+                  val value = if (base == null) {
+                      MemoryEntity(
+                          id = UUID.randomUUID().toString(),
+                          normalizedKey = canonicalKey,
+                          content = clean,
+                          category = cleanCategory,
+                          sourceConversationId = sourceConversationId,
+                          enabled = true,
+                          createdAt = now,
+                          updatedAt = now,
+                      )
+                  } else base.copy(
+                      normalizedKey = canonicalKey,
+                      content = clean,
+                      category = cleanCategory,
+                      sourceConversationId = sourceConversationId ?: base.sourceConversationId,
+                      enabled = if (existingId == null) true else base.enabled,
+                      updatedAt = now,
+                  )
+                  dao.upsert(value)
+                  MemoryWriteResult(memory = value, created = base == null)
+              }
+
+              suspend fun deleteMemory(id: String): Boolean = database.memoryDao().delete(id) > 0
+              suspend fun setMemoryEnabled(id: String, enabled: Boolean) =
+                  database.memoryDao().setEnabled(id, enabled, System.currentTimeMillis())
+              suspend fun setAllMemoriesEnabled(enabled: Boolean): Int =
+                  database.memoryDao().setAllEnabled(enabled, System.currentTimeMillis())
+              suspend fun deleteDisabledMemories(): Int = database.memoryDao().deleteDisabled()
+          ''')
+
+          worker = 'app/src/main/java/app/arbor/chat/generation/GenerationWorker.kt'
+          replace_once(worker,
+          '''        val activeMemories = if (automationSettings.memoryEnabled) repository.enabledMemories(100) else emptyList()
+          ''',
+          '''        val activeMemories = if (automationSettings.memoryEnabled) {
+                      repository.memoriesForContext(newest, conversation.id)
+                  } else emptyList()
+          ''')
+
+          native = 'app/src/main/java/app/arbor/chat/agent/ArborNativeTools.kt'
+          replace_once(native,
+          '''import kotlinx.serialization.json.JsonObject
+          ''',
+          '''import kotlinx.serialization.json.JsonObject
+          import kotlinx.serialization.json.booleanOrNull
+          ''')
+          replace_regex(native,
+          r'''        if \(memoryEnabled\) \{.*?        \}\n        if \(conversation\.webSearchEnabled\) \{''',
+          '''        if (memoryEnabled) {
+                      add(tool(
+                          name = "memory_save",
+                          description = "Save or update one durable user memory in Arbor's encrypted local database. Arbor deduplicates near-identical items. Use only for stable useful facts or preferences under the memory policy; never save secrets or sensitive facts without an explicit user request.",
+                          properties = """"text":{"type":"string","minLength":1,"maxLength":2000},"category":{"type":"string","maxLength":40}""",
+                          required = listOf("text"),
+                      ))
+                      add(tool(
+                          name = "memory_list",
+                          description = "List Arbor memories with optional search, disabled-item inclusion, and a bounded result limit. Use when the user asks what is remembered.",
+                          properties = """"query":{"type":"string","maxLength":500},"includeDisabled":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":200}""",
+                          required = emptyList(),
+                      ))
+                      add(tool(
+                          name = "memory_search",
+                          description = "Search Arbor memories by content or category before saving a possible duplicate or when resolving a remembered preference.",
+                          properties = """"query":{"type":"string","minLength":1,"maxLength":500},"includeDisabled":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":200}""",
+                          required = listOf("query"),
+                      ))
+                      add(tool(
+                          name = "memory_update",
+                          description = "Edit one existing Arbor memory by exact id. Use for corrections and preference changes instead of creating a conflicting second item.",
+                          properties = """"id":{"type":"string","minLength":1,"maxLength":100},"text":{"type":"string","minLength":1,"maxLength":2000},"category":{"type":"string","maxLength":40}""",
+                          required = listOf("id", "text"),
+                      ))
+                      add(tool(
+                          name = "memory_forget",
+                          description = "Delete one Arbor memory by exact id. Use when the user asks Arbor to forget it.",
+                          properties = """"id":{"type":"string","minLength":1,"maxLength":100}""",
+                          required = listOf("id"),
+                      ))
+                  }
+                  if (conversation.webSearchEnabled) {''')
+          replace_once(native,
+          '''        fun int(name: String): Int? = args[name]?.jsonPrimitive?.intOrNull
+          ''',
+          '''        fun int(name: String): Int? = args[name]?.jsonPrimitive?.intOrNull
+                  fun bool(name: String): Boolean? = args[name]?.jsonPrimitive?.booleanOrNull
+          ''')
+          replace_once(native,
+          '''            "memory_save" -> AgentToolRequest(type = "memory_save", memoryText = string("text"), memoryCategory = string("category"))
+                      "memory_list" -> AgentToolRequest(type = "memory_list")
+                      "memory_forget" -> AgentToolRequest(type = "memory_forget", memoryId = string("id"))
+          ''',
+          '''            "memory_save" -> AgentToolRequest(type = "memory_save", memoryText = string("text"), memoryCategory = string("category"))
+                      "memory_list" -> AgentToolRequest(
+                          type = "memory_list",
+                          memoryQuery = string("query"),
+                          memoryIncludeDisabled = bool("includeDisabled"),
+                          memoryLimit = int("limit"),
+                      )
+                      "memory_search" -> AgentToolRequest(
+                          type = "memory_search",
+                          memoryQuery = string("query"),
+                          memoryIncludeDisabled = bool("includeDisabled"),
+                          memoryLimit = int("limit"),
+                      )
+                      "memory_update" -> AgentToolRequest(
+                          type = "memory_update",
+                          memoryId = string("id"),
+                          memoryText = string("text"),
+                          memoryCategory = string("category"),
+                      )
+                      "memory_forget" -> AgentToolRequest(type = "memory_forget", memoryId = string("id"))
+          ''')
+
+          tools = 'app/src/main/java/app/arbor/chat/agent/AgentTools.kt'
+          replace_once(tools,
+          '''    val memoryId: String? = null,
+              val memoryText: String? = null,
+              val memoryCategory: String? = null,
+              val args: List<String> = emptyList(),
+          ''',
+          '''    val memoryId: String? = null,
+              val memoryText: String? = null,
+              val memoryCategory: String? = null,
+              val memoryQuery: String? = null,
+              val memoryIncludeDisabled: Boolean? = null,
+              val memoryLimit: Int? = null,
+              val args: List<String> = emptyList(),
+          ''')
+          replace_regex(tools,
+          r'''        "memory_save" -> \{.*?        "send_file", "file_send" -> \{''',
+          '''        "memory_save" -> {
+                      val settings = repository.automationSettingsNow()
+                      check(settings.memoryEnabled) { "Memory is disabled in Arbor settings." }
+                      val result = repository.saveMemoryManaged(
+                          content = requireNotNull(request.memoryText) { "Memory text is missing" },
+                          category = request.memoryCategory.orEmpty().ifBlank { "general" },
+                          sourceConversationId = conversation.id,
+                      )
+                      AgentToolOutcome(json.encodeToString(MemorySaveToolResult(
+                          saved = true,
+                          created = result.created,
+                          updated = !result.created,
+                          id = result.memory.id,
+                          category = result.memory.category,
+                          content = result.memory.content,
+                          mergedMemoryId = result.mergedMemoryId,
+                      )))
+                  }
+                  "memory_list", "memory_search" -> {
+                      val settings = repository.automationSettingsNow()
+                      check(settings.memoryEnabled) { "Memory is disabled in Arbor settings." }
+                      val query = request.memoryQuery.orEmpty().trim()
+                      if (request.type.equals("memory_search", ignoreCase = true)) {
+                          require(query.isNotBlank()) { "Memory search query is missing" }
+                      }
+                      val memories = repository.searchMemories(
+                          query = query,
+                          includeDisabled = request.memoryIncludeDisabled ?: false,
+                          limit = (request.memoryLimit ?: 100).coerceIn(1, 200),
+                      ).map { memory ->
+                          MemoryToolItem(
+                              id = memory.id,
+                              content = memory.content,
+                              category = memory.category,
+                              enabled = memory.enabled,
+                              updatedAt = memory.updatedAt,
+                          )
+                      }
+                      AgentToolOutcome(json.encodeToString(memories))
+                  }
+                  "memory_update" -> {
+                      val settings = repository.automationSettingsNow()
+                      check(settings.memoryEnabled) { "Memory is disabled in Arbor settings." }
+                      val result = repository.updateMemory(
+                          id = requireNotNull(request.memoryId) { "Memory id is missing" },
+                          content = requireNotNull(request.memoryText) { "Memory text is missing" },
+                          category = request.memoryCategory.orEmpty().ifBlank { "general" },
+                      )
+                      AgentToolOutcome(json.encodeToString(MemorySaveToolResult(
+                          saved = true,
+                          created = false,
+                          updated = true,
+                          id = result.memory.id,
+                          category = result.memory.category,
+                          content = result.memory.content,
+                          mergedMemoryId = result.mergedMemoryId,
+                      )))
+                  }
+                  "memory_forget" -> {
+                      val settings = repository.automationSettingsNow()
+                      check(settings.memoryEnabled) { "Memory is disabled in Arbor settings." }
+                      val id = requireNotNull(request.memoryId) { "Memory id is missing" }
+                      AgentToolOutcome(json.encodeToString(MemoryForgetToolResult(
+                          forgotten = repository.deleteMemory(id),
+                          id = id,
+                      )))
+                  }
+                  "send_file", "file_send" -> {''')
+          replace_once(tools,
+          '''private data class MemorySaveToolResult(
+              val saved: Boolean,
+              val id: String,
+              val category: String,
+              val content: String,
+          )
+          ''',
+          '''private data class MemorySaveToolResult(
+              val saved: Boolean,
+              val created: Boolean,
+              val updated: Boolean,
+              val id: String,
+              val category: String,
+              val content: String,
+              val mergedMemoryId: String? = null,
+          )
+
+          @Serializable
+          private data class MemoryToolItem(
+              val id: String,
+              val content: String,
+              val category: String,
+              val enabled: Boolean,
+              val updatedAt: Long,
+          )
+          ''')
+
+          viewmodel = 'app/src/main/java/app/arbor/chat/ui/ChatViewModel.kt'
+          replace_once(viewmodel,
+          '''    fun addMemory(content: String, category: String = "general") = launchAction {
+                  container.repository.saveMemory(content, category, selectedConversationId.value)
+              }
+
+              fun deleteMemory(id: String) = launchAction { container.repository.deleteMemory(id) }
+              fun setMemoryEnabled(id: String, enabled: Boolean) = launchAction {
+                  container.repository.setMemoryEnabled(id, enabled)
+              }
+          ''',
+          '''    fun addMemory(content: String, category: String = "general") = launchAction {
+                  container.repository.saveMemory(content, category, selectedConversationId.value)
+              }
+
+              fun updateMemory(id: String, content: String, category: String) = launchAction {
+                  container.repository.updateMemory(id, content, category)
+              }
+
+              fun deleteMemory(id: String) = launchAction { container.repository.deleteMemory(id) }
+              fun setMemoryEnabled(id: String, enabled: Boolean) = launchAction {
+                  container.repository.setMemoryEnabled(id, enabled)
+              }
+              fun setAllMemoriesEnabled(enabled: Boolean) = launchAction {
+                  container.repository.setAllMemoriesEnabled(enabled)
+              }
+              fun deleteDisabledMemories() = launchAction {
+                  container.repository.deleteDisabledMemories()
+              }
+          ''')
+
+          settings = 'app/src/main/java/app/arbor/chat/ui/SettingsScreen.kt'
+          memory_page = r'''@Composable
+          private fun MemorySettingsPage(
+              automation: AutomationSettingsEntity,
+              memories: List<MemoryEntity>,
+              viewModel: ChatViewModel,
+          ) = SettingsPage {
+              var draft by rememberSaveable { mutableStateOf("") }
+              var category by rememberSaveable { mutableStateOf("general") }
+              var memorySearch by rememberSaveable { mutableStateOf("") }
+              var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+              var editText by rememberSaveable { mutableStateOf("") }
+              var editCategory by rememberSaveable { mutableStateOf("general") }
+              val visibleMemories = remember(memories, memorySearch) {
+                  val query = memorySearch.trim()
+                  if (query.isBlank()) memories
+                  else memories.filter { memory ->
+                      memory.content.contains(query, ignoreCase = true) ||
+                          memory.category.contains(query, ignoreCase = true)
+                  }
+              }
+
+              SectionTitle(
+                  "Memory",
+                  "Arbor stores memories in its encrypted local database and selects only relevant items under a strict context budget. Disabled memories remain stored but are not supplied to models.",
+              )
+              ListItem(
+                  headlineContent = { Text("Use memory") },
+                  supportingContent = { Text("Expose selected enabled memories to chats and allow memory tools") },
+                  trailingContent = {
+                      Switch(
+                          checked = automation.memoryEnabled,
+                          onCheckedChange = { enabled -> viewModel.updateAutomationSettings { it.copy(memoryEnabled = enabled) } },
+                      )
+                  },
+              )
+              ListItem(
+                  headlineContent = { Text("Automatic memory") },
+                  supportingContent = { Text("Allow models to save stable, non-sensitive details; duplicate items are merged") },
+                  trailingContent = {
+                      Switch(
+                          checked = automation.memoryAutoSave,
+                          enabled = automation.memoryEnabled,
+                          onCheckedChange = { enabled -> viewModel.updateAutomationSettings { it.copy(memoryAutoSave = enabled) } },
+                      )
+                  },
+              )
+              HorizontalDivider()
+              SectionTitle("Add memory", "Manual memories are available immediately and use the same deduplication rules.")
+              OutlinedTextField(
+                  value = draft,
+                  onValueChange = { draft = it },
+                  label = { Text("Memory") },
+                  minLines = 2,
+                  maxLines = 5,
+                  modifier = Modifier.fillMaxWidth(),
+              )
+              OutlinedTextField(
+                  value = category,
+                  onValueChange = { category = it },
+                  label = { Text("Category") },
+                  singleLine = true,
+                  modifier = Modifier.fillMaxWidth(),
+              )
+              Button(
+                  enabled = draft.isNotBlank(),
+                  onClick = {
+                      viewModel.addMemory(draft, category)
+                      draft = ""
+                  },
+              ) { Text("Save memory") }
+              HorizontalDivider()
+              SectionTitle(
+                  "Saved memories",
+                  if (memories.isEmpty()) "Nothing is stored yet."
+                  else "${memories.size} saved item${if (memories.size == 1) "" else "s"}; ${memories.count { it.enabled }} enabled.",
+              )
+              OutlinedTextField(
+                  value = memorySearch,
+                  onValueChange = { memorySearch = it },
+                  label = { Text("Search memories") },
+                  leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                  singleLine = true,
+                  modifier = Modifier.fillMaxWidth(),
+              )
+              Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  horizontalArrangement = Arrangement.SpaceBetween,
+                  verticalAlignment = Alignment.CenterVertically,
+              ) {
+                  TextButton(
+                      enabled = memories.any { !it.enabled },
+                      onClick = { viewModel.setAllMemoriesEnabled(true) },
+                  ) { Text("Enable all") }
+                  TextButton(
+                      enabled = memories.any { it.enabled },
+                      onClick = { viewModel.setAllMemoriesEnabled(false) },
+                  ) { Text("Disable all") }
+              }
+              TextButton(
+                  enabled = memories.any { !it.enabled },
+                  onClick = { viewModel.deleteDisabledMemories() },
+              ) { Text("Delete disabled memories") }
+
+              if (memorySearch.isNotBlank() && visibleMemories.isEmpty()) {
+                  Text("No memories match this search.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+              }
+              visibleMemories.forEach { memory ->
+                  Surface(
+                      color = MaterialTheme.colorScheme.surfaceContainer,
+                      shape = MaterialTheme.shapes.large,
+                      modifier = Modifier.fillMaxWidth(),
+                  ) {
+                      if (editingId == memory.id) {
+                          Column(
+                              modifier = Modifier.padding(16.dp),
+                              verticalArrangement = Arrangement.spacedBy(10.dp),
+                          ) {
+                              OutlinedTextField(
+                                  value = editText,
+                                  onValueChange = { editText = it },
+                                  label = { Text("Memory") },
+                                  minLines = 2,
+                                  maxLines = 5,
+                                  modifier = Modifier.fillMaxWidth(),
+                              )
+                              OutlinedTextField(
+                                  value = editCategory,
+                                  onValueChange = { editCategory = it },
+                                  label = { Text("Category") },
+                                  singleLine = true,
+                                  modifier = Modifier.fillMaxWidth(),
+                              )
+                              Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                  Button(
+                                      enabled = editText.isNotBlank(),
+                                      onClick = {
+                                          viewModel.updateMemory(memory.id, editText, editCategory)
+                                          editingId = null
+                                      },
+                                  ) { Text("Save") }
+                                  TextButton(onClick = { editingId = null }) { Text("Cancel") }
+                              }
+                          }
+                      } else {
+                          ListItem(
+                              headlineContent = { Text(memory.content) },
+                              supportingContent = {
+                                  Text("${memory.category} · ${if (memory.enabled) "Enabled" else "Disabled"}")
+                              },
+                              trailingContent = {
+                                  Row(verticalAlignment = Alignment.CenterVertically) {
+                                      IconButton(onClick = {
+                                          editingId = memory.id
+                                          editText = memory.content
+                                          editCategory = memory.category
+                                      }) {
+                                          Icon(Icons.Outlined.Edit, "Edit memory")
+                                      }
+                                      Switch(
+                                          checked = memory.enabled,
+                                          onCheckedChange = { viewModel.setMemoryEnabled(memory.id, it) },
+                                      )
+                                      IconButton(onClick = { viewModel.deleteMemory(memory.id) }) {
+                                          Icon(Icons.Outlined.DeleteOutline, "Delete memory")
+                                      }
+                                  }
+                              },
+                              colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent),
+                          )
+                      }
+                  }
+              }
+              Spacer(Modifier.padding(bottom = 24.dp))
+          }
+
+          '''.replace('\n          ', '\n').lstrip()
+          replace_regex(settings,
+          r'''@Composable\nprivate fun MemorySettingsPage\(.*?\n\}\n\n(?=@Composable)''',
+          memory_page)
+
+          context = 'app/src/main/java/app/arbor/chat/chat/ContextAssembler.kt'
+          replace_once(context,
+          '''            memories.take(100).forEach { memory ->
+          ''',
+          '''            memories.forEach { memory ->
+          ''')
+          replace_regex(context,
+          r'''        val memoryPolicy = if \(memoryAutoSave\) \{.*?        \}\n\n        val result = ArrayList<InputMessage>\(\)''',
+          '''        val memoryPolicy = if (memoryAutoSave) {
+                      "Memory auto-save is enabled. Save only clearly durable, useful, non-sensitive user facts or preferences. Search existing memories before saving when a similar item may exist, use memory_update for corrections, and avoid conflicting duplicates. Do not save transient task details, guesses, passwords, API keys, financial credentials, precise location, health/biometric facts, or other sensitive data unless the user explicitly asks. Use memory_forget when asked, and do not claim a memory changed until the tool confirms it."
+                  } else {
+                      "Memory auto-save is disabled. Call memory_save only when the user explicitly asks Arbor to remember something. Use memory_search or memory_list to inspect existing items, memory_update for corrections, and memory_forget when asked. Do not claim a memory changed until the tool confirms it."
+                  }
+
+                  val result = ArrayList<InputMessage>()''')
+
+          native_test = 'app/src/test/java/app/arbor/chat/agent/ArborNativeToolsTest.kt'
+          replace_once(native_test,
+          '''    @Test(expected = IllegalStateException::class)
+              fun rejectsUnknownToolNames() {
+          ''',
+          '''    @Test fun exposesAndParsesMemoryManagementTools() {
+                  val definitions = ArborNativeTools.definitions(
+                      conversation(web = false, python = false, linux = false),
+                      memoryEnabled = true,
+                  )
+                  assertTrue(definitions.any { it.name == "memory_search" })
+                  assertTrue(definitions.any { it.name == "memory_update" })
+
+                  val request = ArborNativeTools.request(NativeToolCall(
+                      "memory-call",
+                      "memory_search",
+                      """{"query":"linux laptop","includeDisabled":true,"limit":12}""",
+                  ))
+                  assertEquals("memory_search", request.type)
+                  assertEquals("linux laptop", request.memoryQuery)
+                  assertEquals(true, request.memoryIncludeDisabled)
+                  assertEquals(12, request.memoryLimit)
+              }
+
+              @Test(expected = IllegalStateException::class)
+              fun rejectsUnknownToolNames() {
+          ''')
+
+          gradle = 'app/build.gradle.kts'
+          replace_once(gradle,
+          '''        versionCode = 163
+                  versionName = "0.21.0"
+          ''',
+          '''        versionCode = 164
+                  versionName = "0.22.0"
+          ''')
+          PY
+      - name: Verify release unit tests
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
+      - name: Verify release lint
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
+      - name: Assemble optimized release APK
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease
+      - name: Commit verified product changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/agent-memory-management-022.yml
+          git add app docs
+          git commit -m "Improve memory management and prepare Arbor 0.22.0"
+          git push origin HEAD:agent/memory-management-0.22.0
