@@ -144,21 +144,20 @@ class ArborHomeWidgetProvider : AppWidgetProvider() {
             val widthDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, if (preview) 320 else 300).coerceIn(180, 600)
             val heightDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, if (preview) 240 else 180).coerceIn(100, 500)
             val compact = heightDp < 220
-            val veryCompact = heightDp < 150
-            val showSubtitle = definition.description.isNotBlank() && !compact
-            val showStatus = !veryCompact
+            val showSubtitle = definition.description.isNotBlank() && heightDp >= 240
+            val showStatus = definition.dataSources.isNotEmpty() && heightDp >= 190
             val actionLimit = when {
                 widthDp < 260 -> 2
                 widthDp < 360 -> 3
                 else -> 4
             }
             val actions = visibleActions(definition, state).take(actionLimit)
-            val showActions = actions.isNotEmpty() && heightDp >= 130
-            val chromeDp = 24 + 30 +
-                (if (showSubtitle) 20 else 0) +
-                (if (showStatus) 18 else 0) +
-                (if (showActions) 46 else 0) + 12
-            val canvasHeightDp = (heightDp - chromeDp).coerceAtLeast(64)
+            val showActions = actions.isNotEmpty() && heightDp >= 150
+            val chromeDp = 20 + 34 + 4 +
+                (if (showSubtitle) 34 else 0) +
+                (if (showStatus) 20 else 0) +
+                (if (showActions) 38 else 0)
+            val canvasHeightDp = (heightDp - chromeDp).coerceAtLeast(56)
             val metrics = context.resources.displayMetrics
             val bitmap = WidgetCanvasRenderer.render(
                 definition = definition,
@@ -213,7 +212,7 @@ class ArborHomeWidgetProvider : AppWidgetProvider() {
                     setViewVisibility(viewId, if (action == null) View.GONE else View.VISIBLE)
                     if (action != null) {
                         setTextViewText(viewId, action.label)
-                        setTextViewTextSize(viewId, TypedValue.COMPLEX_UNIT_SP, 13f)
+                        setTextViewTextSize(viewId, TypedValue.COMPLEX_UNIT_SP, 12f)
                         if (!preview && id != AppWidgetManager.INVALID_APPWIDGET_ID) {
                             val intent = Intent(context, ArborHomeWidgetProvider::class.java)
                                 .setAction(ACTION_PROGRAM_ACTION)
