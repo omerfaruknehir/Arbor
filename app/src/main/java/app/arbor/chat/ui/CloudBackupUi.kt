@@ -52,6 +52,19 @@ import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 
+internal enum class GoogleAuthorizationResultRoute {
+    PARSE_RESULT,
+    CANCELLED,
+    MISSING_RESULT,
+}
+
+internal fun googleAuthorizationResultRoute(resultCode: Int, hasData: Boolean): GoogleAuthorizationResultRoute =
+    when {
+        hasData -> GoogleAuthorizationResultRoute.PARSE_RESULT
+        resultCode == Activity.RESULT_CANCELED -> GoogleAuthorizationResultRoute.CANCELLED
+        else -> GoogleAuthorizationResultRoute.MISSING_RESULT
+    }
+
 private sealed interface GoogleBackupAction {
     data object Connect : GoogleBackupAction
     data object Save : GoogleBackupAction
@@ -144,13 +157,22 @@ internal fun CloudBackupTargets(
         val action = pendingGoogleAction
         pendingGoogleAction = null
         if (action == null) return@rememberLauncherForActivityResult
-        if (result.resultCode != Activity.RESULT_OK) {
-            driveError = "Google Drive connection was canceled."
-            return@rememberLauncherForActivityResult
+        val data = result.data
+        when (googleAuthorizationResultRoute(result.resultCode, data != null)) {
+            GoogleAuthorizationResultRoute.PARSE_RESULT -> {
+                runCatching { authorizationClient.getAuthorizationResultFromIntent(requireNotNull(data)) }
+                    .onSuccess { acceptAuthorization(action, it) }
+                    .onFailure { error ->
+                        driveError = error.message ?: "Google Drive authorization failed"
+                    }
+            }
+            GoogleAuthorizationResultRoute.CANCELLED -> {
+                driveError = "Google Drive connection was canceled."
+            }
+            GoogleAuthorizationResultRoute.MISSING_RESULT -> {
+                driveError = "Google Drive authorization returned no result (code ${result.resultCode})."
+            }
         }
-        runCatching { authorizationClient.getAuthorizationResultFromIntent(result.data ?: Intent()) }
-            .onSuccess { acceptAuthorization(action, it) }
-            .onFailure { driveError = it.message ?: "Google Drive authorization failed" }
     }
 
     fun authorizeGoogle(action: GoogleBackupAction, selectAccount: Boolean = false) {

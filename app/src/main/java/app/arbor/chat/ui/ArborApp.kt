@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
@@ -29,6 +30,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import app.arbor.chat.settings.DeveloperSettings
 import app.arbor.chat.settings.PerformanceOverlayPosition
@@ -72,6 +74,8 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
     val showPerformanceOverlay = developerSettings.enabled &&
         (developerSettings.performanceOverlayEnabled || developerSettings.diagnosticProfilerEnabled)
     val drawerState = rememberInteractiveDrawerState()
+    val density = LocalDensity.current
+    val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val snackbar = remember { SnackbarHostState() }
     val openDrawer = remember(drawerState) { { drawerState.open(); Unit } }
 
@@ -174,7 +178,9 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
 
     val drawerVisible = drawerState.isVisible
     val drawerClaimsBack = drawerState.claimsBack
-    PredictiveBackHandler(enabled = drawerClaimsBack) { events ->
+    PredictiveBackHandler(
+        enabled = appBackHandlerEnabled(drawerClaimsBack, imeVisible),
+    ) { events ->
         drawerState.beginPredictiveBack()
         try {
             events.collect { event -> drawerState.updatePredictiveBack(event.progress) }
@@ -217,7 +223,7 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
                 // Once a closing drawer is no longer visible, page Back must immediately
                 // take ownership. Waiting for its spring job to finish creates a gap where
                 // Android can fall through to Activity exit.
-                backEnabled = pageBackEnabled(drawerClaimsBack),
+                backEnabled = pageBackEnabled(drawerClaimsBack, imeVisible),
                 keepAlive = { it == Screen.CHAT },
                 modifier = Modifier.fillMaxSize(),
                 label = "ArborPageNavigation",
@@ -379,4 +385,5 @@ internal fun screenDepth(screen: Screen): Int = when (screen) {
 
 internal fun drawerSwipeEnabled(screen: Screen): Boolean = screen == Screen.CHAT || screen == Screen.SETTINGS
 
-internal fun pageBackEnabled(drawerVisible: Boolean): Boolean = !drawerVisible
+internal fun pageBackEnabled(drawerVisible: Boolean, imeVisible: Boolean = false): Boolean =
+    !drawerVisible && !imeVisible
