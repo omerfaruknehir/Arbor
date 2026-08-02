@@ -213,7 +213,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         val blurState = rememberArborBackdropBlurState()
 
         Scaffold(
-            modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+            modifier = Modifier.fillMaxSize(),
             contentWindowInsets = WindowInsets(0),
             topBar = {
                 CollapsingTranslucentTopBar(
@@ -429,7 +429,11 @@ internal fun SettingsPage(content: @Composable ColumnScope.() -> Unit) {
             snapshotFlow { scrollState.value to state.heightOffsetLimit }
                 .distinctUntilChanged()
                 .collect { (offset, limit) ->
-                    state.heightOffset = settingsTopBarHeightOffset(offset, limit)
+                    // A zero limit is a transient pre-measure/resize state. Writing
+                    // heightOffset then would expand an already-collapsed title.
+                    if (limit < 0f) {
+                        state.heightOffset = settingsTopBarHeightOffset(offset, limit)
+                    }
                     state.contentOffset = -offset.coerceAtLeast(0).toFloat()
                 }
         }
