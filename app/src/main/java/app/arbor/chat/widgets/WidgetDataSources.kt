@@ -19,11 +19,11 @@ import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
-import java.net.ConnectException
+import okio.Buffer
+import okio.BufferedSource
+import java.io.IOException
 import java.net.InetAddress
-import java.net.SocketTimeoutException
 import java.net.URI
-import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 internal data class WidgetDataRefreshResult(
@@ -118,7 +118,10 @@ internal object WidgetDataRuntime {
                     } catch (error: Throwable) {
                         val transient = when (error) {
                             is WidgetHttpFailure -> error.isTransient
-                            is UnknownHostException, is ConnectException, is SocketTimeoutException -> true
+                            // DNS failures, TLS truncation, premature EOF, connection resets,
+                            // and timeouts are transport failures. A widget with complete
+                            // fallbacks must remain compilable when any of these occur.
+                            is IOException -> true
                             else -> false
                         }
                         if (transient && fallbacksReady) {
@@ -224,8 +227,15 @@ internal object WidgetDataRuntime {
             val body = requireNotNull(response.body) { "${source.id} returned no content" }
             val declared = body.contentLength()
             require(declared < 0 || declared <= MAX_BODY_BYTES) { "${source.id} is larger than 1 MB" }
-            val content = body.source().readUtf8(MAX_BODY_BYTES + 1)
-            require(content.toByteArray().size <= MAX_BODY_BYTES) { "${source.id} is larger than 1 MB" }
+            // BufferedSource.readUtf8(byteCount) requires *exactly* byteCount bytes and
+            // throws EOFException for every normal response smaller than the 1 MB ceiling.
+            // Read incrementally instead: stop cleanly at EOF, but consume one extra byte
+            // when present so oversized/chunked responses are still rejected safely.
+            val content = readWidgetHttpBody(
+                source = body.source(),
+                maxBytes = MAX_BODY_BYTES,
+                tooLargeMessage = "${source.id} is larger than 1 MB",
+            )
             val root = runCatching { json.parseToJsonElement(content) }.getOrElse { error ->
                 throw WidgetHttpFailure(message = "${source.id} did not return valid JSON: ${error.message ?: "parse failed"}")
             }
@@ -371,4 +381,27 @@ internal object WidgetDataRuntime {
 
     private fun sourceSafe(value: String): String = value.take(120)
     private val INDEX = Regex("\\[(\\d+)]")
+}
+
+/**
+ * Reads at most [maxBytes] without using BufferedSource.readUtf8(byteCount), whose
+ * exact-length contract throws EOFException for ordinary shorter HTTP bodies.
+ *
+ * One additional byte is consumed when available so unknown-length and chunked
+ * responses cannot bypass the size ceiling.
+ */
+internal fun readWidgetHttpBody(
+    source: BufferedSource,
+    maxBytes: Long,
+    tooLargeMessage: String = "Widget HTTP response is larger than $maxBytes bytes",
+): String {
+    require(maxBytes >= 0L && maxBytes < Long.MAX_VALUE) { "Invalid widget HTTP body limit" }
+    val buffer = Buffer()
+    val probeLimit = maxBytes + 1L
+    while (buffer.size < probeLimit) {
+        val read = source.read(buffer, minOf(8_192L, probeLimit - buffer.size))
+        if (read == -1L) break
+    }
+    require(buffer.size <= maxBytes) { tooLargeMessage }
+    return buffer.readUtf8()
 }
