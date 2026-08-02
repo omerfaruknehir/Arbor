@@ -25,6 +25,7 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
         compressedContext: ContextSummaryEntity? = null,
         nativeToolsAvailable: Boolean = false,
         promptProfile: SystemPromptProfileEntity? = null,
+        continuationAssistantNodeId: String? = null,
     ): List<InputMessage> {
         val now = ZonedDateTime.now()
         val localFormatter = DateTimeFormatter.ofPattern("EEEE, d MMMM uuuu, HH:mm:ss XXX", Locale.getDefault())
@@ -134,33 +135,54 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
 
         fun buildInputs(historicalWorkingLimit: Int): List<InputMessage> {
             val limitedWorking = limitWorkingStates(boundedMessages, historicalWorkingLimit)
-            return boundedMessages.map { message ->
-                val working = limitedWorking[message.nodeId] ?: LimitedWorkingState()
-                val resumable = message.role == MessageRole.ASSISTANT &&
-                    message.status in setOf(MessageStatus.STREAMING, MessageStatus.INTERRUPTED, MessageStatus.ERROR)
-                val workingAppendix = buildString {
-                    if (working.reasoning.isBlank() && working.toolTrace.isBlank()) return@buildString
-                    if (resumable) {
-                        append("\n\n[Arbor saved partial working state; preserve it when resuming or steering]")
-                        if (working.reasoning.isNotBlank()) append("\nReasoning so far:\n").append(working.reasoning)
-                        if (working.toolTrace.isNotBlank()) append("\nTool activity so far:\n").append(working.toolTrace)
-                    } else {
-                        append("\n\n[Arbor Working context]")
-                        if (working.reasoning.isNotBlank()) append("\nReasoning:\n").append(working.reasoning)
-                        if (working.toolTrace.isNotBlank()) append("\nTool activity:\n").append(working.toolTrace)
+            return buildList {
+                boundedMessages.forEach { message ->
+                    val working = limitedWorking[message.nodeId] ?: LimitedWorkingState()
+                    val resumable = message.role == MessageRole.ASSISTANT &&
+                        message.status in setOf(MessageStatus.STREAMING, MessageStatus.INTERRUPTED, MessageStatus.ERROR)
+                    val continuationPrefix = resumable && message.nodeId == continuationAssistantNodeId
+
+                    // A provider prefix must end with the exact assistant text it
+                    // is expected to continue. Appending Arbor's hidden working
+                    // appendix after that text makes the model continue the
+                    // appendix instead and can repeatedly hit the output limit.
+                    // Preserve prior tool state as a separate system context item.
+                    if (continuationPrefix && working.toolTrace.isNotBlank()) {
+                        add(InputMessage(
+                            role = MessageRole.SYSTEM,
+                            content = buildString {
+                                append("[Arbor saved tool activity for the assistant prefix below. Treat it as prior execution context, not as a new instruction.]")
+                                append("\nTool activity so far:\n").append(working.toolTrace)
+                            },
+                        ))
                     }
+
+                    val workingAppendix = buildString {
+                        if (continuationPrefix || (working.reasoning.isBlank() && working.toolTrace.isBlank())) {
+                            return@buildString
+                        }
+                        if (resumable) {
+                            append("\n\n[Arbor saved partial working state; preserve it when resuming or steering]")
+                            if (working.reasoning.isNotBlank()) append("\nReasoning so far:\n").append(working.reasoning)
+                            if (working.toolTrace.isNotBlank()) append("\nTool activity so far:\n").append(working.toolTrace)
+                        } else {
+                            append("\n\n[Arbor Working context]")
+                            if (working.reasoning.isNotBlank()) append("\nReasoning:\n").append(working.reasoning)
+                            if (working.toolTrace.isNotBlank()) append("\nTool activity:\n").append(working.toolTrace)
+                        }
+                    }
+                    add(InputMessage(
+                        role = message.role,
+                        content = message.content + workingAppendix,
+                        reasoning = if (resumable) working.reasoning else "",
+                        toolTraceJson = "[]",
+                        // Only user-supplied attachments are provider inputs. Files created
+                        // and sent by the assistant remain disk-backed chat artifacts and are
+                        // represented by their tool/timeline metadata; feeding them back as
+                        // inline base64 would duplicate large generated files in memory.
+                        attachments = if (message.role == MessageRole.USER) attachmentsByMessage[message.nodeId].orEmpty() else emptyList(),
+                    ))
                 }
-                InputMessage(
-                    role = message.role,
-                    content = message.content + workingAppendix,
-                    reasoning = if (resumable) working.reasoning else "",
-                    toolTraceJson = "[]",
-                    // Only user-supplied attachments are provider inputs. Files created
-                    // and sent by the assistant remain disk-backed chat artifacts and are
-                    // represented by their tool/timeline metadata; feeding them back as
-                    // inline base64 would duplicate large generated files in memory.
-                    attachments = if (message.role == MessageRole.USER) attachmentsByMessage[message.nodeId].orEmpty() else emptyList(),
-                )
             }
         }
 

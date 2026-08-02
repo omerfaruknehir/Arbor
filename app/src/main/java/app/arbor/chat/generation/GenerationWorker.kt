@@ -64,7 +64,37 @@ class GenerationWorker(
         if (message.status != MessageStatus.STREAMING) return Result.success()
         setForeground(notification("Connecting…", indeterminate = true))
         return try {
-            generate()
+            var automaticContinuations = 0
+            var previousOffset = message.streamOffset
+            while (true) {
+                generate()
+                val current = repository.message(assistantId) ?: break
+                val atOutputLimit = current.status == MessageStatus.INTERRUPTED &&
+                    current.error == OUTPUT_LIMIT_NOTICE
+                if (!atOutputLimit || automaticContinuations >= MAX_AUTOMATIC_OUTPUT_CONTINUATIONS) break
+                if (current.streamOffset <= previousOffset) {
+                    repository.finish(
+                        assistantId,
+                        MessageStatus.ERROR,
+                        OUTPUT_LIMIT_STALLED_NOTICE,
+                        current.inputTokens,
+                        current.outputTokens,
+                        current.cachedInputTokens,
+                        current.costMicros,
+                        current.costKnown,
+                    )
+                    break
+                }
+                previousOffset = current.streamOffset
+                automaticContinuations++
+                repository.markStreaming(assistantId)
+                setForeground(
+                    notification(
+                        "Continuing response • ${automaticContinuations + 1}/${MAX_AUTOMATIC_OUTPUT_CONTINUATIONS + 1}",
+                        indeterminate = true,
+                    ),
+                )
+            }
             advanceQueue()
             Result.success()
         } catch (cancelled: CancellationException) {
@@ -120,7 +150,27 @@ class GenerationWorker(
         val provider = snapshot.provider()
         val model = snapshot.model()
         val directImageModel = provider.kind == ProviderKind.OPENAI_COMPATIBLE && model.supportsImageGeneration
-        val conversation = snapshot.applyTo(currentConversation).let { captured ->
+        val capturedConversation = snapshot.applyTo(currentConversation)
+        val requestConversation = if (continuation || initial.streamOffset > 0) {
+            // Provider/model identity and prompt capabilities stay pinned to the
+            // original request, but a deliberate Resume must honor limits the
+            // user changed after the first output segment was created.
+            val resumedOutput = currentConversation.maxOutputTokens
+                .coerceAtMost(model.maxOutputTokens)
+                .coerceAtLeast(1)
+            val safeInput = (model.contextWindow.toLong() - resumedOutput.toLong() - 12_000L)
+                .coerceAtLeast(1_024L)
+                .coerceAtMost(Int.MAX_VALUE.toLong())
+                .toInt()
+            capturedConversation.copy(
+                contextPairs = currentConversation.contextPairs.coerceAtLeast(1),
+                contextTokenLimit = currentConversation.contextTokenLimit.coerceIn(1_024, safeInput),
+                workingTokenLimit = currentConversation.workingTokenLimit.coerceIn(0, safeInput),
+                maxOutputTokens = resumedOutput,
+                hybridTokenCountingEnabled = currentConversation.hybridTokenCountingEnabled,
+            )
+        } else capturedConversation
+        val conversation = requestConversation.let { captured ->
             when {
                 directImageModel -> captured.copy(
                     thinkingEnabled = false,
@@ -149,6 +199,7 @@ class GenerationWorker(
             compressedContext,
             nativeToolsAvailable = nativeToolDefinitions.isNotEmpty(),
             promptProfile = snapshot.promptProfile(),
+            continuationAssistantNodeId = assistantId.takeIf { continuation || initial.streamOffset > 0 },
         ).toMutableList()
         var nativeToolsDisabled = false
         val effectiveContinuation = continuation || initial.streamOffset > 0
@@ -948,7 +999,7 @@ class GenerationWorker(
         val abnormalFinish = normalizedFinish.isNotBlank() && normalizedFinish !in setOf("stop", "end_turn", "stop_sequence", "end", "finish_reason_unspecified")
         val status = if (reachedLimit) MessageStatus.INTERRUPTED else MessageStatus.COMPLETE
         val finishNotice = when {
-            reachedLimit -> "The model reached its output limit. Tap Resume to continue."
+            reachedLimit -> OUTPUT_LIMIT_NOTICE
             abnormalFinish -> "Provider finish reason: ${lastFinishReason?.take(120)}"
             else -> null
         }
@@ -1019,6 +1070,11 @@ class GenerationWorker(
     )
 
     companion object {
+        private const val MAX_AUTOMATIC_OUTPUT_CONTINUATIONS = 3
+        private const val OUTPUT_LIMIT_NOTICE =
+            "The model reached its output limit. Arbor continued automatically where possible; tap Continue to request another segment."
+        private const val OUTPUT_LIMIT_STALLED_NOTICE =
+            "The provider repeatedly reported an output limit without adding content. Retry the response or reduce the working context."
         private const val LIVE_TOOL_OUTPUT_PERSIST_MS = 250L
         const val KEY_CONVERSATION_ID = "conversation_id"
         const val KEY_ASSISTANT_ID = "assistant_id"

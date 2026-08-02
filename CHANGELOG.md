@@ -1,3 +1,9 @@
+## 0.20.35 — 2026-08-02
+
+- Continue output-limited responses automatically for up to three additional segments, while stopping safely when a provider reports a limit without making progress.
+- Make Resume honor the chat's current context, working-history, output-token, and token-counting limits instead of replaying the immutable limits captured when the response first started.
+- Keep provider prefix continuation anchored to the exact partial assistant text; move Arbor's saved tool activity into a separate context item so hidden working metadata cannot become the continuation target.
+
 ## 0.20.30
 
 - Repair widget-schema guidance, DeepSeek DSML tool-call handling, and collapsed chat-title action spacing.
