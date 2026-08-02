@@ -765,32 +765,27 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             } else {
                 snapChatToBottom(messageListState, paging.itemCount - 1, messageBottomInsetPx)
             }
+
+            // Restore chrome once after the list anchor is restored. From this
+            // point onward Material's nested-scroll connection is the only live
+            // owner of app-bar movement, so one finger pixel remains one consumed
+            // scroll pixel instead of also shifting content through changing inset.
+            val limit = snapshotFlow { topAppBarState.heightOffsetLimit }.first { it < 0f }
+            val restoredHeightOffset = snapshot?.topBarHeightOffset
+                ?: chatTopBarHeightOffsetForScroll(
+                    firstVisibleItemIndex = messageListState.firstVisibleItemIndex,
+                    firstVisibleItemScrollOffset = messageListState.firstVisibleItemScrollOffset,
+                    startPx = chromeStartPx,
+                    endPx = chromeEndPx,
+                    heightOffsetLimit = limit,
+                )
+            topAppBarState.heightOffset = restoredHeightOffset.coerceIn(limit, 0f)
+            topAppBarState.contentOffset = -(
+                messageListState.firstVisibleItemIndex * chromeEndPx +
+                    messageListState.firstVisibleItemScrollOffset
+                ).toFloat()
             initialPositioned = true
         }
-    }
-
-    LaunchedEffect(messageListState, conversation?.id, topAppBarState, initialPositioned, chromeStartPx, chromeEndPx) {
-        if (!initialPositioned) return@LaunchedEffect
-        snapshotFlow {
-            Triple(
-                messageListState.firstVisibleItemIndex,
-                messageListState.firstVisibleItemScrollOffset,
-                topAppBarState.heightOffsetLimit,
-            )
-        }
-            .distinctUntilChanged()
-            .collect { (index, offset, limit) ->
-                if (limit < 0f) {
-                    topAppBarState.heightOffset = chatTopBarHeightOffsetForScroll(
-                        firstVisibleItemIndex = index,
-                        firstVisibleItemScrollOffset = offset,
-                        startPx = chromeStartPx,
-                        endPx = chromeEndPx,
-                        heightOffsetLimit = limit,
-                    ).coerceIn(limit, 0f)
-                    topAppBarState.contentOffset = -(index * chromeEndPx + offset).toFloat()
-                }
-            }
     }
 
     LaunchedEffect(messageListState, conversation?.id, topAppBarState, initialPositioned) {
@@ -995,7 +990,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     }
 
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
         contentWindowInsets = WindowInsets(0),
         topBar = {
             ChatCollapsingTranslucentTopBar(
