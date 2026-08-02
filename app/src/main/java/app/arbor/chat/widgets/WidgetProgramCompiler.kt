@@ -55,12 +55,12 @@ internal object WidgetProgramCompiler {
 
     private fun staticIssues(definition: ArborProgramDefinition): List<WidgetCompileIssue> {
         val issues = mutableListOf<WidgetCompileIssue>()
-        val visibleActions = launcherActionCount(definition.ui)
+        val visibleActions = launcherActionIds(definition.ui).size
         if (visibleActions > 4) {
             issues += WidgetCompileIssue(
                 "layout_compile",
                 "/ui",
-                "The launcher can expose at most four actions, but this widget defines $visibleActions. Keep only the four most useful actions.",
+                "The launcher can expose at most four distinct actions, but this widget defines $visibleActions. Keep only the four most useful actions.",
             )
         }
         definition.dataSources.forEachIndexed { index, source ->
@@ -78,11 +78,11 @@ internal object WidgetProgramCompiler {
         }
 
         fun walk(node: ArborProgramNode, path: String) {
-            if (node.style.fontSize in 1..12) {
+            if (node.style.fontSize in 1..10) {
                 issues += WidgetCompileIssue(
                     "layout_compile",
                     "$path/style/fontSize",
-                    "Widget text below 13sp is not readable on a launcher. Use at least 15sp for normal text and 28sp for primary metrics.",
+                    "Widget text below 11sp is not readable. Use 11–12sp only for compact supporting text, 13–16sp for ordinary text, and larger type for primary metrics.",
                 )
             }
             if (node.type == "list" && node.items.size > 6) {
@@ -135,8 +135,9 @@ internal object WidgetProgramCompiler {
     ): List<WidgetCompileIssue> = withContext(Dispatchers.Default) {
         val metrics = context.resources.displayMetrics
         val viewports = listOf(
-            Triple("standard", 320, 84),
-            Triple("expanded", 420, 160),
+            Triple("compact", 240, 96),
+            Triple("standard", 320, 122),
+            Triple("expanded", 420, 190),
         )
         val issues = mutableListOf<WidgetCompileIssue>()
 
@@ -175,21 +176,21 @@ internal object WidgetProgramCompiler {
                     issues += WidgetCompileIssue(
                         "layout_compile",
                         "/ui",
-                        "The $label launcher render clips ${result.clippedTextCount} text item(s): ${result.clippedSamples.take(3).joinToString()}. Shorten labels or simplify the layout.",
+                        "The $label launcher render still clips ${result.clippedTextCount} text block(s) after adaptive fitting: ${result.clippedSamples.take(3).joinToString()}. Shorten the affected labels or simplify that row.",
                     )
                 }
                 if (result.crampedTextCount > 0) {
                     issues += WidgetCompileIssue(
                         "layout_compile",
                         "/ui",
-                        "The $label launcher render gives ${result.crampedTextCount} text item(s) too little vertical space. Reduce the number of rows or use weights to prioritize the main value.",
+                        "The $label launcher render still cannot fit ${result.crampedTextCount} text block(s) after intrinsic sizing and adaptive type fitting. Reduce nonessential content or use fewer vertical groups.",
                     )
                 }
-                if (result.minimumTextSp > 0f && result.minimumTextSp < 13f) {
+                if (result.minimumTextSp > 0f && result.minimumTextSp < 11f) {
                     issues += WidgetCompileIssue(
                         "layout_compile",
                         "/ui",
-                        "The $label launcher render shrinks text to ${"%.1f".format(result.minimumTextSp)}sp. Keep all visible text at 13sp or larger.",
+                        "The $label launcher render would require text below 11sp.",
                     )
                 }
             }
@@ -197,12 +198,15 @@ internal object WidgetProgramCompiler {
         issues
     }
 
-    private fun launcherActionCount(node: ArborProgramNode): Int = when (node.type) {
-        "button", "toggle" -> if (node.action.isNotBlank()) 1 else 0
-        "choice" -> node.options.count { it.action.isNotBlank() }
-        "list" -> node.items.count { it.action.isNotBlank() }
-        else -> 0
-    } + node.children.sumOf(::launcherActionCount)
+    private fun launcherActionIds(node: ArborProgramNode): Set<String> = buildSet {
+        if (node.type in setOf("button", "toggle", "input") && node.action.isNotBlank()) add(node.action)
+        if (node.type == "choice") {
+            node.action.takeIf(String::isNotBlank)?.let(::add)
+            node.options.mapNotNull { it.action.takeIf(String::isNotBlank) }.forEach(::add)
+        }
+        if (node.type == "list") node.items.mapNotNull { it.action.takeIf(String::isNotBlank) }.forEach(::add)
+        node.children.flatMap(::launcherActionIds).forEach(::add)
+    }
 
     private const val MAX_RENDERED_ACTION_STATES = 6
 }
