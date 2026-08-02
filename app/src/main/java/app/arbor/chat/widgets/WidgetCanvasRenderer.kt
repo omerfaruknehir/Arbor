@@ -6,6 +6,10 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
+import android.text.TextUtils
 import androidx.core.graphics.createBitmap
 import kotlin.math.max
 import kotlin.math.min
@@ -121,7 +125,8 @@ internal object WidgetCanvasRenderer {
                 "list" -> drawList(node, content)
                 "chart" -> drawChart(node, content)
                 "divider" -> drawDivider(content)
-                "spacer", "input" -> Unit
+                "input" -> drawInput(node, content)
+                "spacer" -> Unit
             }
         }
 
@@ -212,6 +217,18 @@ internal object WidgetCanvasRenderer {
             }
         }
 
+        private fun drawInput(node: ArborProgramNode, bounds: RectF) {
+            paint.color = color(node.style.background).takeIf { it != Color.TRANSPARENT } ?: palette.surfaceVariant
+            canvas.drawRoundRect(bounds, dp(node.style.cornerRadius).coerceAtLeast(dp(8)), dp(node.style.cornerRadius).coerceAtLeast(dp(8)), paint)
+            val value = state[node.value].orEmpty()
+            drawTextBlock(
+                if (value.isBlank()) ArborProgramRuntime.render(node.label.ifBlank { node.value }, state) else value,
+                RectF(bounds.left + dp(10), bounds.top + dp(4), bounds.right - dp(10), bounds.bottom - dp(4)),
+                node.style.copy(fontSize = node.style.fontSize.takeIf { it > 0 } ?: 15),
+                false,
+            )
+        }
+
         private fun drawSlider(node: ArborProgramNode, bounds: RectF) {
             val value = state[node.value]?.toDoubleOrNull()?.coerceIn(node.min, node.max) ?: node.min
             val ratio = ((value - node.min) / (node.max - node.min).coerceAtLeast(.000001)).toFloat()
@@ -242,7 +259,7 @@ internal object WidgetCanvasRenderer {
         }
 
         private fun drawList(node: ArborProgramNode, bounds: RectF) {
-            val items = node.items.take(6)
+            val items = node.items
             if (items.isEmpty()) return
             val rowHeight = bounds.height() / items.size
             items.forEachIndexed { index, item ->
@@ -293,8 +310,8 @@ internal object WidgetCanvasRenderer {
         }
 
         private fun drawTextBlock(text: String, bounds: RectF, style: ArborProgramStyle, large: Boolean) {
-            val value = text.replace('\n', ' ').trim()
-            if (value.isBlank()) return
+            val value = text.trim()
+            if (value.isBlank() || bounds.width() <= 1f || bounds.height() <= 1f) return
             paint.color = textColor(style.foreground)
             paint.typeface = when (style.emphasis) {
                 "strong" -> android.graphics.Typeface.DEFAULT_BOLD
@@ -303,30 +320,40 @@ internal object WidgetCanvasRenderer {
             }
             val requested = style.fontSize.takeIf { it > 0 } ?: if (large) 30 else 16
             val requestedPx = sp(requested)
-            val verticalLimit = (bounds.height() * .78f).coerceAtLeast(1f)
+            val verticalLimit = bounds.height().coerceAtLeast(1f)
             if (requestedPx > verticalLimit) crampedTextCount += 1
-            paint.textSize = requestedPx.coerceAtMost(verticalLimit).coerceAtLeast(sp(12))
+            paint.textSize = requestedPx.coerceAtMost(verticalLimit).coerceAtLeast(sp(10))
             minimumTextSp = min(minimumTextSp, paint.textSize / scaledDensity)
-            val clipped = ellipsize(value, bounds.width(), paint)
-            if (clipped != value) {
+            val textPaint = TextPaint(paint)
+            val width = bounds.width().toInt().coerceAtLeast(1)
+            val lineHeight = (textPaint.fontMetrics.descent - textPaint.fontMetrics.ascent).coerceAtLeast(1f)
+            val maxLines = (bounds.height() / lineHeight).toInt().coerceAtLeast(1)
+            val alignment = when (style.align) {
+                "center" -> Layout.Alignment.ALIGN_CENTER
+                "end" -> Layout.Alignment.ALIGN_OPPOSITE
+                else -> Layout.Alignment.ALIGN_NORMAL
+            }
+            val layout = StaticLayout.Builder.obtain(value, 0, value.length, textPaint, width)
+                .setAlignment(alignment)
+                .setIncludePad(false)
+                .setLineSpacing(0f, 1f)
+                .setMaxLines(maxLines)
+                .setEllipsize(TextUtils.TruncateAt.END)
+                .build()
+            if (layout.lineCount >= maxLines && layout.getEllipsisCount(layout.lineCount - 1) > 0) {
                 clippedTextCount += 1
                 if (clippedSamples.size < 8) clippedSamples += value.take(80)
             }
-            val x = when (style.align) {
-                "center" -> bounds.centerX() - paint.measureText(clipped) / 2f
-                "end" -> bounds.right - paint.measureText(clipped)
-                else -> bounds.left
-            }
-            val metrics = paint.fontMetrics
-            val y = bounds.centerY() - (metrics.ascent + metrics.descent) / 2f
+            val y = bounds.top + ((bounds.height() - layout.height) / 2f).coerceAtLeast(0f)
             canvas.save()
             canvas.clipRect(bounds)
-            canvas.drawText(clipped, x, y, paint)
+            canvas.translate(bounds.left, y)
+            layout.draw(canvas)
             canvas.restore()
         }
 
         private fun isActionControl(node: ArborProgramNode): Boolean = when (node.type) {
-            "button", "toggle" -> node.action.isNotBlank()
+            "button", "toggle", "input" -> node.action.isNotBlank()
             "choice" -> node.action.isNotBlank() || node.options.any { it.action.isNotBlank() }
             "list" -> node.items.any { it.action.isNotBlank() }
             else -> false

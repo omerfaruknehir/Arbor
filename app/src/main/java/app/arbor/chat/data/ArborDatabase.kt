@@ -23,8 +23,9 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         GenerationUsageEntity::class,
         PackageTransactionEntity::class,
         SystemPromptProfileEntity::class,
+        MemoryEntity::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -40,6 +41,7 @@ abstract class ArborDatabase : RoomDatabase() {
     abstract fun contextSummaryDao(): ContextSummaryDao
     abstract fun generationUsageDao(): GenerationUsageDao
     abstract fun packageTransactionDao(): PackageTransactionDao
+    abstract fun memoryDao(): MemoryDao
 
     companion object {
         fun create(context: Context, passphrase: ByteArray): ArborDatabase {
@@ -47,7 +49,7 @@ abstract class ArborDatabase : RoomDatabase() {
             val factory = SupportOpenHelperFactory(passphrase)
             return Room.databaseBuilder(context, ArborDatabase::class.java, "arbor.db")
                 .openHelperFactory(factory)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
@@ -230,6 +232,28 @@ abstract class ArborDatabase : RoomDatabase() {
                     "UPDATE models SET supportsImageGeneration = 1 WHERE " +
                         "lower(modelId) LIKE 'gpt-image-%' OR lower(modelId) LIKE 'dall-e-%'"
                 )
+            }
+        }
+
+        private val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE automation_settings ADD COLUMN memoryEnabled INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE automation_settings ADD COLUMN memoryAutoSave INTEGER NOT NULL DEFAULT 1")
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS memories (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        normalizedKey TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        category TEXT NOT NULL,
+                        sourceConversationId TEXT,
+                        enabled INTEGER NOT NULL DEFAULT 1,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL
+                    )""".trimIndent(),
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_memories_normalizedKey ON memories(normalizedKey)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_memories_enabled ON memories(enabled)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_memories_updatedAt ON memories(updatedAt)")
             }
         }
 

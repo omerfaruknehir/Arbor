@@ -13,12 +13,15 @@ import app.arbor.chat.data.MessageStatus
 import app.arbor.chat.data.SendMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.TimeUnit
 
 class GenerationScheduler(
     private val context: Context,
     private val repository: ChatRepository,
 ) {
+    private val resumeMutex = Mutex()
     suspend fun submit(conversationId: String, text: String, attachmentIds: List<String>, mode: SendMode) {
         val effectiveMode = if (mode == SendMode.QUEUE && repository.activeStream(conversationId) == null) SendMode.SEND_NOW else mode
         if (mode == SendMode.STEER) {
@@ -48,7 +51,15 @@ class GenerationScheduler(
         start(conversationId, assistantId, continuation = false)
     }
 
-    suspend fun resume(conversationId: String, assistantId: String) {
+    suspend fun resume(conversationId: String, assistantId: String) = resumeMutex.withLock {
+        val manager = WorkManager.getInstance(context)
+        // REPLACE cancels an older instance. Its cancellation callback used to
+        // overwrite the new STREAMING state, so Continue appeared to do nothing.
+        // Finish that cancellation first, then publish the new run state.
+        withContext(Dispatchers.IO) {
+            manager.cancelUniqueWork(workName(assistantId)).result.get()
+        }
+        if (repository.message(assistantId) == null) return@withLock
         repository.markStreaming(assistantId)
         start(conversationId, assistantId, continuation = true)
     }

@@ -247,6 +247,33 @@ interface MessageDao {
 }
 
 @Dao
+interface MemoryDao {
+    @Query("SELECT * FROM memories ORDER BY updatedAt DESC")
+    fun observeAll(): Flow<List<MemoryEntity>>
+
+    @Query("SELECT * FROM memories ORDER BY updatedAt DESC")
+    suspend fun all(): List<MemoryEntity>
+
+    @Query("SELECT * FROM memories WHERE enabled = 1 ORDER BY updatedAt DESC LIMIT :limit")
+    suspend fun enabled(limit: Int = 100): List<MemoryEntity>
+
+    @Query("SELECT * FROM memories WHERE id = :id")
+    suspend fun get(id: String): MemoryEntity?
+
+    @Query("SELECT * FROM memories WHERE normalizedKey = :normalizedKey LIMIT 1")
+    suspend fun byNormalizedKey(normalizedKey: String): MemoryEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(value: MemoryEntity)
+
+    @Query("DELETE FROM memories WHERE id = :id")
+    suspend fun delete(id: String)
+
+    @Query("UPDATE memories SET enabled = :enabled, updatedAt = :now WHERE id = :id")
+    suspend fun setEnabled(id: String, enabled: Boolean, now: Long)
+}
+
+@Dao
 interface AttachmentDao {
     @Query("SELECT * FROM attachments WHERE messageNodeId = :nodeId ORDER BY createdAt")
     fun observeForMessage(nodeId: String): Flow<List<AttachmentEntity>>

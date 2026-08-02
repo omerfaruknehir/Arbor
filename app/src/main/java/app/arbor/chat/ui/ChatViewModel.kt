@@ -17,6 +17,7 @@ import app.arbor.chat.data.ConversationEntity
 import app.arbor.chat.data.DefaultCatalog
 import app.arbor.chat.data.MessageEntity
 import app.arbor.chat.data.MessageStatus
+import app.arbor.chat.data.MemoryEntity
 import app.arbor.chat.data.ModelEntity
 import app.arbor.chat.data.ProviderEntity
 import app.arbor.chat.data.ProviderKind
@@ -117,6 +118,8 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     val archivedConversations = container.repository.archivedConversations.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val projects = container.repository.projects.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val systemPromptProfiles = container.repository.systemPromptProfiles
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val memories = container.repository.memories
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val automationSettings = container.repository.automationSettings
         .map { it ?: AutomationSettingsEntity() }
@@ -1169,6 +1172,15 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     }
 
     fun selectSystemPromptProfileForCurrent(id: String?) = updateConversation { it.copy(systemPromptProfileId = id) }
+
+    fun addMemory(content: String, category: String = "general") = launchAction {
+        container.repository.saveMemory(content, category, selectedConversationId.value)
+    }
+
+    fun deleteMemory(id: String) = launchAction { container.repository.deleteMemory(id) }
+    fun setMemoryEnabled(id: String, enabled: Boolean) = launchAction {
+        container.repository.setMemoryEnabled(id, enabled)
+    }
 
     fun updateAutomationSettings(transform: (AutomationSettingsEntity) -> AutomationSettingsEntity) = launchAction {
         automationSettingsMutex.withLock {

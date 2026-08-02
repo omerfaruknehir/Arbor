@@ -13,13 +13,33 @@ import kotlinx.serialization.json.jsonPrimitive
 object ArborNativeTools {
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun definitions(conversation: ConversationEntity): List<NativeToolDefinition> = buildList {
+    fun definitions(conversation: ConversationEntity, memoryEnabled: Boolean = false): List<NativeToolDefinition> = buildList {
         add(tool(
             name = "compile_widget",
             description = "Compile and test one complete arbor-widget/1 JSON candidate before showing it to the user. This is mandatory for Home-screen widgets. The tool returns trusted structured schema, action, HTTP, binding, and launcher-layout diagnostics. Keep candidates inside tool calls; on failure revise the complete source and call again. After success, emit exactly the successful source unchanged in one arbor-widget fence.",
             properties = """"source":{"type":"string","description":"Complete arbor-widget/1 JSON object, without Markdown fences","minLength":2,"maxLength":96000}""",
             required = listOf("source"),
         ))
+        if (memoryEnabled) {
+            add(tool(
+                name = "memory_save",
+                description = "Save or update one durable user memory in Arbor's encrypted local database. Use only for stable useful facts or preferences under the memory policy; never save secrets or sensitive facts without an explicit user request.",
+                properties = """"text":{"type":"string","minLength":1,"maxLength":2000},"category":{"type":"string","maxLength":40}""",
+                required = listOf("text"),
+            ))
+            add(tool(
+                name = "memory_list",
+                description = "List currently enabled Arbor memories, including their ids. Use when the user asks what is remembered or before forgetting a specific item.",
+                properties = "",
+                required = emptyList(),
+            ))
+            add(tool(
+                name = "memory_forget",
+                description = "Delete one Arbor memory by exact id. Use when the user asks Arbor to forget it.",
+                properties = """"id":{"type":"string","minLength":1,"maxLength":100}""",
+                required = listOf("id"),
+            ))
+        }
         if (conversation.webSearchEnabled) {
             add(tool(
                 name = "web_search",
@@ -95,6 +115,9 @@ object ArborNativeTools {
             "workspace_read" -> AgentToolRequest(type = "workspace_read", path = string("path"), startLine = int("startLine"), endLine = int("endLine"), maxBytes = int("maxBytes"))
             "apply_patch" -> AgentToolRequest(type = "apply_patch", path = string("path"), unifiedDiff = string("unifiedDiff"), expectedSha256 = string("expectedSha256"))
             "rerun_script" -> AgentToolRequest(type = "rerun_script", runId = string("runId"), timeoutSeconds = int("timeoutSeconds"), args = strings("args"))
+            "memory_save" -> AgentToolRequest(type = "memory_save", memoryText = string("text"), memoryCategory = string("category"))
+            "memory_list" -> AgentToolRequest(type = "memory_list")
+            "memory_forget" -> AgentToolRequest(type = "memory_forget", memoryId = string("id"))
             "send_file", "file_send" -> AgentToolRequest(type = "send_file", path = string("path"), caption = string("caption"))
             else -> error("Unknown Arbor native tool: ${call.name}")
         }

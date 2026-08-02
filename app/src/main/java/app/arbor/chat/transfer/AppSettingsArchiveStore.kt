@@ -7,6 +7,7 @@ import app.arbor.chat.data.ArborDatabase
 import app.arbor.chat.data.AutomationSettingsEntity
 import app.arbor.chat.data.AuxiliaryMode
 import app.arbor.chat.data.ModelEntity
+import app.arbor.chat.data.MemoryEntity
 import app.arbor.chat.data.PackageApprovalMode
 import app.arbor.chat.data.ProjectEntity
 import app.arbor.chat.data.ProviderEntity
@@ -36,6 +37,7 @@ data class PortableAppSettings(
     val projects: List<PortableProjectSettings> = emptyList(),
     val systemPromptProfiles: List<PortableSystemPromptSettings> = emptyList(),
     val automation: PortableAutomationSettings? = null,
+    val memories: List<PortableMemorySettings> = emptyList(),
 )
 
 @Serializable
@@ -137,6 +139,16 @@ data class PortableSystemPromptSettings(
 )
 
 @Serializable
+data class PortableMemorySettings(
+    val id: String,
+    val content: String,
+    val category: String,
+    val enabled: Boolean,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+@Serializable
 data class PortableAutomationSettings(
     val titleMode: String,
     val titleProviderId: String,
@@ -150,6 +162,8 @@ data class PortableAutomationSettings(
     val packageRestrictionsEnabled: Boolean,
     val trustedPythonPackages: String,
     val trustedUbuntuPackages: String,
+    val memoryEnabled: Boolean = true,
+    val memoryAutoSave: Boolean = true,
 )
 
 data class AppSettingsRestoreResult(
@@ -264,6 +278,16 @@ class AppSettingsArchiveStore(
                     updatedAt = profile.updatedAt,
                 )
             },
+            memories = database.memoryDao().all().map { memory ->
+                PortableMemorySettings(
+                    id = memory.id,
+                    content = memory.content,
+                    category = memory.category,
+                    enabled = memory.enabled,
+                    createdAt = memory.createdAt,
+                    updatedAt = memory.updatedAt,
+                )
+            },
             automation = automation?.let { value ->
                 PortableAutomationSettings(
                     titleMode = value.titleMode.name,
@@ -278,6 +302,8 @@ class AppSettingsArchiveStore(
                     packageRestrictionsEnabled = value.packageRestrictionsEnabled,
                     trustedPythonPackages = value.trustedPythonPackages,
                     trustedUbuntuPackages = value.trustedUbuntuPackages,
+                    memoryEnabled = value.memoryEnabled,
+                    memoryAutoSave = value.memoryAutoSave,
                 )
             },
         )
@@ -291,6 +317,7 @@ class AppSettingsArchiveStore(
             restoreProviders(value)
             restoreProjects(value.projects, projectIds)
             restorePromptProfiles(value.systemPromptProfiles, promptIds)
+            restoreMemories(value.memories)
             value.automation?.let { restoreAutomation(it) }
         }
         restorePreferences(value.preferences, promptIds)
@@ -400,6 +427,28 @@ class AppSettingsArchiveStore(
         }
     }
 
+    private suspend fun restoreMemories(values: List<PortableMemorySettings>) {
+        values.take(500).forEach { portable ->
+            val clean = portable.content.trim().replace(Regex("\\s+"), " ").take(2_000)
+            if (clean.isBlank()) return@forEach
+            val normalized = clean.lowercase().take(512)
+            val now = System.currentTimeMillis()
+            val existing = database.memoryDao().byNormalizedKey(normalized)
+            database.memoryDao().upsert(
+                MemoryEntity(
+                    id = existing?.id ?: portable.id.takeIf(SAFE_ID::matches) ?: UUID.randomUUID().toString(),
+                    normalizedKey = normalized,
+                    content = clean,
+                    category = portable.category.take(40).ifBlank { "general" },
+                    sourceConversationId = null,
+                    enabled = portable.enabled,
+                    createdAt = existing?.createdAt ?: portable.createdAt.takeIf { it > 0 } ?: now,
+                    updatedAt = maxOf(existing?.updatedAt ?: 0L, portable.updatedAt.takeIf { it > 0 } ?: now),
+                ),
+            )
+        }
+    }
+
     private suspend fun restoreAutomation(value: PortableAutomationSettings) {
         database.automationSettingsDao().upsert(
             AutomationSettingsEntity(
@@ -415,6 +464,8 @@ class AppSettingsArchiveStore(
                 packageRestrictionsEnabled = value.packageRestrictionsEnabled,
                 trustedPythonPackages = value.trustedPythonPackages.take(MAX_TRUST_LIST_CHARS),
                 trustedUbuntuPackages = value.trustedUbuntuPackages.take(MAX_TRUST_LIST_CHARS),
+                memoryEnabled = value.memoryEnabled,
+                memoryAutoSave = value.memoryAutoSave,
             ),
         )
     }

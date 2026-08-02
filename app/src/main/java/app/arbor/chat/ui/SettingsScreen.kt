@@ -43,6 +43,7 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.automirrored.outlined.Login
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material3.Button
@@ -109,6 +110,7 @@ import app.arbor.chat.data.ReasoningVisibility
 import app.arbor.chat.data.ThinkingEffort
 import app.arbor.chat.data.AuxiliaryMode
 import app.arbor.chat.data.AutomationSettingsEntity
+import app.arbor.chat.data.MemoryEntity
 import app.arbor.chat.data.PackageApprovalMode
 import app.arbor.chat.data.SystemPromptMode
 import app.arbor.chat.data.SystemPromptProfileEntity
@@ -151,6 +153,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val providers by viewModel.providers.collectAsStateWithLifecycle()
     val defaults by viewModel.newChatDefaults.collectAsStateWithLifecycle()
     val automation by viewModel.automationSettings.collectAsStateWithLifecycle()
+    val memories by viewModel.memories.collectAsStateWithLifecycle()
     val promptProfiles by viewModel.systemPromptProfiles.collectAsStateWithLifecycle()
     val credentialRevision by viewModel.credentialRevision.collectAsStateWithLifecycle()
     val openAiOAuthStates by viewModel.openAiOAuthStates.collectAsStateWithLifecycle()
@@ -249,6 +252,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         )
                         SettingsRoute.DEFAULTS -> NewChatDefaultsSettings(defaults, configuredProviders, viewModel)
                         SettingsRoute.AUTOMATION -> AutomationSettingsPage(automation, configuredProviders, viewModel)
+                        SettingsRoute.MEMORY -> MemorySettingsPage(automation, memories, viewModel)
                         SettingsRoute.APPEARANCE -> AppearanceSettingsPage(
                             themeMode = themeMode,
                             amoled = amoled,
@@ -314,6 +318,12 @@ private fun SettingsHome(
             title = "Automation",
             subtitle = "Naming, compression, and package approval",
             onClick = { onOpen(SettingsRoute.AUTOMATION) },
+        )
+        SettingsDestination(
+            icon = Icons.Outlined.Psychology,
+            title = "Memory",
+            subtitle = "Cross-chat facts and preferences stored locally",
+            onClick = { onOpen(SettingsRoute.MEMORY) },
         )
     }
     SettingsGroup("App") {
@@ -490,6 +500,92 @@ private fun AutomationSettingsPage(
     HorizontalDivider()
     SectionTitle("Package approval", "Global policy for pip, apt, and apk package requests.")
     PackageApprovalEditor(automation, providers, viewModel)
+    Spacer(Modifier.padding(bottom = 24.dp))
+}
+
+@Composable
+private fun MemorySettingsPage(
+    automation: AutomationSettingsEntity,
+    memories: List<MemoryEntity>,
+    viewModel: ChatViewModel,
+) = SettingsPage {
+    var draft by rememberSaveable { mutableStateOf("") }
+    var category by rememberSaveable { mutableStateOf("general") }
+    SectionTitle(
+        "Memory",
+        "Memories are stored in Arbor's encrypted local database, injected as reference data across chats, and included only in backups that include app settings.",
+    )
+    ListItem(
+        headlineContent = { Text("Use memory") },
+        supportingContent = { Text("Expose enabled memories to chats and allow memory tools") },
+        trailingContent = {
+            Switch(
+                checked = automation.memoryEnabled,
+                onCheckedChange = { enabled -> viewModel.updateAutomationSettings { it.copy(memoryEnabled = enabled) } },
+            )
+        },
+    )
+    ListItem(
+        headlineContent = { Text("Automatic memory") },
+        supportingContent = { Text("Allow models to save clearly durable, non-sensitive preferences without an explicit remember command") },
+        trailingContent = {
+            Switch(
+                checked = automation.memoryAutoSave,
+                enabled = automation.memoryEnabled,
+                onCheckedChange = { enabled -> viewModel.updateAutomationSettings { it.copy(memoryAutoSave = enabled) } },
+            )
+        },
+    )
+    HorizontalDivider()
+    SectionTitle("Add memory", "Manual memories are available immediately in new model calls.")
+    OutlinedTextField(
+        value = draft,
+        onValueChange = { draft = it.take(2_000) },
+        label = { Text("What Arbor should remember") },
+        modifier = Modifier.fillMaxWidth(),
+        minLines = 2,
+        maxLines = 6,
+    )
+    OutlinedTextField(
+        value = category,
+        onValueChange = { category = it.take(40) },
+        label = { Text("Category") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+    )
+    FilledTonalButton(
+        enabled = draft.isNotBlank(),
+        onClick = {
+            viewModel.addMemory(draft, category)
+            draft = ""
+        },
+    ) { Text("Save memory") }
+    HorizontalDivider()
+    SectionTitle("Saved memories", if (memories.isEmpty()) "Nothing is stored yet." else "${memories.size} saved item${if (memories.size == 1) "" else "s"}.")
+    memories.forEach { memory ->
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            ListItem(
+                headlineContent = { Text(memory.content) },
+                supportingContent = { Text(memory.category) },
+                trailingContent = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(
+                            checked = memory.enabled,
+                            onCheckedChange = { viewModel.setMemoryEnabled(memory.id, it) },
+                        )
+                        IconButton(onClick = { viewModel.deleteMemory(memory.id) }) {
+                            Icon(Icons.Outlined.DeleteOutline, "Delete memory")
+                        }
+                    }
+                },
+                colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent),
+            )
+        }
+    }
     Spacer(Modifier.padding(bottom = 24.dp))
 }
 

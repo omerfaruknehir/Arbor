@@ -380,9 +380,9 @@ object ArborProgramParser {
             "chart" -> require(node.items.size >= 2) { "$path chart needs at least two items" }
         }
         if (node.value.isNotBlank() && node.type in setOf("toggle", "input", "slider", "choice")) requireId(node.value)
-        if (surface == ArborProgramSurface.WIDGET && node.type == "input") {
-            error("$path input is snippet-only; home-screen widgets cannot summon a keyboard")
-        }
+        // Home-screen widgets cannot summon an inline keyboard, but an input
+        // node is still a valid readout/control surface. It renders the current
+        // state value and can expose an action which opens Arbor for editing.
     }
 
     private fun validateActionReferences(ui: ArborProgramNode, actions: Map<String, List<ArborProgramAction>>) {
@@ -514,22 +514,22 @@ object ArborProgramParser {
     private val EXTERNAL_ACTIONS = setOf("refresh", "write_folder", "open_app")
     private val TEMPLATE = Regex("\\{\\{\\s*([^{}]+?)\\s*\\}\\}")
 
-    private const val MAX_SOURCE_CHARS = 96_000
-    private const val MAX_STATE_VALUES = 64
-    private const val MAX_STATE_VALUE_CHARS = 1_000
-    private const val MAX_TEXT_CHARS = 2_000
-    private const val MAX_EXPRESSION_CHARS = 500
-    private const val MAX_NODE_DEPTH = 12
-    private const val MAX_NODES = 160
-    private const val MAX_CHILDREN = 32
-    private const val MAX_OPTIONS = 32
-    private const val MAX_ITEMS = 48
-    private const val MAX_ACTION_GROUPS = 64
-    private const val MAX_ACTIONS_PER_GROUP = 12
-    private const val MAX_CAPABILITIES = 8
-    private const val MAX_NETWORK_ORIGINS = 8
-    private const val MAX_DATA_SOURCES = 12
-    private const val MAX_BINDINGS = 24
+    private const val MAX_SOURCE_CHARS = 512_000
+    private const val MAX_STATE_VALUES = 256
+    private const val MAX_STATE_VALUE_CHARS = 8_000
+    private const val MAX_TEXT_CHARS = 16_000
+    private const val MAX_EXPRESSION_CHARS = 2_000
+    private const val MAX_NODE_DEPTH = 32
+    private const val MAX_NODES = 1_024
+    private const val MAX_CHILDREN = 256
+    private const val MAX_OPTIONS = 256
+    private const val MAX_ITEMS = 512
+    private const val MAX_ACTION_GROUPS = 256
+    private const val MAX_ACTIONS_PER_GROUP = 64
+    private const val MAX_CAPABILITIES = 32
+    private const val MAX_NETWORK_ORIGINS = 32
+    private const val MAX_DATA_SOURCES = 64
+    private const val MAX_BINDINGS = 256
     const val MIN_REFRESH_MINUTES = 15L
     const val MAX_REFRESH_MINUTES = 1_440L
 }

@@ -98,7 +98,9 @@ class GenerationWorker(
             advanceQueue()
             Result.success()
         } catch (cancelled: CancellationException) {
-            withContext(NonCancellable) { repository.markInterrupted(assistantId, "Stopped") }
+            // Explicit stop paths update the message themselves. A worker can
+            // also be cancelled because Resume replaces it; mutating the row
+            // here races the replacement worker and makes Continue a no-op.
             throw cancelled
         } catch (error: Throwable) {
             if (isRecoverable(error) && runAttemptCount < MAX_BACKGROUND_RETRIES) {
@@ -192,7 +194,11 @@ class GenerationWorker(
 
         val newest = repository.recent(conversationId)
         val compressedContext = container.auxiliaryModels.prepareContextSummary(conversation, newest)
-        val nativeToolDefinitions = if (model.supportsTools && !directImageModel) ArborNativeTools.definitions(conversation) else emptyList()
+        val automationSettings = repository.automationSettingsNow()
+        val activeMemories = if (automationSettings.memoryEnabled) repository.enabledMemories(100) else emptyList()
+        val nativeToolDefinitions = if (model.supportsTools && !directImageModel) {
+            ArborNativeTools.definitions(conversation, memoryEnabled = automationSettings.memoryEnabled)
+        } else emptyList()
         val messages = ContextAssembler(container.database.attachmentDao()).assemble(
             conversation,
             newest,
@@ -200,6 +206,9 @@ class GenerationWorker(
             nativeToolsAvailable = nativeToolDefinitions.isNotEmpty(),
             promptProfile = snapshot.promptProfile(),
             continuationAssistantNodeId = assistantId.takeIf { continuation || initial.streamOffset > 0 },
+            memories = activeMemories,
+            memoryEnabled = automationSettings.memoryEnabled,
+            memoryAutoSave = automationSettings.memoryAutoSave,
         ).toMutableList()
         var nativeToolsDisabled = false
         val effectiveContinuation = continuation || initial.streamOffset > 0
@@ -359,7 +368,7 @@ class GenerationWorker(
             val input = if (normalizedTool in setOf("compile_widget", "widget_compile")) {
                 "arbor-widget candidate • ${request.source?.length ?: 0} characters"
             } else {
-                (request.query ?: request.url ?: request.command ?: request.code ?: request.unifiedDiff ?: request.runId ?: request.path)
+                (request.query ?: request.url ?: request.command ?: request.code ?: request.unifiedDiff ?: request.runId ?: request.path ?: request.memoryText ?: request.memoryId)
                     .orEmpty().take(4_000)
             }
             // rerun_script is the explicit, source-free replay operation. Other
@@ -403,6 +412,7 @@ class GenerationWorker(
                     "send_file", "file_send" -> "file_send"
                     "workspace_read", "apply_patch", "rerun_script" -> "script"
                     "compile_widget", "widget_compile" -> "widget_compile"
+                    "memory_save", "memory_list", "memory_forget" -> "memory"
                     else -> "tool_call"
                 },
                 label = label,
@@ -1070,7 +1080,7 @@ class GenerationWorker(
     )
 
     companion object {
-        private const val MAX_AUTOMATIC_OUTPUT_CONTINUATIONS = 3
+        private const val MAX_AUTOMATIC_OUTPUT_CONTINUATIONS = 12
         private const val OUTPUT_LIMIT_NOTICE =
             "The model reached its output limit. Arbor continued automatically where possible; tap Continue to request another segment."
         private const val OUTPUT_LIMIT_STALLED_NOTICE =
@@ -1080,8 +1090,8 @@ class GenerationWorker(
         const val KEY_ASSISTANT_ID = "assistant_id"
         const val KEY_CONTINUATION = "continuation"
         const val CHANNEL_ID = "arbor_generation"
-        private const val MAX_TOOL_ROUNDS = 8
-        private const val MAX_DEEP_RESEARCH_TOOL_ROUNDS = 24
+        private const val MAX_TOOL_ROUNDS = 64
+        private const val MAX_DEEP_RESEARCH_TOOL_ROUNDS = 128
         private const val INITIAL_RESEARCH_STATE_INSTRUCTION =
             "Deep Research is active. Before doing any research, output ONLY one <arbor-research-state> XML-wrapped JSON block. " +
                 "Create a task-specific roadmap from the user's actual request. Use reportState=planning, factual status, progress from 0 to 1, " +

@@ -269,6 +269,9 @@ class ArborHomeWidgetProvider : AppWidgetProvider() {
                 if (node.type == "button" && node.action.isNotBlank()) {
                     values += WidgetVisibleAction(ArborProgramRuntime.render(node.label, state).take(32), node.action)
                 }
+                if (node.type == "input" && node.action.isNotBlank()) {
+                    values += WidgetVisibleAction(ArborProgramRuntime.render(node.label.ifBlank { node.value }, state).take(32), node.action)
+                }
                 if (node.type == "toggle" && node.action.isNotBlank()) {
                     val label = ArborProgramRuntime.render(node.label.ifBlank { node.value }, state)
                     val stateLabel = if (ArborProgramRuntime.truthy(state[node.value])) "On" else "Off"

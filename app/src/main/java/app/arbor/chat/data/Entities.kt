@@ -72,6 +72,26 @@ data class SystemPromptProfileEntity(
     val updatedAt: Long,
 )
 
+@Entity(
+    tableName = "memories",
+    indices = [
+        Index(value = ["normalizedKey"], unique = true),
+        Index("enabled"),
+        Index("updatedAt"),
+    ],
+)
+@Serializable
+data class MemoryEntity(
+    @PrimaryKey val id: String,
+    val normalizedKey: String,
+    val content: String,
+    val category: String = "general",
+    val sourceConversationId: String? = null,
+    @ColumnInfo(defaultValue = "1") val enabled: Boolean = true,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
 @Entity(tableName = "projects", indices = [Index(value = ["name"], unique = true)])
 data class ProjectEntity(
     @PrimaryKey val id: String,
@@ -96,6 +116,8 @@ data class AutomationSettingsEntity(
     @ColumnInfo(defaultValue = "1") val packageRestrictionsEnabled: Boolean = true,
     @ColumnInfo(defaultValue = "''") val trustedPythonPackages: String = "",
     @ColumnInfo(defaultValue = "''") val trustedUbuntuPackages: String = "",
+    @ColumnInfo(defaultValue = "1") val memoryEnabled: Boolean = true,
+    @ColumnInfo(defaultValue = "1") val memoryAutoSave: Boolean = true,
 )
 
 @Entity(

@@ -51,6 +51,24 @@ internal fun toolCallPresentation(name: String, argumentsJson: String): ToolCall
             runningLabel = "Running Python",
             input = value("code"),
         )
+        "memory_save" -> ToolCallPresentation(
+            kind = "memory",
+            preparingLabel = "Preparing memory update",
+            runningLabel = "Saving memory",
+            input = value("text"),
+        )
+        "memory_list" -> ToolCallPresentation(
+            kind = "memory",
+            preparingLabel = "Preparing memory lookup",
+            runningLabel = "Reading memory",
+            input = "Enabled memories",
+        )
+        "memory_forget" -> ToolCallPresentation(
+            kind = "memory",
+            preparingLabel = "Preparing memory removal",
+            runningLabel = "Forgetting memory",
+            input = value("id"),
+        )
         "compile_widget", "widget_compile" -> ToolCallPresentation(
             kind = "widget_compile",
             preparingLabel = "Preparing widget compile",

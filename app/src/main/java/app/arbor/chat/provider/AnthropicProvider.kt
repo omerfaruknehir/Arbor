@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
 
 class AnthropicProvider(
-    private val client: OkHttpClient = OkHttpClient.Builder().readTimeout(120, TimeUnit.SECONDS).build(),
+    private val client: OkHttpClient = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).build(),
 ) : ChatProvider {
     override suspend fun stream(request: ChatRequest, emit: suspend (StreamChunk) -> Unit) {
         withContext(Dispatchers.IO) {

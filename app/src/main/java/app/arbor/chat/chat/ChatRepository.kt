@@ -14,6 +14,7 @@ import app.arbor.chat.data.ConversationListItem
 import app.arbor.chat.data.MessageEntity
 import app.arbor.chat.data.MessageRole
 import app.arbor.chat.data.MessageStatus
+import app.arbor.chat.data.MemoryEntity
 import app.arbor.chat.data.PendingMessageEntity
 import app.arbor.chat.data.ProjectEntity
 import app.arbor.chat.data.ContextSummaryEntity
@@ -49,6 +50,7 @@ class ChatRepository(private val database: ArborDatabase) {
     val projects: Flow<List<ProjectEntity>> = database.projectDao().observeAll()
     val automationSettings: Flow<AutomationSettingsEntity?> = database.automationSettingsDao().observe()
     val systemPromptProfiles: Flow<List<SystemPromptProfileEntity>> = database.systemPromptProfileDao().observeAll()
+    val memories: Flow<List<MemoryEntity>> = database.memoryDao().observeAll()
 
     fun conversation(id: String) = database.conversationDao().observe(id)
     fun recoverable(id: String) = database.messageDao().observeRecoverable(id)
@@ -465,6 +467,40 @@ class ChatRepository(private val database: ArborDatabase) {
         database.systemPromptProfileDao().detachFromConversations(id)
         database.systemPromptProfileDao().delete(id)
     }
+
+    suspend fun enabledMemories(limit: Int = 100): List<MemoryEntity> = database.memoryDao().enabled(limit)
+
+    suspend fun saveMemory(content: String, category: String = "general", sourceConversationId: String? = null): MemoryEntity {
+        val clean = content.trim().replace(Regex("\\s+"), " ").take(2_000)
+        require(clean.isNotBlank()) { "Memory content cannot be empty" }
+        val normalized = clean.lowercase().take(512)
+        val cleanCategory = category.trim().replace(Regex("[^A-Za-z0-9 _.-]"), "").take(40).ifBlank { "general" }
+        val now = System.currentTimeMillis()
+        val existing = database.memoryDao().byNormalizedKey(normalized)
+        val value = if (existing == null) {
+            MemoryEntity(
+                id = UUID.randomUUID().toString(),
+                normalizedKey = normalized,
+                content = clean,
+                category = cleanCategory,
+                sourceConversationId = sourceConversationId,
+                createdAt = now,
+                updatedAt = now,
+            )
+        } else existing.copy(
+            content = clean,
+            category = cleanCategory,
+            sourceConversationId = sourceConversationId ?: existing.sourceConversationId,
+            enabled = true,
+            updatedAt = now,
+        )
+        database.memoryDao().upsert(value)
+        return value
+    }
+
+    suspend fun deleteMemory(id: String) = database.memoryDao().delete(id)
+    suspend fun setMemoryEnabled(id: String, enabled: Boolean) =
+        database.memoryDao().setEnabled(id, enabled, System.currentTimeMillis())
 
     suspend fun automationSettingsNow(): AutomationSettingsEntity {
         val existing = database.automationSettingsDao().get()

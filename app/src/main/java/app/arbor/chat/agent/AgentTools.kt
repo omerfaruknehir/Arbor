@@ -47,6 +47,9 @@ data class AgentToolRequest(
     val unifiedDiff: String? = null,
     val expectedSha256: String? = null,
     val runId: String? = null,
+    val memoryId: String? = null,
+    val memoryText: String? = null,
+    val memoryCategory: String? = null,
     val args: List<String> = emptyList(),
 )
 
@@ -273,6 +276,33 @@ class AgentTools(
             val result = executeStored(metadata, args, timeout, onProgress)
             AgentToolOutcome(json.encodeToString(result), isError = result.exitCode != 0 || result.timedOut || result.cancelled)
         }
+        "memory_save" -> {
+            val settings = repository.automationSettingsNow()
+            check(settings.memoryEnabled) { "Memory is disabled in Arbor settings." }
+            val memory = repository.saveMemory(
+                content = requireNotNull(request.memoryText) { "Memory text is missing" },
+                category = request.memoryCategory.orEmpty().ifBlank { "general" },
+                sourceConversationId = conversation.id,
+            )
+            AgentToolOutcome(json.encodeToString(MemorySaveToolResult(
+                saved = true,
+                id = memory.id,
+                category = memory.category,
+                content = memory.content,
+            )))
+        }
+        "memory_list" -> {
+            val settings = repository.automationSettingsNow()
+            check(settings.memoryEnabled) { "Memory is disabled in Arbor settings." }
+            AgentToolOutcome(json.encodeToString(repository.enabledMemories(100)))
+        }
+        "memory_forget" -> {
+            val settings = repository.automationSettingsNow()
+            check(settings.memoryEnabled) { "Memory is disabled in Arbor settings." }
+            val id = requireNotNull(request.memoryId) { "Memory id is missing" }
+            repository.deleteMemory(id)
+            AgentToolOutcome(json.encodeToString(MemoryForgetToolResult(forgotten = true, id = id)))
+        }
         "send_file", "file_send" -> {
             val relative = requireNotNull(request.path) { "File path is missing" }.trim().removePrefix("/workspace/")
             require(relative.isNotBlank() && !File(relative).isAbsolute) { "Use a path inside the conversation workspace" }
@@ -421,6 +451,20 @@ private fun ResponseBody.readLimited(limit: Long): String {
     val count = minOf(source.buffer.size, limit)
     return source.buffer.readUtf8(count)
 }
+
+@Serializable
+private data class MemorySaveToolResult(
+    val saved: Boolean,
+    val id: String,
+    val category: String,
+    val content: String,
+)
+
+@Serializable
+private data class MemoryForgetToolResult(
+    val forgotten: Boolean,
+    val id: String,
+)
 
 @Serializable
 private data class UbuntuToolResult(
