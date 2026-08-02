@@ -195,7 +195,9 @@ class GenerationWorker(
         val newest = repository.recent(conversationId)
         val compressedContext = container.auxiliaryModels.prepareContextSummary(conversation, newest)
         val automationSettings = repository.automationSettingsNow()
-        val activeMemories = if (automationSettings.memoryEnabled) repository.enabledMemories(100) else emptyList()
+        val activeMemories = if (automationSettings.memoryEnabled) {
+            repository.memoriesForContext(newest, conversation.id)
+        } else emptyList()
         val nativeToolDefinitions = if (model.supportsTools && !directImageModel) {
             ArborNativeTools.definitions(conversation, memoryEnabled = automationSettings.memoryEnabled)
         } else emptyList()

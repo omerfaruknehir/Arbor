@@ -50,6 +50,9 @@ data class AgentToolRequest(
     val memoryId: String? = null,
     val memoryText: String? = null,
     val memoryCategory: String? = null,
+    val memoryQuery: String? = null,
+    val memoryIncludeDisabled: Boolean? = null,
+    val memoryLimit: Int? = null,
     val args: List<String> = emptyList(),
 )
 
@@ -279,29 +282,69 @@ class AgentTools(
         "memory_save" -> {
             val settings = repository.automationSettingsNow()
             check(settings.memoryEnabled) { "Memory is disabled in Arbor settings." }
-            val memory = repository.saveMemory(
+            val result = repository.saveMemoryManaged(
                 content = requireNotNull(request.memoryText) { "Memory text is missing" },
                 category = request.memoryCategory.orEmpty().ifBlank { "general" },
                 sourceConversationId = conversation.id,
             )
             AgentToolOutcome(json.encodeToString(MemorySaveToolResult(
                 saved = true,
-                id = memory.id,
-                category = memory.category,
-                content = memory.content,
+                created = result.created,
+                updated = !result.created,
+                id = result.memory.id,
+                category = result.memory.category,
+                content = result.memory.content,
+                mergedMemoryId = result.mergedMemoryId,
             )))
         }
-        "memory_list" -> {
+        "memory_list", "memory_search" -> {
             val settings = repository.automationSettingsNow()
             check(settings.memoryEnabled) { "Memory is disabled in Arbor settings." }
-            AgentToolOutcome(json.encodeToString(repository.enabledMemories(100)))
+            val query = request.memoryQuery.orEmpty().trim()
+            if (request.type.equals("memory_search", ignoreCase = true)) {
+                require(query.isNotBlank()) { "Memory search query is missing" }
+            }
+            val memories = repository.searchMemories(
+                query = query,
+                includeDisabled = request.memoryIncludeDisabled ?: false,
+                limit = (request.memoryLimit ?: 100).coerceIn(1, 200),
+            ).map { memory ->
+                MemoryToolItem(
+                    id = memory.id,
+                    content = memory.content,
+                    category = memory.category,
+                    enabled = memory.enabled,
+                    updatedAt = memory.updatedAt,
+                )
+            }
+            AgentToolOutcome(json.encodeToString(memories))
+        }
+        "memory_update" -> {
+            val settings = repository.automationSettingsNow()
+            check(settings.memoryEnabled) { "Memory is disabled in Arbor settings." }
+            val result = repository.updateMemory(
+                id = requireNotNull(request.memoryId) { "Memory id is missing" },
+                content = requireNotNull(request.memoryText) { "Memory text is missing" },
+                category = request.memoryCategory.orEmpty().ifBlank { "general" },
+            )
+            AgentToolOutcome(json.encodeToString(MemorySaveToolResult(
+                saved = true,
+                created = false,
+                updated = true,
+                id = result.memory.id,
+                category = result.memory.category,
+                content = result.memory.content,
+                mergedMemoryId = result.mergedMemoryId,
+            )))
         }
         "memory_forget" -> {
             val settings = repository.automationSettingsNow()
             check(settings.memoryEnabled) { "Memory is disabled in Arbor settings." }
             val id = requireNotNull(request.memoryId) { "Memory id is missing" }
-            repository.deleteMemory(id)
-            AgentToolOutcome(json.encodeToString(MemoryForgetToolResult(forgotten = true, id = id)))
+            AgentToolOutcome(json.encodeToString(MemoryForgetToolResult(
+                forgotten = repository.deleteMemory(id),
+                id = id,
+            )))
         }
         "send_file", "file_send" -> {
             val relative = requireNotNull(request.path) { "File path is missing" }.trim().removePrefix("/workspace/")
@@ -455,9 +498,21 @@ private fun ResponseBody.readLimited(limit: Long): String {
 @Serializable
 private data class MemorySaveToolResult(
     val saved: Boolean,
+    val created: Boolean,
+    val updated: Boolean,
     val id: String,
     val category: String,
     val content: String,
+    val mergedMemoryId: String? = null,
+)
+
+@Serializable
+private data class MemoryToolItem(
+    val id: String,
+    val content: String,
+    val category: String,
+    val enabled: Boolean,
+    val updatedAt: Long,
 )
 
 @Serializable
