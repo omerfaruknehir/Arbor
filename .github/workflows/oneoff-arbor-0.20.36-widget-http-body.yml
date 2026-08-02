@@ -73,4 +73,4 @@ jobs:
           done
           exit 1
 
-# Retriggered after repairing the end-of-file patch anchor.
+# Retriggered after replacing the fragile tail anchor with direct helper append.
