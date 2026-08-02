@@ -56,6 +56,8 @@ jobs:
     env:
       ARBOR_VERSION: ${{ needs.detect_version.outputs.version }}
       ARBOR_TAG: ${{ needs.detect_version.outputs.tag }}
+      ARBOR_SOURCE_REPOSITORY: ${{ github.repository }}
+      ARBOR_SOURCE_COMMIT: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -103,8 +105,44 @@ jobs:
         shell: bash
         run: |
           mkdir -p release
-          cp app/build/outputs/apk/release/app-release.apk "release/Arbor-${ARBOR_VERSION}-release.apk"
+          apk_asset="Arbor-${ARBOR_VERSION}-release.apk"
+          cp app/build/outputs/apk/release/app-release.apk "release/$apk_asset"
           cp app/build/outputs/bundle/release/app-release.aab "release/Arbor-${ARBOR_VERSION}-release.aab"
+          apk_sha256="$(sha256sum "release/$apk_asset" | awk '{print $1}')"
+          cert_sha256="$(
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "release/$apk_asset" \
+              | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' \
+              | head -n 1
+          )"
+          package_name="$(
+            "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "release/$apk_asset" \
+              | sed -n "s/^package: name='\([^']*\)'.*/\1/p" \
+              | head -n 1
+          )"
+          version_code="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
+          export apk_asset apk_sha256 cert_sha256 package_name version_code
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          version = os.environ["ARBOR_VERSION"]
+          manifest = {
+              "schemaVersion": 1,
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "tag": os.environ["ARBOR_TAG"],
+              "versionName": version,
+              "versionCode": int(os.environ["version_code"]),
+              "packageName": os.environ["package_name"],
+              "apkAsset": os.environ["apk_asset"],
+              "apkSha256": os.environ["apk_sha256"],
+              "signingCertificateSha256": os.environ["cert_sha256"],
+              "sourceCommit": os.environ["GITHUB_SHA"],
+          }
+          Path(f"release/Arbor-{version}-release.json").write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+          )
+          PY
           git archive --format=zip --prefix="Arbor-${ARBOR_VERSION}/" \
             -o "release/Arbor-${ARBOR_VERSION}-source.zip" "$GITHUB_SHA"
           git archive --format=tar --prefix="Arbor-${ARBOR_VERSION}/" "$GITHUB_SHA" \
