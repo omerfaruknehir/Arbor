@@ -72,3 +72,5 @@ jobs:
             sleep $((attempt * 3))
           done
           exit 1
+
+# Retriggered after repairing the end-of-file patch anchor.
