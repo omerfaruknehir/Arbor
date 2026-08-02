@@ -46,9 +46,10 @@ internal object MemoryManagement {
         val clean = cleanContent(content)
         val cleanCategory = cleanCategory(category)
         val canonical = canonicalText(clean)
+        val eligible = memories.filter { it.id != excludingId }
+        eligible.firstOrNull { canonicalText(it.content) == canonical }?.let { return it }
         val candidateTokens = tokens(canonical)
-        return memories.asSequence()
-            .filter { it.id != excludingId }
+        return eligible.asSequence()
             .filter { canonicalText(it.category) == canonicalText(cleanCategory) }
             .map { memory -> memory to duplicateScore(canonical, candidateTokens, memory.content) }
             .filter { (_, score) -> score >= DUPLICATE_THRESHOLD }
@@ -103,18 +104,24 @@ internal object MemoryManagement {
             memory to relevanceScore(memory, normalizedQuery, queryTokens, currentConversationId)
         }.sortedWith(compareByDescending<Pair<MemoryEntity, Double>> { it.second }.thenByDescending { it.first.updatedAt })
 
-        val totalCharacters = enabled.sumOf(::estimatedContextCharacters)
-        val candidates = if (enabled.size <= itemLimit && totalCharacters <= characterLimit) {
-            scored.map(Pair<MemoryEntity, Double>::first)
-        } else {
-            buildList {
-                scored.filter { (_, score) -> score > 0.0 }.forEach { (memory, _) ->
+        val candidates: List<MemoryEntity> = buildList {
+            scored.filter { (_, score) -> score > 0.0 }.forEach { (memory, _) ->
+                if (none { it.id == memory.id }) add(memory)
+            }
+            if (currentConversationId != null) {
+                enabled.asSequence()
+                    .filter { it.sourceConversationId == currentConversationId }
+                    .take(SAME_CHAT_FALLBACK_ITEMS)
+                    .forEach { memory -> if (none { it.id == memory.id }) add(memory) }
+            }
+            enabled.asSequence()
+                .filter(::isBaselineMemory)
+                .take(BASELINE_CONTEXT_ITEMS)
+                .forEach { memory -> if (none { it.id == memory.id }) add(memory) }
+            if (asksForMemoryOverview(normalizedQuery, queryTokens)) {
+                enabled.take(RECENT_OVERVIEW_ITEMS).forEach { memory ->
                     if (none { it.id == memory.id }) add(memory)
                 }
-                enabled.take(RECENT_FALLBACK_ITEMS).forEach { memory ->
-                    if (none { it.id == memory.id }) add(memory)
-                }
-                if (isEmpty()) addAll(enabled)
             }
         }
 
@@ -127,7 +134,7 @@ internal object MemoryManagement {
             selected += memory
             usedCharacters += cost
         }
-        return selected.ifEmpty { enabled.take(1) }
+        return selected
     }
 
     private fun relevanceScore(
@@ -185,8 +192,22 @@ internal object MemoryManagement {
     private fun estimatedContextCharacters(memory: MemoryEntity): Int =
         memory.content.length + memory.category.length + 48
 
+    private fun isBaselineMemory(memory: MemoryEntity): Boolean =
+        canonicalText(memory.category) in BASELINE_CATEGORIES
+
+    private fun asksForMemoryOverview(normalizedQuery: String, queryTokens: Set<String>): Boolean =
+        MEMORY_OVERVIEW_PHRASES.any(normalizedQuery::contains) ||
+            queryTokens.any { it in MEMORY_OVERVIEW_TOKENS }
+
     private const val DUPLICATE_THRESHOLD = 0.88
-    private const val RECENT_FALLBACK_ITEMS = 6
+    private const val SAME_CHAT_FALLBACK_ITEMS = 6
+    private const val BASELINE_CONTEXT_ITEMS = 4
+    private const val RECENT_OVERVIEW_ITEMS = 12
+    private val BASELINE_CATEGORIES = setOf(
+        "identity", "language", "languages", "personal", "preference", "preferences", "profile",
+    )
+    private val MEMORY_OVERVIEW_TOKENS = setOf("memory", "memories", "remember", "remembered", "hatirla", "hafiza")
+    private val MEMORY_OVERVIEW_PHRASES = setOf("know about me", "what do you know", "benim hakkimda")
     private val STOP_WORDS = setOf(
         "a", "an", "and", "are", "as", "at", "be", "been", "by", "for", "from", "i", "in", "is", "it",
         "me", "my", "of", "on", "or", "that", "the", "this", "to", "was", "were", "with", "you", "your",

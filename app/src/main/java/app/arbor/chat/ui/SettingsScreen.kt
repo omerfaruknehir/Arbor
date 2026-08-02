@@ -71,6 +71,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarState
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -79,6 +80,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -146,6 +148,9 @@ import kotlin.math.roundToInt
 private val LocalSettingsScaffoldPadding = compositionLocalOf { PaddingValues() }
 private val LocalSettingsRoute = compositionLocalOf { SettingsRoute.HOME }
 private val LocalSettingsViewModel = compositionLocalOf<ChatViewModel?> { null }
+@OptIn(ExperimentalMaterial3Api::class)
+private val LocalSettingsTopAppBarState = compositionLocalOf<TopAppBarState?> { null }
+private val LocalSettingsPageRevision = compositionLocalOf { 0L }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -173,11 +178,12 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val registeredProviders = remember(providers, credentialRevision) { viewModel.registeredProviders(providers) }
     val configuredProviders = remember(providers, credentialRevision) { viewModel.configuredProviders(providers) }
     val route by viewModel.settingsRoute.collectAsState()
+    val pageRevisions by viewModel.settingsPageRevisions.collectAsState()
     val haptics = rememberArborHaptics()
 
     LaunchedEffect(providerSetupRequested) {
         if (providerSetupRequested) {
-            viewModel.settingsRoute.value = SettingsRoute.PROVIDERS
+            viewModel.openSettingsRoute(SettingsRoute.PROVIDERS)
             viewModel.consumeProviderSetupRequest()
         }
     }
@@ -244,11 +250,13 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     LocalSettingsScaffoldPadding provides padding,
                     LocalSettingsRoute provides currentRoute,
                     LocalSettingsViewModel provides viewModel,
+                    LocalSettingsTopAppBarState provides scrollBehavior.state,
+                    LocalSettingsPageRevision provides (pageRevisions[currentRoute] ?: 0L),
                 ) {
                     when (currentRoute) {
                         SettingsRoute.HOME -> SettingsHome(
                             providerCount = registeredProviders.size,
-                            onOpen = { viewModel.settingsRoute.value = it },
+                            onOpen = viewModel::openSettingsRoute,
                         )
                         SettingsRoute.DEFAULTS -> NewChatDefaultsSettings(defaults, configuredProviders, viewModel)
                         SettingsRoute.AUTOMATION -> AutomationSettingsPage(automation, configuredProviders, viewModel)
@@ -278,8 +286,8 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         )
                         SettingsRoute.ABOUT -> AboutSettingsPage(
                             developerEnabled = developerSettings.enabled,
-                            onOpenDeveloper = { viewModel.settingsRoute.value = SettingsRoute.DEVELOPER },
-                            onOpenLicenses = { viewModel.settingsRoute.value = SettingsRoute.LICENSES },
+                            onOpenDeveloper = { viewModel.openSettingsRoute(SettingsRoute.DEVELOPER) },
+                            onOpenLicenses = { viewModel.openSettingsRoute(SettingsRoute.LICENSES) },
                         )
                         SettingsRoute.LICENSES -> LicenseCatalogSettingsPage()
                     }
@@ -396,31 +404,49 @@ private fun SettingsDestination(
     )
 }
 
+internal fun settingsTopBarHeightOffset(scrollOffset: Int, heightOffsetLimit: Float): Float =
+    if (heightOffsetLimit >= 0f) 0f
+    else (-scrollOffset.coerceAtLeast(0).toFloat()).coerceIn(heightOffsetLimit, 0f)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SettingsPage(content: @Composable ColumnScope.() -> Unit) {
     val scaffoldPadding = LocalSettingsScaffoldPadding.current
     val route = LocalSettingsRoute.current
     val viewModel = LocalSettingsViewModel.current
-    val scrollState = rememberScrollState(initial = viewModel?.settingsScrollOffset(route) ?: 0)
-    LaunchedEffect(route, scrollState, viewModel) {
-        val target = viewModel ?: return@LaunchedEffect
-        snapshotFlow { scrollState.value }
-            .distinctUntilChanged()
-            .collect { target.saveSettingsScrollOffset(route, it) }
+    val topAppBarState = LocalSettingsTopAppBarState.current
+    val revision = LocalSettingsPageRevision.current
+    key(revision) {
+        val scrollState = rememberScrollState(initial = viewModel?.settingsScrollOffset(route) ?: 0)
+        LaunchedEffect(route, scrollState, viewModel) {
+            val target = viewModel ?: return@LaunchedEffect
+            snapshotFlow { scrollState.value }
+                .distinctUntilChanged()
+                .collect { target.saveSettingsScrollOffset(route, it) }
+        }
+        LaunchedEffect(route, scrollState, topAppBarState) {
+            val state = topAppBarState ?: return@LaunchedEffect
+            snapshotFlow { scrollState.value to state.heightOffsetLimit }
+                .distinctUntilChanged()
+                .collect { (offset, limit) ->
+                    state.heightOffset = settingsTopBarHeightOffset(offset, limit)
+                    state.contentOffset = -offset.coerceAtLeast(0).toFloat()
+                }
+        }
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(
+                    start = 20.dp,
+                    end = 20.dp,
+                    top = scaffoldPadding.calculateTopPadding() + 20.dp,
+                    bottom = scaffoldPadding.calculateBottomPadding() + 20.dp,
+                ),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+            content = content,
+        )
     }
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(
-                start = 20.dp,
-                end = 20.dp,
-                top = scaffoldPadding.calculateTopPadding() + 20.dp,
-                bottom = scaffoldPadding.calculateBottomPadding() + 20.dp,
-            ),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
-        content = content,
-    )
 }
 
 @Composable
@@ -503,6 +529,14 @@ private fun AutomationSettingsPage(
     Spacer(Modifier.padding(bottom = 24.dp))
 }
 
+private enum class MemoryStatusFilter(val label: String) {
+    ALL("All"), ENABLED("Enabled"), DISABLED("Disabled")
+}
+
+private enum class MemorySortOrder(val label: String) {
+    UPDATED("Recently updated"), CREATED("Recently created"), CATEGORY("Category")
+}
+
 @Composable
 private fun MemorySettingsPage(
     automation: AutomationSettingsEntity,
@@ -515,13 +549,42 @@ private fun MemorySettingsPage(
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
     var editText by rememberSaveable { mutableStateOf("") }
     var editCategory by rememberSaveable { mutableStateOf("general") }
-    val visibleMemories = remember(memories, memorySearch) {
+    var statusFilter by remember { mutableStateOf(MemoryStatusFilter.ALL) }
+    var categoryFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    var sortOrder by remember { mutableStateOf(MemorySortOrder.UPDATED) }
+    var categoryMenu by remember { mutableStateOf(false) }
+    var sortMenu by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingDeleteIds by remember { mutableStateOf<Set<String>?>(null) }
+    var deleteDisabledPending by remember { mutableStateOf(false) }
+    val categories = remember(memories) { memories.map(MemoryEntity::category).distinct().sortedBy(String::lowercase) }
+    val visibleMemories = remember(memories, memorySearch, statusFilter, categoryFilter, sortOrder) {
         val query = memorySearch.trim()
-        if (query.isBlank()) memories
-        else memories.filter { memory ->
-  memory.content.contains(query, ignoreCase = true) ||
-      memory.category.contains(query, ignoreCase = true)
-        }
+        memories.asSequence()
+            .filter { memory -> query.isBlank() || memory.content.contains(query, true) || memory.category.contains(query, true) }
+            .filter { memory ->
+                when (statusFilter) {
+                    MemoryStatusFilter.ALL -> true
+                    MemoryStatusFilter.ENABLED -> memory.enabled
+                    MemoryStatusFilter.DISABLED -> !memory.enabled
+                }
+            }
+            .filter { memory -> categoryFilter == null || memory.category == categoryFilter }
+            .let { sequence ->
+                when (sortOrder) {
+                    MemorySortOrder.UPDATED -> sequence.sortedByDescending(MemoryEntity::updatedAt)
+                    MemorySortOrder.CREATED -> sequence.sortedByDescending(MemoryEntity::createdAt)
+                    MemorySortOrder.CATEGORY -> sequence.sortedWith(
+                        compareBy<MemoryEntity> { it.category.lowercase() }.thenBy { it.content.lowercase() },
+                    )
+                }
+            }
+            .toList()
+    }
+    LaunchedEffect(memories) {
+        val existing = memories.mapTo(mutableSetOf(), MemoryEntity::id)
+        selectedIds = selectedIds.intersect(existing)
+        if (categoryFilter != null && categoryFilter !in categories) categoryFilter = null
     }
 
     SectionTitle(
@@ -532,21 +595,21 @@ private fun MemorySettingsPage(
         headlineContent = { Text("Use memory") },
         supportingContent = { Text("Expose selected enabled memories to chats and allow memory tools") },
         trailingContent = {
-  Switch(
-      checked = automation.memoryEnabled,
-      onCheckedChange = { enabled -> viewModel.updateAutomationSettings { it.copy(memoryEnabled = enabled) } },
-  )
+            Switch(
+                checked = automation.memoryEnabled,
+                onCheckedChange = { enabled -> viewModel.updateAutomationSettings { it.copy(memoryEnabled = enabled) } },
+            )
         },
     )
     ListItem(
         headlineContent = { Text("Automatic memory") },
         supportingContent = { Text("Allow models to save stable, non-sensitive details; duplicate items are merged") },
         trailingContent = {
-  Switch(
-      checked = automation.memoryAutoSave,
-      enabled = automation.memoryEnabled,
-      onCheckedChange = { enabled -> viewModel.updateAutomationSettings { it.copy(memoryAutoSave = enabled) } },
-  )
+            Switch(
+                checked = automation.memoryAutoSave,
+                enabled = automation.memoryEnabled,
+                onCheckedChange = { enabled -> viewModel.updateAutomationSettings { it.copy(memoryAutoSave = enabled) } },
+            )
         },
     )
     HorizontalDivider()
@@ -569,10 +632,11 @@ private fun MemorySettingsPage(
     Button(
         enabled = draft.isNotBlank(),
         onClick = {
-  viewModel.addMemory(draft, category)
-  draft = ""
+            viewModel.addMemory(draft, category)
+            draft = ""
         },
     ) { Text("Save memory") }
+
     HorizontalDivider()
     SectionTitle(
         "Saved memories",
@@ -587,93 +651,192 @@ private fun MemorySettingsPage(
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        TextButton(
-  enabled = memories.any { !it.enabled },
-  onClick = { viewModel.setAllMemoriesEnabled(true) },
-        ) { Text("Enable all") }
-        TextButton(
-  enabled = memories.any { it.enabled },
-  onClick = { viewModel.setAllMemoriesEnabled(false) },
-        ) { Text("Disable all") }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        MemoryStatusFilter.entries.forEach { option ->
+            FilterChip(
+                selected = statusFilter == option,
+                onClick = { statusFilter = option },
+                label = { Text(option.label) },
+            )
+        }
     }
-    TextButton(
-        enabled = memories.any { !it.enabled },
-        onClick = { viewModel.deleteDisabledMemories() },
-    ) { Text("Delete disabled memories") }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.weight(1f)) {
+            OutlinedButton(onClick = { categoryMenu = true }, modifier = Modifier.fillMaxWidth()) {
+                Text(categoryFilter ?: "All categories", maxLines = 1)
+                Icon(Icons.Outlined.ExpandMore, null, Modifier.size(18.dp))
+            }
+            ArborDropdownMenu(expanded = categoryMenu, onDismissRequest = { categoryMenu = false }) {
+                DropdownMenuItem(text = { Text("All categories") }, onClick = { categoryFilter = null; categoryMenu = false })
+                categories.forEach { value ->
+                    DropdownMenuItem(text = { Text(value) }, onClick = { categoryFilter = value; categoryMenu = false })
+                }
+            }
+        }
+        Box(Modifier.weight(1f)) {
+            OutlinedButton(onClick = { sortMenu = true }, modifier = Modifier.fillMaxWidth()) {
+                Text(sortOrder.label, maxLines = 1)
+                Icon(Icons.Outlined.ExpandMore, null, Modifier.size(18.dp))
+            }
+            ArborDropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                MemorySortOrder.entries.forEach { option ->
+                    DropdownMenuItem(text = { Text(option.label) }, onClick = { sortOrder = option; sortMenu = false })
+                }
+            }
+        }
+    }
 
-    if (memorySearch.isNotBlank() && visibleMemories.isEmpty()) {
-        Text("No memories match this search.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (selectedIds.isNotEmpty()) {
+        Surface(
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("${selectedIds.size} selected", fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    TextButton(onClick = { viewModel.setMemoriesEnabled(selectedIds, true); selectedIds = emptySet() }) { Text("Enable") }
+                    TextButton(onClick = { viewModel.setMemoriesEnabled(selectedIds, false); selectedIds = emptySet() }) { Text("Disable") }
+                    TextButton(onClick = { pendingDeleteIds = selectedIds }) { Text("Delete") }
+                    TextButton(onClick = { selectedIds = emptySet() }) { Text("Clear") }
+                }
+            }
+        }
+    } else {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(
+                enabled = visibleMemories.isNotEmpty(),
+                onClick = { selectedIds = visibleMemories.mapTo(linkedSetOf(), MemoryEntity::id) },
+            ) { Text("Select shown") }
+            TextButton(
+                enabled = memories.any { !it.enabled },
+                onClick = { deleteDisabledPending = true },
+            ) { Text("Delete disabled") }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            TextButton(enabled = memories.any { !it.enabled }, onClick = { viewModel.setAllMemoriesEnabled(true) }) { Text("Enable all") }
+            TextButton(enabled = memories.any { it.enabled }, onClick = { viewModel.setAllMemoriesEnabled(false) }) { Text("Disable all") }
+        }
+    }
+
+    if (visibleMemories.isEmpty()) {
+        Text(
+            if (memories.isEmpty()) "No memories saved yet." else "No memories match the current filters.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
     visibleMemories.forEach { memory ->
         Surface(
-  color = MaterialTheme.colorScheme.surfaceContainer,
-  shape = MaterialTheme.shapes.large,
-  modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier.fillMaxWidth(),
         ) {
-  if (editingId == memory.id) {
-      Column(
-          modifier = Modifier.padding(16.dp),
-          verticalArrangement = Arrangement.spacedBy(10.dp),
-      ) {
-          OutlinedTextField(
-              value = editText,
-              onValueChange = { editText = it },
-              label = { Text("Memory") },
-              minLines = 2,
-              maxLines = 5,
-              modifier = Modifier.fillMaxWidth(),
-          )
-          OutlinedTextField(
-              value = editCategory,
-              onValueChange = { editCategory = it },
-              label = { Text("Category") },
-              singleLine = true,
-              modifier = Modifier.fillMaxWidth(),
-          )
-          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-              Button(
-                  enabled = editText.isNotBlank(),
-                  onClick = {
-                      viewModel.updateMemory(memory.id, editText, editCategory)
-                      editingId = null
-                  },
-              ) { Text("Save") }
-              TextButton(onClick = { editingId = null }) { Text("Cancel") }
-          }
-      }
-  } else {
-      ListItem(
-          headlineContent = { Text(memory.content) },
-          supportingContent = {
-              Text("${memory.category} · ${if (memory.enabled) "Enabled" else "Disabled"}")
-          },
-          trailingContent = {
-              Row(verticalAlignment = Alignment.CenterVertically) {
-                  IconButton(onClick = {
-                      editingId = memory.id
-                      editText = memory.content
-                      editCategory = memory.category
-                  }) {
-                      Icon(Icons.Outlined.Edit, "Edit memory")
-                  }
-                  Switch(
-                      checked = memory.enabled,
-                      onCheckedChange = { viewModel.setMemoryEnabled(memory.id, it) },
-                  )
-                  IconButton(onClick = { viewModel.deleteMemory(memory.id) }) {
-                      Icon(Icons.Outlined.DeleteOutline, "Delete memory")
-                  }
-              }
-          },
-          colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent),
-      )
-  }
+            if (editingId == memory.id) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = editText,
+                        onValueChange = { editText = it },
+                        label = { Text("Memory") },
+                        minLines = 2,
+                        maxLines = 8,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = editCategory,
+                        onValueChange = { editCategory = it },
+                        label = { Text("Category") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            enabled = editText.isNotBlank(),
+                            onClick = {
+                                viewModel.updateMemory(memory.id, editText, editCategory)
+                                editingId = null
+                            },
+                        ) { Text("Save") }
+                        TextButton(onClick = { editingId = null }) { Text("Cancel") }
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(memory.content, style = MaterialTheme.typography.bodyLarge)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = memory.id in selectedIds,
+                            onCheckedChange = { checked ->
+                                selectedIds = if (checked) selectedIds + memory.id else selectedIds - memory.id
+                            },
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                memory.category,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                            Text(
+                                "${if (memory.sourceConversationId == null) "Manual" else "From chat"} · ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(memory.updatedAt))}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
+                        IconButton(onClick = {
+                            editingId = memory.id
+                            editText = memory.content
+                            editCategory = memory.category
+                        }) { Icon(Icons.Outlined.Edit, "Edit memory") }
+                        Switch(
+                            checked = memory.enabled,
+                            onCheckedChange = { viewModel.setMemoryEnabled(memory.id, it) },
+                        )
+                        IconButton(onClick = { pendingDeleteIds = setOf(memory.id) }) {
+                            Icon(Icons.Outlined.DeleteOutline, "Delete memory")
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    pendingDeleteIds?.let { ids ->
+        ArborAlertDialog(
+            onDismissRequest = { pendingDeleteIds = null },
+            title = { Text(if (ids.size == 1) "Delete memory?" else "Delete ${ids.size} memories?") },
+            text = { Text("This permanently removes the selected memory data from Arbor.") },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.deleteMemories(ids)
+                    selectedIds = selectedIds - ids
+                    pendingDeleteIds = null
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { pendingDeleteIds = null }) { Text("Cancel") } },
+        )
+    }
+    if (deleteDisabledPending) {
+        val count = memories.count { !it.enabled }
+        ArborAlertDialog(
+            onDismissRequest = { deleteDisabledPending = false },
+            title = { Text("Delete $count disabled memor${if (count == 1) "y" else "ies"}?") },
+            text = { Text("Disabled memories are currently excluded from chats. This cleanup permanently removes them.") },
+            confirmButton = {
+                Button(onClick = { viewModel.deleteDisabledMemories(); deleteDisabledPending = false }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { deleteDisabledPending = false }) { Text("Cancel") } },
+        )
     }
     Spacer(Modifier.padding(bottom = 24.dp))
 }

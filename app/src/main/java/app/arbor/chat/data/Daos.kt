@@ -270,7 +270,13 @@ interface MemoryDao {
     suspend fun delete(id: String): Int
 
     @Query("UPDATE memories SET enabled = :enabled, updatedAt = :now WHERE id = :id")
-    suspend fun setEnabled(id: String, enabled: Boolean, now: Long)
+    suspend fun setEnabled(id: String, enabled: Boolean, now: Long): Int
+
+    @Query("UPDATE memories SET enabled = :enabled, updatedAt = :now WHERE id IN (:ids)")
+    suspend fun setEnabled(ids: List<String>, enabled: Boolean, now: Long): Int
+
+    @Query("DELETE FROM memories WHERE id IN (:ids)")
+    suspend fun delete(ids: List<String>): Int
 
     @Query("UPDATE memories SET enabled = :enabled, updatedAt = :now")
     suspend fun setAllEnabled(enabled: Boolean, now: Long): Int
