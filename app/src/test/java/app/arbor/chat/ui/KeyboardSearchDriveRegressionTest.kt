@@ -43,12 +43,15 @@ class KeyboardSearchDriveRegressionTest {
     }
 
     @Test
-    fun synchronizedTopBarsDoNotAlsoConsumeNestedScroll() {
+    fun topBarsUseNestedScrollAsTheirOnlyLiveScrollOwner() {
         val chat = java.io.File("src/main/java/app/arbor/chat/ui/ChatScreen.kt").readText()
         val settings = java.io.File("src/main/java/app/arbor/chat/ui/SettingsScreen.kt").readText()
-        assertFalse(chat.contains("Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)"))
-        assertFalse(settings.contains("Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)"))
-        assertTrue(settings.contains("if (limit < 0f)"))
+        assertTrue(chat.contains("Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)"))
+        assertTrue(settings.contains("Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)"))
+        assertFalse(chat.contains("Triple(\n                messageListState.firstVisibleItemIndex"))
+        assertFalse(settings.contains("snapshotFlow { scrollState.value to state.heightOffsetLimit }"))
+        assertTrue(chat.contains("Restore chrome once after the list anchor is restored"))
+        assertTrue(settings.contains("initialize the title once after measurement"))
     }
 
     @Test

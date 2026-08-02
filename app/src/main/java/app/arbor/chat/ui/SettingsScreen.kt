@@ -213,7 +213,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         val blurState = rememberArborBackdropBlurState()
 
         Scaffold(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
             contentWindowInsets = WindowInsets(0),
             topBar = {
                 CollapsingTranslucentTopBar(
@@ -424,18 +424,14 @@ internal fun SettingsPage(content: @Composable ColumnScope.() -> Unit) {
                 .distinctUntilChanged()
                 .collect { target.saveSettingsScrollOffset(route, it) }
         }
-        LaunchedEffect(route, scrollState, topAppBarState) {
+        LaunchedEffect(route, revision, scrollState, topAppBarState) {
             val state = topAppBarState ?: return@LaunchedEffect
-            snapshotFlow { scrollState.value to state.heightOffsetLimit }
-                .distinctUntilChanged()
-                .collect { (offset, limit) ->
-                    // A zero limit is a transient pre-measure/resize state. Writing
-                    // heightOffset then would expand an already-collapsed title.
-                    if (limit < 0f) {
-                        state.heightOffset = settingsTopBarHeightOffset(offset, limit)
-                    }
-                    state.contentOffset = -offset.coerceAtLeast(0).toFloat()
-                }
+            // A restored ScrollState has already consumed its historical offset,
+            // so initialize the title once after measurement. Live gesture deltas
+            // are then owned only by Material's nested-scroll connection.
+            val limit = snapshotFlow { state.heightOffsetLimit }.first { it < 0f }
+            state.heightOffset = settingsTopBarHeightOffset(scrollState.value, limit)
+            state.contentOffset = -scrollState.value.coerceAtLeast(0).toFloat()
         }
         Column(
             Modifier
