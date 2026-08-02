@@ -26,3 +26,7 @@ This release repairs long-running agent work and adds first-class local memory w
 - Removes the six-row renderer truncation.
 - Adds bounded multiline text wrapping and ellipsis instead of flattening every line into one clipped row.
 - Exposes input actions in the Home-widget action strip.
+
+## Verification
+
+Third-party license verification, offline license generation, release unit tests, release lint, and the optimized release APK build passed before publication.
