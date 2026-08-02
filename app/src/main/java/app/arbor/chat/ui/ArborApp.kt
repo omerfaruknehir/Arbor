@@ -1,6 +1,8 @@
 package app.arbor.chat.ui
 
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -34,6 +36,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import app.arbor.chat.settings.DeveloperSettings
 import app.arbor.chat.settings.PerformanceOverlayPosition
+import app.arbor.chat.update.RepositoryUpdateState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
@@ -70,6 +73,7 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
     val setupDismissed by viewModel.setupDismissed.collectAsState()
     val shareConversationId by viewModel.shareConversationId.collectAsState()
     val incomingArchive by viewModel.incomingArchive.collectAsState()
+    val repositoryUpdateState by viewModel.repositoryUpdateState.collectAsState()
     val performanceMonitor = remember(activity) { ArborPerformanceMonitor(activity) }
     val showPerformanceOverlay = developerSettings.enabled &&
         (developerSettings.performanceOverlayEnabled || developerSettings.diagnosticProfilerEnabled)
@@ -162,8 +166,27 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
         if (developerSettings.diagnosticProfilerEnabled) ArborRenderProfiler.recordAppRecomposition()
     }
 
-    LaunchedEffect(viewModel) {
-        viewModel.notices.collect { snackbar.showSnackbar(it) }
+    LaunchedEffect(repositoryUpdateState) {
+        val available = repositoryUpdateState as? RepositoryUpdateState.Available
+            ?: return@LaunchedEffect
+        val release = available.release
+        if (!viewModel.shouldPromptRepositoryUpdate(release.tagName)) return@LaunchedEffect
+        val target = if (release.directInstallCompatible && release.apkDownloadUrl != null) {
+            release.apkDownloadUrl
+        } else {
+            release.releasePageUrl
+        }
+        val result = snackbar.showSnackbar(
+            message = "Arbor ${release.versionName} is available from ${release.repository}",
+            actionLabel = if (release.directInstallCompatible) "Download" else "Open release",
+            duration = SnackbarDuration.Long,
+        )
+        viewModel.markRepositoryUpdatePrompted(release.tagName)
+        if (result == SnackbarResult.ActionPerformed) {
+            runCatching {
+                activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target)))
+            }.onFailure { viewModel.postNotice("Could not open the update link") }
+        }
     }
     LaunchedEffect(pythonRun?.startedAt, pythonRun?.running, linuxRun?.startedAt, linuxRun?.running) {
         val activePython = pythonRun?.takeIf { it.running }

@@ -134,6 +134,7 @@ import app.arbor.chat.settings.ThemeMode
 import app.arbor.chat.settings.chromeEdgeControlPositionForSoftness
 import app.arbor.chat.settings.displayedChromeEdgeSoftness
 import app.arbor.chat.ui.theme.palettePreviewColors
+import app.arbor.chat.update.RepositoryUpdateState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
@@ -285,6 +286,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             viewModel = viewModel,
                         )
                         SettingsRoute.ABOUT -> AboutSettingsPage(
+                            viewModel = viewModel,
                             developerEnabled = developerSettings.enabled,
                             onOpenDeveloper = { viewModel.openSettingsRoute(SettingsRoute.DEVELOPER) },
                             onOpenLicenses = { viewModel.openSettingsRoute(SettingsRoute.LICENSES) },
@@ -1369,6 +1371,7 @@ private val PerformanceOverlayPosition.displayName: String
 
 @Composable
 private fun AboutSettingsPage(
+    viewModel: ChatViewModel,
     developerEnabled: Boolean,
     onOpenDeveloper: () -> Unit,
     onOpenLicenses: () -> Unit,
@@ -1376,6 +1379,9 @@ private fun AboutSettingsPage(
     val appName = stringResource(R.string.app_name)
     val applicationInfo = LocalContext.current.applicationInfo
     val uriHandler = LocalUriHandler.current
+    val updateState by viewModel.repositoryUpdateState.collectAsState()
+    val sourceRepository = BuildConfig.SOURCE_REPOSITORY.takeIf(String::isNotBlank)
+    val sourceUrl = sourceRepository?.let { "https://github.com/$it" }
     SectionTitle("$appName ${BuildConfig.VERSION_NAME}", "Native Android BYOK model workspace.")
 
     SettingsGroup("Project") {
@@ -1394,9 +1400,12 @@ private fun AboutSettingsPage(
         HorizontalDivider()
         SettingsDestination(
             icon = Icons.Outlined.Code,
-            title = "Source code",
-            subtitle = "github.com/omerfaruknehir/Arbor",
-            onClick = { uriHandler.openUri("https://github.com/omerfaruknehir/Arbor") },
+            title = "Build source",
+            subtitle = sourceRepository ?: "No GitHub source was embedded in this build",
+            onClick = {
+                if (sourceUrl != null) uriHandler.openUri(sourceUrl)
+                else viewModel.postNotice("This build has no GitHub source provenance")
+            },
         )
         HorizontalDivider()
         SettingsDestination(
@@ -1414,10 +1423,88 @@ private fun AboutSettingsPage(
         )
     }
 
+    SettingsGroup("Updates") {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            when (val state = updateState) {
+                RepositoryUpdateState.Unsupported -> {
+                    Text("Automatic checks are disabled because this build has no embedded GitHub repository origin.")
+                    Text(
+                        "GitHub release workflows embed their own owner/repository. Fork builds therefore follow the fork they came from.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                RepositoryUpdateState.Idle -> {
+                    Text("Updates are checked against ${sourceRepository ?: "the build repository"}.")
+                    OutlinedButton(onClick = viewModel::checkForUpdates, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Outlined.Refresh, null)
+                        Text(" Check for updates")
+                    }
+                }
+                RepositoryUpdateState.Checking -> {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                        Text("Checking ${sourceRepository ?: "the source repository"}…")
+                    }
+                }
+                is RepositoryUpdateState.UpToDate -> {
+                    Text("Arbor is up to date", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Latest release: ${state.latestVersion} · checked ${DateFormat.getDateTimeInstance().format(Date(state.checkedAt))}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(onClick = viewModel::checkForUpdates, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Outlined.Refresh, null)
+                        Text(" Check again")
+                    }
+                }
+                is RepositoryUpdateState.Available -> {
+                    val release = state.release
+                    Text("Arbor ${release.versionName} is available", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Source: ${release.repository}" + (release.publishedAt?.let { " · $it" } ?: ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    release.compatibilityMessage?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+                    Button(
+                        onClick = {
+                            val target = if (release.directInstallCompatible && release.apkDownloadUrl != null) {
+                                release.apkDownloadUrl
+                            } else release.releasePageUrl
+                            uriHandler.openUri(target)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Outlined.Cloud, null)
+                        Text(if (release.directInstallCompatible) " Download update" else " Open release page")
+                    }
+                    OutlinedButton(onClick = viewModel::checkForUpdates, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Outlined.Refresh, null)
+                        Text(" Check again")
+                    }
+                }
+                is RepositoryUpdateState.Failed -> {
+                    Text("Update check failed", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error)
+                    Text(state.message, style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick = viewModel::checkForUpdates, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Outlined.Refresh, null)
+                        Text(" Retry")
+                    }
+                }
+            }
+        }
+    }
+
     SettingsGroup("Build information") {
         AboutInfoRow("Version", BuildConfig.VERSION_NAME)
         AboutInfoRow("Build", "${BuildConfig.VERSION_CODE} · ${BuildConfig.BUILD_TYPE}")
         AboutInfoRow("Package", BuildConfig.APPLICATION_ID)
+        AboutInfoRow("Source repository", sourceRepository ?: "Not embedded")
+        if (BuildConfig.SOURCE_COMMIT.isNotBlank()) AboutInfoRow("Source commit", BuildConfig.SOURCE_COMMIT.take(12))
         AboutInfoRow(
             "Minimum Android",
             androidVersionSummary(applicationInfo.minSdkVersion, isMinimum = true),

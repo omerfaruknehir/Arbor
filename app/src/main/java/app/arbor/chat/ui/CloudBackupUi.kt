@@ -1,6 +1,8 @@
 package app.arbor.chat.ui
 
 import android.accounts.Account
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.app.Activity
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -38,9 +40,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.arbor.chat.BuildConfig
 import app.arbor.chat.transfer.ArchiveOptions
+import app.arbor.chat.transfer.GoogleDriveAuthorizationFailure
+import app.arbor.chat.transfer.GoogleDriveAuthorizationFailureKind
+import app.arbor.chat.transfer.describeGoogleDriveAuthorizationFailure
 import app.arbor.chat.transfer.CloudBackupEntry
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.AuthorizationResult
@@ -80,6 +88,7 @@ internal fun CloudBackupTargets(
     enabled: Boolean,
 ) {
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
     val authorizationClient = remember(context) { Identity.getAuthorizationClient(context) }
     val driveScopes = remember { listOf(Scope(Scopes.DRIVE_APPFOLDER)) }
@@ -92,6 +101,16 @@ internal fun CloudBackupTargets(
     var googleAccount by remember { mutableStateOf<Account?>(null) }
     var googleAccountLabel by remember { mutableStateOf<String?>(null) }
     var driveError by remember { mutableStateOf<String?>(null) }
+    var driveAuthorizationFailure by remember { mutableStateOf<GoogleDriveAuthorizationFailure?>(null) }
+
+    fun recordAuthorizationFailure(error: Throwable) {
+        val failure = context.describeGoogleDriveAuthorizationFailure(
+            error = error,
+            sourceRepository = BuildConfig.SOURCE_REPOSITORY,
+        )
+        driveAuthorizationFailure = failure
+        driveError = failure.userMessage
+    }
 
     fun refreshFolderBackups() {
         scope.launch {
@@ -109,6 +128,7 @@ internal fun CloudBackupTargets(
                 is GoogleBackupAction.Open -> "drive-open-${action.entry.id}"
             }
             driveError = null
+            driveAuthorizationFailure = null
             runCatching {
                 when (action) {
                     GoogleBackupAction.Connect, GoogleBackupAction.List -> {
@@ -138,6 +158,7 @@ internal fun CloudBackupTargets(
     }
 
     fun acceptAuthorization(action: GoogleBackupAction, authorization: AuthorizationResult) {
+        driveAuthorizationFailure = null
         val token = authorization.accessToken
         if (token.isNullOrBlank()) {
             driveError = "Google returned no access token. Check that this app's package name and signing certificate are registered for its OAuth client."
@@ -162,9 +183,7 @@ internal fun CloudBackupTargets(
             GoogleAuthorizationResultRoute.PARSE_RESULT -> {
                 runCatching { authorizationClient.getAuthorizationResultFromIntent(requireNotNull(data)) }
                     .onSuccess { acceptAuthorization(action, it) }
-                    .onFailure { error ->
-                        driveError = error.message ?: "Google Drive authorization failed"
-                    }
+                    .onFailure(::recordAuthorizationFailure)
             }
             GoogleAuthorizationResultRoute.CANCELLED -> {
                 driveError = "Google Drive connection was canceled."
@@ -178,6 +197,7 @@ internal fun CloudBackupTargets(
     fun authorizeGoogle(action: GoogleBackupAction, selectAccount: Boolean = false) {
         if (busy != null || pendingGoogleAction != null) return
         driveError = null
+        driveAuthorizationFailure = null
         pendingGoogleAction = action
         val builder = AuthorizationRequest.builder().setRequestedScopes(driveScopes)
         if (selectAccount) {
@@ -200,10 +220,10 @@ internal fun CloudBackupTargets(
                     acceptAuthorization(action, result)
                 }
             }
-            .addOnFailureListener {
+            .addOnFailureListener { error ->
                 pendingGoogleAction = null
                 googleConnected = false
-                driveError = it.message ?: "Google Drive authorization failed"
+                recordAuthorizationFailure(error)
             }
     }
 
@@ -240,6 +260,7 @@ internal fun CloudBackupTargets(
                 googleAccountLabel = null
                 driveBackups = emptyList()
                 driveError = null
+                driveAuthorizationFailure = null
                 busy = null
             }
             .addOnFailureListener {
@@ -430,17 +451,52 @@ internal fun CloudBackupTargets(
             }
 
             driveError?.let { message ->
+                val failure = driveAuthorizationFailure
                 Surface(
                     color = MaterialTheme.colorScheme.errorContainer,
                     shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Google Drive error", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onErrorContainer)
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            failure?.title ?: "Google Drive error",
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
                         Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
-                        OutlinedButton(onClick = { authorizeGoogle(GoogleBackupAction.Connect, selectAccount = true) }) {
-                            Text("Reconnect")
+                        if (failure?.kind == GoogleDriveAuthorizationFailureKind.UNREGISTERED_ON_API_CONSOLE) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = .55f),
+                                shape = MaterialTheme.shapes.small,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("Package", style = MaterialTheme.typography.labelSmall)
+                                    Text(failure.identity.packageName, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                                    Text("Signing SHA-1", style = MaterialTheme.typography.labelSmall)
+                                    Text(failure.identity.signingSha1, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    context.getSystemService(ClipboardManager::class.java).setPrimaryClip(
+                                        ClipData.newPlainText("Arbor Google Drive OAuth setup", failure.copyableSetupDetails()),
+                                    )
+                                    viewModel.postNotice("Google Drive registration details copied")
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("Copy setup details") }
+                            failure.setupGuideUrl?.let { guide ->
+                                OutlinedButton(
+                                    onClick = { uriHandler.openUri(guide) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { Text("Open setup guide") }
+                            }
                         }
+                        OutlinedButton(
+                            onClick = { authorizeGoogle(GoogleBackupAction.Connect, selectAccount = true) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Reconnect") }
                     }
                 }
             }

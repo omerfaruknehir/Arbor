@@ -60,6 +60,7 @@ import app.arbor.chat.transfer.ArchiveOptions
 import app.arbor.chat.transfer.ArchivePasswordRequiredException
 import app.arbor.chat.transfer.CloudBackupEntry
 import app.arbor.chat.transfer.IncomingArchiveState
+import app.arbor.chat.update.RepositoryUpdateState
 import app.arbor.chat.generated.GeneratedBlockRepairState
 import app.arbor.chat.generated.GeneratedBlockType
 import app.arbor.chat.generated.GeneratedValidationError
@@ -197,6 +198,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     val newChatDefaults: StateFlow<NewChatDefaults> = container.appPreferences.newChatDefaults
     val renderSafeMode = container.crashReporter.renderSafeMode
     val notices = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val repositoryUpdateState: StateFlow<RepositoryUpdateState> = container.repositoryUpdates.state
     val shareConversationId = MutableStateFlow<String?>(null)
     val incomingArchive = MutableStateFlow<IncomingArchiveState?>(null)
     private val _credentialRevision = MutableStateFlow(0L)
@@ -246,6 +248,9 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
                 }
         }
         viewModelScope.launch {
+            container.repositoryUpdates.checkIfDue()
+        }
+        viewModelScope.launch {
             merge(
                 selectedConversationId.map { Unit },
                 newDraftConversationId.map { Unit },
@@ -272,6 +277,16 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     fun postNotice(message: String) {
         notices.tryEmit(message)
     }
+
+    fun checkForUpdates() {
+        viewModelScope.launch { container.repositoryUpdates.check() }
+    }
+
+    fun shouldPromptRepositoryUpdate(tagName: String): Boolean =
+        container.repositoryUpdates.shouldPrompt(tagName)
+
+    fun markRepositoryUpdatePrompted(tagName: String) =
+        container.repositoryUpdates.markPrompted(tagName)
 
     fun requestShareConversation(conversationId: String) {
         shareConversationId.value = conversationId

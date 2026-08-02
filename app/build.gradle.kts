@@ -12,6 +12,38 @@ plugins {
     id("com.chaquo.python")
 }
 
+fun normalizeGitHubRepository(raw: String?): String {
+    val value = raw?.trim().orEmpty()
+    if (value.isBlank()) return ""
+    val direct = Regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+    if (direct.matches(value)) return value.removeSuffix(".git")
+    val match = Regex("""github\.com[:/]([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?(?:[/?#].*)?$""")
+        .find(value)
+    return match?.groupValues?.getOrNull(1)?.removeSuffix(".git").orEmpty()
+}
+
+fun repositoryFromGitConfig(): String {
+    val config = rootProject.file(".git/config")
+    if (!config.isFile) return ""
+    val remoteUrl = Regex("""(?m)^\s*url\s*=\s*(.+?)\s*$""")
+        .findAll(config.readText())
+        .map { it.groupValues[1] }
+        .firstOrNull { it.contains("github.com") }
+    return normalizeGitHubRepository(remoteUrl)
+}
+
+val sourceRepository = normalizeGitHubRepository(
+    providers.gradleProperty("ARBOR_SOURCE_REPOSITORY").orNull
+        ?: System.getenv("ARBOR_SOURCE_REPOSITORY")
+        ?: System.getenv("GITHUB_REPOSITORY")
+).ifBlank(::repositoryFromGitConfig)
+val sourceCommit = (
+    providers.gradleProperty("ARBOR_SOURCE_COMMIT").orNull
+        ?: System.getenv("ARBOR_SOURCE_COMMIT")
+        ?: System.getenv("GITHUB_SHA")
+        ?: ""
+).trim().take(64)
+
 val releaseStoreFile = providers.gradleProperty("ARBOR_KEYSTORE_FILE").orNull ?: System.getenv("ARBOR_KEYSTORE_FILE")
 val releaseStorePassword = providers.gradleProperty("ARBOR_KEYSTORE_PASSWORD").orNull ?: System.getenv("ARBOR_KEYSTORE_PASSWORD")
 val releaseKeyAlias = providers.gradleProperty("ARBOR_KEY_ALIAS").orNull ?: System.getenv("ARBOR_KEY_ALIAS")
@@ -182,8 +214,10 @@ android {
         applicationId = "app.arbor.chat"
         minSdk = 26
         targetSdk = 36
-        versionCode = 167
-        versionName = "0.22.3"
+        versionCode = 168
+        versionName = "0.22.4"
+        buildConfigField("String", "SOURCE_REPOSITORY", "\"$sourceRepository\"")
+        buildConfigField("String", "SOURCE_COMMIT", "\"$sourceCommit\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
