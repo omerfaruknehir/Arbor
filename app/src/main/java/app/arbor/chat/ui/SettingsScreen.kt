@@ -647,31 +647,53 @@ private fun MemorySettingsPage(
           }
       }
   } else {
-      ListItem(
-          headlineContent = { Text(memory.content) },
-          supportingContent = {
-              Text("${memory.category} · ${if (memory.enabled) "Enabled" else "Disabled"}")
-          },
-          trailingContent = {
-              Row(verticalAlignment = Alignment.CenterVertically) {
-                  IconButton(onClick = {
-                      editingId = memory.id
-                      editText = memory.content
-                      editCategory = memory.category
-                  }) {
-                      Icon(Icons.Outlined.Edit, "Edit memory")
-                  }
-                  Switch(
-                      checked = memory.enabled,
-                      onCheckedChange = { viewModel.setMemoryEnabled(memory.id, it) },
+      Column(
+          modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 16.dp, vertical = 14.dp),
+          verticalArrangement = Arrangement.spacedBy(10.dp),
+      ) {
+          Text(
+              text = memory.content,
+              style = MaterialTheme.typography.bodyLarge,
+          )
+          Row(
+              modifier = Modifier.fillMaxWidth(),
+              verticalAlignment = Alignment.CenterVertically,
+          ) {
+              Column(Modifier.weight(1f)) {
+                  Text(
+                      text = memory.category,
+                      style = MaterialTheme.typography.bodySmall,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant,
+                      maxLines = 1,
                   )
-                  IconButton(onClick = { viewModel.deleteMemory(memory.id) }) {
-                      Icon(Icons.Outlined.DeleteOutline, "Delete memory")
-                  }
+                  Text(
+                      text = if (memory.enabled) "Enabled" else "Disabled",
+                      style = MaterialTheme.typography.labelSmall,
+                      color = if (memory.enabled) {
+                          MaterialTheme.colorScheme.primary
+                      } else {
+                          MaterialTheme.colorScheme.onSurfaceVariant
+                      },
+                  )
               }
-          },
-          colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent),
-      )
+              IconButton(onClick = {
+                  editingId = memory.id
+                  editText = memory.content
+                  editCategory = memory.category
+              }) {
+                  Icon(Icons.Outlined.Edit, "Edit memory")
+              }
+              Switch(
+                  checked = memory.enabled,
+                  onCheckedChange = { viewModel.setMemoryEnabled(memory.id, it) },
+              )
+              IconButton(onClick = { viewModel.deleteMemory(memory.id) }) {
+                  Icon(Icons.Outlined.DeleteOutline, "Delete memory")
+              }
+          }
+      }
   }
         }
     }
