@@ -15,6 +15,9 @@ internal object DrawerPhysics {
     fun dragOffset(startOffsetPx: Float, accumulatedDragPx: Float, drawerWidthPx: Float): Float =
         (startOffsetPx + accumulatedDragPx).coerceIn(0f, drawerWidthPx.coerceAtLeast(0f))
 
+    fun predictiveBackOffset(startOffsetPx: Float, progress: Float): Float =
+        startOffsetPx.coerceAtLeast(0f) * (1f - progress.coerceIn(0f, 1f))
+
     fun settleTarget(
         offsetPx: Float,
         drawerWidthPx: Float,

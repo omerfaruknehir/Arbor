@@ -44,6 +44,8 @@ internal class InteractiveDrawerState(private val scope: CoroutineScope) {
     private var animationRunning by mutableStateOf(false)
     private val offsetState = mutableFloatStateOf(0f)
     private var visibleState by mutableStateOf(false)
+    private var predictiveBackActive by mutableStateOf(false)
+    private var predictiveBackStartOffsetPx = 0f
 
     /**
      * High-frequency drag position. It is intentionally read only from pointer
@@ -54,12 +56,13 @@ internal class InteractiveDrawerState(private val scope: CoroutineScope) {
 
     /** Changes only when crossing the fully-closed boundary. */
     val isVisible: Boolean get() = visibleState
-    val isClosed: Boolean get() = !visibleState && !animationRunning
+    val claimsBack: Boolean get() = visibleState || predictiveBackActive
+    val isClosed: Boolean get() = !visibleState && !animationRunning && !predictiveBackActive
 
     private fun updateOffset(value: Float) {
         val next = value.coerceIn(0f, widthPx)
         if (offsetState.floatValue != next) offsetState.floatValue = next
-        val nextVisible = next > 0.5f
+        val nextVisible = next > 0.01f
         if (visibleState != nextVisible) visibleState = nextVisible
     }
 
@@ -99,8 +102,44 @@ internal class InteractiveDrawerState(private val scope: CoroutineScope) {
     fun open() = animateTo(DrawerAnchor.OPEN)
     fun close() = animateTo(DrawerAnchor.CLOSED)
 
+    fun beginPredictiveBack() {
+        stop()
+        predictiveBackStartOffsetPx = offsetPx
+        predictiveBackActive = true
+    }
+
+    fun updatePredictiveBack(progress: Float) {
+        if (!predictiveBackActive) return
+        updateOffset(DrawerPhysics.predictiveBackOffset(predictiveBackStartOffsetPx, progress))
+    }
+
+    fun commitPredictiveBack() {
+        updateOffset(0f)
+        predictiveBackActive = false
+        predictiveBackStartOffsetPx = 0f
+    }
+
+    fun cancelPredictiveBack() {
+        val restoreOffset = predictiveBackStartOffsetPx.coerceIn(0f, widthPx)
+        predictiveBackActive = false
+        predictiveBackStartOffsetPx = 0f
+        animateToOffset(restoreOffset)
+    }
+
     private fun animateTo(
         anchor: DrawerAnchor,
+        initialVelocityPxPerSecond: Float = 0f,
+    ) {
+        stop()
+        animationRunning = true
+        animateToOffset(
+            targetOffsetPx = if (anchor == DrawerAnchor.OPEN) widthPx else 0f,
+            initialVelocityPxPerSecond = initialVelocityPxPerSecond,
+        )
+    }
+
+    private fun animateToOffset(
+        targetOffsetPx: Float,
         initialVelocityPxPerSecond: Float = 0f,
     ) {
         stop()
@@ -108,7 +147,7 @@ internal class InteractiveDrawerState(private val scope: CoroutineScope) {
         animationJob = scope.launch {
             try {
                 Animatable(offsetPx).apply { updateBounds(0f, widthPx) }.animateTo(
-                    targetValue = if (anchor == DrawerAnchor.OPEN) widthPx else 0f,
+                    targetValue = targetOffsetPx.coerceIn(0f, widthPx),
                     animationSpec = spring(
                         dampingRatio = 0.84f,
                         stiffness = Spring.StiffnessMediumLow,

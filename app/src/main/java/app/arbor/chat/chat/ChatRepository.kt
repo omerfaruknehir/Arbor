@@ -587,6 +587,15 @@ class ChatRepository(private val database: ArborDatabase) {
     suspend fun deleteMemory(id: String): Boolean = database.memoryDao().delete(id) > 0
     suspend fun setMemoryEnabled(id: String, enabled: Boolean) =
         database.memoryDao().setEnabled(id, enabled, System.currentTimeMillis())
+    suspend fun setMemoriesEnabled(ids: Collection<String>, enabled: Boolean): Int {
+        val distinctIds = ids.filter(String::isNotBlank).distinct()
+        return if (distinctIds.isEmpty()) 0
+        else database.memoryDao().setEnabled(distinctIds, enabled, System.currentTimeMillis())
+    }
+    suspend fun deleteMemories(ids: Collection<String>): Int {
+        val distinctIds = ids.filter(String::isNotBlank).distinct()
+        return if (distinctIds.isEmpty()) 0 else database.memoryDao().delete(distinctIds)
+    }
     suspend fun setAllMemoriesEnabled(enabled: Boolean): Int =
         database.memoryDao().setAllEnabled(enabled, System.currentTimeMillis())
     suspend fun deleteDisabledMemories(): Int = database.memoryDao().deleteDisabled()

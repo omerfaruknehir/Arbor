@@ -73,6 +73,35 @@ class MemoryManagementTest {
         assertTrue(MemoryManagement.search(listOf(disabled, enabled), "fact", includeDisabled = true).any { it.id == "disabled" })
     }
 
+
+    @Test fun exactDuplicateCanMoveAcrossCategoriesWithoutCreatingAnotherItem() {
+        val existing = memory("one", "User prefers compact answers", category = "general")
+        val duplicate = MemoryManagement.findDuplicate(
+            memories = listOf(existing),
+            content = "User prefers compact answers.",
+            category = "preferences",
+        )
+        assertEquals("one", duplicate?.id)
+    }
+
+    @Test fun unrelatedSmallLibraryIsNotInjectedWholesale() {
+        val selected = MemoryManagement.selectForContext(
+            memories = listOf(memory("unrelated", "The user's bicycle is red", category = "general")),
+            messagesNewestFirst = listOf(userMessage("Explain Kotlin coroutine cancellation")),
+            currentConversationId = null,
+        )
+        assertTrue(selected.isEmpty())
+    }
+
+    @Test fun baselineProfileMemoryRemainsAvailableWithoutKeywordOverlap() {
+        val selected = MemoryManagement.selectForContext(
+            memories = listOf(memory("language", "Prefers replies in Turkish", category = "language")),
+            messagesNewestFirst = listOf(userMessage("Explain coroutine cancellation")),
+            currentConversationId = null,
+        )
+        assertEquals(listOf("language"), selected.map { it.id })
+    }
+
     private fun memory(
         id: String,
         content: String,

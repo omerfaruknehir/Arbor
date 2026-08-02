@@ -194,6 +194,19 @@ internal fun calculateTopChromeProgress(
     return ((firstVisibleItemScrollOffset - startPx).toFloat() / (endPx - startPx).toFloat()).coerceIn(0f, 1f)
 }
 
+internal fun chatTopBarHeightOffsetForScroll(
+    firstVisibleItemIndex: Int,
+    firstVisibleItemScrollOffset: Int,
+    startPx: Int,
+    endPx: Int,
+    heightOffsetLimit: Float,
+): Float = heightOffsetLimit * calculateTopChromeProgress(
+    firstVisibleItemIndex,
+    firstVisibleItemScrollOffset,
+    startPx,
+    endPx,
+)
+
 internal fun calculateAutoFollowStepPx(
     distancePx: Float,
     frameSeconds: Float,
@@ -731,12 +744,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         stableMessageKeysByUiIndex.clear()
         topAppBarState.contentOffset = 0f
         topAppBarState.heightOffset = 0f
-
-        val collapsedOffset = snapshotFlow { topAppBarState.heightOffsetLimit }
-            .first { it < 0f }
-        topAppBarState.heightOffset = savedScroll?.topBarHeightOffset
-            ?.coerceIn(collapsedOffset, 0f)
-            ?: collapsedOffset
     }
 
     LaunchedEffect(conversation?.id, paging.itemCount, initialPositioned, messageBottomInsetPx) {
@@ -760,6 +767,30 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             }
             initialPositioned = true
         }
+    }
+
+    LaunchedEffect(messageListState, conversation?.id, topAppBarState, initialPositioned, chromeStartPx, chromeEndPx) {
+        if (!initialPositioned) return@LaunchedEffect
+        snapshotFlow {
+            Triple(
+                messageListState.firstVisibleItemIndex,
+                messageListState.firstVisibleItemScrollOffset,
+                topAppBarState.heightOffsetLimit,
+            )
+        }
+            .distinctUntilChanged()
+            .collect { (index, offset, limit) ->
+                if (limit < 0f) {
+                    topAppBarState.heightOffset = chatTopBarHeightOffsetForScroll(
+                        firstVisibleItemIndex = index,
+                        firstVisibleItemScrollOffset = offset,
+                        startPx = chromeStartPx,
+                        endPx = chromeEndPx,
+                        heightOffsetLimit = limit,
+                    ).coerceIn(limit, 0f)
+                    topAppBarState.contentOffset = -(index * chromeEndPx + offset).toFloat()
+                }
+            }
     }
 
     LaunchedEffect(messageListState, conversation?.id, topAppBarState, initialPositioned) {

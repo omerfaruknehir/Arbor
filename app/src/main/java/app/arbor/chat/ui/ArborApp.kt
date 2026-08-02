@@ -1,7 +1,7 @@
 package app.arbor.chat.ui
 
 import android.app.Activity
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
@@ -32,7 +32,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.arbor.chat.settings.DeveloperSettings
 import app.arbor.chat.settings.PerformanceOverlayPosition
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 
 @Composable
 fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
@@ -171,7 +173,17 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
     }
 
     val drawerVisible = drawerState.isVisible
-    BackHandler(enabled = drawerVisible) { drawerState.close() }
+    val drawerClaimsBack = drawerState.claimsBack
+    PredictiveBackHandler(enabled = drawerClaimsBack) { events ->
+        drawerState.beginPredictiveBack()
+        try {
+            events.collect { event -> drawerState.updatePredictiveBack(event.progress) }
+            drawerState.commitPredictiveBack()
+        } catch (cancelled: CancellationException) {
+            drawerState.cancelPredictiveBack()
+            throw cancelled
+        }
+    }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 840.dp
@@ -205,7 +217,7 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
                 // Once a closing drawer is no longer visible, page Back must immediately
                 // take ownership. Waiting for its spring job to finish creates a gap where
                 // Android can fall through to Activity exit.
-                backEnabled = pageBackEnabled(drawerVisible),
+                backEnabled = pageBackEnabled(drawerClaimsBack),
                 keepAlive = { it == Screen.CHAT },
                 modifier = Modifier.fillMaxSize(),
                 label = "ArborPageNavigation",
@@ -222,7 +234,10 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
                     showArchived = showArchived,
                     onSelect = viewModel::selectConversation,
                     onNew = viewModel::newConversation,
-                    onScreen = { viewModel.screen.value = it },
+                    onScreen = { destination ->
+                        if (destination == Screen.SETTINGS) viewModel.openSettingsHome()
+                        else viewModel.screen.value = destination
+                    },
                     onProjectFilter = { viewModel.selectedProjectId.value = it },
                     onShowArchived = { viewModel.showArchived.value = it },
                     onRename = viewModel::renameConversation,
@@ -255,7 +270,11 @@ fun ArborApp(viewModel: ChatViewModel, activity: Activity) {
                             showArchived = showArchived,
                             onSelect = { viewModel.selectConversation(it); drawerState.close() },
                             onNew = { viewModel.newConversation(); drawerState.close() },
-                            onScreen = { viewModel.screen.value = it; drawerState.close() },
+                            onScreen = { destination ->
+                                if (destination == Screen.SETTINGS) viewModel.openSettingsHome()
+                                else viewModel.screen.value = destination
+                                drawerState.close()
+                            },
                             onProjectFilter = { viewModel.selectedProjectId.value = it },
                             onShowArchived = { viewModel.showArchived.value = it },
                             onRename = viewModel::renameConversation,

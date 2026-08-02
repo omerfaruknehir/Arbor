@@ -80,6 +80,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -150,6 +151,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     val importing = MutableStateFlow(false)
     val screen = savedStateHandle.getMutableStateFlow("screen", restoredUiState.screen)
     val settingsRoute = savedStateHandle.getMutableStateFlow("settings_route", restoredUiState.settingsRoute)
+    val settingsPageRevisions = MutableStateFlow<Map<SettingsRoute, Long>>(emptyMap())
     val searchQuery = savedStateHandle.getMutableStateFlow("search_query", restoredUiState.searchQuery)
     val focusedMessageNodeId = savedStateHandle.getMutableStateFlow<String?>(
         "focused_message_node",
@@ -449,6 +451,22 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         synchronized(latestSettingsScrollOffsets) {
             latestSettingsScrollOffsets[route]
         } ?: container.persistentUiState.settingsScroll(route)
+
+    fun openSettingsRoute(route: SettingsRoute) {
+        settingsPageRevisions.update { revisions ->
+            revisions + (route to ((revisions[route] ?: 0L) + 1L))
+        }
+        synchronized(latestSettingsScrollOffsets) {
+            latestSettingsScrollOffsets[route] = 0
+        }
+        container.persistentUiState.saveSettingsScroll(route, 0)
+        settingsRoute.value = route
+    }
+
+    fun openSettingsHome() {
+        openSettingsRoute(SettingsRoute.HOME)
+        screen.value = Screen.SETTINGS
+    }
 
     fun saveSettingsScrollOffset(route: SettingsRoute, offset: Int) {
         val normalized = offset.coerceAtLeast(0)
@@ -1092,6 +1110,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         }
 
     fun openProviderSetup() {
+        openSettingsRoute(SettingsRoute.PROVIDERS)
         providerSetupRequested.value = true
         screen.value = Screen.SETTINGS
     }
@@ -1187,6 +1206,12 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     }
     fun setAllMemoriesEnabled(enabled: Boolean) = launchAction {
         container.repository.setAllMemoriesEnabled(enabled)
+    }
+    fun setMemoriesEnabled(ids: Set<String>, enabled: Boolean) = launchAction {
+        container.repository.setMemoriesEnabled(ids, enabled)
+    }
+    fun deleteMemories(ids: Set<String>) = launchAction {
+        container.repository.deleteMemories(ids)
     }
     fun deleteDisabledMemories() = launchAction {
         container.repository.deleteDisabledMemories()
