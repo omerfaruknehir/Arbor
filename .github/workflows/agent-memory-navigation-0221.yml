@@ -34,7 +34,9 @@ jobs:
           cache-read-only: true
 
       - name: Apply integrated release patch
-        run: python3 tools/apply-memory-navigation-0221.py
+        run: |
+          python3 tools/apply-memory-navigation-0221.py
+          python3 tools/fix-memory-navigation-0221.py
 
       - name: Run release unit tests
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
@@ -48,7 +50,7 @@ jobs:
       - name: Commit verified release changes
         shell: bash
         run: |
-          git rm .github/workflows/agent-memory-navigation-0221.yml tools/apply-memory-navigation-0221.py
+          git rm .github/workflows/agent-memory-navigation-0221.yml tools/apply-memory-navigation-0221.py tools/fix-memory-navigation-0221.py
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app docs/releases/RELEASE_NOTES_0.22.1.md
