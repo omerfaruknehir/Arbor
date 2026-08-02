@@ -106,8 +106,9 @@ internal object WidgetCanvasRenderer {
             if (depth > 12 || !ArborProgramRuntime.visible(node.visibleWhen, state) || bounds.width() <= 2f || bounds.height() <= 2f) return
             if (suppressActionControls && isActionControl(node)) return
             if (node.type !in setOf("column", "row", "stack", "spacer", "divider")) renderedNodes += 1
+            val defaultRootPadding = if (bounds.height() / density <= 120f || bounds.width() / density <= 260f) 6 else 10
             val logicalPadding = node.style.padding.takeIf { it > 0 }
-                ?: if (depth == 0 && node.type in setOf("column", "row", "stack")) 10 else 0
+                ?: if (depth == 0 && node.type in setOf("column", "row", "stack")) defaultRootPadding else 0
             val padding = dp(logicalPadding)
             val content = RectF(bounds.left + padding, bounds.top + padding, bounds.right - padding, bounds.bottom - padding)
             drawBackground(node.style, bounds)
@@ -135,11 +136,14 @@ internal object WidgetCanvasRenderer {
             if (visible.isEmpty()) return
             val gap = dp(node.style.gap)
             val available = (bounds.height() - gap * (visible.size - 1)).coerceAtLeast(1f)
-            val weights = visible.map { childWeight(it) }
-            val total = weights.sum().takeIf { it > 0f } ?: visible.size.toFloat()
+            val heights = allocateAxis(
+                available,
+                visible.map(::preferredHeight),
+                visible.map(::childWeight),
+            )
             var top = bounds.top
             visible.forEachIndexed { index, child ->
-                val height = if (index == visible.lastIndex) bounds.bottom - top else available * weights[index] / total
+                val height = if (index == visible.lastIndex) bounds.bottom - top else heights[index]
                 renderNode(child, RectF(bounds.left, top, bounds.right, top + height), depth + 1)
                 top += height + gap
             }
@@ -150,28 +154,42 @@ internal object WidgetCanvasRenderer {
             if (visible.isEmpty()) return
             val gap = dp(node.style.gap)
             val available = (bounds.width() - gap * (visible.size - 1)).coerceAtLeast(1f)
-            val weights = visible.map { childWeight(it) }
-            val total = weights.sum().takeIf { it > 0f } ?: visible.size.toFloat()
+            val widths = allocateAxis(
+                available,
+                visible.map(::preferredWidth),
+                visible.map { child -> child.style.weight.takeIf { it > 0f } ?: if (child.type == "spacer") 1f else .05f },
+            )
             var left = bounds.left
             visible.forEachIndexed { index, child ->
-                val width = if (index == visible.lastIndex) bounds.right - left else available * weights[index] / total
+                val width = if (index == visible.lastIndex) bounds.right - left else widths[index]
                 renderNode(child, RectF(left, bounds.top, left + width, bounds.bottom), depth + 1)
                 left += width + gap
             }
         }
 
         private fun drawMetric(node: ArborProgramNode, bounds: RectF) {
-            val labelHeight = if (node.label.isBlank()) 0f else min(bounds.height() * .28f, dp(24))
+            val label = ArborProgramRuntime.render(node.label, state)
+            val value = ArborProgramRuntime.render(node.value.ifBlank { node.text }, state)
+            if (bounds.height() < dp(48)) {
+                drawTextBlock(
+                    listOf(label, value).filter(String::isNotBlank).joinToString("  "),
+                    bounds,
+                    node.style.copy(fontSize = node.style.fontSize.takeIf { it > 0 } ?: 14, emphasis = "strong"),
+                    false,
+                )
+                return
+            }
+            val labelHeight = if (label.isBlank()) 0f else min(bounds.height() * .28f, dp(24))
             if (labelHeight > 0f) {
                 drawTextBlock(
-                    ArborProgramRuntime.render(node.label, state),
+                    label,
                     RectF(bounds.left, bounds.top, bounds.right, bounds.top + labelHeight),
                     node.style.copy(fontSize = 13, emphasis = "medium", foreground = "muted"),
                     false,
                 )
             }
             drawTextBlock(
-                ArborProgramRuntime.render(node.value.ifBlank { node.text }, state),
+                value,
                 RectF(bounds.left, bounds.top + labelHeight, bounds.right, bounds.bottom),
                 node.style.copy(fontSize = node.style.fontSize.takeIf { it > 0 } ?: 30, emphasis = "strong"),
                 true,
@@ -262,20 +280,33 @@ internal object WidgetCanvasRenderer {
             val items = node.items
             if (items.isEmpty()) return
             val rowHeight = bounds.height() / items.size
+            val compactRows = rowHeight < dp(24)
             items.forEachIndexed { index, item ->
                 val rect = RectF(bounds.left, bounds.top + index * rowHeight, bounds.right, bounds.top + (index + 1) * rowHeight)
-                drawTextBlock(
-                    ArborProgramRuntime.render(item.label, state),
-                    RectF(rect.left, rect.top, rect.centerX(), rect.bottom),
-                    node.style.copy(fontSize = 14, emphasis = "medium"),
-                    false,
-                )
-                drawTextBlock(
-                    ArborProgramRuntime.render(item.value, state),
-                    RectF(rect.centerX(), rect.top, rect.right, rect.bottom),
-                    node.style.copy(fontSize = 14, align = "end"),
-                    false,
-                )
+                val label = ArborProgramRuntime.render(item.label, state)
+                val value = ArborProgramRuntime.render(item.value, state)
+                val detail = ArborProgramRuntime.render(item.detail, state)
+                if (compactRows) {
+                    drawTextBlock(
+                        listOf(label, value, detail).filter(String::isNotBlank).joinToString("  "),
+                        rect,
+                        node.style.copy(fontSize = node.style.fontSize.takeIf { it > 0 } ?: 12, emphasis = "medium"),
+                        false,
+                    )
+                } else {
+                    drawTextBlock(
+                        label,
+                        RectF(rect.left, rect.top, rect.centerX(), rect.bottom),
+                        node.style.copy(fontSize = node.style.fontSize.takeIf { it > 0 } ?: 14, emphasis = "medium"),
+                        false,
+                    )
+                    drawTextBlock(
+                        listOf(value, detail).filter(String::isNotBlank).joinToString(" · "),
+                        RectF(rect.centerX(), rect.top, rect.right, rect.bottom),
+                        node.style.copy(fontSize = node.style.fontSize.takeIf { it > 0 } ?: 14, align = "end"),
+                        false,
+                    )
+                }
                 if (index < items.lastIndex) drawDivider(RectF(rect.left, rect.bottom - 1f, rect.right, rect.bottom + 1f))
             }
         }
@@ -313,37 +344,46 @@ internal object WidgetCanvasRenderer {
             val value = text.trim()
             if (value.isBlank() || bounds.width() <= 1f || bounds.height() <= 1f) return
             paint.color = textColor(style.foreground)
-            paint.typeface = when (style.emphasis) {
-                "strong" -> android.graphics.Typeface.DEFAULT_BOLD
-                "medium" -> android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
-                else -> android.graphics.Typeface.DEFAULT
-            }
+            paint.typeface = typeface(style)
             val requested = style.fontSize.takeIf { it > 0 } ?: if (large) 30 else 16
-            val requestedPx = sp(requested)
-            val verticalLimit = bounds.height().coerceAtLeast(1f)
-            if (requestedPx > verticalLimit) crampedTextCount += 1
-            paint.textSize = requestedPx.coerceAtMost(verticalLimit).coerceAtLeast(sp(10))
-            minimumTextSp = min(minimumTextSp, paint.textSize / scaledDensity)
-            val textPaint = TextPaint(paint)
+            val floor = min(requested, if (large) 18 else 11).coerceAtLeast(1)
             val width = bounds.width().toInt().coerceAtLeast(1)
-            val lineHeight = (textPaint.fontMetrics.descent - textPaint.fontMetrics.ascent).coerceAtLeast(1f)
-            val maxLines = (bounds.height() / lineHeight).toInt().coerceAtLeast(1)
             val alignment = when (style.align) {
                 "center" -> Layout.Alignment.ALIGN_CENTER
                 "end" -> Layout.Alignment.ALIGN_OPPOSITE
                 else -> Layout.Alignment.ALIGN_NORMAL
             }
-            val layout = StaticLayout.Builder.obtain(value, 0, value.length, textPaint, width)
-                .setAlignment(alignment)
-                .setIncludePad(false)
-                .setLineSpacing(0f, 1f)
-                .setMaxLines(maxLines)
-                .setEllipsize(TextUtils.TruncateAt.END)
-                .build()
-            if (layout.lineCount >= maxLines && layout.getEllipsisCount(layout.lineCount - 1) > 0) {
+            var selected: StaticLayout? = null
+            var selectedSp = floor
+            var floorLayout: StaticLayout? = null
+            for (candidate in requested downTo floor) {
+                paint.textSize = sp(candidate)
+                val textPaint = TextPaint(paint)
+                val lineHeight = (textPaint.fontMetrics.descent - textPaint.fontMetrics.ascent).coerceAtLeast(1f)
+                val maxLines = (bounds.height() / lineHeight).toInt().coerceAtLeast(1)
+                val layout = StaticLayout.Builder.obtain(value, 0, value.length, textPaint, width)
+                    .setAlignment(alignment)
+                    .setIncludePad(false)
+                    .setLineSpacing(0f, 1f)
+                    .setMaxLines(maxLines)
+                    .setEllipsize(TextUtils.TruncateAt.END)
+                    .build()
+                floorLayout = layout
+                val ellipsized = layout.lineCount > 0 && layout.getEllipsisCount(layout.lineCount - 1) > 0
+                if (!ellipsized && layout.height <= bounds.height() + .5f) {
+                    selected = layout
+                    selectedSp = candidate
+                    break
+                }
+            }
+            val layout = selected ?: floorLayout ?: return
+            minimumTextSp = min(minimumTextSp, selectedSp.toFloat())
+            val ellipsized = layout.lineCount > 0 && layout.getEllipsisCount(layout.lineCount - 1) > 0
+            if (ellipsized) {
                 clippedTextCount += 1
                 if (clippedSamples.size < 8) clippedSamples += value.take(80)
             }
+            if (selected == null && layout.height > bounds.height() + .5f) crampedTextCount += 1
             val y = bounds.top + ((bounds.height() - layout.height) / 2f).coerceAtLeast(0f)
             canvas.save()
             canvas.clipRect(bounds)
@@ -365,6 +405,68 @@ internal object WidgetCanvasRenderer {
             "metric" -> 1.1f
             "chart", "list" -> 1.8f
             else -> 1f
+        }
+
+        private fun allocateAxis(total: Float, preferred: List<Float>, flex: List<Float>): List<Float> {
+            if (preferred.isEmpty()) return emptyList()
+            val safePreferred = preferred.map { it.coerceAtLeast(0f) }
+            val preferredTotal = safePreferred.sum()
+            if (preferredTotal >= total && preferredTotal > 0f) {
+                val scale = total / preferredTotal
+                return safePreferred.map { it * scale }
+            }
+            val remaining = (total - preferredTotal).coerceAtLeast(0f)
+            val safeFlex = flex.map { it.coerceAtLeast(0f) }
+            val flexTotal = safeFlex.sum()
+            if (flexTotal <= 0f) return List(preferred.size) { total / preferred.size }
+            return safePreferred.indices.map { index -> safePreferred[index] + remaining * safeFlex[index] / flexTotal }
+        }
+
+        private fun preferredHeight(node: ArborProgramNode): Float = when (node.type) {
+            "spacer" -> 0f
+            "divider" -> dp(1)
+            "text" -> sp(node.style.fontSize.takeIf { it > 0 } ?: 16) * 1.25f
+            "metric" -> if (node.label.isBlank()) sp(node.style.fontSize.takeIf { it > 0 } ?: 30) * 1.2f else dp(52)
+            "button", "toggle", "choice", "input" -> dp(32)
+            "slider", "progress" -> dp(40)
+            "list" -> node.items.size * sp(node.style.fontSize.takeIf { it > 0 } ?: 12) * 1.2f
+            "chart" -> dp(72)
+            "row", "stack" -> node.children.maxOfOrNull(::preferredHeight) ?: 0f
+            "column" -> node.children.sumOf { preferredHeight(it).toDouble() }.toFloat() +
+                dp(node.style.gap) * (node.children.size - 1).coerceAtLeast(0)
+            else -> dp(24)
+        }
+
+        private fun preferredWidth(node: ArborProgramNode): Float = when (node.type) {
+            "spacer" -> 0f
+            "text" -> measureText(ArborProgramRuntime.render(node.text.ifBlank { node.value }, state), node.style, 16)
+            "metric" -> max(
+                measureText(ArborProgramRuntime.render(node.label, state), node.style.copy(emphasis = "medium"), 13),
+                measureText(
+                    ArborProgramRuntime.render(node.value.ifBlank { node.text }, state),
+                    node.style.copy(emphasis = "strong"),
+                    node.style.fontSize.takeIf { it > 0 } ?: 30,
+                ),
+            )
+            "button", "toggle", "input" -> measureText(
+                ArborProgramRuntime.render(node.label.ifBlank { node.value }, state),
+                node.style,
+                14,
+            ) + dp(20)
+            "divider" -> dp(8)
+            else -> dp(48)
+        }
+
+        private fun measureText(value: String, style: ArborProgramStyle, fallbackSp: Int): Float {
+            paint.typeface = typeface(style)
+            paint.textSize = sp(style.fontSize.takeIf { it > 0 } ?: fallbackSp)
+            return paint.measureText(value) + dp(style.padding * 2)
+        }
+
+        private fun typeface(style: ArborProgramStyle) = when (style.emphasis) {
+            "strong" -> android.graphics.Typeface.DEFAULT_BOLD
+            "medium" -> android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+            else -> android.graphics.Typeface.DEFAULT
         }
 
         private fun ellipsize(value: String, maxWidth: Float, paint: Paint): String {
