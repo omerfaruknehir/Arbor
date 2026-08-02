@@ -5,6 +5,7 @@ import app.arbor.chat.provider.NativeToolCall
 import app.arbor.chat.provider.NativeToolDefinition
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
@@ -23,15 +24,27 @@ object ArborNativeTools {
         if (memoryEnabled) {
             add(tool(
                 name = "memory_save",
-                description = "Save or update one durable user memory in Arbor's encrypted local database. Use only for stable useful facts or preferences under the memory policy; never save secrets or sensitive facts without an explicit user request.",
+                description = "Save or update one durable user memory in Arbor's encrypted local database. Arbor deduplicates near-identical items. Use only for stable useful facts or preferences under the memory policy; never save secrets or sensitive facts without an explicit user request.",
                 properties = """"text":{"type":"string","minLength":1,"maxLength":2000},"category":{"type":"string","maxLength":40}""",
                 required = listOf("text"),
             ))
             add(tool(
                 name = "memory_list",
-                description = "List currently enabled Arbor memories, including their ids. Use when the user asks what is remembered or before forgetting a specific item.",
-                properties = "",
+                description = "List Arbor memories with optional search, disabled-item inclusion, and a bounded result limit. Use when the user asks what is remembered.",
+                properties = """"query":{"type":"string","maxLength":500},"includeDisabled":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":200}""",
                 required = emptyList(),
+            ))
+            add(tool(
+                name = "memory_search",
+                description = "Search Arbor memories by content or category before saving a possible duplicate or when resolving a remembered preference.",
+                properties = """"query":{"type":"string","minLength":1,"maxLength":500},"includeDisabled":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":200}""",
+                required = listOf("query"),
+            ))
+            add(tool(
+                name = "memory_update",
+                description = "Edit one existing Arbor memory by exact id. Use for corrections and preference changes instead of creating a conflicting second item.",
+                properties = """"id":{"type":"string","minLength":1,"maxLength":100},"text":{"type":"string","minLength":1,"maxLength":2000},"category":{"type":"string","maxLength":40}""",
+                required = listOf("id", "text"),
             ))
             add(tool(
                 name = "memory_forget",
@@ -105,6 +118,7 @@ object ArborNativeTools {
             .getOrNull() ?: error("Tool arguments are not a JSON object")
         fun string(name: String): String? = args[name]?.jsonPrimitive?.contentOrNull
         fun int(name: String): Int? = args[name]?.jsonPrimitive?.intOrNull
+        fun bool(name: String): Boolean? = args[name]?.jsonPrimitive?.booleanOrNull
         fun strings(name: String): List<String> = runCatching { args[name]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } }.getOrNull().orEmpty()
         return when (call.name.lowercase()) {
             "compile_widget", "widget_compile" -> AgentToolRequest(type = "compile_widget", source = string("source"))
@@ -116,7 +130,24 @@ object ArborNativeTools {
             "apply_patch" -> AgentToolRequest(type = "apply_patch", path = string("path"), unifiedDiff = string("unifiedDiff"), expectedSha256 = string("expectedSha256"))
             "rerun_script" -> AgentToolRequest(type = "rerun_script", runId = string("runId"), timeoutSeconds = int("timeoutSeconds"), args = strings("args"))
             "memory_save" -> AgentToolRequest(type = "memory_save", memoryText = string("text"), memoryCategory = string("category"))
-            "memory_list" -> AgentToolRequest(type = "memory_list")
+            "memory_list" -> AgentToolRequest(
+                type = "memory_list",
+                memoryQuery = string("query"),
+                memoryIncludeDisabled = bool("includeDisabled"),
+                memoryLimit = int("limit"),
+            )
+            "memory_search" -> AgentToolRequest(
+                type = "memory_search",
+                memoryQuery = string("query"),
+                memoryIncludeDisabled = bool("includeDisabled"),
+                memoryLimit = int("limit"),
+            )
+            "memory_update" -> AgentToolRequest(
+                type = "memory_update",
+                memoryId = string("id"),
+                memoryText = string("text"),
+                memoryCategory = string("category"),
+            )
             "memory_forget" -> AgentToolRequest(type = "memory_forget", memoryId = string("id"))
             "send_file", "file_send" -> AgentToolRequest(type = "send_file", path = string("path"), caption = string("caption"))
             else -> error("Unknown Arbor native tool: ${call.name}")

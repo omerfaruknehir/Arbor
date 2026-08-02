@@ -267,10 +267,16 @@ interface MemoryDao {
     suspend fun upsert(value: MemoryEntity)
 
     @Query("DELETE FROM memories WHERE id = :id")
-    suspend fun delete(id: String)
+    suspend fun delete(id: String): Int
 
     @Query("UPDATE memories SET enabled = :enabled, updatedAt = :now WHERE id = :id")
     suspend fun setEnabled(id: String, enabled: Boolean, now: Long)
+
+    @Query("UPDATE memories SET enabled = :enabled, updatedAt = :now")
+    suspend fun setAllEnabled(enabled: Boolean, now: Long): Int
+
+    @Query("DELETE FROM memories WHERE enabled = 0")
+    suspend fun deleteDisabled(): Int
 }
 
 @Dao

@@ -1177,9 +1177,19 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         container.repository.saveMemory(content, category, selectedConversationId.value)
     }
 
+    fun updateMemory(id: String, content: String, category: String) = launchAction {
+        container.repository.updateMemory(id, content, category)
+    }
+
     fun deleteMemory(id: String) = launchAction { container.repository.deleteMemory(id) }
     fun setMemoryEnabled(id: String, enabled: Boolean) = launchAction {
         container.repository.setMemoryEnabled(id, enabled)
+    }
+    fun setAllMemoriesEnabled(enabled: Boolean) = launchAction {
+        container.repository.setAllMemoriesEnabled(enabled)
+    }
+    fun deleteDisabledMemories() = launchAction {
+        container.repository.deleteDisabledMemories()
     }
 
     fun updateAutomationSettings(transform: (AutomationSettingsEntity) -> AutomationSettingsEntity) = launchAction {

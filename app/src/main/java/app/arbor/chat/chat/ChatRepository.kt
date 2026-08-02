@@ -468,39 +468,128 @@ class ChatRepository(private val database: ArborDatabase) {
         database.systemPromptProfileDao().delete(id)
     }
 
-    suspend fun enabledMemories(limit: Int = 100): List<MemoryEntity> = database.memoryDao().enabled(limit)
+    suspend fun enabledMemories(limit: Int = 500): List<MemoryEntity> = database.memoryDao().enabled(limit)
 
-    suspend fun saveMemory(content: String, category: String = "general", sourceConversationId: String? = null): MemoryEntity {
-        val clean = content.trim().replace(Regex("\\s+"), " ").take(2_000)
+    suspend fun memoriesForContext(
+        messagesNewestFirst: List<MessageEntity>,
+        currentConversationId: String?,
+        maxItems: Int = MemoryManagement.DEFAULT_CONTEXT_ITEMS,
+        maxCharacters: Int = MemoryManagement.DEFAULT_CONTEXT_CHARACTERS,
+    ): List<MemoryEntity> = MemoryManagement.selectForContext(
+        memories = database.memoryDao().enabled(500),
+        messagesNewestFirst = messagesNewestFirst,
+        currentConversationId = currentConversationId,
+        maxItems = maxItems,
+        maxCharacters = maxCharacters,
+    )
+
+    suspend fun searchMemories(
+        query: String,
+        includeDisabled: Boolean = false,
+        limit: Int = 100,
+    ): List<MemoryEntity> = MemoryManagement.search(
+        memories = database.memoryDao().all(),
+        query = query,
+        includeDisabled = includeDisabled,
+        limit = limit,
+    )
+
+    suspend fun saveMemory(
+        content: String,
+        category: String = "general",
+        sourceConversationId: String? = null,
+    ): MemoryEntity = saveMemoryManaged(content, category, sourceConversationId).memory
+
+    suspend fun saveMemoryManaged(
+        content: String,
+        category: String = "general",
+        sourceConversationId: String? = null,
+    ): MemoryWriteResult = writeMemory(
+        existingId = null,
+        content = content,
+        category = category,
+        sourceConversationId = sourceConversationId,
+    )
+
+    suspend fun updateMemory(id: String, content: String, category: String): MemoryWriteResult = writeMemory(
+        existingId = id,
+        content = content,
+        category = category,
+        sourceConversationId = null,
+    )
+
+    private suspend fun writeMemory(
+        existingId: String?,
+        content: String,
+        category: String,
+        sourceConversationId: String?,
+    ): MemoryWriteResult = database.withTransaction {
+        val clean = MemoryManagement.cleanContent(content)
         require(clean.isNotBlank()) { "Memory content cannot be empty" }
-        val normalized = clean.lowercase().take(512)
-        val cleanCategory = category.trim().replace(Regex("[^A-Za-z0-9 _.-]"), "").take(40).ifBlank { "general" }
+        val cleanCategory = MemoryManagement.cleanCategory(category)
+        val canonicalKey = MemoryManagement.canonicalKey(clean, cleanCategory)
+        val dao = database.memoryDao()
+        val target = existingId?.let { id -> requireNotNull(dao.get(id)) { "Memory no longer exists" } }
+        val all = dao.all()
+        val keyOwner = dao.byNormalizedKey(canonicalKey)?.takeIf { it.id != target?.id }
+        val duplicate = keyOwner ?: MemoryManagement.findDuplicate(
+            memories = all,
+            content = clean,
+            category = cleanCategory,
+            excludingId = target?.id,
+        )
         val now = System.currentTimeMillis()
-        val existing = database.memoryDao().byNormalizedKey(normalized)
-        val value = if (existing == null) {
+
+        if (target != null && duplicate != null && target.id != duplicate.id) {
+            val merged = duplicate.copy(
+                normalizedKey = canonicalKey,
+                content = clean,
+                category = cleanCategory,
+                sourceConversationId = sourceConversationId
+                    ?: target.sourceConversationId
+                    ?: duplicate.sourceConversationId,
+                enabled = target.enabled || duplicate.enabled,
+                updatedAt = now,
+            )
+            dao.upsert(merged)
+            dao.delete(target.id)
+            return@withTransaction MemoryWriteResult(
+                memory = merged,
+                created = false,
+                mergedMemoryId = target.id,
+            )
+        }
+
+        val base = duplicate ?: target
+        val value = if (base == null) {
             MemoryEntity(
                 id = UUID.randomUUID().toString(),
-                normalizedKey = normalized,
+                normalizedKey = canonicalKey,
                 content = clean,
                 category = cleanCategory,
                 sourceConversationId = sourceConversationId,
+                enabled = true,
                 createdAt = now,
                 updatedAt = now,
             )
-        } else existing.copy(
+        } else base.copy(
+            normalizedKey = canonicalKey,
             content = clean,
             category = cleanCategory,
-            sourceConversationId = sourceConversationId ?: existing.sourceConversationId,
-            enabled = true,
+            sourceConversationId = sourceConversationId ?: base.sourceConversationId,
+            enabled = if (existingId == null) true else base.enabled,
             updatedAt = now,
         )
-        database.memoryDao().upsert(value)
-        return value
+        dao.upsert(value)
+        MemoryWriteResult(memory = value, created = base == null)
     }
 
-    suspend fun deleteMemory(id: String) = database.memoryDao().delete(id)
+    suspend fun deleteMemory(id: String): Boolean = database.memoryDao().delete(id) > 0
     suspend fun setMemoryEnabled(id: String, enabled: Boolean) =
         database.memoryDao().setEnabled(id, enabled, System.currentTimeMillis())
+    suspend fun setAllMemoriesEnabled(enabled: Boolean): Int =
+        database.memoryDao().setAllEnabled(enabled, System.currentTimeMillis())
+    suspend fun deleteDisabledMemories(): Int = database.memoryDao().deleteDisabled()
 
     suspend fun automationSettingsNow(): AutomationSettingsEntity {
         val existing = database.automationSettingsDao().get()

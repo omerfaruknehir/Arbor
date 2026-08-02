@@ -60,6 +60,25 @@ class ArborNativeToolsTest {
         assertEquals(null, request.code)
     }
 
+    @Test fun exposesAndParsesMemoryManagementTools() {
+        val definitions = ArborNativeTools.definitions(
+            conversation(web = false, python = false, linux = false),
+            memoryEnabled = true,
+        )
+        assertTrue(definitions.any { it.name == "memory_search" })
+        assertTrue(definitions.any { it.name == "memory_update" })
+
+        val request = ArborNativeTools.request(NativeToolCall(
+            "memory-call",
+            "memory_search",
+            """{"query":"linux laptop","includeDisabled":true,"limit":12}""",
+        ))
+        assertEquals("memory_search", request.type)
+        assertEquals("linux laptop", request.memoryQuery)
+        assertEquals(true, request.memoryIncludeDisabled)
+        assertEquals(12, request.memoryLimit)
+    }
+
     @Test(expected = IllegalStateException::class)
     fun rejectsUnknownToolNames() {
         ArborNativeTools.request(NativeToolCall("call-1", "delete_everything", "{}"))

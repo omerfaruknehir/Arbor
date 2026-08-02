@@ -511,79 +511,168 @@ private fun MemorySettingsPage(
 ) = SettingsPage {
     var draft by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("general") }
+    var memorySearch by rememberSaveable { mutableStateOf("") }
+    var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+    var editText by rememberSaveable { mutableStateOf("") }
+    var editCategory by rememberSaveable { mutableStateOf("general") }
+    val visibleMemories = remember(memories, memorySearch) {
+        val query = memorySearch.trim()
+        if (query.isBlank()) memories
+        else memories.filter { memory ->
+  memory.content.contains(query, ignoreCase = true) ||
+      memory.category.contains(query, ignoreCase = true)
+        }
+    }
+
     SectionTitle(
         "Memory",
-        "Memories are stored in Arbor's encrypted local database, injected as reference data across chats, and included only in backups that include app settings.",
+        "Arbor stores memories in its encrypted local database and selects only relevant items under a strict context budget. Disabled memories remain stored but are not supplied to models.",
     )
     ListItem(
         headlineContent = { Text("Use memory") },
-        supportingContent = { Text("Expose enabled memories to chats and allow memory tools") },
+        supportingContent = { Text("Expose selected enabled memories to chats and allow memory tools") },
         trailingContent = {
-            Switch(
-                checked = automation.memoryEnabled,
-                onCheckedChange = { enabled -> viewModel.updateAutomationSettings { it.copy(memoryEnabled = enabled) } },
-            )
+  Switch(
+      checked = automation.memoryEnabled,
+      onCheckedChange = { enabled -> viewModel.updateAutomationSettings { it.copy(memoryEnabled = enabled) } },
+  )
         },
     )
     ListItem(
         headlineContent = { Text("Automatic memory") },
-        supportingContent = { Text("Allow models to save clearly durable, non-sensitive preferences without an explicit remember command") },
+        supportingContent = { Text("Allow models to save stable, non-sensitive details; duplicate items are merged") },
         trailingContent = {
-            Switch(
-                checked = automation.memoryAutoSave,
-                enabled = automation.memoryEnabled,
-                onCheckedChange = { enabled -> viewModel.updateAutomationSettings { it.copy(memoryAutoSave = enabled) } },
-            )
+  Switch(
+      checked = automation.memoryAutoSave,
+      enabled = automation.memoryEnabled,
+      onCheckedChange = { enabled -> viewModel.updateAutomationSettings { it.copy(memoryAutoSave = enabled) } },
+  )
         },
     )
     HorizontalDivider()
-    SectionTitle("Add memory", "Manual memories are available immediately in new model calls.")
+    SectionTitle("Add memory", "Manual memories are available immediately and use the same deduplication rules.")
     OutlinedTextField(
         value = draft,
-        onValueChange = { draft = it.take(2_000) },
-        label = { Text("What Arbor should remember") },
-        modifier = Modifier.fillMaxWidth(),
+        onValueChange = { draft = it },
+        label = { Text("Memory") },
         minLines = 2,
-        maxLines = 6,
+        maxLines = 5,
+        modifier = Modifier.fillMaxWidth(),
     )
     OutlinedTextField(
         value = category,
-        onValueChange = { category = it.take(40) },
+        onValueChange = { category = it },
         label = { Text("Category") },
-        modifier = Modifier.fillMaxWidth(),
         singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
     )
-    FilledTonalButton(
+    Button(
         enabled = draft.isNotBlank(),
         onClick = {
-            viewModel.addMemory(draft, category)
-            draft = ""
+  viewModel.addMemory(draft, category)
+  draft = ""
         },
     ) { Text("Save memory") }
     HorizontalDivider()
-    SectionTitle("Saved memories", if (memories.isEmpty()) "Nothing is stored yet." else "${memories.size} saved item${if (memories.size == 1) "" else "s"}.")
-    memories.forEach { memory ->
+    SectionTitle(
+        "Saved memories",
+        if (memories.isEmpty()) "Nothing is stored yet."
+        else "${memories.size} saved item${if (memories.size == 1) "" else "s"}; ${memories.count { it.enabled }} enabled.",
+    )
+    OutlinedTextField(
+        value = memorySearch,
+        onValueChange = { memorySearch = it },
+        label = { Text("Search memories") },
+        leadingIcon = { Icon(Icons.Outlined.Search, null) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextButton(
+  enabled = memories.any { !it.enabled },
+  onClick = { viewModel.setAllMemoriesEnabled(true) },
+        ) { Text("Enable all") }
+        TextButton(
+  enabled = memories.any { it.enabled },
+  onClick = { viewModel.setAllMemoriesEnabled(false) },
+        ) { Text("Disable all") }
+    }
+    TextButton(
+        enabled = memories.any { !it.enabled },
+        onClick = { viewModel.deleteDisabledMemories() },
+    ) { Text("Delete disabled memories") }
+
+    if (memorySearch.isNotBlank() && visibleMemories.isEmpty()) {
+        Text("No memories match this search.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    visibleMemories.forEach { memory ->
         Surface(
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            shape = MaterialTheme.shapes.large,
-            modifier = Modifier.fillMaxWidth(),
+  color = MaterialTheme.colorScheme.surfaceContainer,
+  shape = MaterialTheme.shapes.large,
+  modifier = Modifier.fillMaxWidth(),
         ) {
-            ListItem(
-                headlineContent = { Text(memory.content) },
-                supportingContent = { Text(memory.category) },
-                trailingContent = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Switch(
-                            checked = memory.enabled,
-                            onCheckedChange = { viewModel.setMemoryEnabled(memory.id, it) },
-                        )
-                        IconButton(onClick = { viewModel.deleteMemory(memory.id) }) {
-                            Icon(Icons.Outlined.DeleteOutline, "Delete memory")
-                        }
-                    }
-                },
-                colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent),
-            )
+  if (editingId == memory.id) {
+      Column(
+          modifier = Modifier.padding(16.dp),
+          verticalArrangement = Arrangement.spacedBy(10.dp),
+      ) {
+          OutlinedTextField(
+              value = editText,
+              onValueChange = { editText = it },
+              label = { Text("Memory") },
+              minLines = 2,
+              maxLines = 5,
+              modifier = Modifier.fillMaxWidth(),
+          )
+          OutlinedTextField(
+              value = editCategory,
+              onValueChange = { editCategory = it },
+              label = { Text("Category") },
+              singleLine = true,
+              modifier = Modifier.fillMaxWidth(),
+          )
+          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              Button(
+                  enabled = editText.isNotBlank(),
+                  onClick = {
+                      viewModel.updateMemory(memory.id, editText, editCategory)
+                      editingId = null
+                  },
+              ) { Text("Save") }
+              TextButton(onClick = { editingId = null }) { Text("Cancel") }
+          }
+      }
+  } else {
+      ListItem(
+          headlineContent = { Text(memory.content) },
+          supportingContent = {
+              Text("${memory.category} · ${if (memory.enabled) "Enabled" else "Disabled"}")
+          },
+          trailingContent = {
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                  IconButton(onClick = {
+                      editingId = memory.id
+                      editText = memory.content
+                      editCategory = memory.category
+                  }) {
+                      Icon(Icons.Outlined.Edit, "Edit memory")
+                  }
+                  Switch(
+                      checked = memory.enabled,
+                      onCheckedChange = { viewModel.setMemoryEnabled(memory.id, it) },
+                  )
+                  IconButton(onClick = { viewModel.deleteMemory(memory.id) }) {
+                      Icon(Icons.Outlined.DeleteOutline, "Delete memory")
+                  }
+              }
+          },
+          colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent),
+      )
+  }
         }
     }
     Spacer(Modifier.padding(bottom = 24.dp))
