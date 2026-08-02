@@ -116,6 +116,18 @@ replace_once(
 )
 replace_once(
     "app/src/main/java/app/arbor/chat/chat/ContextAssembler.kt",
+    '''                append(memory.category).append(": ").appendLine(memory.content.take(2_000))
+            }
+        }
+        val memoryPolicy''',
+    '''                append(memory.category).append(": ").appendLine(memory.content.take(2_000))
+            }
+            }
+        }
+        val memoryPolicy''',
+)
+replace_once(
+    "app/src/main/java/app/arbor/chat/generation/GenerationWorker.kt",
     '''            memories = activeMemories,
             memoryAutoSave = automationSettings.memoryAutoSave,
 ''',
