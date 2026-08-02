@@ -69,16 +69,14 @@ replace_once(
 ''',
 )
 
-replace_once(
-    source,
-    '''    private fun sourceSafe(value: String): String = value.take(120)
-    private val INDEX = Regex("\\[(\\d+)]")
-}''',
-    '''    private fun sourceSafe(value: String): String = value.take(120)
-    private val INDEX = Regex("\\[(\\d+)]")
-}
-
-/**
+widget_file = Path(source)
+widget_text = widget_file.read_text()
+if "internal fun readWidgetHttpBody(" in widget_text:
+    raise SystemExit("Widget HTTP body helper already exists")
+widget_file.write_text(
+    widget_text.rstrip()
+    + "\n\n"
+    + '''/**
  * Reads at most [maxBytes] without using BufferedSource.readUtf8(byteCount), whose
  * exact-length contract throws EOFException for ordinary shorter HTTP bodies.
  *
@@ -100,7 +98,7 @@ internal fun readWidgetHttpBody(
     require(buffer.size <= maxBytes) { tooLargeMessage }
     return buffer.readUtf8()
 }
-''',
+'''
 )
 
 
