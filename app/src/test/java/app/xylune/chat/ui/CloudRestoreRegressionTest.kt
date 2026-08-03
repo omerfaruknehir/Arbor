@@ -1,6 +1,7 @@
 package app.xylune.chat.ui
 
 import java.io.File
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -17,13 +18,17 @@ class CloudRestoreRegressionTest {
     }
 
     @Test
-    fun setupRestoreUsesDistinctProviderIconsAndClearAction() {
+    fun setupRestoreUsesDistinctCompactProviderActions() {
         val restore = source("src/main/java/app/xylune/chat/ui/SetupRestoreUi.kt")
         assertTrue(restore.contains("R.drawable.ic_google_drive"))
         assertTrue(restore.contains("R.drawable.ic_onedrive"))
         assertTrue(restore.contains("R.drawable.ic_dropbox"))
         assertTrue(restore.contains("R.drawable.ic_nextcloud"))
         assertTrue(restore.contains("Icons.Outlined.Storage"))
-        assertTrue(restore.contains("Review & restore"))
+        assertTrue(restore.contains("SetupCloudAction("))
+        assertTrue(restore.contains("modifier = Modifier.size(28.dp)"))
+        assertTrue(restore.contains("modifier = Modifier.size(26.dp)"))
+        assertTrue(restore.contains("Text(\"Review\")"))
+        assertFalse(restore.contains("Text(\"Review & restore\")"))
     }
 }
