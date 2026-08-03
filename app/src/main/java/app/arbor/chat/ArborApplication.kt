@@ -33,6 +33,7 @@ import app.arbor.chat.transfer.ArborArchiveManager
 import app.arbor.chat.transfer.GoogleDriveAppDataClient
 import app.arbor.chat.transfer.LinuxEnvironmentArchiveStore
 import app.arbor.chat.transfer.ScopedCloudFolderStore
+import app.arbor.chat.update.RepositoryUpdateManager
 import app.arbor.chat.generated.GeneratedBlockCompiler
 import app.arbor.chat.generated.GeneratedBlockRepairCoordinator
 import kotlinx.coroutines.CoroutineScope
@@ -121,6 +122,7 @@ class AppContainer(val application: Application, val crashReporter: CrashReporte
     val archiveManager = ArborArchiveManager(application, database, linuxEnvironmentArchives, appSettingsArchives)
     val scopedCloudFolder = ScopedCloudFolderStore(application)
     val googleDriveAppData = GoogleDriveAppDataClient(application)
+    val repositoryUpdates = RepositoryUpdateManager(application)
     val runRecords = RunRecordStore(pythonSandbox::workspace)
     val generatedBlockCompiler = GeneratedBlockCompiler(application)
     val generatedBlockRepairs = GeneratedBlockRepairCoordinator(
