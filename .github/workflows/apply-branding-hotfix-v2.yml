@@ -1,0 +1,176 @@
+name: Apply Xylune branding hotfix v2
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/apply_xylune_branding.py
+      - .github/workflows/apply-branding-hotfix-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  XYLUNE_SOURCE_REPOSITORY: ${{ github.repository }}
+  XYLUNE_SOURCE_COMMIT: ${{ github.sha }}
+  XYLUNE_MICROSOFT_CLIENT_ID: ${{ vars.XYLUNE_MICROSOFT_CLIENT_ID }}
+  XYLUNE_DROPBOX_APP_KEY: ${{ vars.XYLUNE_DROPBOX_APP_KEY }}
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx6g -Dfile.encoding=UTF-8
+
+jobs:
+  apply-validate-publish-branch:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'fix/cloud-restore-and-icons'
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/cloud-restore-and-icons
+          fetch-depth: 0
+
+      - name: Integrate latest main branding sources
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-edit origin/main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install deterministic SVG renderer
+        run: python -m pip install --disable-pip-version-check cairosvg==2.7.1 pillow==11.3.0
+
+      - name: Fetch supplied provider SVG sources
+        run: |
+          mkdir -p branding/provider-icons
+          curl --fail --location --retry 3 'https://upload.wikimedia.org/wikipedia/commons/5/5f/Google_Drive_icon_%282026%29.svg' -o 'branding/provider-icons/Google_Drive_icon_(2026).svg'
+          curl --fail --location --retry 3 'https://upload.wikimedia.org/wikipedia/commons/e/e7/Microsoft_OneDrive_Icon_%282025_-_present%29.svg' -o 'branding/provider-icons/Microsoft_OneDrive_Icon_(2025_-_present).svg'
+          curl --fail --location --retry 3 'https://upload.wikimedia.org/wikipedia/commons/7/78/Dropbox_Icon.svg' -o 'branding/provider-icons/Dropbox_Icon.svg'
+          curl --fail --location --retry 3 'https://upload.wikimedia.org/wikipedia/commons/6/60/Nextcloud_Logo.svg' -o 'branding/provider-icons/Nextcloud_Logo.svg'
+
+      - name: Apply approved Xylune and provider artwork
+        run: |
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+
+          script = Path('tools/apply_xylune_branding.py')
+          spec = importlib.util.spec_from_file_location('xylune_branding', script)
+          module = importlib.util.module_from_spec(spec)
+          assert spec.loader is not None
+          spec.loader.exec_module(module)
+
+          def preserve_downloaded_sources():
+              lines = [
+                  '# Cloud provider marks',
+                  '',
+                  'These source SVGs are bundled only to identify user-selected cloud services in Xylune.',
+                  'The names and marks remain trademarks of their respective owners; their inclusion does not imply endorsement.',
+                  'Android PNG resources are generated from these checked-in SVGs so release builds do not fetch artwork from the network.',
+                  '',
+                  'Sources:',
+              ]
+              for name, url in module.PROVIDER_SOURCE_URLS.items():
+                  source = module.BRANDING_PROVIDERS / name
+                  if not source.is_file() or source.stat().st_size == 0:
+                      raise RuntimeError(f'Missing downloaded provider source: {source}')
+                  lines.append(f'- `{name}`: {url}')
+              module.write(module.BRANDING_PROVIDERS / 'README.md', '\n'.join(lines))
+
+          module.write_provider_sources = preserve_downloaded_sources
+          module.main()
+          PY
+
+      - name: Preserve Dynamic palette launcher semantics
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          adaptive = Path('app/src/main/res/mipmap-anydpi/ic_launcher_system.xml')
+          text = adaptive.read_text().replace(
+              '    <monochrome android:drawable="@drawable/ic_xylune_monochrome" />\n',
+              '',
+          )
+          adaptive.write_text(text)
+
+          test = Path('app/src/test/java/app/xylune/chat/ui/XyluneBrandingRegressionTest.kt')
+          text = test.read_text()
+          old = '''            .forEach { file -> assertTrue(file.path, file.readText().contains("ic_xylune_monochrome")) }'''
+          new = '''            .forEach { file ->
+                val hasMonochrome = file.readText().contains("ic_xylune_monochrome")
+                if (file.name == "ic_launcher_system.xml") assertFalse(file.path, hasMonochrome)
+                else assertTrue(file.path, hasMonochrome)
+            }'''
+          if old not in text:
+              raise RuntimeError('Generated launcher regression-test anchor not found')
+          test.write_text(text.replace(old, new, 1))
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify third-party licenses
+        run: ./ci/verify-third-party-licenses.sh
+
+      - name: Verify offline license catalog
+        run: ./gradlew --no-daemon --stacktrace --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process :app:generateOfflineLicenseCatalog
+
+      - name: Run release unit tests
+        run: ./gradlew --no-daemon --stacktrace --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
+
+      - name: Run release lint
+        run: ./gradlew --no-daemon --stacktrace --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process lintRelease
+
+      - name: Assemble optimized release APK
+        run: ./gradlew --no-daemon --stacktrace --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process assembleRelease
+
+      - name: Assemble optimized release AAB
+        run: ./gradlew --no-daemon --stacktrace --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process bundleRelease
+
+      - name: Assemble instrumentation APK
+        run: ./gradlew --no-daemon --stacktrace --max-workers=1 -Pkotlin.compiler.execution.strategy=in-process assembleDebugAndroidTest
+
+      - name: Verify identity, signature, artwork and restore repair
+        shell: bash
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -F "package: name='app.xylune.chat' versionCode='171' versionName='0.23.2'" /tmp/badging.txt
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+          grep -F 'name="cloud_backups" path="cloud-backups/"' app/src/main/res/xml/file_paths.xml
+          ! grep -R -F 'M40,64C49,60 59,60 68,64' app/src/main/res/drawable app/src/main/res/drawable-v31
+          grep -R -F 'M33.549193,80.863216' app/src/main/res/drawable app/src/main/res/drawable-v31
+          grep -F '@android:color/system_accent1_200' app/src/main/res/drawable-v31/ic_xylune_foreground_system.xml
+          grep -F '@android:color/system_accent3_200' app/src/main/res/drawable-v31/ic_xylune_foreground_system.xml
+          ! grep -F '<monochrome' app/src/main/res/mipmap-anydpi/ic_launcher_system.xml
+          test -s app/src/main/res/drawable-nodpi/ic_google_drive.png
+          test -s app/src/main/res/drawable-nodpi/ic_onedrive.png
+          test -s app/src/main/res/drawable-nodpi/ic_dropbox.png
+          test -s app/src/main/res/drawable-nodpi/ic_nextcloud.png
+          test ! -e app/src/main/res/drawable/ic_google_drive.xml
+          test ! -e app/src/main/res/drawable/ic_onedrive.xml
+          test ! -e app/src/main/res/drawable/ic_dropbox.xml
+          test ! -e app/src/main/res/drawable/ic_nextcloud.xml
+
+      - name: Commit validated branding and restore hotfix
+        run: |
+          git add -A app branding CHANGELOG.md THIRD_PARTY_NOTICES.md docs/releases
+          if git diff --cached --quiet; then
+            echo "No generated changes to commit"
+          else
+            git commit -m "Apply Xylune branding and official cloud icons"
+          fi
+          git push origin HEAD:fix/cloud-restore-and-icons
