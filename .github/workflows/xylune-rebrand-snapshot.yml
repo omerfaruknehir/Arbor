@@ -1,4 +1,4 @@
-name: Xylune rebrand audit
+name: Apply Xylune rebrand
 
 on:
   push:
@@ -6,103 +6,147 @@ on:
       - agent/full-xylune-rebrand
     paths:
       - .github/workflows/xylune-rebrand-snapshot.yml
+      - tools/apply_xylune_rebrand.py
 
 permissions:
   contents: write
 
 jobs:
-  audit:
+  rebrand:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Build branding audit
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply, validate, and publish rebrand commit
         shell: bash
         run: |
-          set -euo pipefail
-          audit_dir="tools/xylune-rebrand-audit"
-          rm -rf "$audit_dir"
-          mkdir -p "$audit_dir"
+          set +e
+          {
+            set -euo pipefail
+            python3 -m pip install --user pillow
+            python3 tools/apply_xylune_rebrand.py
 
-          git ls-files -z | sort -z | tr '\0' '\n' > "$audit_dir/all-files.txt"
-          git ls-files | grep -Ei '(^|/)(arbor|.*arbor.*)($|/|\.)' > "$audit_dir/paths-with-arbor.txt" || true
-          git ls-files | grep -Ei '(icon|logo|brand|launcher|splash|license|widget|backup|archive|cloud|drive|manifest|gradle|readme)' > "$audit_dir/branding-sensitive-files.txt" || true
+            ./ci/verify-third-party-licenses.sh
+            ./gradlew --no-daemon --stacktrace --max-workers=2 \
+              -Pkotlin.compiler.execution.strategy=in-process \
+              :app:generateOfflineLicenseCatalog
+            ./gradlew --no-daemon --stacktrace --max-workers=2 \
+              -Pkotlin.compiler.execution.strategy=in-process \
+              testReleaseUnitTest
+            ./gradlew --no-daemon --stacktrace --max-workers=2 \
+              -Pkotlin.compiler.execution.strategy=in-process \
+              lintRelease
+            ./gradlew --no-daemon --stacktrace --max-workers=2 \
+              -Pkotlin.compiler.execution.strategy=in-process \
+              assembleRelease bundleRelease assembleDebugAndroidTest
 
-          python3 - <<'PY'
+            badging="$($ANDROID_HOME/build-tools/36.0.0/aapt dump badging app/build/outputs/apk/release/app-release.apk)"
+            printf '%s\n' "$badging" | grep -F "package: name='app.xylune.chat.debug'"
+            printf '%s\n' "$badging" | grep -F "application-label:'Xylune'"
+
+            python3 - <<'PY'
           from pathlib import Path
-          import json
           import re
 
           root = Path('.')
-          out = Path('tools/xylune-rebrand-audit')
-          tokens = re.compile(r'Arbor|arbor|ARBOR')
-          binary_exts = {
-              '.png', '.jpg', '.jpeg', '.webp', '.gif', '.ico', '.zip', '.gz', '.jar',
-              '.keystore', '.jks', '.so', '.apk', '.aab', '.pdf', '.woff', '.woff2', '.ttf',
+          excluded = {'.git', '.gradle', 'build'}
+          binary = {
+              '.aab', '.apk', '.class', '.dex', '.gif', '.gz', '.ico', '.jar', '.jpeg',
+              '.jpg', '.jks', '.keystore', '.pdf', '.png', '.so', '.tar', '.ttf', '.webp',
+              '.woff', '.woff2', '.zip',
           }
-          occurrences = []
-          summaries = []
+          stale = []
           for path in sorted(root.rglob('*')):
-              if not path.is_file() or '.git' in path.parts or out in path.parents or path.suffix.lower() in binary_exts:
+              relative = path.relative_to(root)
+              if any(part in excluded for part in relative.parts) or 'app/build' in str(relative):
+                  continue
+              if re.search('arbor', str(relative), re.IGNORECASE):
+                  stale.append(f'path: {relative}')
+                  continue
+              if not path.is_file() or path.suffix.lower() in binary:
+                  continue
+              data = path.read_bytes()
+              if b'\0' in data:
                   continue
               try:
-                  text = path.read_text(encoding='utf-8')
-              except (UnicodeDecodeError, OSError):
+                  text = data.decode('utf-8')
+              except UnicodeDecodeError:
                   continue
-              matches = []
-              counts = {'Arbor': text.count('Arbor'), 'arbor': text.count('arbor'), 'ARBOR': text.count('ARBOR')}
-              if any(counts.values()):
-                  summaries.append({'path': str(path), **counts})
-                  for line_no, line in enumerate(text.splitlines(), 1):
-                      if tokens.search(line):
-                          matches.append({'line': line_no, 'text': line[:600]})
-                  occurrences.append({'path': str(path), 'matches': matches})
-          (out / 'arbor-occurrences.json').write_text(
-              json.dumps(occurrences, indent=2, ensure_ascii=False) + '\n', encoding='utf-8'
-          )
-          (out / 'occurrence-summary.json').write_text(
-              json.dumps(summaries, indent=2, ensure_ascii=False) + '\n', encoding='utf-8'
-          )
+              for line_no, line in enumerate(text.splitlines(), 1):
+                  if re.search(r'Arbor|arbor|ARBOR', line):
+                      stale.append(f'{relative}:{line_no}: {line[:240]}')
+                      if len(stale) >= 100:
+                          break
+              if len(stale) >= 100:
+                  break
+          if stale:
+              raise SystemExit('Stale Arbor identity remains:\n' + '\n'.join(stale))
+
+          required = {
+              'app/src/main/java/app/xylune/chat/XyluneApplication.kt': 'class XyluneApplication',
+              'app/src/main/java/app/xylune/chat/ui/XyluneApp.kt': 'fun XyluneApp',
+              'app/src/main/java/app/xylune/chat/data/XyluneDatabase.kt': 'abstract class XyluneDatabase',
+              'app/src/main/res/drawable/ic_xylune_foreground.xml': 'M30,28C42,43 58,64 78,82',
+              'app/src/main/res/drawable/ic_xylune_monochrome.xml': 'M78,28C66,43 50,64 30,82',
+              'branding/xylune-logo.svg': 'M30 28C42 43 58 64 78 82',
+              'README.md': 'branding/xylune-banner.png',
+          }
+          for relative, token in required.items():
+              text = (root / relative).read_text(encoding='utf-8')
+              if token not in text:
+                  raise SystemExit(f'{relative} is missing required token: {token}')
           PY
+          } 2>&1 | tee /tmp/xylune-rebrand-validation.log
+          status=${PIPESTATUS[0]}
+          set -e
 
-          {
-            echo "HEAD=$(git rev-parse HEAD)"
-            echo "BRANCH=$(git branch --show-current)"
-            echo
-            echo "== Gradle files =="
-            find . -path './.git' -prune -o -type f \( -name '*.gradle' -o -name '*.gradle.kts' -o -name 'gradle.properties' \) -print | sort
-            echo
-            echo "== Resource directories =="
-            find app/src -type d -path '*/res/*' | sort
-            echo
-            echo "== Icon-like files =="
-            find . -path './.git' -prune -o -type f | grep -Ei '(icon|logo|launcher|splash|leaf|brand)' | sort || true
-          } > "$audit_dir/structure.txt"
-
-          {
-            for library in app/src/main/jniLibs/*/*.so; do
-              echo "===== $library ====="
-              file "$library"
-              readelf -d "$library" | grep -E 'NEEDED|SONAME' || true
-              echo "-- embedded Arbor strings --"
-              strings "$library" | grep -i arbor || true
-              echo
-            done
-          } > "$audit_dir/native-libraries.txt"
-
-      - name: Commit audit
-        shell: bash
-        run: |
-          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tools/xylune-rebrand-audit
-          if git diff --cached --quiet; then
-            echo "Audit unchanged"
-            exit 0
+
+          if [ "$status" -ne 0 ]; then
+            mkdir -p tools/xylune-rebrand-failure
+            cp /tmp/xylune-rebrand-validation.log tools/xylune-rebrand-failure/validation.log
+            git add -f tools/xylune-rebrand-failure/validation.log
+            git commit -m "Record failed Xylune rebrand validation" -- tools/xylune-rebrand-failure/validation.log || true
+            git push
+            exit "$status"
           fi
-          git commit -m "Refresh generated Xylune rebrand audit"
+
+          rm -rf tools/xylune-rebrand-audit tools/xylune-rebrand-failure
+          rm -f tools/apply_xylune_rebrand.py .github/workflows/xylune-rebrand-snapshot.yml
+          git add -A
+          git status --short
+          git diff --cached --stat
+          git commit -m "Rebrand Arbor to Xylune throughout app"
           git push
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xylune-rebrand-validation
+          path: |
+            /tmp/xylune-rebrand-validation.log
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/bundle/release/*.aab
+            app/build/outputs/apk/androidTest/debug/*.apk
+            app/build/reports/tests/
+            app/build/reports/lint-results-release.html
+          if-no-files-found: warn
+          retention-days: 7
