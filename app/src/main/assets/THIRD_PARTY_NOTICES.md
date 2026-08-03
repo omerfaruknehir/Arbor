@@ -59,3 +59,7 @@ Xylune 0.19.0 includes a clean-room Kotlin/Android implementation interoperable 
 The upstream project is Copyright 2026 Evan Zhou and OpenAI OAuth contributors and is
 licensed under the Apache License, Version 2.0. No JavaScript package or browser extension
 is bundled. See: https://github.com/EvanZhouDev/openai-oauth
+
+## Cloud provider service marks
+
+Xylune includes Google Drive, Microsoft OneDrive, Dropbox, and Nextcloud marks solely to identify the corresponding user-selected services. These marks and names remain the property and trademarks of their respective owners. Their inclusion does not imply sponsorship or endorsement. Source artwork and provenance are recorded under `branding/provider-icons/`.

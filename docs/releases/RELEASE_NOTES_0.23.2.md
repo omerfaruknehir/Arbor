@@ -14,3 +14,10 @@ This hotfix repairs cloud restore and replaces generic provider placeholders in 
 - S3-compatible storage uses a neutral storage icon because it may refer to AWS S3, Cloudflare R2, Backblaze B2, MinIO, or another compatible service.
 
 The package remains `app.xylune.chat` and the public update-compatible signing certificate is unchanged.
+
+## Branding and provider artwork
+
+- Replaced the former A-derived artwork throughout the app with the approved Xylune X-and-leaf logo from `branding/xylune-logo.svg`.
+- Preserved Xylune, Dynamic, Graphite, Ocean, Violet, and Sunset color schemes while making every adaptive, monochrome, and in-app mark use one normalized geometry.
+- Fixed the Dynamic launcher icon occasionally appearing at a different scale by aligning base and Android 12+ resources to the same viewport and paths.
+- Updated cloud restore to the supplied current Google Drive, Microsoft OneDrive, Dropbox, and Nextcloud marks.
