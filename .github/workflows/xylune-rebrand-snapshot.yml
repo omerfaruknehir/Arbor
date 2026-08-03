@@ -82,6 +82,17 @@ jobs:
             find . -path './.git' -prune -o -type f | grep -Ei '(icon|logo|launcher|splash|leaf|brand)' | sort || true
           } > "$audit_dir/structure.txt"
 
+          {
+            for library in app/src/main/jniLibs/*/*.so; do
+              echo "===== $library ====="
+              file "$library"
+              readelf -d "$library" | grep -E 'NEEDED|SONAME' || true
+              echo "-- embedded Arbor strings --"
+              strings "$library" | grep -i arbor || true
+              echo
+            done
+          } > "$audit_dir/native-libraries.txt"
+
       - name: Commit audit
         shell: bash
         run: |
@@ -89,5 +100,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add tools/xylune-rebrand-audit
-          git commit -m "Add generated Xylune rebrand audit"
+          if git diff --cached --quiet; then
+            echo "Audit unchanged"
+            exit 0
+          fi
+          git commit -m "Refresh generated Xylune rebrand audit"
           git push
