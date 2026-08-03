@@ -30,6 +30,8 @@ jobs:
 
       - name: Integrate latest main branding sources
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
           git merge --no-edit origin/main
 
@@ -93,8 +95,6 @@ jobs:
 
       - name: Commit validated branding and restore hotfix
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A app branding CHANGELOG.md THIRD_PARTY_NOTICES.md docs/releases
           if git diff --cached --quiet; then
             echo "No generated changes to commit"
