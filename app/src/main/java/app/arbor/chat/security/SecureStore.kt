@@ -53,6 +53,16 @@ class SecureStore(context: Context) {
         preferences.edit { putString("key_$providerId", value.trim()) }
     }
 
+    fun cloudRecord(key: String): String? =
+        preferences.getString("cloud_${key.filter { it.isLetterOrDigit() || it == '_' || it == '-' }}", null)
+
+    fun setCloudRecord(key: String, value: String?) {
+        val safeKey = "cloud_${key.filter { it.isLetterOrDigit() || it == '_' || it == '-' }}"
+        preferences.edit(commit = true) {
+            if (value.isNullOrBlank()) remove(safeKey) else putString(safeKey, value)
+        }
+    }
+
     /** All OAuth sessions are encrypted together and keyed by Arbor provider id. */
     fun openAiOAuthAccounts(): Map<String, OpenAiOAuthSecrets> {
         val current = preferences.getString(OPENAI_OAUTH_SESSIONS, null)?.let(::parseAccountMap).orEmpty()

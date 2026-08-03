@@ -28,6 +28,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,6 +43,11 @@ import app.arbor.chat.transfer.ARBOR_BACKUP_MIME
 import app.arbor.chat.transfer.ARBOR_CHAT_MIME
 import app.arbor.chat.transfer.CloudBackupEntry
 import app.arbor.chat.transfer.CloudBackupProvider
+import app.arbor.chat.transfer.CloudOAuthProvider
+import app.arbor.chat.transfer.CloudOAuthState
+import app.arbor.chat.transfer.DirectCloudProvider
+import app.arbor.chat.transfer.S3CloudConfig
+import app.arbor.chat.transfer.WebDavCloudConfig
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.Scopes
@@ -50,13 +56,17 @@ import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.launch
 
-private enum class SetupCloudSource { CHOOSE, FOLDER, GOOGLE_DRIVE }
+private enum class SetupCloudSource { CHOOSE, FOLDER, GOOGLE_DRIVE, ONEDRIVE, DROPBOX, WEBDAV, S3 }
 
 @Composable
 internal fun SetupRestoreActions(viewModel: ChatViewModel) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val authorizationClient = remember(context) { Identity.getAuthorizationClient(context) }
+    val oauthStates by viewModel.cloudOAuthStates.collectAsState()
+    val directConfigurations by viewModel.directCloudConfigurations.collectAsState()
+    var webDavDialogOpen by remember { mutableStateOf(false) }
+    var s3DialogOpen by remember { mutableStateOf(false) }
     var cloudDialogOpen by remember { mutableStateOf(false) }
     var cloudSource by remember { mutableStateOf(SetupCloudSource.CHOOSE) }
     var entries by remember { mutableStateOf<List<CloudBackupEntry>>(emptyList()) }
@@ -81,6 +91,23 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                 .onFailure { error = it.message ?: "Could not read Google Drive app storage" }
             busy = false
         }
+    }
+
+    fun loadDirectBackups(provider: DirectCloudProvider, source: SetupCloudSource) {
+        scope.launch {
+            busy = true
+            error = null
+            runCatching { viewModel.listDirectCloudBackups(provider) }
+                .onSuccess { showBackups(source, it) }
+                .onFailure { error = it.message ?: "Could not read ${provider.displayName} backups" }
+            busy = false
+        }
+    }
+
+    fun connectDirectOAuth(provider: CloudOAuthProvider) {
+        runCatching { viewModel.beginDirectCloudOAuth(provider) }
+            .onSuccess { uri -> context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+            .onFailure { error = it.message ?: "Could not open ${provider.displayName} sign-in" }
     }
 
     val googleAuthorizationLauncher = rememberLauncherForActivityResult(
@@ -229,6 +256,78 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                             Icon(Icons.Outlined.FolderOpen, null)
                             Text(" Choose an app backup folder", Modifier.padding(start = 6.dp))
                         }
+                        OutlinedButton(
+                            onClick = {
+                                when (oauthStates[CloudOAuthProvider.ONEDRIVE]) {
+                                    is CloudOAuthState.Connected -> loadDirectBackups(
+                                        DirectCloudProvider.ONEDRIVE,
+                                        SetupCloudSource.ONEDRIVE,
+                                    )
+                                    else -> connectDirectOAuth(CloudOAuthProvider.ONEDRIVE)
+                                }
+                            },
+                            enabled = !busy && oauthStates[CloudOAuthProvider.ONEDRIVE] !is CloudOAuthState.Unavailable,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Outlined.Cloud, null)
+                            Text(
+                                if (oauthStates[CloudOAuthProvider.ONEDRIVE] is CloudOAuthState.Connected) {
+                                    " OneDrive app folder"
+                                } else " Connect OneDrive",
+                                Modifier.padding(start = 6.dp),
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                when (oauthStates[CloudOAuthProvider.DROPBOX]) {
+                                    is CloudOAuthState.Connected -> loadDirectBackups(
+                                        DirectCloudProvider.DROPBOX,
+                                        SetupCloudSource.DROPBOX,
+                                    )
+                                    else -> connectDirectOAuth(CloudOAuthProvider.DROPBOX)
+                                }
+                            },
+                            enabled = !busy && oauthStates[CloudOAuthProvider.DROPBOX] !is CloudOAuthState.Unavailable,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Outlined.Cloud, null)
+                            Text(
+                                if (oauthStates[CloudOAuthProvider.DROPBOX] is CloudOAuthState.Connected) {
+                                    " Dropbox app folder"
+                                } else " Connect Dropbox",
+                                Modifier.padding(start = 6.dp),
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                if (directConfigurations.webDav == null) webDavDialogOpen = true
+                                else loadDirectBackups(DirectCloudProvider.WEBDAV, SetupCloudSource.WEBDAV)
+                            },
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Outlined.Cloud, null)
+                            Text(
+                                if (directConfigurations.webDav == null) " Configure WebDAV / Nextcloud"
+                                else " ${directConfigurations.webDav?.label ?: "WebDAV"}",
+                                Modifier.padding(start = 6.dp),
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                if (directConfigurations.s3 == null) s3DialogOpen = true
+                                else loadDirectBackups(DirectCloudProvider.S3, SetupCloudSource.S3)
+                            },
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Outlined.Cloud, null)
+                            Text(
+                                if (directConfigurations.s3 == null) " Configure S3-compatible storage"
+                                else " ${directConfigurations.s3?.label ?: "S3"}",
+                                Modifier.padding(start = 6.dp),
+                            )
+                        }
                         if (viewModel.connectedCloudFolderUri() != null) {
                             OutlinedButton(
                                 onClick = {
@@ -253,6 +352,10 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                             when (cloudSource) {
                                 SetupCloudSource.FOLDER -> viewModel.connectedCloudFolderLabel()?.let { "Folder: $it" } ?: "Selected app backup folder"
                                 SetupCloudSource.GOOGLE_DRIVE -> "Google Drive hidden Arbor app storage"
+                                SetupCloudSource.ONEDRIVE -> "OneDrive Apps/Arbor folder"
+                                SetupCloudSource.DROPBOX -> "Dropbox Arbor App folder"
+                                SetupCloudSource.WEBDAV -> directConfigurations.webDav?.label ?: "WebDAV / Nextcloud"
+                                SetupCloudSource.S3 -> directConfigurations.s3?.label ?: "S3-compatible storage"
                                 SetupCloudSource.CHOOSE -> ""
                             },
                             style = MaterialTheme.typography.bodySmall,
@@ -285,6 +388,14 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                                                         val token = requireNotNull(googleAccessToken) { "Google Drive authorization expired" }
                                                         viewModel.downloadGoogleDriveBackup(token, entry)
                                                     }
+                                                    CloudBackupProvider.ONEDRIVE_APP_FOLDER ->
+                                                        viewModel.downloadDirectCloudBackup(DirectCloudProvider.ONEDRIVE, entry)
+                                                    CloudBackupProvider.DROPBOX_APP_FOLDER ->
+                                                        viewModel.downloadDirectCloudBackup(DirectCloudProvider.DROPBOX, entry)
+                                                    CloudBackupProvider.WEBDAV ->
+                                                        viewModel.downloadDirectCloudBackup(DirectCloudProvider.WEBDAV, entry)
+                                                    CloudBackupProvider.S3 ->
+                                                        viewModel.downloadDirectCloudBackup(DirectCloudProvider.S3, entry)
                                                 }
                                             }.onSuccess { uri ->
                                                 cloudDialogOpen = false
@@ -330,6 +441,36 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
             },
             confirmButton = {
                 TextButton(onClick = { cloudDialogOpen = false }, enabled = !busy) { Text("Close") }
+            },
+        )
+    }
+
+    if (webDavDialogOpen) {
+        WebDavConfigDialog(
+            existing = directConfigurations.webDav,
+            onDismiss = { webDavDialogOpen = false },
+            onSave = { config: WebDavCloudConfig ->
+                runCatching { viewModel.saveWebDavCloud(config) }
+                    .onSuccess {
+                        webDavDialogOpen = false
+                        loadDirectBackups(DirectCloudProvider.WEBDAV, SetupCloudSource.WEBDAV)
+                    }
+                    .onFailure { error = it.message ?: "Invalid WebDAV configuration" }
+            },
+        )
+    }
+
+    if (s3DialogOpen) {
+        S3ConfigDialog(
+            existing = directConfigurations.s3,
+            onDismiss = { s3DialogOpen = false },
+            onSave = { config: S3CloudConfig ->
+                runCatching { viewModel.saveS3Cloud(config) }
+                    .onSuccess {
+                        s3DialogOpen = false
+                        loadDirectBackups(DirectCloudProvider.S3, SetupCloudSource.S3)
+                    }
+                    .onFailure { error = it.message ?: "Invalid S3 configuration" }
             },
         )
     }

@@ -43,6 +43,16 @@ val sourceCommit = (
         ?: System.getenv("GITHUB_SHA")
         ?: ""
 ).trim().take(64)
+val microsoftClientId = (
+    providers.gradleProperty("ARBOR_MICROSOFT_CLIENT_ID").orNull
+        ?: System.getenv("ARBOR_MICROSOFT_CLIENT_ID")
+        ?: ""
+).trim()
+val dropboxAppKey = (
+    providers.gradleProperty("ARBOR_DROPBOX_APP_KEY").orNull
+        ?: System.getenv("ARBOR_DROPBOX_APP_KEY")
+        ?: ""
+).trim()
 
 val releaseStoreFile = providers.gradleProperty("ARBOR_KEYSTORE_FILE").orNull ?: System.getenv("ARBOR_KEYSTORE_FILE")
 val releaseStorePassword = providers.gradleProperty("ARBOR_KEYSTORE_PASSWORD").orNull ?: System.getenv("ARBOR_KEYSTORE_PASSWORD")
@@ -214,10 +224,14 @@ android {
         applicationId = "app.arbor.chat"
         minSdk = 26
         targetSdk = 36
-        versionCode = 168
-        versionName = "0.22.4"
+        versionCode = 169
+        versionName = "0.22.5"
         buildConfigField("String", "SOURCE_REPOSITORY", "\"$sourceRepository\"")
         buildConfigField("String", "SOURCE_COMMIT", "\"$sourceCommit\"")
+        buildConfigField("String", "MICROSOFT_CLIENT_ID", "\"$microsoftClientId\"")
+        buildConfigField("String", "DROPBOX_APP_KEY", "\"$dropboxAppKey\"")
+        manifestPlaceholders["dropboxOAuthScheme"] =
+            if (dropboxAppKey.isBlank()) "db-arbor-unconfigured" else "db-$dropboxAppKey"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

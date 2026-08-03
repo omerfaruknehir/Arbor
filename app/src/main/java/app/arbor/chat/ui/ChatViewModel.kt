@@ -59,6 +59,12 @@ import app.arbor.chat.settings.PersistentUiStateStore
 import app.arbor.chat.transfer.ArchiveOptions
 import app.arbor.chat.transfer.ArchivePasswordRequiredException
 import app.arbor.chat.transfer.CloudBackupEntry
+import app.arbor.chat.transfer.CloudOAuthProvider
+import app.arbor.chat.transfer.CloudOAuthState
+import app.arbor.chat.transfer.DirectCloudProvider
+import app.arbor.chat.transfer.DirectCloudConfigurationSnapshot
+import app.arbor.chat.transfer.WebDavCloudConfig
+import app.arbor.chat.transfer.S3CloudConfig
 import app.arbor.chat.transfer.IncomingArchiveState
 import app.arbor.chat.update.RepositoryUpdateState
 import app.arbor.chat.generated.GeneratedBlockRepairState
@@ -199,6 +205,8 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     val renderSafeMode = container.crashReporter.renderSafeMode
     val notices = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val repositoryUpdateState: StateFlow<RepositoryUpdateState> = container.repositoryUpdates.state
+    val cloudOAuthStates: StateFlow<Map<CloudOAuthProvider, CloudOAuthState>> = container.cloudOAuth.states
+    val directCloudConfigurations: StateFlow<DirectCloudConfigurationSnapshot> = container.directCloudConfigs.state
     val shareConversationId = MutableStateFlow<String?>(null)
     val incomingArchive = MutableStateFlow<IncomingArchiveState?>(null)
     private val _credentialRevision = MutableStateFlow(0L)
@@ -329,6 +337,9 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     fun openConnectedFolderBackup(entry: CloudBackupEntry): Uri =
         container.scopedCloudFolder.open(entry)
 
+    suspend fun deleteConnectedFolderBackup(entry: CloudBackupEntry) =
+        container.scopedCloudFolder.deleteBackup(entry)
+
     suspend fun writeGoogleDriveBackup(
         accessToken: String,
         options: ArchiveOptions,
@@ -347,6 +358,60 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
 
     suspend fun downloadGoogleDriveBackup(accessToken: String, entry: CloudBackupEntry): Uri =
         container.googleDriveAppData.downloadBackup(accessToken, entry)
+
+    suspend fun deleteGoogleDriveBackup(accessToken: String, entry: CloudBackupEntry) =
+        container.googleDriveAppData.deleteBackup(accessToken, entry)
+
+    fun directCloudBuildConfigured(provider: CloudOAuthProvider): Boolean =
+        container.cloudOAuth.isBuildConfigured(provider)
+
+    fun directCloudConfigurationReason(provider: CloudOAuthProvider): String? =
+        container.cloudOAuth.configurationReason(provider)
+
+    fun directCloudRedirectUri(provider: CloudOAuthProvider): String =
+        container.cloudOAuth.redirectUri(provider)
+
+    fun beginDirectCloudOAuth(provider: CloudOAuthProvider): Uri =
+        container.cloudOAuth.beginAuthorization(provider)
+
+    fun handleCloudOAuthRedirect(uri: Uri): Boolean {
+        if (!container.cloudOAuth.canHandleRedirect(uri)) return false
+        viewModelScope.launch {
+            runCatching { container.cloudOAuth.completeRedirect(uri) }
+                .onSuccess { session -> notices.emit("Connected ${session.provider.displayName}") }
+                .onFailure { error -> notices.emit(error.message ?: "Cloud account connection failed") }
+        }
+        return true
+    }
+
+    fun saveWebDavCloud(config: WebDavCloudConfig) = container.directCloudConfigs.saveWebDav(config)
+    fun saveS3Cloud(config: S3CloudConfig) = container.directCloudConfigs.saveS3(config)
+
+    fun disconnectDirectCloud(provider: DirectCloudProvider) = container.directCloud.disconnect(provider)
+
+    suspend fun testDirectCloud(provider: DirectCloudProvider): String = container.directCloud.test(provider)
+
+    suspend fun writeDirectCloudBackup(
+        provider: DirectCloudProvider,
+        options: ArchiveOptions,
+        password: String,
+    ): CloudBackupEntry {
+        val file = container.archiveManager.writeBackupToCache(options, password)
+        return try {
+            container.directCloud.upload(provider, file, file.name)
+        } finally {
+            file.delete()
+        }
+    }
+
+    suspend fun listDirectCloudBackups(provider: DirectCloudProvider): List<CloudBackupEntry> =
+        container.directCloud.list(provider)
+
+    suspend fun downloadDirectCloudBackup(provider: DirectCloudProvider, entry: CloudBackupEntry): Uri =
+        container.directCloud.download(provider, entry)
+
+    suspend fun deleteDirectCloudBackup(provider: DirectCloudProvider, entry: CloudBackupEntry) =
+        container.directCloud.delete(provider, entry)
 
     fun receivePortableArchive(uri: Uri) {
         incomingArchive.value = IncomingArchiveState(uri = uri)
