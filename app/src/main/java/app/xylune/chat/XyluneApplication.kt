@@ -31,6 +31,9 @@ import app.xylune.chat.settings.PersistentUiStateStore
 import app.xylune.chat.transfer.AppSettingsArchiveStore
 import app.xylune.chat.transfer.XyluneArchiveManager
 import app.xylune.chat.transfer.GoogleDriveAppDataClient
+import app.xylune.chat.transfer.CloudOAuthManager
+import app.xylune.chat.transfer.DirectCloudConfigStore
+import app.xylune.chat.transfer.DirectCloudBackupCoordinator
 import app.xylune.chat.transfer.LinuxEnvironmentArchiveStore
 import app.xylune.chat.transfer.ScopedCloudFolderStore
 import app.xylune.chat.update.RepositoryUpdateManager
@@ -122,6 +125,9 @@ class AppContainer(val application: Application, val crashReporter: CrashReporte
     val archiveManager = XyluneArchiveManager(application, database, linuxEnvironmentArchives, appSettingsArchives)
     val scopedCloudFolder = ScopedCloudFolderStore(application)
     val googleDriveAppData = GoogleDriveAppDataClient(application)
+    val cloudOAuth = CloudOAuthManager(application, secureStore)
+    val directCloudConfigs = DirectCloudConfigStore(secureStore)
+    val directCloud = DirectCloudBackupCoordinator(application, cloudOAuth, directCloudConfigs)
     val repositoryUpdates = RepositoryUpdateManager(application)
     val runRecords = RunRecordStore(pythonSandbox::workspace)
     val generatedBlockCompiler = GeneratedBlockCompiler(application)

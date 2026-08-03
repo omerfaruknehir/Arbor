@@ -34,7 +34,7 @@ import java.time.Instant
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
 
-enum class CloudBackupProvider { SCOPED_FOLDER, GOOGLE_DRIVE_APP_DATA }
+enum class CloudBackupProvider { SCOPED_FOLDER, GOOGLE_DRIVE_APP_DATA, ONEDRIVE_APP_FOLDER, DROPBOX_APP_FOLDER, WEBDAV, S3 }
 
 data class CloudBackupEntry(
     val provider: CloudBackupProvider,
@@ -151,6 +151,14 @@ class ScopedCloudFolderStore(private val context: Context) {
         return Uri.parse(requireNotNull(entry.uriString) { "Cloud backup URI is missing" })
     }
 
+    suspend fun deleteBackup(entry: CloudBackupEntry) = withContext(Dispatchers.IO) {
+        require(entry.provider == CloudBackupProvider.SCOPED_FOLDER)
+        val uri = Uri.parse(requireNotNull(entry.uriString) { "Cloud backup URI is missing" })
+        require(DocumentsContract.deleteDocument(resolver, uri)) {
+            "The selected document provider could not delete this backup"
+        }
+    }
+
     private fun queryDisplayName(uri: Uri): String = runCatching {
         resolver.query(
             uri,
@@ -190,29 +198,50 @@ class GoogleDriveAppDataClient(private val context: Context) {
 
     suspend fun listBackups(accessToken: String): List<CloudBackupEntry> = withContext(Dispatchers.IO) {
         require(accessToken.isNotBlank()) { "Google Drive authorization did not return an access token" }
-        val url = "https://www.googleapis.com/drive/v3/files".toHttpUrl().newBuilder()
-            .addQueryParameter("spaces", "appDataFolder")
-            .addQueryParameter("q", "trashed = false")
-            .addQueryParameter("orderBy", "modifiedTime desc")
-            .addQueryParameter("pageSize", "50")
-            .addQueryParameter("fields", "files(id,name,modifiedTime,size,mimeType)")
-            .build()
-        val request = Request.Builder()
-            .url(url)
-            .header("Authorization", "Bearer $accessToken")
-            .get()
-            .build()
-        client.newCall(request).execute().use { response ->
-            val raw = response.body?.string().orEmpty()
-            require(response.isSuccessful) { driveError(response.code, raw) }
-            json.parseToJsonElement(raw).jsonObject["files"]?.jsonArray.orEmpty()
-                .mapNotNull { element ->
+        val values = mutableListOf<CloudBackupEntry>()
+        var pageToken: String? = null
+        do {
+            val url = "https://www.googleapis.com/drive/v3/files".toHttpUrl().newBuilder()
+                .addQueryParameter("spaces", "appDataFolder")
+                .addQueryParameter("q", "trashed = false")
+                .addQueryParameter("orderBy", "modifiedTime desc")
+                .addQueryParameter("pageSize", "1000")
+                .addQueryParameter("fields", "nextPageToken,files(id,name,modifiedTime,size,mimeType)")
+                .apply { pageToken?.let { addQueryParameter("pageToken", it) } }
+                .build()
+            val request = Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
+            pageToken = client.newCall(request).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                require(response.isSuccessful) { driveError(response.code, raw) }
+                val root = json.parseToJsonElement(raw).jsonObject
+                root["files"]?.jsonArray.orEmpty().forEach { element ->
                     val value = element.jsonObject
                     val name = value["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
                     val mimeType = value["mimeType"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                    if (!name.endsWith(XYLUNE_BACKUP_EXTENSION, ignoreCase = true) && mimeType != XYLUNE_BACKUP_MIME) null
-                    else parseEntry(value)
+                    if (name.endsWith(XYLUNE_BACKUP_EXTENSION, ignoreCase = true) || mimeType == XYLUNE_BACKUP_MIME) {
+                        values += parseEntry(value)
+                    }
                 }
+                root["nextPageToken"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)
+            }
+        } while (pageToken != null)
+        values.sortedByDescending(CloudBackupEntry::modifiedAt)
+    }
+
+    suspend fun deleteBackup(accessToken: String, entry: CloudBackupEntry) = withContext(Dispatchers.IO) {
+        require(entry.provider == CloudBackupProvider.GOOGLE_DRIVE_APP_DATA)
+        val request = Request.Builder()
+            .url("https://www.googleapis.com/drive/v3/files/${entry.id}")
+            .header("Authorization", "Bearer $accessToken")
+            .delete()
+            .build()
+        client.newCall(request).execute().use { response ->
+            val raw = response.body?.string().orEmpty()
+            require(response.code == 204 || response.isSuccessful) { driveError(response.code, raw) }
         }
     }
 

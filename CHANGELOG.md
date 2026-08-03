@@ -1,3 +1,9 @@
+## 0.23.1 — 2026-08-03
+
+- Complete direct cloud backup providers for OneDrive App Folder, Dropbox App Folder, WebDAV/Nextcloud, and S3-compatible storage while retaining Google Drive app-data and Android's scoped folder picker.
+- Use OAuth Authorization Code with PKCE for OneDrive and Dropbox, encrypted local credential storage, HTTPS-only direct endpoints, least-privilege app-folder scopes, paginated backup browsing, resumable uploads, and confirmed deletion.
+- Support first-run browsing, preview, and restore across every cloud provider, including multipart S3 uploads for Linux-inclusive backups; keep cloud credentials and sessions excluded from portable archives.
+
 ## 0.23.0 — 2026-08-03
 
 - Rebrand the complete application identity to Xylune, including the Android namespace, application ID, source packages, storage and transfer formats, widgets, native tools, release assets, documentation, and build metadata.

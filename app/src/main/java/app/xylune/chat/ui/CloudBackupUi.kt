@@ -22,14 +22,17 @@ import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Logout
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -78,6 +81,7 @@ private sealed interface GoogleBackupAction {
     data object Save : GoogleBackupAction
     data object List : GoogleBackupAction
     data class Open(val entry: CloudBackupEntry) : GoogleBackupAction
+    data class Delete(val entry: CloudBackupEntry) : GoogleBackupAction
 }
 
 @Composable
@@ -102,6 +106,7 @@ internal fun CloudBackupTargets(
     var googleAccountLabel by remember { mutableStateOf<String?>(null) }
     var driveError by remember { mutableStateOf<String?>(null) }
     var driveAuthorizationFailure by remember { mutableStateOf<GoogleDriveAuthorizationFailure?>(null) }
+    var deleteTarget by remember { mutableStateOf<CloudBackupEntry?>(null) }
 
     fun recordAuthorizationFailure(error: Throwable) {
         val failure = context.describeGoogleDriveAuthorizationFailure(
@@ -126,6 +131,7 @@ internal fun CloudBackupTargets(
                 GoogleBackupAction.Connect, GoogleBackupAction.List -> "drive-list"
                 GoogleBackupAction.Save -> "drive-save"
                 is GoogleBackupAction.Open -> "drive-open-${action.entry.id}"
+                is GoogleBackupAction.Delete -> "drive-delete-${action.entry.id}"
             }
             driveError = null
             driveAuthorizationFailure = null
@@ -141,6 +147,10 @@ internal fun CloudBackupTargets(
                     is GoogleBackupAction.Open -> {
                         val uri = viewModel.downloadGoogleDriveBackup(accessToken, action.entry)
                         viewModel.receivePortableArchive(uri)
+                    }
+                    is GoogleBackupAction.Delete -> {
+                        viewModel.deleteGoogleDriveBackup(accessToken, action.entry)
+                        driveBackups = driveBackups.filterNot { it.id == action.entry.id }
                     }
                 }
             }.onSuccess {
@@ -284,7 +294,7 @@ internal fun CloudBackupTargets(
 
     TransferHeading(
         title = "Private cloud targets",
-        subtitle = "Use either one folder you explicitly choose or Google Drive's hidden Xylune-only app storage. Xylune never requests access to your whole cloud drive.",
+        subtitle = "Choose a scoped Android folder, an OAuth app folder, WebDAV/Nextcloud, or an S3-compatible bucket prefix. Xylune avoids account-wide cloud access.",
     )
 
     Surface(
@@ -355,11 +365,16 @@ internal fun CloudBackupTargets(
                     Icon(Icons.Outlined.Refresh, null)
                     Text(" Show backups")
                 }
-                CloudBackupList(folderBackups, busy) { entry ->
-                    runCatching { viewModel.openConnectedFolderBackup(entry) }
-                        .onSuccess(viewModel::receivePortableArchive)
-                        .onFailure { viewModel.postNotice(it.message ?: "Could not open backup") }
-                }
+                CloudBackupList(
+                    entries = folderBackups,
+                    busy = busy,
+                    onOpen = { entry ->
+                        runCatching { viewModel.openConnectedFolderBackup(entry) }
+                            .onSuccess(viewModel::receivePortableArchive)
+                            .onFailure { viewModel.postNotice(it.message ?: "Could not open backup") }
+                    },
+                    onDelete = { deleteTarget = it },
+                )
             }
         }
     }
@@ -447,7 +462,12 @@ internal fun CloudBackupTargets(
                         Text(" Disconnect")
                     }
                 }
-                CloudBackupList(driveBackups, busy) { entry -> authorizeGoogle(GoogleBackupAction.Open(entry)) }
+                CloudBackupList(
+                    entries = driveBackups,
+                    busy = busy,
+                    onOpen = { authorizeGoogle(GoogleBackupAction.Open(it)) },
+                    onDelete = { deleteTarget = it },
+                )
             }
 
             driveError?.let { message ->
@@ -503,6 +523,41 @@ internal fun CloudBackupTargets(
         }
     }
 
+    deleteTarget?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("Delete cloud backup?") },
+            text = { Text("${entry.name} will be permanently removed from its cloud provider.") },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) { Text("Cancel") }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    deleteTarget = null
+                    when (entry.provider) {
+                        app.xylune.chat.transfer.CloudBackupProvider.SCOPED_FOLDER -> scope.launch {
+                            busy = "folder-delete-${entry.id}"
+                            runCatching { viewModel.deleteConnectedFolderBackup(entry) }
+                                .onSuccess { folderBackups = folderBackups.filterNot { it.id == entry.id } }
+                                .onFailure { viewModel.postNotice(it.message ?: "Could not delete backup") }
+                            busy = null
+                        }
+                        app.xylune.chat.transfer.CloudBackupProvider.GOOGLE_DRIVE_APP_DATA ->
+                            authorizeGoogle(GoogleBackupAction.Delete(entry))
+                        else -> Unit
+                    }
+                }) { Text("Delete") }
+            },
+        )
+    }
+
+    DirectCloudProviderTargets(
+        viewModel = viewModel,
+        options = options,
+        password = password,
+        enabled = enabled,
+    )
+
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = MaterialTheme.shapes.large,
@@ -522,10 +577,11 @@ private fun CloudBackupList(
     entries: List<CloudBackupEntry>,
     busy: String?,
     onOpen: (CloudBackupEntry) -> Unit,
+    onDelete: ((CloudBackupEntry) -> Unit)? = null,
 ) {
     if (entries.isEmpty()) return
     HorizontalDivider()
-    entries.take(20).forEach { entry ->
+    entries.take(100).forEach { entry ->
         Row(
             Modifier.fillMaxWidth().padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -546,6 +602,11 @@ private fun CloudBackupList(
                 )
             }
             OutlinedButton(onClick = { onOpen(entry) }, enabled = busy == null) { Text("Preview") }
+            onDelete?.let { delete ->
+                IconButton(onClick = { delete(entry) }, enabled = busy == null) {
+                    Icon(Icons.Outlined.DeleteOutline, "Delete backup")
+                }
+            }
         }
     }
 }

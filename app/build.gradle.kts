@@ -43,6 +43,16 @@ val sourceCommit = (
         ?: System.getenv("GITHUB_SHA")
         ?: ""
 ).trim().take(64)
+val microsoftClientId = (
+    providers.gradleProperty("XYLUNE_MICROSOFT_CLIENT_ID").orNull
+        ?: System.getenv("XYLUNE_MICROSOFT_CLIENT_ID")
+        ?: ""
+).trim()
+val dropboxAppKey = (
+    providers.gradleProperty("XYLUNE_DROPBOX_APP_KEY").orNull
+        ?: System.getenv("XYLUNE_DROPBOX_APP_KEY")
+        ?: ""
+).trim()
 
 val releaseStoreFile = providers.gradleProperty("XYLUNE_KEYSTORE_FILE").orNull ?: System.getenv("XYLUNE_KEYSTORE_FILE")
 val releaseStorePassword = providers.gradleProperty("XYLUNE_KEYSTORE_PASSWORD").orNull ?: System.getenv("XYLUNE_KEYSTORE_PASSWORD")
@@ -214,10 +224,14 @@ android {
         applicationId = "app.xylune.chat"
         minSdk = 26
         targetSdk = 36
-        versionCode = 169
-        versionName = "0.23.0"
+        versionCode = 170
+        versionName = "0.23.1"
         buildConfigField("String", "SOURCE_REPOSITORY", "\"$sourceRepository\"")
         buildConfigField("String", "SOURCE_COMMIT", "\"$sourceCommit\"")
+        buildConfigField("String", "MICROSOFT_CLIENT_ID", "\"$microsoftClientId\"")
+        buildConfigField("String", "DROPBOX_APP_KEY", "\"$dropboxAppKey\"")
+        manifestPlaceholders["dropboxOAuthScheme"] =
+            if (dropboxAppKey.isBlank()) "db-xylune-unconfigured" else "db-$dropboxAppKey"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
