@@ -43,8 +43,54 @@ jobs:
       - name: Install deterministic SVG renderer
         run: python -m pip install --disable-pip-version-check cairosvg==2.7.1 pillow==11.3.0
 
+      - name: Fetch supplied provider SVG sources
+        run: |
+          mkdir -p branding/provider-icons
+          curl --fail --location --retry 3 \
+            'https://upload.wikimedia.org/wikipedia/commons/5/5f/Google_Drive_icon_%282026%29.svg' \
+            -o 'branding/provider-icons/Google_Drive_icon_(2026).svg'
+          curl --fail --location --retry 3 \
+            'https://upload.wikimedia.org/wikipedia/commons/e/e7/Microsoft_OneDrive_Icon_%282025_-_present%29.svg' \
+            -o 'branding/provider-icons/Microsoft_OneDrive_Icon_(2025_-_present).svg'
+          curl --fail --location --retry 3 \
+            'https://upload.wikimedia.org/wikipedia/commons/7/78/Dropbox_Icon.svg' \
+            -o 'branding/provider-icons/Dropbox_Icon.svg'
+          curl --fail --location --retry 3 \
+            'https://upload.wikimedia.org/wikipedia/commons/6/60/Nextcloud_Logo.svg' \
+            -o 'branding/provider-icons/Nextcloud_Logo.svg'
+
       - name: Apply approved Xylune and provider artwork
-        run: python tools/apply_xylune_branding.py
+        run: |
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+
+          path = Path('tools/apply_xylune_branding.py')
+          spec = importlib.util.spec_from_file_location('xylune_branding', path)
+          module = importlib.util.module_from_spec(spec)
+          assert spec.loader is not None
+          spec.loader.exec_module(module)
+
+          def preserve_downloaded_sources():
+              lines = [
+                  '# Cloud provider marks',
+                  '',
+                  'These source SVGs are bundled only to identify user-selected cloud services in Xylune.',
+                  'The names and marks remain trademarks of their respective owners; their inclusion does not imply endorsement.',
+                  'Android PNG resources are generated from these checked-in SVGs so release builds do not fetch artwork from the network.',
+                  '',
+                  'Sources:',
+              ]
+              for name, url in module.PROVIDER_SOURCE_URLS.items():
+                  source = module.BRANDING_PROVIDERS / name
+                  if not source.is_file() or source.stat().st_size == 0:
+                      raise RuntimeError(f'Missing downloaded provider source: {source}')
+                  lines.append(f'- `{name}`: {url}')
+              module.write(module.BRANDING_PROVIDERS / 'README.md', '\n'.join(lines))
+
+          module.write_provider_sources = preserve_downloaded_sources
+          module.main()
+          PY
 
       - uses: actions/setup-java@v4
         with:
