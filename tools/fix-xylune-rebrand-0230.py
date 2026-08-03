@@ -6,6 +6,8 @@ content = path.read_text()
 replacements = {
     'git("rm", "branding/xylune-banner.png")':
         'git("rm", "-f", "branding/xylune-banner.png")',
+    'REPLACEMENTS = (\n    ("omerfaruknehir/Arbor", "omerfaruknehir/Xylune"),':
+        'REPLACEMENTS = (\n    ("Arbour", "Xylune"),\n    ("arbour", "xylune"),\n    ("ARBOUR", "XYLUNE"),\n    ("omerfaruknehir/Arbor", "omerfaruknehir/Xylune"),',
     "Xylune starts with a clean application identity; no Arbor package, storage, or backup compatibility is retained.":
         "Xylune starts with a clean application identity; no legacy package, storage, or backup compatibility is retained.",
     "Xylune is the complete successor identity to Arbor, pronounced **“Zy-loon.”**":
@@ -21,4 +23,4 @@ for old, new in replacements.items():
         raise RuntimeError(f"Expected one rebrand fragment, found {count}: {old}")
     content = content.replace(old, new, 1)
 path.write_text(content)
-print("Corrected banner removal and removed legacy brand references")
+print("Corrected banner removal, British spelling, and legacy brand references")
