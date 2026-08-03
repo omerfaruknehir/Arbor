@@ -1,3 +1,10 @@
+## 0.23.2 — 2026-08-04
+
+- Repair cloud restore from OneDrive, Dropbox, WebDAV/Nextcloud, and S3 by exposing only Xylune's private downloaded-backup cache through its non-exported FileProvider.
+- Replace every launcher, themed, dynamic-palette, splash, About, license, widget, and notification Xylune mark with the approved X-and-leaf artwork derived from `branding/xylune-logo.svg`.
+- Normalize every launcher variant to the same 108 × 108 viewport and identical foreground geometry, including the Android 12+ dynamic-color override, eliminating intermittent icon-size changes.
+- Use the supplied current Google Drive, Microsoft OneDrive, Dropbox, and Nextcloud service marks in cloud restore while retaining a neutral storage symbol for S3-compatible services.
+
 ## 0.23.1 — 2026-08-03
 
 - Publish bilingual GitHub Pages privacy, KVKK disclosure, terms, and data-deletion pages; standardize public releases on `app.xylune.chat` and document the exact Google and Microsoft signing identities.

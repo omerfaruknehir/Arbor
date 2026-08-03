@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -36,9 +38,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.xylune.chat.R
 import app.xylune.chat.transfer.XYLUNE_BACKUP_MIME
 import app.xylune.chat.transfer.XYLUNE_CHAT_MIME
 import app.xylune.chat.transfer.CloudBackupEntry
@@ -207,7 +212,7 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                     modifier = Modifier.weight(1f),
                 ) {
                     Icon(Icons.Outlined.FileOpen, null)
-                    Text(" Local", Modifier.padding(start = 6.dp))
+                    Text("Local", Modifier.padding(start = 6.dp))
                 }
                 Button(
                     onClick = {
@@ -219,7 +224,7 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                     modifier = Modifier.weight(1f),
                 ) {
                     Icon(Icons.Outlined.Cloud, null)
-                    Text(" Cloud", Modifier.padding(start = 6.dp))
+                    Text("Cloud", Modifier.padding(start = 6.dp))
                 }
             }
         }
@@ -236,7 +241,7 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                 ) {
                     if (cloudSource == SetupCloudSource.CHOOSE) {
                         Text(
-                            "Both options use app-only storage. Xylune never asks to browse an entire cloud account.",
+                            "Each option is limited to Xylune's app storage or a folder you explicitly choose. Xylune never asks to browse an entire cloud account.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -245,8 +250,8 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                             enabled = !busy,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Icon(Icons.Outlined.Cloud, null)
-                            Text(" Google Drive app storage", Modifier.padding(start = 6.dp))
+                            SetupProviderIcon(R.drawable.ic_google_drive, "Google Drive")
+                            Text("Google Drive app storage", Modifier.padding(start = 10.dp))
                         }
                         OutlinedButton(
                             onClick = { folderPicker.launch(viewModel.connectedCloudFolderUri()) },
@@ -254,7 +259,7 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Icon(Icons.Outlined.FolderOpen, null)
-                            Text(" Choose an app backup folder", Modifier.padding(start = 6.dp))
+                            Text("Choose an app backup folder", Modifier.padding(start = 10.dp))
                         }
                         OutlinedButton(
                             onClick = {
@@ -269,12 +274,12 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                             enabled = !busy && oauthStates[CloudOAuthProvider.ONEDRIVE] !is CloudOAuthState.Unavailable,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Icon(Icons.Outlined.Cloud, null)
+                            SetupProviderIcon(R.drawable.ic_onedrive, "OneDrive")
                             Text(
                                 if (oauthStates[CloudOAuthProvider.ONEDRIVE] is CloudOAuthState.Connected) {
-                                    " OneDrive app folder"
-                                } else " Connect OneDrive",
-                                Modifier.padding(start = 6.dp),
+                                    "OneDrive app folder"
+                                } else "Connect OneDrive",
+                                Modifier.padding(start = 10.dp),
                             )
                         }
                         OutlinedButton(
@@ -290,12 +295,12 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                             enabled = !busy && oauthStates[CloudOAuthProvider.DROPBOX] !is CloudOAuthState.Unavailable,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Icon(Icons.Outlined.Cloud, null)
+                            SetupProviderIcon(R.drawable.ic_dropbox, "Dropbox")
                             Text(
                                 if (oauthStates[CloudOAuthProvider.DROPBOX] is CloudOAuthState.Connected) {
-                                    " Dropbox app folder"
-                                } else " Connect Dropbox",
-                                Modifier.padding(start = 6.dp),
+                                    "Dropbox app folder"
+                                } else "Connect Dropbox",
+                                Modifier.padding(start = 10.dp),
                             )
                         }
                         OutlinedButton(
@@ -306,11 +311,11 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                             enabled = !busy,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Icon(Icons.Outlined.Cloud, null)
+                            SetupProviderIcon(R.drawable.ic_nextcloud, "Nextcloud / WebDAV")
                             Text(
-                                if (directConfigurations.webDav == null) " Configure WebDAV / Nextcloud"
-                                else " ${directConfigurations.webDav?.label ?: "WebDAV"}",
-                                Modifier.padding(start = 6.dp),
+                                if (directConfigurations.webDav == null) "Configure Nextcloud / WebDAV"
+                                else directConfigurations.webDav?.label ?: "WebDAV",
+                                Modifier.padding(start = 10.dp),
                             )
                         }
                         OutlinedButton(
@@ -321,11 +326,11 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                             enabled = !busy,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Icon(Icons.Outlined.Cloud, null)
+                            Icon(Icons.Outlined.Storage, contentDescription = "S3-compatible storage")
                             Text(
-                                if (directConfigurations.s3 == null) " Configure S3-compatible storage"
-                                else " ${directConfigurations.s3?.label ?: "S3"}",
-                                Modifier.padding(start = 6.dp),
+                                if (directConfigurations.s3 == null) "Configure S3-compatible storage"
+                                else directConfigurations.s3?.label ?: "S3",
+                                Modifier.padding(start = 10.dp),
                             )
                         }
                         if (viewModel.connectedCloudFolderUri() != null) {
@@ -344,7 +349,7 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Icon(Icons.Outlined.Refresh, null)
-                                Text(" Use connected folder", Modifier.padding(start = 6.dp))
+                                Text("Use connected folder", Modifier.padding(start = 10.dp))
                             }
                         }
                     } else {
@@ -400,12 +405,14 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                                             }.onSuccess { uri ->
                                                 cloudDialogOpen = false
                                                 viewModel.receivePortableArchive(uri)
-                                            }.onFailure { error = it.message ?: "Could not open the cloud backup" }
+                                            }.onFailure { failure ->
+                                                error = failure.message ?: "Could not download and inspect the cloud backup"
+                                            }
                                             busy = false
                                         }
                                     },
                                     enabled = !busy,
-                                ) { Text("Preview") }
+                                ) { Text("Review & restore") }
                             }
                         }
                     }
@@ -474,6 +481,15 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
             },
         )
     }
+}
+
+@Composable
+private fun SetupProviderIcon(@DrawableRes drawable: Int, description: String) {
+    Icon(
+        painter = painterResource(drawable),
+        contentDescription = description,
+        tint = Color.Unspecified,
+    )
 }
 
 private fun setupBackupMetadata(entry: CloudBackupEntry): String = buildString {

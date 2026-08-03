@@ -15,6 +15,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -55,6 +56,7 @@ internal fun XyluneMark(
     Image(
         painter = painterResource(palette.launcherPreviewDrawable),
         contentDescription = contentDescription,
+        contentScale = ContentScale.Fit,
         modifier = modifier,
     )
 }
@@ -75,6 +77,7 @@ internal fun LauncherIconPreview(
             Image(
                 painter = painterResource(palette.launcherPreviewDrawable),
                 contentDescription = null,
+                contentScale = ContentScale.Fit,
                 modifier = Modifier.matchParentSize().clip(MaterialTheme.shapes.large),
             )
         }
