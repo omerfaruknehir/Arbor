@@ -113,9 +113,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # A normal GITHUB_TOKEN cannot update workflow files. Those two
+          # environment-variable changes are applied separately through the
+          # repository connector after this validated source commit lands.
+          git checkout -- .github/workflows
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add -A app CHANGELOG.md docs
           git diff --cached --stat
           if git diff --cached --quiet; then
             echo "No cloud provider changes were produced"
