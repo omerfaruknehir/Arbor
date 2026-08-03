@@ -39,7 +39,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: pip
 
       - name: Install deterministic SVG renderer
         run: python -m pip install --disable-pip-version-check cairosvg==2.7.1 pillow==11.3.0
