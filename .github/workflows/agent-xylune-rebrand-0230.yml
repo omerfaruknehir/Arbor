@@ -45,9 +45,10 @@ jobs:
           python3 tools/fix-xylune-rebrand-0230.py
           python3 tools/apply-xylune-rebrand-0230.py
 
-      - name: Verify no old first-party identity remains
+      - name: Verify complete Xylune identity
         shell: bash
         run: |
+          set -euxo pipefail
           if git grep -n -I -E 'Arbor|arbor|ARBOR' -- \
               ':!app/src/main/python/pip/_vendor/**' \
               ':!third_party/**' \
@@ -55,12 +56,16 @@ jobs:
             echo 'Old first-party brand identity remains' >&2
             exit 1
           fi
+          find app/src/main/java/app -maxdepth 3 -type d | sort
+          grep -nE 'namespace|applicationId|versionCode|versionName' app/build.gradle.kts
+          grep -nE 'scheme|xylune' app/src/main/AndroidManifest.xml
           test -d app/src/main/java/app/xylune/chat
           test ! -e app/src/main/java/app/arbor
-          grep -q 'namespace = "app.xylune.chat"' app/build.gradle.kts
-          grep -q 'applicationId = "app.xylune.chat"' app/build.gradle.kts
-          grep -q 'versionName = "0.23.0"' app/build.gradle.kts
-          grep -q 'android:scheme="xylune"' app/src/main/AndroidManifest.xml
+          grep -Eq 'namespace[[:space:]]*=[[:space:]]*"app\.xylune\.chat"' app/build.gradle.kts
+          grep -Eq 'applicationId[[:space:]]*=[[:space:]]*"app\.xylune\.chat"' app/build.gradle.kts
+          grep -Eq 'versionCode[[:space:]]*=[[:space:]]*170' app/build.gradle.kts
+          grep -Eq 'versionName[[:space:]]*=[[:space:]]*"0\.23\.0"' app/build.gradle.kts
+          grep -Eq 'android:scheme[[:space:]]*=[[:space:]]*"xylune"' app/src/main/AndroidManifest.xml
 
       - name: Verify third-party licenses
         run: ./ci/verify-third-party-licenses.sh
@@ -86,6 +91,7 @@ jobs:
       - name: Verify release APK identity and signature
         shell: bash
         run: |
+          set -euxo pipefail
           APK=app/build/outputs/apk/release/app-release.apk
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/xylune-badging.txt
