@@ -49,14 +49,14 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          if git grep -n -I -E 'Arbor|arbor|ARBOR' -- \
+          if git grep -n -I -E 'Arbor|arbor|ARBOR|Arbour|arbour|ARBOUR' -- \
               ':!app/src/main/python/pip/_vendor/**' \
               ':!third_party/**' \
               ':!licenses/texts/**'; then
             echo 'Old first-party brand identity remains in tracked content' >&2
             exit 1
           fi
-          if git ls-files | grep -E '(^|/)(Arbor|arbor|ARBOR)(/|\.|_|-|$)'; then
+          if git ls-files | grep -E '(^|/)(Arbor|arbor|ARBOR|Arbour|arbour|ARBOUR)(/|\.|_|-|$)'; then
             echo 'Old first-party brand identity remains in a tracked path' >&2
             exit 1
           fi
@@ -100,12 +100,16 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/xylune-badging.txt
           grep -q "package: name='app.xylune.chat.debug'" /tmp/xylune-badging.txt
           grep -q "application-label:'Xylune'" /tmp/xylune-badging.txt
+          if grep -E 'Arbor|Arbour|arbor|arbour' /tmp/xylune-badging.txt; then
+            echo 'Old brand remains in packaged labels or metadata' >&2
+            exit 1
+          fi
 
       - name: Commit verified product rebrand
         shell: bash
         run: |
           git restore --source=HEAD -- .github/workflows
-          git rm tools/apply-xylune-rebrand-0230.py tools/fix-xylune-rebrand-0230.py
+          git rm -f tools/apply-xylune-rebrand-0230.py tools/fix-xylune-rebrand-0230.py
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
