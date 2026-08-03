@@ -337,6 +337,9 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     fun openConnectedFolderBackup(entry: CloudBackupEntry): Uri =
         container.scopedCloudFolder.open(entry)
 
+    suspend fun deleteConnectedFolderBackup(entry: CloudBackupEntry) =
+        container.scopedCloudFolder.deleteBackup(entry)
+
     suspend fun writeGoogleDriveBackup(
         accessToken: String,
         options: ArchiveOptions,
@@ -355,6 +358,9 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
 
     suspend fun downloadGoogleDriveBackup(accessToken: String, entry: CloudBackupEntry): Uri =
         container.googleDriveAppData.downloadBackup(accessToken, entry)
+
+    suspend fun deleteGoogleDriveBackup(accessToken: String, entry: CloudBackupEntry) =
+        container.googleDriveAppData.deleteBackup(accessToken, entry)
 
     fun directCloudBuildConfigured(provider: CloudOAuthProvider): Boolean =
         container.cloudOAuth.isBuildConfigured(provider)

@@ -72,23 +72,33 @@ internal class OneDriveAppFolderClient(
     }
 
     override suspend fun listBackups(): List<CloudBackupEntry> = withContext(Dispatchers.IO) {
-        val url = "$GRAPH/me/drive/special/approot/children".toHttpUrl().newBuilder()
+        val initial = "$GRAPH/me/drive/special/approot/children".toHttpUrl().newBuilder()
             .addQueryParameter("\$select", "id,name,size,lastModifiedDateTime,file")
             .addQueryParameter("\$orderby", "lastModifiedDateTime desc")
-            .addQueryParameter("\$top", "100")
+            .addQueryParameter("\$top", "200")
             .build()
-        val request = authorized(Request.Builder().url(url).get()).build()
-        client.newCall(request).execute().use { response ->
-            val raw = response.body?.string().orEmpty()
-            require(response.isSuccessful) { graphError(response.code, raw) }
-            json.parseToJsonElement(raw).jsonObject["value"]?.jsonArray.orEmpty()
-                .mapNotNull { element ->
+            .toString()
+        val values = mutableListOf<CloudBackupEntry>()
+        var nextUrl: String? = initial
+        while (nextUrl != null) {
+            val pageUrl = requireNotNull(nextUrl)
+            require(pageUrl.startsWith(GRAPH)) { "OneDrive returned an invalid pagination URL" }
+            val request = authorized(Request.Builder().url(pageUrl).get()).build()
+            nextUrl = client.newCall(request).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                require(response.isSuccessful) { graphError(response.code, raw) }
+                val root = json.parseToJsonElement(raw).jsonObject
+                root["value"]?.jsonArray.orEmpty().forEach { element ->
                     val value = element.jsonObject
                     val name = value["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                    if (!name.endsWith(ARBOR_BACKUP_EXTENSION, ignoreCase = true)) null
-                    else parseOneDriveEntry(value)
+                    if (name.endsWith(ARBOR_BACKUP_EXTENSION, ignoreCase = true)) {
+                        values += parseOneDriveEntry(value)
+                    }
                 }
+                root["@odata.nextLink"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotBlank)
+            }
         }
+        values.sortedByDescending(CloudBackupEntry::modifiedAt)
     }
 
     override suspend fun downloadBackup(entry: CloudBackupEntry): Uri = withContext(Dispatchers.IO) {
@@ -528,12 +538,26 @@ internal class S3BackupClient(
     }
 
     override suspend fun listBackups(): List<CloudBackupEntry> = withContext(Dispatchers.IO) {
-        val url = buildS3Url(query = mapOf("list-type" to "2", "prefix" to "${config.prefix}/", "max-keys" to "100"))
-        executeSigned("GET", url, null, EMPTY_SHA256).use { response ->
-            val raw = response.body?.string().orEmpty()
-            require(response.isSuccessful) { s3Error(response.code, raw) }
-            parseS3Entries(raw)
-        }
+        val values = mutableListOf<CloudBackupEntry>()
+        var continuationToken: String? = null
+        do {
+            val query = linkedMapOf(
+                "list-type" to "2",
+                "prefix" to "${config.prefix}/",
+                "max-keys" to "1000",
+            ).apply {
+                continuationToken?.let { put("continuation-token", it) }
+            }
+            val url = buildS3Url(query = query)
+            continuationToken = executeSigned("GET", url, null, EMPTY_SHA256).use { response ->
+                val raw = response.body?.string().orEmpty()
+                require(response.isSuccessful) { s3Error(response.code, raw) }
+                val page = parseS3Page(raw)
+                values += page.entries
+                page.nextContinuationToken
+            }
+        } while (continuationToken != null)
+        values.sortedByDescending(CloudBackupEntry::modifiedAt)
     }
 
     override suspend fun downloadBackup(entry: CloudBackupEntry): Uri = withContext(Dispatchers.IO) {
@@ -891,7 +915,12 @@ private fun parseWebDavEntries(raw: String, baseUrl: String): List<CloudBackupEn
     return values.sortedByDescending(CloudBackupEntry::modifiedAt)
 }
 
-private fun parseS3Entries(raw: String): List<CloudBackupEntry> {
+private data class S3ListPage(
+    val entries: List<CloudBackupEntry>,
+    val nextContinuationToken: String?,
+)
+
+private fun parseS3Page(raw: String): S3ListPage {
     val parser = Xml.newPullParser().apply { setInput(raw.reader()) }
     val values = mutableListOf<CloudBackupEntry>()
     var inContents = false
@@ -899,6 +928,7 @@ private fun parseS3Entries(raw: String): List<CloudBackupEntry> {
     var key: String? = null
     var size = 0L
     var modified = 0L
+    var continuationToken: String? = null
     var event = parser.eventType
     while (event != XmlPullParser.END_DOCUMENT) {
         when (event) {
@@ -917,6 +947,7 @@ private fun parseS3Entries(raw: String): List<CloudBackupEntry> {
                     "Key" -> key = text
                     "Size" -> size = text.toLongOrNull() ?: 0L
                     "LastModified" -> modified = runCatching { Instant.parse(text).toEpochMilli() }.getOrDefault(0L)
+                    "NextContinuationToken" -> continuationToken = text.takeIf(String::isNotBlank)
                 }
             }
             XmlPullParser.END_TAG -> {
@@ -939,7 +970,10 @@ private fun parseS3Entries(raw: String): List<CloudBackupEntry> {
         }
         event = parser.next()
     }
-    return values.sortedByDescending(CloudBackupEntry::modifiedAt)
+    return S3ListPage(
+        entries = values.sortedByDescending(CloudBackupEntry::modifiedAt),
+        nextContinuationToken = continuationToken,
+    )
 }
 
 private fun parseSimpleXml(raw: String): Map<String, String> = runCatching {

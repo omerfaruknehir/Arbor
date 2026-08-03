@@ -60,6 +60,24 @@ class DirectCloudConfigurationTest {
     }
 
     @Test
+    fun cloudListingsFollowProviderPagination() {
+        val google = java.io.File("src/main/java/app/arbor/chat/transfer/CloudBackupClients.kt").readText()
+        val direct = java.io.File("src/main/java/app/arbor/chat/transfer/DirectCloudBackupClients.kt").readText()
+        assertTrue(google.contains("nextPageToken"))
+        assertTrue(direct.contains("@odata.nextLink"))
+        assertTrue(direct.contains("NextContinuationToken"))
+    }
+
+    @Test
+    fun everyCloudBackupSurfaceSupportsDeletion() {
+        val legacy = java.io.File("src/main/java/app/arbor/chat/ui/CloudBackupUi.kt").readText()
+        val direct = java.io.File("src/main/java/app/arbor/chat/ui/DirectCloudProvidersUi.kt").readText()
+        assertTrue(legacy.contains("deleteGoogleDriveBackup"))
+        assertTrue(legacy.contains("deleteConnectedFolderBackup"))
+        assertTrue(direct.contains("deleteDirectCloudBackup"))
+    }
+
+    @Test
     fun manifestRoutesNativeProviderCallbacks() {
         val manifest = java.io.File("src/main/AndroidManifest.xml").readText()
         assertTrue(manifest.contains("android:scheme=\"msauth\""))
