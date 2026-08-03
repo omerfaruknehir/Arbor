@@ -1,9 +1,9 @@
 name: Apply Xylune branding hotfix
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/cloud-restore-and-icons
+      - main
     paths:
       - tools/apply_xylune_branding.py
       - .github/workflows/apply-branding-hotfix.yml
@@ -20,6 +20,7 @@ env:
 
 jobs:
   apply-validate-publish-branch:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'fix/cloud-restore-and-icons'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
