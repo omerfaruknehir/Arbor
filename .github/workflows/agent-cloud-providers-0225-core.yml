@@ -41,5 +41,6 @@ jobs:
           python3 tools/apply-cloud-providers-0225-clients.py
           python3 tools/apply-cloud-providers-0225-ui.py
           python3 tools/fix-cloud-providers-0225.py
+          python3 tools/improve-cloud-providers-0225.py
       - name: Compile and run release unit tests
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
