@@ -20,6 +20,14 @@ def replace_once(path: str, old: str, new: str) -> None:
     write(path, content.replace(old, new, 1))
 
 
+def replace_exact_count(path: str, old: str, new: str, expected: int) -> None:
+    content = read(path)
+    count = content.count(old)
+    if count != expected:
+        raise RuntimeError(f"{path}: expected {expected} matches, found {count}: {old[:140]!r}")
+    write(path, content.replace(old, new))
+
+
 clients = "app/src/main/java/app/arbor/chat/transfer/DirectCloudBackupClients.kt"
 replace_once(clients, '.addQueryParameter("$select", "id,name,size,lastModifiedDateTime,file")', '.addQueryParameter("\\$select", "id,name,size,lastModifiedDateTime,file")')
 replace_once(clients, '.addQueryParameter("$orderby", "lastModifiedDateTime desc")', '.addQueryParameter("\\$orderby", "lastModifiedDateTime desc")')
@@ -94,6 +102,12 @@ replace_once(
     ui,
     "    content: @Composable Column.() -> Unit,",
     "    content: @Composable ColumnScope.() -> Unit,",
+)
+replace_exact_count(
+    ui,
+    "        error?.let(::ProviderError)",
+    "        error?.let { message -> ProviderError(message) }",
+    expected=2,
 )
 
 # JUnit 4 has assertThrows; assertFailsWith belongs to kotlin-test.
