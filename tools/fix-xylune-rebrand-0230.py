@@ -3,9 +3,22 @@ from pathlib import Path
 
 path = Path(__file__).with_name("apply-xylune-rebrand-0230.py")
 content = path.read_text()
-old = 'git("rm", "branding/xylune-banner.png")'
-new = 'git("rm", "-f", "branding/xylune-banner.png")'
-if content.count(old) != 1:
-    raise RuntimeError("Expected one banner removal command")
-path.write_text(content.replace(old, new, 1))
-print("Corrected staged banner removal")
+replacements = {
+    'git("rm", "branding/xylune-banner.png")':
+        'git("rm", "-f", "branding/xylune-banner.png")',
+    "Xylune starts with a clean application identity; no Arbor package, storage, or backup compatibility is retained.":
+        "Xylune starts with a clean application identity; no legacy package, storage, or backup compatibility is retained.",
+    "Xylune is the complete successor identity to Arbor, pronounced **“Zy-loon.”**":
+        "Xylune is pronounced **“Zy-loon.”**",
+    "without Arbor import aliases.":
+        "without legacy import aliases.",
+    "No Arbor compatibility aliases are retained because the project had no external users before the rename.":
+        "No legacy compatibility aliases are retained because the project had no external users before this identity was established.",
+}
+for old, new in replacements.items():
+    count = content.count(old)
+    if count != 1:
+        raise RuntimeError(f"Expected one rebrand fragment, found {count}: {old}")
+    content = content.replace(old, new, 1)
+path.write_text(content)
+print("Corrected banner removal and removed legacy brand references")
