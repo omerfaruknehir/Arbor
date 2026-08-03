@@ -53,9 +53,19 @@ jobs:
             ./gradlew --no-daemon --stacktrace --max-workers=2 \
               -Pkotlin.compiler.execution.strategy=in-process \
               lintRelease
-            ./gradlew --no-daemon --stacktrace --max-workers=2 \
+
+            # Keep R8 and debug Kotlin compilation in separate Gradle processes.
+            # Running all packaging tasks together made them overlap and exhausted
+            # the 4 GiB hosted-runner cgroup even though each task succeeds alone.
+            ./gradlew --no-daemon --stacktrace --max-workers=1 \
               -Pkotlin.compiler.execution.strategy=in-process \
-              assembleRelease bundleRelease assembleDebugAndroidTest
+              assembleRelease
+            ./gradlew --no-daemon --stacktrace --max-workers=1 \
+              -Pkotlin.compiler.execution.strategy=in-process \
+              bundleRelease
+            ./gradlew --no-daemon --stacktrace --max-workers=1 \
+              -Pkotlin.compiler.execution.strategy=in-process \
+              assembleDebugAndroidTest
 
             badging="$($ANDROID_HOME/build-tools/36.0.0/aapt dump badging app/build/outputs/apk/release/app-release.apk)"
             printf '%s\n' "$badging" | grep -F "package: name='app.xylune.chat.debug'"
