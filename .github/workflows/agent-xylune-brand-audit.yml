@@ -1,0 +1,41 @@
+name: Audit Xylune branding surfaces
+
+on:
+  push:
+    branches:
+      - rebrand/xylune-0.23.0
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rebrand/xylune-0.23.0
+          fetch-depth: 0
+      - name: List brand-related files and references
+        shell: bash
+        run: |
+          echo '===== BRAND-NAMED FILES ====='
+          git ls-files | grep -Ei 'arbor|logo|launcher|icon|splash|monochrome|banner|widget|license|readme|release' | sort || true
+          echo '===== RESOURCE TREE ====='
+          find app/src/main/res -maxdepth 3 -type f | sort
+          echo '===== MANIFEST ====='
+          sed -n '1,260p' app/src/main/AndroidManifest.xml
+          echo '===== STRINGS ====='
+          for f in app/src/main/res/values*/strings.xml; do echo "--- $f"; sed -n '1,260p' "$f"; done
+          echo '===== BRAND REFERENCES ====='
+          rg -n --hidden \
+            --glob '!app/src/main/python/**' \
+            --glob '!app/src/main/assets/python-runtime/**' \
+            --glob '!**/.git/**' \
+            --glob '!docs/releases/RELEASE_NOTES_0.22.*.md' \
+            '(?i)arbor' . || true
+          echo '===== ICON AND LOGO REFERENCES ====='
+          rg -n --hidden \
+            --glob '!app/src/main/python/**' \
+            '(ic_launcher|app_icon|logo|leaf|splash|monochrome|adaptive|dynamic icon|launcher)' app README.md docs .github licenses || true
