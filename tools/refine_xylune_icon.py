@@ -20,6 +20,47 @@ def restore_from_base(source: str, destination: str) -> None:
     target.write_bytes(git_bytes("show", f"{BASE_REF}:{source}"))
 
 
+def update_visual_documentation() -> None:
+    readme_path = ROOT / "README.md"
+    readme = readme_path.read_text(encoding="utf-8")
+    old_banner_ref = 'src="branding/xylune-banner.png" alt="Xylune — Native Android. Private by design."'
+    new_banner_ref = 'src="branding/arbor-banner.png" alt="Temporary Arbor banner retained during the Xylune rebrand."'
+    if old_banner_ref not in readme and new_banner_ref not in readme:
+        raise RuntimeError("README banner reference was not recognized")
+    readme_path.write_text(readme.replace(old_banner_ref, new_banner_ref), encoding="utf-8")
+
+    branding_readme = ROOT / "branding/README.md"
+    branding_readme.write_text(
+        """# Xylune brand assets
+
+**Xylune** is pronounced **“Zy-loon.”** The name subtly references xylem and keeps the project's botanical ancestry without using a generic AI label.
+
+The application and repository temporarily retain Arbor's proven A-shaped icon and Arbor banner. The namespace, application identity, product copy, protocols, release artifacts, and other internal branding remain Xylune. A replacement Xylune visual identity will be introduced only after its icon and banner are explicitly approved.
+
+- `arbor-banner.png`: temporary repository banner retained unchanged
+- `xylune-logo.svg`: temporary Xylune-named copy of the Arbor square mark
+- Android vector resources: Xylune-named resources containing the temporary Arbor artwork
+""",
+        encoding="utf-8",
+    )
+
+    changelog_path = ROOT / "CHANGELOG.md"
+    changelog = changelog_path.read_text(encoding="utf-8")
+    old_entry = (
+        "- Replace the original A-shaped mark with an organic X while retaining the gold leaf; "
+        "use the same geometry for launcher variants, dynamic color, monochrome icons, in-app marks, "
+        "the license catalog, and repository artwork."
+    )
+    new_entry = (
+        "- Temporarily retain Arbor's existing A-shaped icon and repository banner while the Xylune "
+        "visual mark is redesigned and approved; all non-visual product and internal identity changes "
+        "remain part of this release."
+    )
+    if old_entry not in changelog and new_entry not in changelog:
+        raise RuntimeError("Changelog visual-branding entry was not recognized")
+    changelog_path.write_text(changelog.replace(old_entry, new_entry), encoding="utf-8")
+
+
 def main() -> None:
     source_paths = git_bytes(
         "ls-tree", "-r", "--name-only", BASE_REF, "--", "app/src/main/res"
@@ -49,6 +90,8 @@ def main() -> None:
     restore_from_base("branding/arbor-logo.svg", "branding/xylune-logo.svg")
     restore_from_base("licenses/icons/arbor.svg", "licenses/icons/xylune.svg")
     restored.extend(["branding/xylune-logo.svg", "licenses/icons/xylune.svg"])
+
+    update_visual_documentation()
 
     foreground = (ROOT / "app/src/main/res/drawable/ic_xylune_foreground.xml").read_text(
         encoding="utf-8"
