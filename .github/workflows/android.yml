@@ -15,6 +15,12 @@ on:
 permissions:
   contents: read
 
+env:
+  XYLUNE_SOURCE_REPOSITORY: ${{ github.repository }}
+  XYLUNE_SOURCE_COMMIT: ${{ github.sha }}
+  XYLUNE_MICROSOFT_CLIENT_ID: ${{ vars.XYLUNE_MICROSOFT_CLIENT_ID }}
+  XYLUNE_DROPBOX_APP_KEY: ${{ vars.XYLUNE_DROPBOX_APP_KEY }}
+
 jobs:
   verify:
     runs-on: ubuntu-latest
