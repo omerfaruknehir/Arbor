@@ -1,4 +1,4 @@
-name: Xylune rebrand snapshot
+name: Xylune rebrand audit
 
 on:
   push:
@@ -8,25 +8,28 @@ on:
       - .github/workflows/xylune-rebrand-snapshot.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  snapshot:
+  audit:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Build source and branding audit
+      - name: Build branding audit
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/xylune-snapshot/audit
+          audit_dir="tools/xylune-rebrand-audit"
+          rm -rf "$audit_dir"
+          mkdir -p "$audit_dir"
 
-          git ls-files -z | sort -z | tr '\0' '\n' > /tmp/xylune-snapshot/audit/all-files.txt
-          git ls-files | grep -Ei '(^|/)(arbor|.*arbor.*)($|/|\.)' > /tmp/xylune-snapshot/audit/paths-with-arbor.txt || true
-          git ls-files | grep -Ei '(icon|logo|brand|launcher|splash|license|widget|backup|archive|cloud|drive|manifest|gradle|readme)' > /tmp/xylune-snapshot/audit/branding-sensitive-files.txt || true
+          git ls-files -z | sort -z | tr '\0' '\n' > "$audit_dir/all-files.txt"
+          git ls-files | grep -Ei '(^|/)(arbor|.*arbor.*)($|/|\.)' > "$audit_dir/paths-with-arbor.txt" || true
+          git ls-files | grep -Ei '(icon|logo|brand|launcher|splash|license|widget|backup|archive|cloud|drive|manifest|gradle|readme)' > "$audit_dir/branding-sensitive-files.txt" || true
 
           python3 - <<'PY'
           from pathlib import Path
@@ -34,39 +37,57 @@ jobs:
           import re
 
           root = Path('.')
+          out = Path('tools/xylune-rebrand-audit')
           tokens = re.compile(r'Arbor|arbor|ARBOR')
           binary_exts = {
               '.png', '.jpg', '.jpeg', '.webp', '.gif', '.ico', '.zip', '.gz', '.jar',
               '.keystore', '.jks', '.so', '.apk', '.aab', '.pdf', '.woff', '.woff2', '.ttf',
           }
           occurrences = []
+          summaries = []
           for path in sorted(root.rglob('*')):
-              if not path.is_file() or '.git' in path.parts or path.suffix.lower() in binary_exts:
+              if not path.is_file() or '.git' in path.parts or out in path.parents or path.suffix.lower() in binary_exts:
                   continue
               try:
                   text = path.read_text(encoding='utf-8')
               except (UnicodeDecodeError, OSError):
                   continue
               matches = []
-              for line_no, line in enumerate(text.splitlines(), 1):
-                  if tokens.search(line):
-                      matches.append({'line': line_no, 'text': line[:500]})
-              if matches:
+              counts = {'Arbor': text.count('Arbor'), 'arbor': text.count('arbor'), 'ARBOR': text.count('ARBOR')}
+              if any(counts.values()):
+                  summaries.append({'path': str(path), **counts})
+                  for line_no, line in enumerate(text.splitlines(), 1):
+                      if tokens.search(line):
+                          matches.append({'line': line_no, 'text': line[:600]})
                   occurrences.append({'path': str(path), 'matches': matches})
-          Path('/tmp/xylune-snapshot/audit/arbor-occurrences.json').write_text(
+          (out / 'arbor-occurrences.json').write_text(
               json.dumps(occurrences, indent=2, ensure_ascii=False) + '\n', encoding='utf-8'
+          )
+          (out / 'occurrence-summary.json').write_text(
+              json.dumps(summaries, indent=2, ensure_ascii=False) + '\n', encoding='utf-8'
           )
           PY
 
-          tar \
-            --exclude='.git' \
-            --exclude='./build' \
-            --exclude='./app/build' \
-            -czf /tmp/xylune-snapshot/source.tar.gz .
+          {
+            echo "HEAD=$(git rev-parse HEAD)"
+            echo "BRANCH=$(git branch --show-current)"
+            echo
+            echo "== Gradle files =="
+            find . -path './.git' -prune -o -type f \( -name '*.gradle' -o -name '*.gradle.kts' -o -name 'gradle.properties' \) -print | sort
+            echo
+            echo "== Resource directories =="
+            find app/src -type d -path '*/res/*' | sort
+            echo
+            echo "== Icon-like files =="
+            find . -path './.git' -prune -o -type f | grep -Ei '(icon|logo|launcher|splash|leaf|brand)' | sort || true
+          } > "$audit_dir/structure.txt"
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: xylune-rebrand-snapshot
-          path: /tmp/xylune-snapshot
-          if-no-files-found: error
-          retention-days: 3
+      - name: Commit audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/xylune-rebrand-audit
+          git commit -m "Add generated Xylune rebrand audit"
+          git push
