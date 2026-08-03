@@ -1,0 +1,43 @@
+name: Compile Arbor 0.22.5 cloud provider core
+
+on:
+  push:
+    branches:
+      - release/cloud-providers-0.22.5
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ARBOR_SOURCE_REPOSITORY: ${{ github.repository }}
+  ARBOR_SOURCE_COMMIT: ${{ github.sha }}
+  ARBOR_MICROSOFT_CLIENT_ID: ${{ vars.ARBOR_MICROSOFT_CLIENT_ID }}
+  ARBOR_DROPBOX_APP_KEY: ${{ vars.ARBOR_DROPBOX_APP_KEY }}
+
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/cloud-providers-0.22.5
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+      - name: Apply cloud core
+        run: |
+          python3 tools/apply-cloud-providers-0225-core.py
+          python3 tools/apply-cloud-providers-0225-clients.py
+      - name: Compile and run release unit tests
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
