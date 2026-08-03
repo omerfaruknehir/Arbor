@@ -58,6 +58,8 @@ jobs:
       ARBOR_TAG: ${{ needs.detect_version.outputs.tag }}
       ARBOR_SOURCE_REPOSITORY: ${{ github.repository }}
       ARBOR_SOURCE_COMMIT: ${{ github.sha }}
+      ARBOR_MICROSOFT_CLIENT_ID: ${{ vars.ARBOR_MICROSOFT_CLIENT_ID }}
+      ARBOR_DROPBOX_APP_KEY: ${{ vars.ARBOR_DROPBOX_APP_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
