@@ -1,10 +1,10 @@
-# Arbor 0.20.10
+# Xylune 0.20.10
 
 This release simplifies active-response controls and fixes two generation-state bugs.
 
 ## Steering and response state
 
-- Sending while Arbor is working now steers the current response by default.
+- Sending while Xylune is working now steers the current response by default.
 - The replaced partial response is preserved as complete instead of being shown as an interruption with a misleading **Resume** action.
 - Queue remains available by long-pressing Send.
 - User-requested pauses and genuine failures use one compact recovery control.

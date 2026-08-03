@@ -1,4 +1,4 @@
-# Arbor 0.20.36
+# Xylune 0.20.36
 
 This release repairs the widget compiler network layer falsely reporting `EOFException` for every normal HTTPS JSON response, including Open-Meteo.
 

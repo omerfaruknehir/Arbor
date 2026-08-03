@@ -1,11 +1,11 @@
-# Arbor 0.20.6
+# Xylune 0.20.6
 
-Arbor's legal notices are now useful inside the app instead of being scattered
+Xylune's legal notices are now useful inside the app instead of being scattered
 across repository links.
 
 ## Offline licenses
 
-- Open **Settings → About Arbor → Licenses & notices** to browse the components
+- Open **Settings → About Xylune → Licenses & notices** to browse the components
   included in the installed build.
 - Search by library, category, Maven module, or license.
 - Open any component for its purpose, version, official project page,

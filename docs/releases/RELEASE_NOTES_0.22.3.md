@@ -1,4 +1,4 @@
-# Arbor 0.22.3
+# Xylune 0.22.3
 
 - Correct app-bar scroll physics so content tracks the finger one-to-one while the title collapses or expands.
 - Restore Material nested-scroll consumption for chat and Settings.

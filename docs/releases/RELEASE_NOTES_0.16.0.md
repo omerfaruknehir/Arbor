@@ -1,4 +1,4 @@
-# Arbor 0.16.0
+# Xylune 0.16.0
 
 - Reusable system-prompt profiles with prepend and override modes.
 - Dynamic runtime context including local date, time, time zone, locale, platform, and enabled capabilities.

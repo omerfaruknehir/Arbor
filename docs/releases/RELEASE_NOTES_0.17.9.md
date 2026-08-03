@@ -1,4 +1,4 @@
-# Arbor 0.17.9
+# Xylune 0.17.9
 
 ## Glass blur
 - Uses a one-pass 49-sample isotropic radial Gaussian kernel instead of directional lines.

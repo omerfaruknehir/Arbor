@@ -1,4 +1,4 @@
-# Arbor 0.19.12
+# Xylune 0.19.12
 
 This release makes slider snapping visually smooth after release by animating the thumb locally and committing only the final snapped value, avoiding per-frame preference writes. Magnetic pull is stronger, and explicit Edge Smoothness and Thinking anchors use the same small Material tick colors and in-track placement as ordinary discrete sliders. The Thinking popup now dismisses when tapping outside it.
 

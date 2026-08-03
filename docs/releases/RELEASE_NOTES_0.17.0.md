@@ -1,4 +1,4 @@
-# Arbor 0.17.0 release notes
+# Xylune 0.17.0 release notes
 
 ## Highlights
 
@@ -17,8 +17,8 @@
 
 ## Testing
 
-The supplied offline Android toolchain completed Kotlin and Java debug compilation, `testDebugUnitTest`, `lintDebug`, `assembleDebug`, `bundleDebug`, `assembleDebugAndroidTest`, `lintVitalRelease`, `assembleRelease`, and `bundleRelease` with exit status 0. The JVM suite contains 173 tests: 173 passed, 0 failed, 0 errors, and 0 skipped. Android lint reported 0 errors, 10 warnings, and 2 informational findings; lint-vital also completed successfully. The build and verification transcript is supplied as `Arbor-0.17.0-build-and-test.log`.
+The supplied offline Android toolchain completed Kotlin and Java debug compilation, `testDebugUnitTest`, `lintDebug`, `assembleDebug`, `bundleDebug`, `assembleDebugAndroidTest`, `lintVitalRelease`, `assembleRelease`, and `bundleRelease` with exit status 0. The JVM suite contains 173 tests: 173 passed, 0 failed, 0 errors, and 0 skipped. Android lint reported 0 errors, 10 warnings, and 2 informational findings; lint-vital also completed successfully. The build and verification transcript is supplied as `Xylune-0.17.0-build-and-test.log`.
 
-Artifact checks confirmed a non-empty debug APK and AAB, ZIP integrity, debug APK application ID `app.arbor.chat.debug`, version code 77, version name `0.17.0-debug`, and a valid Android debug signature.
+Artifact checks confirmed a non-empty debug APK and AAB, ZIP integrity, debug APK application ID `app.xylune.chat.debug`, version code 77, version name `0.17.0-debug`, and a valid Android debug signature.
 
 Physical-device testing was not performed in this build environment.

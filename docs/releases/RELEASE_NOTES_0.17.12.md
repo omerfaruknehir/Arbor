@@ -1,4 +1,4 @@
-# Arbor 0.17.12
+# Xylune 0.17.12
 
 - Keeps the 0.17.8 three-axis glass-blur character.
 - Raises the real shader sample count from 9 to 15 samples per pass.

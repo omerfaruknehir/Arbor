@@ -1,6 +1,6 @@
-# Arbor 0.18.0
+# Xylune 0.18.0
 
-Version: `0.18.0` (`versionCode 105`). Debug package: `app.arbor.chat.debug`; debug version name: `0.18.0-debug`.
+Version: `0.18.0` (`versionCode 105`). Debug package: `app.xylune.chat.debug`; debug version name: `0.18.0-debug`.
 
 ## Corrected glass controls
 

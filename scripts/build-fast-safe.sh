@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Arbor has useful CPU parallelism, but APK/AAB packaging can consume the full
+# Xylune has useful CPU parallelism, but APK/AAB packaging can consume the full
 # 4 GiB cgroup because of D8 plus bundled Python/ML/native runtimes.
-COMPILE_WORKERS="${ARBOR_COMPILE_WORKERS:-2}"
-PACKAGE_WORKERS="${ARBOR_PACKAGE_WORKERS:-1}"
-GRADLE_CMD="${ARBOR_GRADLE:-./gradlew}"
+COMPILE_WORKERS="${XYLUNE_COMPILE_WORKERS:-2}"
+PACKAGE_WORKERS="${XYLUNE_PACKAGE_WORKERS:-1}"
+GRADLE_CMD="${XYLUNE_GRADLE:-./gradlew}"
 COMMON=(--offline --no-daemon)
 
 run() {
@@ -34,7 +34,7 @@ case "${1:-all}" in
     ;;
   *)
     echo "Usage: $0 [compile|test|lint|apk|all]" >&2
-    echo "Overrides: ARBOR_COMPILE_WORKERS=2 ARBOR_PACKAGE_WORKERS=1" >&2
+    echo "Overrides: XYLUNE_COMPILE_WORKERS=2 XYLUNE_PACKAGE_WORKERS=1" >&2
     exit 2
     ;;
 esac

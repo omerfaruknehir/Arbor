@@ -1,8 +1,8 @@
-# Arbor 0.20.28
+# Xylune 0.20.28
 
 ## Compiled AI widgets
 
-- Home-widget definitions are now withheld until Arbor compiles them into its typed declarative runtime.
+- Home-widget definitions are now withheld until Xylune compiles them into its typed declarative runtime.
 - The compiler validates the schema/capability graph, executes every action, preflights live public HTTP JSON sources, verifies binding paths, and renders initial and post-action states at representative launcher sizes.
 - Compiler diagnostics are sent back through the bounded auxiliary-model repair loop; only a passing replacement is shown to the user.
 - Manual widget-source edits use the same compile gate.

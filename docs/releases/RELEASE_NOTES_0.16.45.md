@@ -1,4 +1,4 @@
-# Arbor 0.16.45
+# Xylune 0.16.45
 
 - Freeze the complete loaded message window after the user detaches from the bottom, preventing streamed tool/Python insertions from moving the viewport.
 - Continue synchronizing terminal message status while detached, so working cards can finish and collapse without exposing growing content.

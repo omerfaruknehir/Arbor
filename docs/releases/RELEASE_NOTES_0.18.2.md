@@ -1,4 +1,4 @@
-# Arbor 0.18.2
+# Xylune 0.18.2
 
 ## Stable artifact-free glass renderer
 

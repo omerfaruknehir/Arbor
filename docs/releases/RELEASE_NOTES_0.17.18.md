@@ -1,4 +1,4 @@
-# Arbor 0.17.18
+# Xylune 0.17.18
 
 ## Developer settings
 
@@ -17,6 +17,6 @@
 
 ## Preserved behavior
 
-- Keeps the Arbor 0.17.17 blur and low-edge-softness fix unchanged.
+- Keeps the Xylune 0.17.17 blur and low-edge-softness fix unchanged.
 - No Room schema or database migration.
 - Package IDs, stored chats, providers, credentials, workspaces, and debug signing compatibility remain unchanged.

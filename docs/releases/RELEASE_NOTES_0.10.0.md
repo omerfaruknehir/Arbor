@@ -1,14 +1,14 @@
-# Arbor 0.10.0
+# Xylune 0.10.0
 
 Build date: 2026-07-17
 
-Arbor 0.10.0 is a native Android BYOK chat-client repair and UX release. It keeps the app's existing package name and encrypted Room schema while upgrading the database from schema 7 to 8.
+Xylune 0.10.0 is a native Android BYOK chat-client repair and UX release. It keeps the app's existing package name and encrypted Room schema while upgrading the database from schema 7 to 8.
 
 ## Provider setup and models
 
 - **Add provider** now asks for a user-defined name, protocol, endpoint, and credentials, then connects to the API and fetches the model catalog itself.
 - OpenAI-compatible catalogs are read from `GET /models`; Anthropic and Gemini catalogs are paginated according to their native cursor formats, bounded to 500 entries and 2 MiB per page.
-- The fetched models are searchable. Arbor automatically chooses an initial model but registers the complete fetched catalog, so the user does not have to enter every model ID.
+- The fetched models are searchable. Xylune automatically chooses an initial model but registers the complete fetched catalog, so the user does not have to enter every model ID.
 - Gemini token limits and thinking metadata are imported when the endpoint supplies them. Known bundled models keep their curated context, capability, and price metadata; unknown pricing remains visibly editable instead of being invented.
 - Manual model entry remains available only for compatible endpoints which do not expose model discovery.
 - Existing providers can refresh their model catalog, can be removed with credential deletion, and appear in chat/automation selectors only when registered and usable.
@@ -43,11 +43,11 @@ Arbor 0.10.0 is a native Android BYOK chat-client repair and UX release. It keep
 - Streaming follow can re-stick after the user returns near the bottom, does not fight an active drag, and exposes a go-to-bottom button.
 - Working code uses native syntax coloring; command, result, stdout, stderr, files, status, and timing remain visually separate.
 - Reasoning is never deleted or hidden. The visibility setting controls whether its retained card is always expanded, expanded only while working, or collapsed by default.
-- The default palette is calmer and less saturated, with Material You, graphite, and AMOLED alternatives. The adaptive launcher icon has a new Arbor conversation/tree mark.
+- The default palette is calmer and less saturated, with Material You, graphite, and AMOLED alternatives. The adaptive launcher icon has a new Xylune conversation/tree mark.
 
 ## Generated interaction security
 
-- Conversation-only `arbor-ui` mini-apps remain separate from explicitly Home-eligible `arbor-widget` definitions.
+- Conversation-only `xylune-ui` mini-apps remain separate from explicitly Home-eligible `xylune-widget` definitions.
 - Every generated definition has a local capability, benefit, risk, and caution review. A configured model may supply a second advisory security opinion, but local validation remains authoritative.
 - Live network data requires first-use consent and is not fetched simply because a model emitted a definition. Home-screen pinning has a separate review/confirmation, and pending pin definitions expire.
 - Generated UI remains a bounded native schema: no HTML, JavaScript, WebView, downloaded executable code, reflection, arbitrary intents, or hidden network access.
@@ -55,7 +55,7 @@ Arbor 0.10.0 is a native Android BYOK chat-client repair and UX release. It keep
 ## Important boundaries
 
 - The supplied APK/AAB are debug-signed development artifacts, not Play-production releases.
-- Embedded Python runs inside Arbor's Android process and accepts only pure-Python or Chaquopy-compatible Android wheels. Ubuntu/PRoot is the broader Linux tool-compatibility layer, not a stronger security boundary.
+- Embedded Python runs inside Xylune's Android process and accepts only pure-Python or Chaquopy-compatible Android wheels. Ubuntu/PRoot is the broader Linux tool-compatibility layer, not a stronger security boundary.
 - A blocking native Python extension cannot be forcibly killed safely in-process. Do not run untrusted code.
 - No physical Android device or emulator was attached to this build environment. JVM tests, Python syntax compilation, Android lint, APK signature verification, and bundle archive verification are performed, but Chaquopy, PRoot, gestures, OCR, provider accounts, WorkManager process death, and launcher widgets still require on-device acceptance testing.
 - Production signing, a full Mermaid grammar, arbitrary office-document rendering, provider-native structured tools for every API, and a bundled local image-captioning model are not included.

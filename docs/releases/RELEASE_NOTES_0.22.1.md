@@ -1,6 +1,6 @@
-# Arbor 0.22.1
+# Xylune 0.22.1
 
-Arbor 0.22.1 improves memory management and repairs navigation state on phones.
+Xylune 0.22.1 improves memory management and repairs navigation state on phones.
 
 ## Memory management
 

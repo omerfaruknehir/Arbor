@@ -1,4 +1,4 @@
-# Arbor 0.17.27
+# Xylune 0.17.27
 
 - Replaces 0.17.26's progressively cropped three-pass blur with a fixed-extent, panel-local dual-Kawase-style renderer.
 - Records Compose content once per frame and reuses the same source layer for normal rendering and both glass panels.

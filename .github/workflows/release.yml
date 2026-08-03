@@ -54,10 +54,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
-      ARBOR_VERSION: ${{ needs.detect_version.outputs.version }}
-      ARBOR_TAG: ${{ needs.detect_version.outputs.tag }}
-      ARBOR_SOURCE_REPOSITORY: ${{ github.repository }}
-      ARBOR_SOURCE_COMMIT: ${{ github.sha }}
+      XYLUNE_VERSION: ${{ needs.detect_version.outputs.version }}
+      XYLUNE_TAG: ${{ needs.detect_version.outputs.tag }}
+      XYLUNE_SOURCE_REPOSITORY: ${{ github.repository }}
+      XYLUNE_SOURCE_COMMIT: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -105,9 +105,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p release
-          apk_asset="Arbor-${ARBOR_VERSION}-release.apk"
+          apk_asset="Xylune-${XYLUNE_VERSION}-release.apk"
           cp app/build/outputs/apk/release/app-release.apk "release/$apk_asset"
-          cp app/build/outputs/bundle/release/app-release.aab "release/Arbor-${ARBOR_VERSION}-release.aab"
+          cp app/build/outputs/bundle/release/app-release.aab "release/Xylune-${XYLUNE_VERSION}-release.aab"
           apk_sha256="$(sha256sum "release/$apk_asset" | awk '{print $1}')"
           cert_sha256="$(
             "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "release/$apk_asset" \
@@ -126,11 +126,11 @@ jobs:
           import os
           from pathlib import Path
 
-          version = os.environ["ARBOR_VERSION"]
+          version = os.environ["XYLUNE_VERSION"]
           manifest = {
               "schemaVersion": 1,
               "repository": os.environ["GITHUB_REPOSITORY"],
-              "tag": os.environ["ARBOR_TAG"],
+              "tag": os.environ["XYLUNE_TAG"],
               "versionName": version,
               "versionCode": int(os.environ["version_code"]),
               "packageName": os.environ["package_name"],
@@ -139,22 +139,22 @@ jobs:
               "signingCertificateSha256": os.environ["cert_sha256"],
               "sourceCommit": os.environ["GITHUB_SHA"],
           }
-          Path(f"release/Arbor-{version}-release.json").write_text(
+          Path(f"release/Xylune-{version}-release.json").write_text(
               json.dumps(manifest, indent=2, sort_keys=True) + "\n"
           )
           PY
-          git archive --format=zip --prefix="Arbor-${ARBOR_VERSION}/" \
-            -o "release/Arbor-${ARBOR_VERSION}-source.zip" "$GITHUB_SHA"
-          git archive --format=tar --prefix="Arbor-${ARBOR_VERSION}/" "$GITHUB_SHA" \
-            | gzip -n > "release/Arbor-${ARBOR_VERSION}-source.tar.gz"
+          git archive --format=zip --prefix="Xylune-${XYLUNE_VERSION}/" \
+            -o "release/Xylune-${XYLUNE_VERSION}-source.zip" "$GITHUB_SHA"
+          git archive --format=tar --prefix="Xylune-${XYLUNE_VERSION}/" "$GITHUB_SHA" \
+            | gzip -n > "release/Xylune-${XYLUNE_VERSION}-source.tar.gz"
           (
             cd release
-            sha256sum * > "Arbor-${ARBOR_VERSION}-SHA256.txt"
+            sha256sum * > "Xylune-${XYLUNE_VERSION}-SHA256.txt"
           )
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Arbor-${{ env.ARBOR_TAG }}-Android-release
+          name: Xylune-${{ env.XYLUNE_TAG }}-Android-release
           if-no-files-found: error
           path: release/*
 
@@ -163,15 +163,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          notes="docs/releases/RELEASE_NOTES_${ARBOR_VERSION}.md"
+          notes="docs/releases/RELEASE_NOTES_${XYLUNE_VERSION}.md"
           if [[ ! -f "$notes" ]]; then
             notes="CHANGELOG.md"
           fi
-          if gh release view "$ARBOR_TAG" >/dev/null 2>&1; then
-            gh release upload "$ARBOR_TAG" release/* --clobber
+          if gh release view "$XYLUNE_TAG" >/dev/null 2>&1; then
+            gh release upload "$XYLUNE_TAG" release/* --clobber
           else
-            gh release create "$ARBOR_TAG" release/* \
+            gh release create "$XYLUNE_TAG" release/* \
               --target "$GITHUB_SHA" \
-              --title "Arbor ${ARBOR_VERSION}" \
+              --title "Xylune ${XYLUNE_VERSION}" \
               --notes-file "$notes"
           fi

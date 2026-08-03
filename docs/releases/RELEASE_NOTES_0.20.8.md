@@ -1,4 +1,4 @@
-# Arbor 0.20.8
+# Xylune 0.20.8
 
 This release replaces the license-catalog placeholder and unnecessarily rasterized artwork with the supplied original project icons.
 
@@ -9,7 +9,7 @@ This release replaces the license-catalog placeholder and unnecessarily rasteriz
 - Convert the supplied ML Kit Android VectorDrawable XML path-for-path into a standalone SVG.
 - Remove the optional Python drop shadow while retaining the original Python vector shapes and gradients.
 - Continue using the supplied raster sources only where the source files are actually raster: Chaquopy, OkHttp, and SQLCipher.
-- Use Arbor's own adaptive launcher artwork for Arbor's catalog entry and the Termux icon for the bundled Termux-derived local-tool libraries.
+- Use Xylune's own adaptive launcher artwork for Xylune's catalog entry and the Termux icon for the bundled Termux-derived local-tool libraries.
 - Remove obsolete generic document, network, and lock placeholder assets.
 
 ## Compatibility

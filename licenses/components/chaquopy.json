@@ -3,7 +3,7 @@
   "name": "Chaquopy",
   "version": "17.x",
   "category": "Python runtime",
-  "description": "Build integration and Android bridge used to package and call Arbor's Python tools.",
+  "description": "Build integration and Android bridge used to package and call Xylune's Python tools.",
   "projectUrl": "https://github.com/chaquo/chaquopy",
   "icon": "icons/chaquopy.png",
   "coordinates": [],

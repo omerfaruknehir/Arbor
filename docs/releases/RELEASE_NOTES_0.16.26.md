@@ -1,4 +1,4 @@
-# Arbor 0.16.26
+# Xylune 0.16.26
 
 This build returns to the 0.16.19 UI and blur baseline, then adds only focused chat-streaming fixes:
 

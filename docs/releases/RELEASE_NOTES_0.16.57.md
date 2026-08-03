@@ -1,4 +1,4 @@
-# Arbor 0.16.57
+# Xylune 0.16.57
 
 Auto-scroll no longer moves at one fixed catch-up speed. It now accelerates exponentially according to both how far the live tail is behind and how long it has remained off-screen.
 

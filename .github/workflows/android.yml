@@ -50,7 +50,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: arbor-release-and-reports
+          name: xylune-release-and-reports
           path: |
             app/build/outputs/apk/release/*.apk
             app/build/outputs/bundle/release/*.aab
@@ -107,18 +107,18 @@ jobs:
         run: ./gradlew --no-daemon :app:generateOfflineLicenseCatalog
       - name: Restore release keystore
         env:
-          KEYSTORE_BASE64: ${{ secrets.ARBOR_KEYSTORE_BASE64 }}
-        run: echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/arbor-release.jks"
+          KEYSTORE_BASE64: ${{ secrets.XYLUNE_KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/xylune-release.jks"
       - name: Build signed release
         env:
-          ARBOR_KEYSTORE_FILE: ${{ runner.temp }}/arbor-release.jks
-          ARBOR_KEYSTORE_PASSWORD: ${{ secrets.ARBOR_KEYSTORE_PASSWORD }}
-          ARBOR_KEY_ALIAS: ${{ secrets.ARBOR_KEY_ALIAS }}
-          ARBOR_KEY_PASSWORD: ${{ secrets.ARBOR_KEY_PASSWORD }}
+          XYLUNE_KEYSTORE_FILE: ${{ runner.temp }}/xylune-release.jks
+          XYLUNE_KEYSTORE_PASSWORD: ${{ secrets.XYLUNE_KEYSTORE_PASSWORD }}
+          XYLUNE_KEY_ALIAS: ${{ secrets.XYLUNE_KEY_ALIAS }}
+          XYLUNE_KEY_PASSWORD: ${{ secrets.XYLUNE_KEY_PASSWORD }}
         run: ./gradlew --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest lintRelease assembleRelease bundleRelease
       - uses: actions/upload-artifact@v4
         with:
-          name: arbor-protected-signed-release
+          name: xylune-protected-signed-release
           path: |
             app/build/outputs/apk/release/*.apk
             app/build/outputs/bundle/release/*.aab

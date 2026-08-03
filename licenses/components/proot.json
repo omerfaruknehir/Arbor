@@ -14,5 +14,5 @@
       "file": "texts/GPL-2.0.txt"
     }
   ],
-  "notice": "Arbor ships the corresponding Termux source archive and build recipe under third_party/. The packaged launcher only changes its talloc dependency filename for Android extraction."
+  "notice": "Xylune ships the corresponding Termux source archive and build recipe under third_party/. The packaged launcher only changes its talloc dependency filename for Android extraction."
 }

@@ -1,6 +1,6 @@
-# Arbor 0.12.0
+# Xylune 0.12.0
 
-Arbor 0.12.0 separates settings by scope and upgrades provider integration.
+Xylune 0.12.0 separates settings by scope and upgrades provider integration.
 
 ## Settings scopes
 
@@ -18,9 +18,9 @@ Arbor 0.12.0 separates settings by scope and upgrades provider integration.
 ## Provider and attachment upgrades
 
 - OpenAI-compatible, Anthropic, and Gemini APIs use native structured tool calls, including streamed arguments and provider-specific continuation state.
-- Arbor keeps the fenced tool protocol as a fallback for compatible endpoints which do not implement native calls correctly.
+- Xylune keeps the fenced tool protocol as a fallback for compatible endpoints which do not implement native calls correctly.
 - DOCX, PPTX, and XLSX files receive bounded local text extraction; this is not a visual Office renderer.
 
 ## Compatibility
 
-The database migrates automatically from schema 9 to 10. The debug package retains the existing `app.arbor.chat.debug` application ID and increases the version code to 19.
+The database migrates automatically from schema 9 to 10. The debug package retains the existing `app.xylune.chat.debug` application ID and increases the version code to 19.

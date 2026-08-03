@@ -3,7 +3,7 @@
   "name": "Google Play services Auth",
   "version": "21.6.0",
   "category": "Cloud authorization",
-  "description": "On-demand Google authorization used only for Arbor's hidden Google Drive app-data backup folder.",
+  "description": "On-demand Google authorization used only for Xylune's hidden Google Drive app-data backup folder.",
   "projectUrl": "https://developers.google.com/identity/authorization",
   "icon": "icons/android.svg",
   "coordinates": [
@@ -15,5 +15,5 @@
       "file": "texts/Google-Mobile-Developer-Services-Notice.txt"
     }
   ],
-  "notice": "Arbor requests only drive.appdata at the moment the user chooses a direct Google Drive backup action."
+  "notice": "Xylune requests only drive.appdata at the moment the user chooses a direct Google Drive backup action."
 }

@@ -1,8 +1,8 @@
-# Arbor 0.20.27
+# Xylune 0.20.27
 
 ## Widget-aware AI
 
-- Arbor now injects a concrete Home-widget capability manifest on every request instead of only naming the available fence.
+- Xylune now injects a concrete Home-widget capability manifest on every request instead of only naming the available fence.
 - Full widget schema selection uses recent conversation context, so follow-ups such as “make it cleaner” retain the widget capability.
 - Widget intent detection now covers broader English and Turkish Home-screen language.
 - The model receives explicit node, action, data-source, permission, fallback-data, and glanceability guidance.

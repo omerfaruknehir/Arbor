@@ -1,11 +1,11 @@
-# Arbor 0.19.3
+# Xylune 0.19.3
 
 ## Multiple ChatGPT OAuth providers
 
 ChatGPT OAuth is now a normal multi-instance provider type. Add any number of named ChatGPT providers, and each one keeps its own encrypted session, discovered models, quota snapshot, refresh lifecycle, and connection state.
 
 - Adding a provider immediately opens native browser sign-in.
-- Arbor requests a fresh authentication prompt so a second provider does not silently reuse the first account.
+- Xylune requests a fresh authentication prompt so a second provider does not silently reuse the first account.
 - Rename, reconnect, disconnect, or remove one provider without affecting the others.
 - Existing 0.19.0–0.19.2 OAuth credentials migrate automatically into the original ChatGPT provider.
 - Chats select each account through its own provider/model entries.
@@ -21,5 +21,5 @@ Developer settings now expose independent panel and text opacity controls from 0
 ## Compatibility
 
 - Version code: 113
-- Application ID: `app.arbor.chat.debug`
+- Application ID: `app.xylune.chat.debug`
 - Existing Room schemas, app data, providers, chats, workspaces, appearance settings, and debug-signing compatibility are preserved.

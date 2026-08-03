@@ -1,4 +1,4 @@
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@drawable/ic_arbor_background_system" />
-    <foreground android:drawable="@drawable/ic_arbor_foreground_system" />
+    <background android:drawable="@drawable/ic_xylune_background_system" />
+    <foreground android:drawable="@drawable/ic_xylune_foreground_system" />
 </adaptive-icon>
