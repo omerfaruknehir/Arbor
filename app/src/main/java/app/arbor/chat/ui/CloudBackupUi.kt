@@ -284,7 +284,7 @@ internal fun CloudBackupTargets(
 
     TransferHeading(
         title = "Private cloud targets",
-        subtitle = "Use either one folder you explicitly choose or Google Drive's hidden Arbor-only app storage. Arbor never requests access to your whole cloud drive.",
+        subtitle = "Choose a scoped Android folder, an OAuth app folder, WebDAV/Nextcloud, or an S3-compatible bucket prefix. Arbor avoids account-wide cloud access.",
     )
 
     Surface(
@@ -502,6 +502,13 @@ internal fun CloudBackupTargets(
             }
         }
     }
+
+    DirectCloudProviderTargets(
+        viewModel = viewModel,
+        options = options,
+        password = password,
+        enabled = enabled,
+    )
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,

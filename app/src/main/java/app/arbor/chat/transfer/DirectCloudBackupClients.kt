@@ -1,36 +1,4 @@
-#!/usr/bin/env python3
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-
-
-def read(path: str) -> str:
-    return (ROOT / path).read_text()
-
-
-def write(path: str, content: str) -> None:
-    target = ROOT / path
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content)
-
-
-def replace_once(path: str, old: str, new: str) -> None:
-    content = read(path)
-    count = content.count(old)
-    if count != 1:
-        raise RuntimeError(f"{path}: expected one match, found {count}: {old[:140]!r}")
-    write(path, content.replace(old, new, 1))
-
-
-replace_once(
-    "app/src/main/java/app/arbor/chat/transfer/CloudBackupClients.kt",
-    "enum class CloudBackupProvider { SCOPED_FOLDER, GOOGLE_DRIVE_APP_DATA }",
-    "enum class CloudBackupProvider { SCOPED_FOLDER, GOOGLE_DRIVE_APP_DATA, ONEDRIVE_APP_FOLDER, DROPBOX_APP_FOLDER, WEBDAV, S3 }",
-)
-
-write(
-    "app/src/main/java/app/arbor/chat/transfer/DirectCloudBackupClients.kt",
-    r'''package app.arbor.chat.transfer
+package app.arbor.chat.transfer
 
 import android.content.Context
 import android.net.Uri
@@ -105,9 +73,9 @@ internal class OneDriveAppFolderClient(
 
     override suspend fun listBackups(): List<CloudBackupEntry> = withContext(Dispatchers.IO) {
         val url = "$GRAPH/me/drive/special/approot/children".toHttpUrl().newBuilder()
-            .addQueryParameter("$select", "id,name,size,lastModifiedDateTime,file")
-            .addQueryParameter("$orderby", "lastModifiedDateTime desc")
-            .addQueryParameter("$top", "100")
+            .addQueryParameter("\$select", "id,name,size,lastModifiedDateTime,file")
+            .addQueryParameter("\$orderby", "lastModifiedDateTime desc")
+            .addQueryParameter("\$top", "100")
             .build()
         val request = authorized(Request.Builder().url(url).get()).build()
         client.newCall(request).execute().use { response ->
@@ -539,12 +507,16 @@ internal class S3BackupClient(
 
     override suspend fun uploadBackup(source: File, fileName: String): CloudBackupEntry = withContext(Dispatchers.IO) {
         require(source.isFile) { "Backup file no longer exists" }
-        require(source.length() <= S3_SINGLE_PUT_LIMIT) { "S3 backups larger than 5 GiB require multipart upload" }
+        require(source.length() <= S3_MAX_OBJECT_BYTES) { "S3 objects may not exceed 5 TiB" }
         val key = objectKey(fileName)
-        val hash = sha256Hex(source)
-        executeSigned("PUT", buildS3Url(key), FileRequestBody(source, BACKUP_MEDIA_TYPE), hash).use { response ->
-            val raw = response.body?.string().orEmpty()
-            require(response.isSuccessful) { s3Error(response.code, raw) }
+        if (source.length() < S3_MULTIPART_THRESHOLD) {
+            val hash = sha256Hex(source)
+            executeSigned("PUT", buildS3Url(key), FileRequestBody(source, BACKUP_MEDIA_TYPE), hash).use { response ->
+                val raw = response.body?.string().orEmpty()
+                require(response.isSuccessful) { s3Error(response.code, raw) }
+            }
+        } else {
+            multipartUpload(source, key)
         }
         CloudBackupEntry(
             provider = CloudBackupProvider.S3,
@@ -578,6 +550,81 @@ internal class S3BackupClient(
         }
     }
 
+    private fun multipartUpload(source: File, key: String) {
+        val initiateUrl = buildS3Url(key, mapOf("uploads" to ""))
+        val uploadId = executeSigned("POST", initiateUrl, ByteArray(0).toRequestBody(null), EMPTY_SHA256).use { response ->
+            val raw = response.body?.string().orEmpty()
+            require(response.isSuccessful) { s3Error(response.code, raw) }
+            parseSimpleXml(raw)["UploadId"]?.takeIf(String::isNotBlank)
+                ?: error("S3 did not return a multipart upload id")
+        }
+        val completed = mutableListOf<Pair<Int, String>>()
+        try {
+            val partSize = multipartPartSize(source.length())
+            var offset = 0L
+            var partNumber = 1
+            while (offset < source.length()) {
+                val length = min(partSize, source.length() - offset)
+                val payloadHash = sha256Hex(source, offset, length)
+                val url = buildS3Url(
+                    key,
+                    mapOf("partNumber" to partNumber.toString(), "uploadId" to uploadId),
+                )
+                val etag = executeSigned(
+                    "PUT",
+                    url,
+                    FileRangeRequestBody(source, offset, length, BACKUP_MEDIA_TYPE),
+                    payloadHash,
+                ).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    require(response.isSuccessful) { s3Error(response.code, raw) }
+                    response.header("ETag")?.trim()?.takeIf(String::isNotBlank)
+                        ?: error("S3 upload part $partNumber returned no ETag")
+                }
+                completed += partNumber to etag
+                offset += length
+                partNumber += 1
+            }
+            val completeXml = buildString {
+                append("<CompleteMultipartUpload>")
+                completed.forEach { (number, etag) ->
+                    append("<Part><PartNumber>").append(number).append("</PartNumber><ETag>")
+                    append(xmlEscape(etag)).append("</ETag></Part>")
+                }
+                append("</CompleteMultipartUpload>")
+            }
+            val bodyBytes = completeXml.toByteArray()
+            val completeUrl = buildS3Url(key, mapOf("uploadId" to uploadId))
+            executeSigned(
+                "POST",
+                completeUrl,
+                bodyBytes.toRequestBody(XML_MEDIA_TYPE),
+                sha256Hex(bodyBytes),
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                require(response.isSuccessful && !raw.contains("<Error>", ignoreCase = true)) {
+                    s3Error(response.code, raw)
+                }
+            }
+        } catch (error: Throwable) {
+            runCatching {
+                executeSigned(
+                    "DELETE",
+                    buildS3Url(key, mapOf("uploadId" to uploadId)),
+                    null,
+                    EMPTY_SHA256,
+                ).close()
+            }
+            throw error
+        }
+    }
+
+    private fun multipartPartSize(total: Long): Long {
+        val minimumForPartLimit = (total + S3_MAX_PARTS - 1L) / S3_MAX_PARTS
+        val chosen = maxOf(S3_DEFAULT_PART_BYTES, minimumForPartLimit)
+        return ((chosen + S3_PART_ALIGNMENT - 1L) / S3_PART_ALIGNMENT) * S3_PART_ALIGNMENT
+    }
+
     private fun executeSigned(method: String, url: HttpUrl, body: RequestBody?, payloadHash: String) =
         client.newCall(signedRequest(method, url, body, payloadHash)).execute()
 
@@ -594,9 +641,10 @@ internal class S3BackupClient(
         val canonicalHeaders = headers.entries.joinToString("") { (key, value) -> "$key:${value.trim()}\n" }
         val signedHeaders = headers.keys.joinToString(";")
         val canonicalQuery = url.queryParameterNames.sorted().flatMap { name ->
-            url.queryParameterValues(name).sorted().map { value ->
-                "${awsEncode(name)}=${awsEncode(value ?: "")}" 
-            }
+            url.queryParameterValues(name)
+                .map { value -> value.orEmpty() }
+                .sorted()
+                .map { value -> "${awsEncode(name)}=${awsEncode(value)}" }
         }.joinToString("&")
         val canonicalRequest = listOf(
             method,
@@ -784,7 +832,7 @@ private fun downloadToCache(
 
 private fun resolveWebDav(base: String, value: String): String {
     if (value.startsWith("https://")) return value
-    return URI(base).resolve(value.removePrefix("/")).toString()
+    return URI(base).resolve(value).toString()
 }
 
 private fun parseWebDavEntries(raw: String, baseUrl: String): List<CloudBackupEntry> {
@@ -918,14 +966,19 @@ private fun HttpUrl.hostHeader(): String = when {
 
 private fun awsEncode(value: String): String = Uri.encode(value, "-_.~")
 
-private fun sha256Hex(file: File): String {
+private fun sha256Hex(file: File): String = sha256Hex(file, 0L, file.length())
+
+private fun sha256Hex(file: File, offset: Long, length: Long): String {
     val digest = MessageDigest.getInstance("SHA-256")
-    file.inputStream().buffered().use { input ->
+    RandomAccessFile(file, "r").use { source ->
+        source.seek(offset)
         val buffer = ByteArray(COPY_BUFFER_BYTES)
-        while (true) {
-            val count = input.read(buffer)
-            if (count < 0) break
+        var remaining = length
+        while (remaining > 0L) {
+            val count = source.read(buffer, 0, min(buffer.size.toLong(), remaining).toInt())
+            if (count < 0) throw IOException("Backup file ended while calculating its upload checksum")
             digest.update(buffer, 0, count)
+            remaining -= count
         }
     }
     return digest.digest().toHex()
@@ -939,6 +992,13 @@ private fun hmac(key: ByteArray, value: String): ByteArray = Mac.getInstance("Hm
 }
 
 private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+private fun xmlEscape(value: String): String = value
+    .replace("&", "&amp;")
+    .replace("<", "&lt;")
+    .replace(">", "&gt;")
+    .replace("\"", "&quot;")
+    .replace("'", "&apos;")
 
 private fun safeFileName(value: String): String = value
     .replace(Regex("[^A-Za-z0-9._() -]"), "_")
@@ -957,10 +1017,10 @@ private val SHORT_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMd
 private val EMPTY_SHA256 = sha256Hex(ByteArray(0))
 private const val COPY_BUFFER_BYTES = 256 * 1024
 private const val CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1_000L
-private const val S3_SINGLE_PUT_LIMIT = 5L * 1024L * 1024L * 1024L
+private const val S3_MULTIPART_THRESHOLD = 64L * 1024L * 1024L
+private const val S3_DEFAULT_PART_BYTES = 16L * 1024L * 1024L
+private const val S3_PART_ALIGNMENT = 1024L * 1024L
+private const val S3_MAX_PARTS = 10_000L
+private const val S3_MAX_OBJECT_BYTES = 5L * 1024L * 1024L * 1024L * 1024L
 private const val WEBDAV_PROPFIND = """<?xml version="1.0" encoding="utf-8" ?>
 <d:propfind xmlns:d="DAV:"><d:prop><d:displayname/><d:getcontentlength/><d:getlastmodified/><d:resourcetype/></d:prop></d:propfind>"""
-''',
-)
-
-print("Applied Arbor 0.22.5 direct cloud clients")

@@ -34,7 +34,7 @@ import java.time.Instant
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
 
-enum class CloudBackupProvider { SCOPED_FOLDER, GOOGLE_DRIVE_APP_DATA }
+enum class CloudBackupProvider { SCOPED_FOLDER, GOOGLE_DRIVE_APP_DATA, ONEDRIVE_APP_FOLDER, DROPBOX_APP_FOLDER, WEBDAV, S3 }
 
 data class CloudBackupEntry(
     val provider: CloudBackupProvider,

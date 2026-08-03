@@ -1,169 +1,12 @@
-#!/usr/bin/env python3
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-
-
-def read(path: str) -> str:
-    return (ROOT / path).read_text()
-
-
-def write(path: str, content: str) -> None:
-    target = ROOT / path
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content)
-
-
-def replace_once(path: str, old: str, new: str) -> None:
-    content = read(path)
-    count = content.count(old)
-    if count != 1:
-        raise RuntimeError(f"{path}: expected one match, found {count}: {old[:160]!r}")
-    write(path, content.replace(old, new, 1))
-
-
-# ---------------------------------------------------------------------------
-# App graph.
-# ---------------------------------------------------------------------------
-app = "app/src/main/java/app/arbor/chat/ArborApplication.kt"
-replace_once(
-    app,
-    "import app.arbor.chat.transfer.GoogleDriveAppDataClient\n",
-    "import app.arbor.chat.transfer.GoogleDriveAppDataClient\nimport app.arbor.chat.transfer.CloudOAuthManager\nimport app.arbor.chat.transfer.DirectCloudConfigStore\nimport app.arbor.chat.transfer.DirectCloudBackupCoordinator\n",
-)
-replace_once(
-    app,
-    '''    val scopedCloudFolder = ScopedCloudFolderStore(application)
-    val googleDriveAppData = GoogleDriveAppDataClient(application)
-    val repositoryUpdates = RepositoryUpdateManager(application)
-''',
-    '''    val scopedCloudFolder = ScopedCloudFolderStore(application)
-    val googleDriveAppData = GoogleDriveAppDataClient(application)
-    val cloudOAuth = CloudOAuthManager(application, secureStore)
-    val directCloudConfigs = DirectCloudConfigStore(secureStore)
-    val directCloud = DirectCloudBackupCoordinator(application, cloudOAuth, directCloudConfigs)
-    val repositoryUpdates = RepositoryUpdateManager(application)
-''',
-)
-
-# ---------------------------------------------------------------------------
-# ViewModel methods.
-# ---------------------------------------------------------------------------
-vm = "app/src/main/java/app/arbor/chat/ui/ChatViewModel.kt"
-replace_once(
-    vm,
-    "import app.arbor.chat.transfer.CloudBackupEntry\n",
-    "import app.arbor.chat.transfer.CloudBackupEntry\nimport app.arbor.chat.transfer.CloudOAuthProvider\nimport app.arbor.chat.transfer.CloudOAuthState\nimport app.arbor.chat.transfer.DirectCloudProvider\nimport app.arbor.chat.transfer.DirectCloudConfigurationSnapshot\nimport app.arbor.chat.transfer.WebDavCloudConfig\nimport app.arbor.chat.transfer.S3CloudConfig\n",
-)
-replace_once(
-    vm,
-    '''    val repositoryUpdateState: StateFlow<RepositoryUpdateState> = container.repositoryUpdates.state
-    val shareConversationId''',
-    '''    val repositoryUpdateState: StateFlow<RepositoryUpdateState> = container.repositoryUpdates.state
-    val cloudOAuthStates: StateFlow<Map<CloudOAuthProvider, CloudOAuthState>> = container.cloudOAuth.states
-    val directCloudConfigurations: StateFlow<DirectCloudConfigurationSnapshot> = container.directCloudConfigs.state
-    val shareConversationId''',
-)
-replace_once(
-    vm,
-    '''    suspend fun downloadGoogleDriveBackup(accessToken: String, entry: CloudBackupEntry): Uri =
-        container.googleDriveAppData.downloadBackup(accessToken, entry)
-
-    fun receivePortableArchive''',
-    '''    suspend fun downloadGoogleDriveBackup(accessToken: String, entry: CloudBackupEntry): Uri =
-        container.googleDriveAppData.downloadBackup(accessToken, entry)
-
-    fun directCloudBuildConfigured(provider: CloudOAuthProvider): Boolean =
-        container.cloudOAuth.isBuildConfigured(provider)
-
-    fun directCloudConfigurationReason(provider: CloudOAuthProvider): String? =
-        container.cloudOAuth.configurationReason(provider)
-
-    fun directCloudRedirectUri(provider: CloudOAuthProvider): String =
-        container.cloudOAuth.redirectUri(provider)
-
-    fun beginDirectCloudOAuth(provider: CloudOAuthProvider): Uri =
-        container.cloudOAuth.beginAuthorization(provider)
-
-    fun handleCloudOAuthRedirect(uri: Uri): Boolean {
-        if (!container.cloudOAuth.canHandleRedirect(uri)) return false
-        viewModelScope.launch {
-            runCatching { container.cloudOAuth.completeRedirect(uri) }
-                .onSuccess { session -> notices.emit("Connected ${session.provider.displayName}") }
-                .onFailure { error -> notices.emit(error.message ?: "Cloud account connection failed") }
-        }
-        return true
-    }
-
-    fun saveWebDavCloud(config: WebDavCloudConfig) = container.directCloudConfigs.saveWebDav(config)
-    fun saveS3Cloud(config: S3CloudConfig) = container.directCloudConfigs.saveS3(config)
-
-    fun disconnectDirectCloud(provider: DirectCloudProvider) = container.directCloud.disconnect(provider)
-
-    suspend fun testDirectCloud(provider: DirectCloudProvider): String = container.directCloud.test(provider)
-
-    suspend fun writeDirectCloudBackup(
-        provider: DirectCloudProvider,
-        options: ArchiveOptions,
-        password: String,
-    ): CloudBackupEntry {
-        val file = container.archiveManager.writeBackupToCache(options, password)
-        return try {
-            container.directCloud.upload(provider, file, file.name)
-        } finally {
-            file.delete()
-        }
-    }
-
-    suspend fun listDirectCloudBackups(provider: DirectCloudProvider): List<CloudBackupEntry> =
-        container.directCloud.list(provider)
-
-    suspend fun downloadDirectCloudBackup(provider: DirectCloudProvider, entry: CloudBackupEntry): Uri =
-        container.directCloud.download(provider, entry)
-
-    suspend fun deleteDirectCloudBackup(provider: DirectCloudProvider, entry: CloudBackupEntry) =
-        container.directCloud.delete(provider, entry)
-
-    fun receivePortableArchive''',
-)
-
-# ---------------------------------------------------------------------------
-# Route OAuth callbacks before treating ACTION_VIEW as a backup archive.
-# ---------------------------------------------------------------------------
-main = "app/src/main/java/app/arbor/chat/MainActivity.kt"
-replace_once(
-    main,
-    '''        if (intent.action == Intent.ACTION_VIEW) {
-            intent.data?.let {
-                viewModel.receivePortableArchive(it)
-                return
-            }
-        }
-''',
-    '''        if (intent.action == Intent.ACTION_VIEW) {
-            intent.data?.let {
-                if (viewModel.handleCloudOAuthRedirect(it)) return
-                viewModel.receivePortableArchive(it)
-                return
-            }
-        }
-''',
-)
-
-# ---------------------------------------------------------------------------
-# Direct provider UI.
-# ---------------------------------------------------------------------------
-write(
-    "app/src/main/java/app/arbor/chat/ui/DirectCloudProvidersUi.kt",
-    r'''package app.arbor.chat.ui
+package app.arbor.chat.ui
 
 import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.Cloud
@@ -198,10 +41,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import app.arbor.chat.BuildConfig
 import app.arbor.chat.transfer.ArchiveOptions
 import app.arbor.chat.transfer.CloudBackupEntry
@@ -254,12 +95,13 @@ internal fun DirectCloudProviderTargets(
         scope.launch {
             busy = "backup-${provider.name}"
             setError(provider, null)
-            runCatching { viewModel.writeDirectCloudBackup(provider, options, password) }
-                .onSuccess {
+            runCatching {
+                viewModel.writeDirectCloudBackup(provider, options, password)
+                viewModel.listDirectCloudBackups(provider)
+            }
+                .onSuccess { refreshed ->
                     viewModel.postNotice("Backup saved to ${provider.displayName}")
-                    entries = entries.toMutableMap().apply {
-                        put(provider, viewModel.listDirectCloudBackups(provider))
-                    }
+                    entries = entries.toMutableMap().apply { put(provider, refreshed) }
                 }
                 .onFailure { setError(provider, it.message ?: "Cloud backup failed") }
             busy = null
@@ -509,7 +351,7 @@ private fun OAuthCloudCard(
                 }
             }
         }
-        error?.let(::ProviderError)
+        error?.let { message -> ProviderError(message) }
     }
 }
 
@@ -540,7 +382,7 @@ private fun CredentialCloudCard(
             ProviderActions(enabled, busy, onBackup, onRefresh, onDisconnect, onConfigure)
             DirectBackupList(entries, busy, onPreview, onDelete)
         }
-        error?.let(::ProviderError)
+        error?.let { message -> ProviderError(message) }
     }
 }
 
@@ -548,7 +390,7 @@ private fun CredentialCloudCard(
 private fun CloudProviderSurface(
     provider: DirectCloudProvider,
     description: String,
-    content: @Composable Column.() -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -664,7 +506,7 @@ private fun ProviderError(message: String) {
 }
 
 @Composable
-private fun WebDavConfigDialog(
+internal fun WebDavConfigDialog(
     existing: WebDavCloudConfig?,
     onDismiss: () -> Unit,
     onSave: (WebDavCloudConfig) -> Unit,
@@ -700,7 +542,7 @@ private fun WebDavConfigDialog(
 }
 
 @Composable
-private fun S3ConfigDialog(
+internal fun S3ConfigDialog(
     existing: S3CloudConfig?,
     onDismiss: () -> Unit,
     onSave: (S3CloudConfig) -> Unit,
@@ -776,228 +618,3 @@ private fun readableDirectBytes(value: Long): String = when {
     value >= 1024L -> "%.1f KiB".format(value.toDouble() / 1024.0)
     else -> "$value B"
 }
-''',
-)
-
-# Call direct provider UI before the security note.
-cloud_ui = "app/src/main/java/app/arbor/chat/ui/CloudBackupUi.kt"
-replace_once(
-    cloud_ui,
-    '''    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-''',
-    '''    DirectCloudProviderTargets(
-        viewModel = viewModel,
-        options = options,
-        password = password,
-        enabled = enabled,
-    )
-
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-''',
-)
-replace_once(
-    cloud_ui,
-    'subtitle = "Use either one folder you explicitly choose or Google Drive\'s hidden Arbor-only app storage. Arbor never requests access to your whole cloud drive.",',
-    'subtitle = "Choose a scoped Android folder, an OAuth app folder, WebDAV/Nextcloud, or an S3-compatible bucket prefix. Arbor avoids account-wide cloud access.",',
-)
-
-# ---------------------------------------------------------------------------
-# Build workflows receive public provider identifiers from repository vars.
-# ---------------------------------------------------------------------------
-release = ".github/workflows/release.yml"
-replace_once(
-    release,
-    '''      ARBOR_SOURCE_REPOSITORY: ${{ github.repository }}
-      ARBOR_SOURCE_COMMIT: ${{ github.sha }}
-''',
-    '''      ARBOR_SOURCE_REPOSITORY: ${{ github.repository }}
-      ARBOR_SOURCE_COMMIT: ${{ github.sha }}
-      ARBOR_MICROSOFT_CLIENT_ID: ${{ vars.ARBOR_MICROSOFT_CLIENT_ID }}
-      ARBOR_DROPBOX_APP_KEY: ${{ vars.ARBOR_DROPBOX_APP_KEY }}
-''',
-)
-android = ".github/workflows/android.yml"
-replace_once(
-    android,
-    '''permissions:
-  contents: read
-
-jobs:
-''',
-    '''permissions:
-  contents: read
-
-env:
-  ARBOR_SOURCE_REPOSITORY: ${{ github.repository }}
-  ARBOR_SOURCE_COMMIT: ${{ github.sha }}
-  ARBOR_MICROSOFT_CLIENT_ID: ${{ vars.ARBOR_MICROSOFT_CLIENT_ID }}
-  ARBOR_DROPBOX_APP_KEY: ${{ vars.ARBOR_DROPBOX_APP_KEY }}
-
-jobs:
-''',
-)
-
-# ---------------------------------------------------------------------------
-# Documentation and regression tests.
-# ---------------------------------------------------------------------------
-write(
-    "docs/CLOUD_PROVIDERS_SETUP.md",
-    r'''# Cloud provider setup
-
-Arbor supports six cloud paths:
-
-1. Android's scoped folder picker
-2. Google Drive `appDataFolder`
-3. OneDrive application folder
-4. Dropbox App folder
-5. Nextcloud or generic WebDAV
-6. S3-compatible object storage
-
-No provider refresh token, user password, S3 access key, or storage secret belongs in GitHub Actions. Those values are entered by the user and encrypted locally with Android Keystore.
-
-## GitHub Actions configuration
-
-Two provider values are public application identifiers and are embedded in the APK. Configure them as **Repository variables**, not secrets:
-
-- `ARBOR_MICROSOFT_CLIENT_ID`
-- `ARBOR_DROPBOX_APP_KEY`
-
-Repository path: **Settings → Secrets and variables → Actions → Variables**.
-
-Release-signing keystore passwords remain GitHub **Secrets**. OAuth client secrets are neither needed nor safe in a native Android application.
-
-## Google Drive
-
-The repository owner must create or select one Google Cloud project:
-
-1. Enable Google Drive API.
-2. Configure the OAuth consent screen.
-3. Create an Android OAuth client for every officially distributed package/signing pair.
-4. Register the exact package and SHA-1 shown by Arbor's diagnostic card.
-5. Keep the requested scope limited to `https://www.googleapis.com/auth/drive.appdata`.
-
-The normal public GitHub release currently uses package `app.arbor.chat.debug`. Protected production releases use `app.arbor.chat` and need their private release certificate SHA-1 registered separately in the same Cloud project.
-
-Google Android OAuth clients have no client secret to embed.
-
-## OneDrive
-
-Create one Microsoft Entra app registration:
-
-1. Choose supported account types. For personal OneDrive plus work/school accounts, allow organizational directories and personal Microsoft accounts.
-2. Add the Microsoft Graph delegated permission `Files.ReadWrite.AppFolder`.
-3. Add the Android platform using Arbor's package name and signature hash. Arbor shows the exact `msauth://...` redirect URI in the provider card.
-4. Enable public-client/native flows.
-5. Put the Application (client) ID in repository variable `ARBOR_MICROSOFT_CLIENT_ID`.
-
-Arbor uses Authorization Code + PKCE and requests `offline_access`; do not create or embed a client secret.
-
-## Dropbox
-
-Create one scoped Dropbox API app:
-
-1. Choose **App folder** access, not Full Dropbox.
-2. Enable `account_info.read`, `files.metadata.read`, `files.content.read`, and `files.content.write`.
-3. Add redirect URI `db-APP_KEY://2/token`, replacing `APP_KEY` with the app key.
-4. Put the app key in repository variable `ARBOR_DROPBOX_APP_KEY`.
-
-Arbor uses Authorization Code + PKCE with refresh tokens. A Dropbox app secret is not used by the Android app.
-
-## Nextcloud / WebDAV
-
-No developer project or repository variable is required. Each user enters:
-
-- a dedicated HTTPS WebDAV folder URL
-- username
-- password or, preferably, an app password
-
-A typical Nextcloud URL is:
-
-```text
-https://cloud.example.com/remote.php/dav/files/USERNAME/Arbor/
-```
-
-Arbor refuses unencrypted HTTP endpoints and stores credentials in encrypted local preferences.
-
-## S3-compatible storage
-
-No repository-level cloud account is required. Each user enters an HTTPS endpoint, region, bucket, prefix, access key, and secret key. The client uses AWS Signature Version 4 and supports AWS S3, Cloudflare R2, Backblaze B2 S3, MinIO, and compatible services.
-
-Use a dedicated key restricted to the selected bucket and prefix. A minimal policy should allow only listing that prefix and getting, putting, and deleting objects inside it. Never put a user's S3 keys in GitHub Actions.
-''',
-)
-
-write(
-    "docs/releases/RELEASE_NOTES_0.22.5.md",
-    '''# Arbor 0.22.5
-
-- Add a unified cloud-provider layer alongside Android's scoped folder picker.
-- Add OneDrive app-folder support using Authorization Code + PKCE and `Files.ReadWrite.AppFolder`.
-- Add Dropbox App-folder support using scoped permissions, PKCE, refresh tokens, and resumable uploads.
-- Add direct HTTPS WebDAV and Nextcloud backup browsing, upload, preview, restore, and deletion.
-- Add AWS Signature Version 4 support for S3, Cloudflare R2, Backblaze B2, MinIO, and compatible storage.
-- Encrypt OAuth sessions, WebDAV credentials, and S3 credentials with Android Keystore and exclude them from portable backups.
-- Add provider-specific connection tests, errors, backup lists, previews, and confirmed deletion.
-- Configure public Microsoft client IDs and Dropbox app keys through GitHub Actions repository variables rather than secrets.
-- Document the exact external setup required for Google Cloud, Microsoft Entra, Dropbox, WebDAV, and S3.
-''',
-)
-
-write(
-    "app/src/test/java/app/arbor/chat/transfer/DirectCloudConfigurationTest.kt",
-    r'''package app.arbor.chat.transfer
-
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFailsWith
-import org.junit.Assert.assertTrue
-import org.junit.Test
-
-class DirectCloudConfigurationTest {
-    @Test
-    fun webDavRequiresHttpsAndNormalizesFolderSlash() {
-        val value = validateWebDavConfig(
-            WebDavCloudConfig("Home", "https://cloud.example/dav/arbor", "omer", "app-password"),
-        )
-        assertEquals("https://cloud.example/dav/arbor/", value.folderUrl)
-        assertFailsWith<IllegalArgumentException> {
-            validateWebDavConfig(WebDavCloudConfig("Bad", "http://cloud.example/dav", "u", "p"))
-        }
-    }
-
-    @Test
-    fun s3NormalizesPrefixAndRequiresCredentials() {
-        val value = validateS3Config(
-            S3CloudConfig("R2", "https://example.r2.cloudflarestorage.com/", "auto", "arbor-backups", "/mobile/", "key", "secret"),
-        )
-        assertEquals("https://example.r2.cloudflarestorage.com", value.endpoint)
-        assertEquals("mobile", value.prefix)
-        assertFailsWith<IllegalArgumentException> {
-            validateS3Config(value.copy(secretAccessKey = ""))
-        }
-    }
-
-    @Test
-    fun providerSetupUsesPublicBuildVariablesNotClientSecrets() {
-        val build = java.io.File("build.gradle.kts").readText()
-        val release = java.io.File("../.github/workflows/release.yml").readText()
-        assertTrue(build.contains("ARBOR_MICROSOFT_CLIENT_ID"))
-        assertTrue(build.contains("ARBOR_DROPBOX_APP_KEY"))
-        assertTrue(release.contains("vars.ARBOR_MICROSOFT_CLIENT_ID"))
-        assertTrue(release.contains("vars.ARBOR_DROPBOX_APP_KEY"))
-        assertTrue(!release.contains("MICROSOFT_CLIENT_SECRET"))
-        assertTrue(!release.contains("DROPBOX_APP_SECRET"))
-    }
-
-    @Test
-    fun manifestRoutesNativeProviderCallbacks() {
-        val manifest = java.io.File("src/main/AndroidManifest.xml").readText()
-        assertTrue(manifest.contains("android:scheme=\"msauth\""))
-        assertTrue(manifest.contains("android:scheme=\"${dropboxOAuthScheme}\""))
-    }
-}
-''',
-)
-
-print("Applied Arbor 0.22.5 cloud UI, integration, docs, and tests")

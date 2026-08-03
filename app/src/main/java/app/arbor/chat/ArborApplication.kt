@@ -31,6 +31,9 @@ import app.arbor.chat.settings.PersistentUiStateStore
 import app.arbor.chat.transfer.AppSettingsArchiveStore
 import app.arbor.chat.transfer.ArborArchiveManager
 import app.arbor.chat.transfer.GoogleDriveAppDataClient
+import app.arbor.chat.transfer.CloudOAuthManager
+import app.arbor.chat.transfer.DirectCloudConfigStore
+import app.arbor.chat.transfer.DirectCloudBackupCoordinator
 import app.arbor.chat.transfer.LinuxEnvironmentArchiveStore
 import app.arbor.chat.transfer.ScopedCloudFolderStore
 import app.arbor.chat.update.RepositoryUpdateManager
@@ -122,6 +125,9 @@ class AppContainer(val application: Application, val crashReporter: CrashReporte
     val archiveManager = ArborArchiveManager(application, database, linuxEnvironmentArchives, appSettingsArchives)
     val scopedCloudFolder = ScopedCloudFolderStore(application)
     val googleDriveAppData = GoogleDriveAppDataClient(application)
+    val cloudOAuth = CloudOAuthManager(application, secureStore)
+    val directCloudConfigs = DirectCloudConfigStore(secureStore)
+    val directCloud = DirectCloudBackupCoordinator(application, cloudOAuth, directCloudConfigs)
     val repositoryUpdates = RepositoryUpdateManager(application)
     val runRecords = RunRecordStore(pythonSandbox::workspace)
     val generatedBlockCompiler = GeneratedBlockCompiler(application)
