@@ -331,10 +331,7 @@ private fun OAuthCloudCard(
             is CloudOAuthState.Authorizing -> {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CircularProgressIndicator(strokeWidth = 2.dp)
-                    Text("Waiting for ${provider.displayName} authorization…", modifier = Modifier.weight(1f))
-                }
-                OutlinedButton(onClick = onDisconnect, modifier = Modifier.fillMaxWidth()) {
-                    Text("Cancel sign-in")
+                    Text("Waiting for ${provider.displayName} authorization…")
                 }
             }
             is CloudOAuthState.Connected -> {

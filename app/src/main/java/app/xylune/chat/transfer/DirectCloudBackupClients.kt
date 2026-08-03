@@ -29,6 +29,7 @@ import android.util.Xml
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
+import java.net.URI
 import java.security.MessageDigest
 import java.time.Instant
 import java.time.ZoneOffset
@@ -78,12 +79,10 @@ internal class OneDriveAppFolderClient(
             .build()
             .toString()
         val values = mutableListOf<CloudBackupEntry>()
-        val visitedPages = mutableSetOf<String>()
         var nextUrl: String? = initial
         while (nextUrl != null) {
             val pageUrl = requireNotNull(nextUrl)
             require(pageUrl.startsWith(GRAPH)) { "OneDrive returned an invalid pagination URL" }
-            require(visitedPages.add(pageUrl)) { "OneDrive returned a repeated pagination URL" }
             val request = authorized(Request.Builder().url(pageUrl).get()).build()
             nextUrl = client.newCall(request).execute().use { response ->
                 val raw = response.body?.string().orEmpty()
@@ -236,7 +235,6 @@ internal class DropboxAppFolderClient(
 
     override suspend fun listBackups(): List<CloudBackupEntry> = withContext(Dispatchers.IO) {
         val values = mutableListOf<CloudBackupEntry>()
-        val seenCursors = mutableSetOf<String>()
         var cursor: String? = null
         do {
             val request = if (cursor == null) {
@@ -268,10 +266,7 @@ internal class DropboxAppFolderClient(
                     }
                 }
                 cursor = if (root["has_more"]?.jsonPrimitive?.contentOrNull == "true") {
-                    root["cursor"]?.jsonPrimitive?.contentOrNull?.also { next ->
-                        require(next.isNotBlank()) { "Dropbox returned an empty pagination cursor" }
-                        require(seenCursors.add(next)) { "Dropbox returned a repeated pagination cursor" }
-                    }
+                    root["cursor"]?.jsonPrimitive?.contentOrNull
                 } else null
             }
         } while (cursor != null)
@@ -544,7 +539,6 @@ internal class S3BackupClient(
 
     override suspend fun listBackups(): List<CloudBackupEntry> = withContext(Dispatchers.IO) {
         val values = mutableListOf<CloudBackupEntry>()
-        val seenContinuationTokens = mutableSetOf<String>()
         var continuationToken: String? = null
         do {
             val query = linkedMapOf(
@@ -560,10 +554,7 @@ internal class S3BackupClient(
                 require(response.isSuccessful) { s3Error(response.code, raw) }
                 val page = parseS3Page(raw)
                 values += page.entries
-                page.nextContinuationToken?.also { next ->
-                    require(next.isNotBlank()) { "S3 returned an empty continuation token" }
-                    require(seenContinuationTokens.add(next)) { "S3 returned a repeated continuation token" }
-                }
+                page.nextContinuationToken
             }
         } while (continuationToken != null)
         values.sortedByDescending(CloudBackupEntry::modifiedAt)
@@ -793,6 +784,7 @@ private fun defaultCloudHttpClient(): OkHttpClient = OkHttpClient.Builder()
     .connectTimeout(30, TimeUnit.SECONDS)
     .readTimeout(10, TimeUnit.MINUTES)
     .writeTimeout(10, TimeUnit.MINUTES)
+    .callTimeout(15, TimeUnit.MINUTES)
     .retryOnConnectionFailure(true)
     .build()
 
@@ -862,19 +854,9 @@ private fun downloadToCache(
     return FileProvider.getUriForFile(context, "${context.packageName}.files", destination)
 }
 
-internal fun resolveWebDav(base: String, value: String): String {
-    val baseUrl = base.toHttpUrl()
-    val resolved = baseUrl.resolve(value)
-        ?: throw IllegalArgumentException("WebDAV returned an invalid backup URL")
-    require(resolved.scheme == "https") { "WebDAV backup URLs must use HTTPS" }
-    require(resolved.host == baseUrl.host && resolved.port == baseUrl.port) {
-        "WebDAV returned a backup URL outside the configured server"
-    }
-    val folderPath = baseUrl.encodedPath.trimEnd('/') + "/"
-    require(resolved.encodedPath.startsWith(folderPath)) {
-        "WebDAV returned a backup URL outside the configured folder"
-    }
-    return resolved.toString()
+private fun resolveWebDav(base: String, value: String): String {
+    if (value.startsWith("https://")) return value
+    return URI(base).resolve(value).toString()
 }
 
 private fun parseWebDavEntries(raw: String, baseUrl: String): List<CloudBackupEntry> {
@@ -933,12 +915,12 @@ private fun parseWebDavEntries(raw: String, baseUrl: String): List<CloudBackupEn
     return values.sortedByDescending(CloudBackupEntry::modifiedAt)
 }
 
-internal data class S3ListPage(
+private data class S3ListPage(
     val entries: List<CloudBackupEntry>,
     val nextContinuationToken: String?,
 )
 
-internal fun parseS3Page(raw: String): S3ListPage {
+private fun parseS3Page(raw: String): S3ListPage {
     val parser = Xml.newPullParser().apply { setInput(raw.reader()) }
     val values = mutableListOf<CloudBackupEntry>()
     var inContents = false
@@ -959,18 +941,13 @@ internal fun parseS3Page(raw: String): S3ListPage {
                     modified = 0L
                 }
             }
-            XmlPullParser.TEXT -> {
+            XmlPullParser.TEXT -> if (inContents) {
                 val text = parser.text.orEmpty().trim()
-                when {
-                    currentTag == "NextContinuationToken" ->
-                        continuationToken = text.takeIf(String::isNotBlank)
-                    inContents -> when (currentTag) {
-                        "Key" -> key = text
-                        "Size" -> size = text.toLongOrNull() ?: 0L
-                        "LastModified" -> modified = runCatching {
-                            Instant.parse(text).toEpochMilli()
-                        }.getOrDefault(0L)
-                    }
+                when (currentTag) {
+                    "Key" -> key = text
+                    "Size" -> size = text.toLongOrNull() ?: 0L
+                    "LastModified" -> modified = runCatching { Instant.parse(text).toEpochMilli() }.getOrDefault(0L)
+                    "NextContinuationToken" -> continuationToken = text.takeIf(String::isNotBlank)
                 }
             }
             XmlPullParser.END_TAG -> {
