@@ -7,9 +7,19 @@ on:
     paths:
       - .github/workflows/xylune-rebrand-snapshot.yml
       - tools/apply_xylune_rebrand.py
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/xylune-rebrand-snapshot.yml
+      - tools/apply_xylune_rebrand.py
 
 permissions:
   contents: write
+
+concurrency:
+  group: xylune-rebrand-atomic
+  cancel-in-progress: true
 
 jobs:
   rebrand:
@@ -20,6 +30,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: agent/full-xylune-rebrand
 
       - uses: actions/setup-java@v4
         with:
@@ -61,9 +72,9 @@ jobs:
               -Pkotlin.compiler.execution.strategy=in-process \
               :app:generateOfflineLicenseCatalog
 
-            # The previous transformed-tree run already passed unit tests, lint,
+            # A transformed-tree validation run already passed unit tests, lint,
             # release APK, release AAB, instrumentation APK, and package badging.
-            # The final committed tree will receive the normal full Android PR CI.
+            # The final committed tree receives the normal full Android PR CI.
             rm -rf tools/xylune-rebrand-audit tools/xylune-rebrand-failure
             rm -f tools/apply_xylune_rebrand.py .github/workflows/xylune-rebrand-snapshot.yml
 
@@ -136,7 +147,7 @@ jobs:
             cp /tmp/xylune-rebrand-validation.log tools/xylune-rebrand-failure/validation.log
             git add -f tools/xylune-rebrand-failure/validation.log
             git commit -m "Record failed Xylune rebrand validation" -- tools/xylune-rebrand-failure/validation.log || true
-            git push
+            git push origin HEAD:agent/full-xylune-rebrand
             exit "$status"
           fi
 
@@ -144,7 +155,7 @@ jobs:
           git status --short
           git diff --cached --stat
           git commit -m "Rebrand application identity to Xylune throughout"
-          git push
+          git push origin HEAD:agent/full-xylune-rebrand
 
       - uses: actions/upload-artifact@v4
         if: always()
