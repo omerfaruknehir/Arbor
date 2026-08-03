@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="branding/xylune-banner.png" alt="Xylune — Native Android. Private by design." width="100%">
+  <img src="branding/arbor-banner.png" alt="Temporary Arbor banner retained during the Xylune rebrand." width="100%">
 </p>
 
 <p align="center">

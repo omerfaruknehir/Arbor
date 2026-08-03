@@ -1,7 +1,7 @@
 ## 0.23.0 — 2026-08-03
 
 - Rebrand the complete application identity to Xylune, including the Android namespace, application ID, source packages, storage and transfer formats, widgets, native tools, release assets, documentation, and build metadata.
-- Replace the original A-shaped mark with an organic X while retaining the gold leaf; use the same geometry for launcher variants, dynamic color, monochrome icons, in-app marks, the license catalog, and repository artwork.
+- Temporarily retain Arbor's existing A-shaped icon and repository banner while the Xylune visual mark is redesigned and approved; all non-visual product and internal identity changes remain part of this release.
 - Rename internal protocols and identifiers without legacy compatibility because the project has no deployed user base, then validate the release build, lint, unit tests, instrumentation compilation, and offline license catalog.
 
 ## 0.20.35 — 2026-08-02
