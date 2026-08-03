@@ -16,11 +16,11 @@ PATH_REPLACEMENTS = {
     # Second X stroke: derived from the original A's right outer stem.
     "M78,28C66,43 50,64 30,82": "M28,27C38,43 70,66 80,82",
     "M78 28C66 43 50 64 30 82": "M28 27C38 43 70 66 80 82",
-    # Leaf branch and leaf, attached naturally to the upper-right stem.
-    "M69,35C74,31 78,27 82,24": "M72,36C77,32 81,27 84,23",
-    "M69 35C74 31 78 27 82 24": "M72 36C77 32 81 27 84 23",
-    "M68,32C74,22 84,19 92,25C87,35 78,39 69,35Z": "M81,27C85,18 93,16 98,22C94,30 87,34 81,31Z",
-    "M68 32C74 22 84 19 92 25C87 35 78 39 69 35Z": "M81 27C85 18 93 16 98 22C94 30 87 34 81 31Z",
+    # Leaf branch and leaf, attached close to the upper-right stem.
+    "M69,35C74,31 78,27 82,24": "M72,36C76,32 79,28 82,25",
+    "M69 35C74 31 78 27 82 24": "M72 36C76 32 79 28 82 25",
+    "M68,32C74,22 84,19 92,25C87,35 78,39 69,35Z": "M78,27C82,20 89,19 94,24C90,31 84,33 79,30Z",
+    "M68 32C74 22 84 19 92 25C87 35 78 39 69 35Z": "M78 27C82 20 89 19 94 24C90 31 84 33 79 30Z",
 }
 
 GRADIENT_RE = re.compile(
@@ -76,8 +76,8 @@ def main() -> None:
     required = {
         "M28,82C38,66 70,43 80,27",
         "M28,27C38,43 70,66 80,82",
-        "M72,36C77,32 81,27 84,23",
-        "M81,27C85,18 93,16 98,22C94,30 87,34 81,31Z",
+        "M72,36C76,32 79,28 82,25",
+        "M78,27C82,20 89,19 94,24C90,31 84,33 79,30Z",
     }
     foreground = (ROOT / "app/src/main/res/drawable/ic_xylune_foreground.xml").read_text(encoding="utf-8")
     missing = sorted(token for token in required if token not in foreground)
