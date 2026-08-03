@@ -34,7 +34,7 @@ replace_once(
 ''',
     '''        val canonicalQuery = url.queryParameterNames.sorted().flatMap { name ->
             url.queryParameterValues(name)
-                .map(String?::orEmpty)
+                .map { value -> value.orEmpty() }
                 .sorted()
                 .map { value -> "${awsEncode(name)}=${awsEncode(value)}" }
         }.joinToString("&")
@@ -68,7 +68,6 @@ replace_once(
 replace_once(ui, "import androidx.compose.foundation.text.KeyboardOptions\n", "")
 replace_once(ui, "import androidx.compose.ui.text.input.KeyboardType\n", "")
 replace_once(ui, "import androidx.core.net.toUri\n", "")
-replace_once(ui, "            CloudOAuthState.Authorizing -> {", "            is CloudOAuthState.Authorizing -> {")
 replace_once(
     ui,
     '''            runCatching { viewModel.writeDirectCloudBackup(provider, options, password) }
