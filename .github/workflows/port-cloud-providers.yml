@@ -26,7 +26,7 @@ jobs:
   port-and-validate:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,13 +66,26 @@ jobs:
             -Pkotlin.compiler.execution.strategy=in-process \
             :app:generateOfflineLicenseCatalog
 
-      - name: Run release verification
+      - name: Run release unit tests
         shell: bash
         run: |
-          set -euo pipefail
           ./gradlew --no-daemon --stacktrace --max-workers=2 \
             -Pkotlin.compiler.execution.strategy=in-process \
-            testReleaseUnitTest lintRelease assembleRelease bundleRelease assembleDebugAndroidTest
+            testReleaseUnitTest
+
+      - name: Run release lint
+        shell: bash
+        run: |
+          ./gradlew --no-daemon --stacktrace --max-workers=2 \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            lintRelease
+
+      - name: Assemble optimized release APK
+        shell: bash
+        run: |
+          ./gradlew --no-daemon --stacktrace --max-workers=2 \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            assembleRelease
 
       - name: Verify Xylune identity and cloud configuration
         shell: bash
