@@ -1,0 +1,102 @@
+name: Verify complete Xylune 0.23.0 rebrand
+
+on:
+  push:
+    branches:
+      - rebrand/xylune-0.23.0
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  XYLUNE_SOURCE_REPOSITORY: ${{ github.repository }}
+  XYLUNE_SOURCE_COMMIT: ${{ github.sha }}
+  XYLUNE_MICROSOFT_CLIENT_ID: ${{ vars.XYLUNE_MICROSOFT_CLIENT_ID || '00000000-0000-0000-0000-000000000000' }}
+  XYLUNE_DROPBOX_APP_KEY: ${{ vars.XYLUNE_DROPBOX_APP_KEY || 'xylunebuildvalidation' }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rebrand/xylune-0.23.0
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+
+      - name: Apply complete internal rebrand
+        run: python3 tools/apply-xylune-rebrand-0230.py
+
+      - name: Verify no old first-party identity remains
+        shell: bash
+        run: |
+          if git grep -n -I -E 'Arbor|arbor|ARBOR' -- \
+              ':!app/src/main/python/pip/_vendor/**' \
+              ':!third_party/**' \
+              ':!licenses/texts/**'; then
+            echo 'Old first-party brand identity remains' >&2
+            exit 1
+          fi
+          test -d app/src/main/java/app/xylune/chat
+          test ! -e app/src/main/java/app/arbor
+          grep -q 'namespace = "app.xylune.chat"' app/build.gradle.kts
+          grep -q 'applicationId = "app.xylune.chat"' app/build.gradle.kts
+          grep -q 'versionName = "0.23.0"' app/build.gradle.kts
+          grep -q 'android:scheme="xylune"' app/src/main/AndroidManifest.xml
+
+      - name: Verify third-party licenses
+        run: ./ci/verify-third-party-licenses.sh
+
+      - name: Verify offline license catalog
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:generateOfflineLicenseCatalog
+
+      - name: Run release unit tests
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
+
+      - name: Run release lint
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
+
+      - name: Assemble optimized release APK
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease
+
+      - name: Assemble optimized release AAB
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process bundleRelease
+
+      - name: Assemble instrumentation APK
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleDebugAndroidTest
+
+      - name: Verify release APK identity and signature
+        shell: bash
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/xylune-badging.txt
+          grep -q "package: name='app.xylune.chat.debug'" /tmp/xylune-badging.txt
+          grep -q "application-label:'Xylune'" /tmp/xylune-badging.txt
+
+      - name: Commit verified product rebrand
+        shell: bash
+        run: |
+          git restore --source=HEAD -- .github/workflows
+          git rm tools/apply-xylune-rebrand-0230.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Complete internal Xylune rebrand for 0.23.0 [skip ci]'
+          git push origin HEAD:rebrand/xylune-0.23.0
