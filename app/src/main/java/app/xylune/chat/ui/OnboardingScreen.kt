@@ -1,12 +1,8 @@
 package app.xylune.chat.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,13 +50,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -71,9 +65,14 @@ import app.xylune.chat.settings.ColorPalette
 import app.xylune.chat.settings.ThemeMode
 import app.xylune.chat.ui.theme.palettePreviewColors
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.launch
 
-private enum class OnboardingStep { WELCOME, APPEARANCE, PROVIDER, TOOLS, READY }
+private enum class OnboardingStep(val setupTitle: String) {
+    WELCOME("Welcome"),
+    APPEARANCE("Appearance"),
+    PROVIDER("Model access"),
+    TOOLS("Local tools"),
+    READY("Finish"),
+}
 
 internal fun shouldBlockForProviderCatalog(catalogReady: Boolean, graceExpired: Boolean): Boolean =
     !catalogReady && !graceExpired
@@ -103,7 +102,6 @@ internal fun XyluneStartupScreen() {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun OnboardingScreen(
     viewModel: ChatViewModel,
@@ -132,9 +130,8 @@ internal fun OnboardingScreen(
     onExplore: () -> Unit,
 ) {
     val steps = OnboardingStep.entries
-    val initialPage = stepIndex.coerceIn(0, steps.lastIndex)
-    val initialOffset = stepOffsetFraction.coerceIn(-0.499f, 0.499f)
-    val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { steps.size })
+    val currentPage = stepIndex.coerceIn(0, steps.lastIndex)
+    val step = steps[currentPage]
     val pageScrollStates = listOf(
         rememberScrollState(initial = scrollOffsetForStep(0)),
         rememberScrollState(initial = scrollOffsetForStep(1)),
@@ -142,31 +139,17 @@ internal fun OnboardingScreen(
         rememberScrollState(initial = scrollOffsetForStep(3)),
         rememberScrollState(initial = scrollOffsetForStep(4)),
     )
-    val scope = rememberCoroutineScope()
     val haptics = rememberXyluneHaptics()
-    val currentPage = pagerState.currentPage.coerceIn(0, steps.lastIndex)
-    val pagePosition = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
-        .coerceIn(0f, steps.lastIndex.toFloat())
-    val step = steps[currentPage]
 
     fun moveTo(page: Int) {
-        val target = page.coerceIn(0, steps.lastIndex)
-        scope.launch { pagerState.animateScrollToPage(target) }
+        onPagerPositionChanged(page.coerceIn(0, steps.lastIndex), 0f)
     }
 
-    LaunchedEffect(pagerState) {
-        pagerState.scrollToPage(initialPage, initialOffset)
-        snapshotFlow { pagerState.currentPage to pagerState.currentPageOffsetFraction }
-            .distinctUntilChanged()
-            .collect { (page, offset) -> onPagerPositionChanged(page, offset) }
+    LaunchedEffect(currentPage, stepOffsetFraction) {
+        if (stepOffsetFraction != 0f) onPagerPositionChanged(currentPage, 0f)
     }
     pageScrollStates.forEachIndexed { page, state ->
         SetupScrollReporter(page, state, onStepScrollChanged)
-    }
-
-    BackHandler(enabled = currentPage > 0) {
-        haptics.selection()
-        moveTo(currentPage - 1)
     }
 
     Surface(
@@ -178,33 +161,47 @@ internal fun OnboardingScreen(
             Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(horizontal = 20.dp, vertical = 14.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
         ) {
             OnboardingProgressHeader(
-                pagePosition = pagePosition,
                 currentStepIndex = currentPage,
                 stepCount = steps.size,
+                stepTitle = step.setupTitle,
                 showBack = currentPage > 0,
+                showLater = currentPage < steps.lastIndex,
                 onBack = {
                     haptics.selection()
                     moveTo(currentPage - 1)
                 },
+                onLater = {
+                    haptics.selection()
+                    onExplore()
+                },
             )
-            HorizontalPager(
-                state = pagerState,
+            Spacer(Modifier.height(10.dp))
+            PredictiveNavigationHost(
+                targetState = step,
+                backTarget = steps.getOrNull(currentPage - 1),
+                onBack = { destination ->
+                    haptics.selection()
+                    moveTo(destination.ordinal)
+                },
+                depth = { it.ordinal },
                 modifier = Modifier.weight(1f).fillMaxWidth(),
-                key = { steps[it].name },
-                beyondViewportPageCount = 1,
-            ) { page ->
+                backEnabled = currentPage > 0,
+                keepAlive = { true },
+                label = "XyluneSetupNavigation",
+            ) { destination ->
+                val page = destination.ordinal
                 Column(
                     Modifier
                         .fillMaxSize()
                         .verticalScroll(pageScrollStates[page])
-                        .padding(top = 18.dp, bottom = 20.dp),
+                        .padding(top = 8.dp, bottom = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    when (steps[page]) {
+                    when (destination) {
                         OnboardingStep.WELCOME -> WelcomeStep(viewModel)
                         OnboardingStep.APPEARANCE -> AppearanceStep(
                             currentThemeMode = currentThemeMode,
@@ -246,55 +243,65 @@ internal fun OnboardingScreen(
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Spacer(Modifier.height(14.dp))
-            when (step) {
-                OnboardingStep.WELCOME -> PrimaryNextButton("Set up Xylune") { moveTo(1) }
-                OnboardingStep.APPEARANCE -> PrimaryNextButton("Continue") { moveTo(2) }
-                OnboardingStep.PROVIDER -> ProviderStepActions(
-                    configuredProviderCount = configuredProviderCount,
-                    onContinue = { moveTo(3) },
-                    onOpenProviderSetup = onOpenProviderSetup,
-                )
-                OnboardingStep.TOOLS -> ToolsStepActions(
-                    linuxEnabled = linuxEnabled,
-                    linuxStatus = linuxStatus,
-                    onContinue = { moveTo(4) },
-                    onOpenLinuxSetup = onOpenLinuxSetup,
-                )
-                OnboardingStep.READY -> {
-                    Button(
-                        onClick = {
-                            haptics.confirm()
-                            onExplore()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Enter Xylune") }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = onOpenProviderSetup, modifier = Modifier.weight(1f)) {
-                            Text("Provider")
-                        }
-                        OutlinedButton(onClick = onOpenLinuxSetup, modifier = Modifier.weight(1f)) {
-                            Text("Linux")
-                        }
-                    }
-                }
-            }
-            if (step != OnboardingStep.READY) {
-                TextButton(
+            Spacer(Modifier.height(10.dp))
+            OnboardingStepActions(
+                step = step,
+                configuredProviderCount = configuredProviderCount,
+                linuxEnabled = linuxEnabled,
+                linuxStatus = linuxStatus,
+                onContinue = { moveTo(currentPage + 1) },
+                onOpenProviderSetup = onOpenProviderSetup,
+                onOpenLinuxSetup = onOpenLinuxSetup,
+                onExplore = onExplore,
+            )
+        }
+    }
+}
+
+@Composable
+private fun OnboardingStepActions(
+    step: OnboardingStep,
+    configuredProviderCount: Int,
+    linuxEnabled: Boolean,
+    linuxStatus: UbuntuRuntimeStatus,
+    onContinue: () -> Unit,
+    onOpenProviderSetup: () -> Unit,
+    onOpenLinuxSetup: () -> Unit,
+    onExplore: () -> Unit,
+) {
+    val haptics = rememberXyluneHaptics()
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        when (step) {
+            OnboardingStep.WELCOME -> PrimaryNextButton("Continue", onContinue)
+            OnboardingStep.APPEARANCE -> PrimaryNextButton("Use this appearance", onContinue)
+            OnboardingStep.PROVIDER -> ProviderStepActions(
+                configuredProviderCount = configuredProviderCount,
+                onContinue = onContinue,
+                onOpenProviderSetup = onOpenProviderSetup,
+            )
+            OnboardingStep.TOOLS -> ToolsStepActions(
+                linuxEnabled = linuxEnabled,
+                linuxStatus = linuxStatus,
+                onContinue = onContinue,
+                onOpenLinuxSetup = onOpenLinuxSetup,
+            )
+            OnboardingStep.READY -> {
+                Button(
                     onClick = {
-                        haptics.selection()
+                        haptics.confirm()
                         onExplore()
                     },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Exit setup for now") }
+                ) { Text("Enter Xylune") }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onOpenProviderSetup, modifier = Modifier.weight(1f)) {
+                        Text("Providers")
+                    }
+                    OutlinedButton(onClick = onOpenLinuxSetup, modifier = Modifier.weight(1f)) {
+                        Text("Linux")
+                    }
+                }
             }
-            Text(
-                "Nothing here locks you in. Theme, providers, defaults, and local tools remain editable in Settings.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            )
         }
     }
 }
@@ -328,14 +335,14 @@ private fun ProviderStepActions(
                 onOpenProviderSetup()
             },
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Connect a provider now") }
+        ) { Text("Connect a provider") }
         OutlinedButton(
             onClick = {
                 haptics.selection()
                 onContinue()
             },
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Continue and connect later") }
+        ) { Text("Continue without one") }
     }
 }
 
@@ -395,7 +402,6 @@ private fun PrimaryNextButton(label: String, onClick: () -> Unit) {
     ) { Text(label) }
 }
 
-
 internal fun setupProgressForSegment(pagePosition: Float, segmentIndex: Int): Float =
     (pagePosition - segmentIndex + 1f).coerceIn(0f, 1f)
 
@@ -414,68 +420,77 @@ private fun SetupScrollReporter(
 
 @Composable
 private fun OnboardingProgressHeader(
-    pagePosition: Float,
     currentStepIndex: Int,
     stepCount: Int,
+    stepTitle: String,
     showBack: Boolean,
+    showLater: Boolean,
     onBack: () -> Unit,
+    onLater: () -> Unit,
 ) {
-    Row(
-        Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        if (showBack) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Previous setup step")
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (showBack) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Previous setup step")
+                }
+            } else {
+                XyluneMark(modifier = Modifier.size(40.dp), contentDescription = null)
             }
-        } else {
-            Spacer(Modifier.size(48.dp))
+            Column(Modifier.weight(1f)) {
+                Text(stepTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Step ${currentStepIndex + 1} of $stepCount",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (showLater) {
+                TextButton(onClick = onLater) { Text("Later") }
+            } else {
+                Spacer(Modifier.size(48.dp))
+            }
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                "Step ${currentStepIndex + 1} of $stepCount",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                repeat(stepCount) { index ->
-                    val fill = setupProgressForSegment(pagePosition, index)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            repeat(stepCount) { index ->
+                val fill = setupProgressForSegment(currentStepIndex.toFloat(), index)
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(4.dp)
+                        .clip(MaterialTheme.shapes.small)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                ) {
                     Box(
                         Modifier
-                            .weight(1f)
-                            .height(4.dp)
-                            .clip(MaterialTheme.shapes.small)
-                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                    ) {
-                        Box(
-                            Modifier
-                                .fillMaxHeight()
-                                .fillMaxWidth(fill)
-                                .background(MaterialTheme.colorScheme.primary),
-                        )
-                    }
+                            .fillMaxHeight()
+                            .fillMaxWidth(fill)
+                            .background(MaterialTheme.colorScheme.primary),
+                    )
                 }
             }
         }
-        Spacer(Modifier.size(48.dp))
     }
 }
 
 @Composable
 private fun WelcomeStep(viewModel: ChatViewModel) {
-    Spacer(Modifier.height(8.dp))
-    XyluneMark(modifier = Modifier.size(96.dp), contentDescription = "Xylune")
+    Spacer(Modifier.height(2.dp))
+    XyluneMark(modifier = Modifier.size(72.dp), contentDescription = "Xylune")
     Text(
-        "Welcome to Xylune",
-        style = MaterialTheme.typography.headlineLarge,
+        "Set up Xylune",
+        style = MaterialTheme.typography.headlineMedium,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onBackground,
         textAlign = TextAlign.Center,
     )
     Text(
-        "Set up only what you need. Xylune works as a private native client, and every choice can be changed later.",
-        style = MaterialTheme.typography.titleMedium,
+        "Choose an appearance, connect a model provider, and optionally enable local tools. You can change every choice later.",
+        style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
     )
@@ -488,10 +503,17 @@ private fun WelcomeStep(viewModel: ChatViewModel) {
         Column {
             OnboardingValueRow(Icons.Outlined.Lock, "Private by design", "Chats, credentials, and tool workspaces stay on this device.")
             OnboardingValueRow(Icons.Outlined.Cloud, "Bring your own models", "Use a ChatGPT account, API provider, or local server.")
-            OnboardingValueRow(Icons.Outlined.Code, "Local tools are optional", "Bundled Python works immediately; Linux requires a separate distribution install.")
+            OnboardingValueRow(Icons.Outlined.Code, "Optional local tools", "Python is bundled; Linux is installed separately only when you choose it.")
         }
     }
     SetupRestoreActions(viewModel)
+    Text(
+        "Starting fresh? Ignore the restore card and tap Continue.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable
@@ -505,7 +527,7 @@ private fun AppearanceStep(
     onMatchLauncherIconToPaletteChanged: (Boolean) -> Unit,
     onAmoledChanged: (Boolean) -> Unit,
 ) {
-    SetupHeading("Make Xylune yours", "Every choice previews immediately across the entire setup flow.")
+    SetupHeading("Choose an appearance", "Changes preview immediately and remain editable in Settings.")
     Text("Brightness", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth())
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         ThemeModeChoice(
@@ -570,7 +592,7 @@ private fun AppearanceStep(
         }
     }
     Text(
-        "The Android dynamic icon uses the real system accent palette and remains multicolored. Changing launcher aliases briefly restarts Xylune after saving the current page, drafts, files, and scroll position.",
+        "Changing launcher aliases briefly restarts Xylune after saving the current setup step, drafts, files, and scroll position.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth(),
@@ -634,7 +656,7 @@ private fun ThemeModeChoice(
 
 @Composable
 private fun PaletteChoice(
-     palette: ColorPalette,
+    palette: ColorPalette,
     preview: app.xylune.chat.ui.theme.PalettePreviewColors,
     selected: Boolean,
     onClick: () -> Unit,
@@ -667,11 +689,11 @@ private fun ProviderStep(
     configuredProviderCount: Int,
 ) {
     SetupHeading(
-        if (configuredProviderCount > 0) "Model access connected" else "Connect a model",
+        if (configuredProviderCount > 0) "Model access connected" else "Connect a model provider",
         if (configuredProviderCount > 0) {
-            "Xylune detected ${providerCountLabel(configuredProviderCount)}. Continue setup or open the provider manager to make changes."
+            "Xylune detected ${providerCountLabel(configuredProviderCount)}. Continue or open the provider manager to make changes."
         } else {
-            "A provider is required only when you send a message. You can enter Xylune first and connect one later."
+            "A provider is needed only when you send a message. You may connect one now or continue and do it later."
         },
     )
     if (configuredProviderCount > 0) {
@@ -705,7 +727,7 @@ private fun ProviderStep(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
-                "The built-in provider catalog is delayed. Setup remains usable and Xylune will keep retrying without trapping you on a spinner.",
+                "The built-in provider catalog is delayed. Setup remains usable and Xylune will keep retrying in the background.",
                 modifier = Modifier.padding(14.dp),
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -745,8 +767,8 @@ private fun ToolsStep(
     onLinuxEnabledChanged: (Boolean) -> Unit,
 ) {
     SetupHeading(
-        "Local tools",
-        "Choose defaults for new chats. Installing Linux is a separate step; this switch does not download a distribution.",
+        "Choose local tools",
+        "These are defaults for new chats. Enabling Linux here does not download anything; installation is a separate, explicit step.",
     )
     SetupToggleCard(
         icon = Icons.Outlined.Code,
@@ -773,7 +795,7 @@ private fun ToolsStep(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("How Linux setup works", fontWeight = FontWeight.SemiBold)
+            Text("Linux installation", fontWeight = FontWeight.SemiBold)
             Text("1. Open the Linux manager and choose Ubuntu, Debian, or Alpine.", style = MaterialTheme.typography.bodySmall)
             Text("2. Review the download, then explicitly start installation.", style = MaterialTheme.typography.bodySmall)
             Text("3. Xylune verifies and extracts it into app-private storage.", style = MaterialTheme.typography.bodySmall)
@@ -885,7 +907,7 @@ private fun ReadyStep(
 ) {
     SetupHeading(
         "Xylune is ready",
-        "Review the actual setup state below. Optional missing pieces remain actionable instead of blocking entry.",
+        "Review the current state. Missing optional pieces do not block entry and remain available in Settings.",
     )
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -909,7 +931,7 @@ private fun ReadyStep(
         }
     }
     Text(
-        "Provider and Linux manager buttons remain available below. Neither is required to inspect Xylune or change settings.",
+        "Use the buttons below to enter Xylune or make a last provider/Linux change.",
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
     )
