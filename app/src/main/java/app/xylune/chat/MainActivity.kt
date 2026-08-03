@@ -171,6 +171,7 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent) {
         if (intent.action == Intent.ACTION_VIEW) {
             intent.data?.let {
+                if (viewModel.handleCloudOAuthRedirect(it)) return
                 viewModel.receivePortableArchive(it)
                 return
             }

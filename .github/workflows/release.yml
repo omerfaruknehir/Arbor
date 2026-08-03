@@ -58,6 +58,8 @@ jobs:
       XYLUNE_TAG: ${{ needs.detect_version.outputs.tag }}
       XYLUNE_SOURCE_REPOSITORY: ${{ github.repository }}
       XYLUNE_SOURCE_COMMIT: ${{ github.sha }}
+      XYLUNE_MICROSOFT_CLIENT_ID: ${{ vars.XYLUNE_MICROSOFT_CLIENT_ID }}
+      XYLUNE_DROPBOX_APP_KEY: ${{ vars.XYLUNE_DROPBOX_APP_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:

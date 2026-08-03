@@ -64,7 +64,7 @@ Xylune is provided **“AS IS”**, without warranties of any kind. Use, modify,
 4. Connect a ChatGPT account, API provider, or local model server.
 5. Start a chat. Optional Python and Linux tools can be prepared later from **Settings → Local tools**.
 
-The public APK is an R8-minified, resource-shrunk **release build**. It intentionally keeps package ID `app.xylune.chat.debug` and Xylune's public reproducible signer so it can update the earlier GitHub debug builds without deleting chats or settings. The Android build is not debuggable, but Xylune's in-app **Developer settings** remain available. Protected production signing switches to the production package ID `app.xylune.chat`.
+The public APK is an R8-minified, resource-shrunk **release build**. It intentionally keeps package ID `app.xylune.chat` and Xylune's public reproducible signer so it can update the earlier GitHub debug builds without deleting chats or settings. The Android build is not debuggable, but Xylune's in-app **Developer settings** remain available. Protected production signing switches to the production package ID `app.xylune.chat`.
 
 Local OpenAI-compatible servers default to `http://127.0.0.1:11434/v1`. On a physical phone, `127.0.0.1` means the phone itself. Xylune permits cleartext HTTP only for loopback and the Android emulator host alias; remote machines require HTTPS.
 

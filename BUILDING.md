@@ -37,7 +37,7 @@ The same ABI folders contain the PRoot launcher, loader, talloc, and libandroid-
 
 ## Public release signing and update compatibility
 
-When no protected release key is configured, the `release` build type uses Xylune's intentionally public reproducible key and package ID `app.xylune.chat.debug`. This keeps the optimized GitHub release APK update-compatible with older GitHub debug APKs and preserves their app data. The build itself is still non-debuggable, minified, and resource-shrunk. Xylune's in-app Developer settings are normal product functionality and remain available.
+When no protected release key is configured, the `release` build type uses Xylune's intentionally public reproducible key and package ID `app.xylune.chat`. This keeps the optimized GitHub release APK update-compatible with older GitHub debug APKs and preserves their app data. The build itself is still non-debuggable, minified, and resource-shrunk. Xylune's in-app Developer settings are normal product functionality and remain available.
 
 The public key is documented in [`ci/README.md`](ci/README.md). It is not suitable for store or production distribution.
 
