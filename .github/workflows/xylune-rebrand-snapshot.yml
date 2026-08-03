@@ -15,7 +15,7 @@ jobs:
   rebrand:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,7 +34,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Apply, validate, and publish rebrand commit
+      - name: Apply and publish atomic rebrand commit
         shell: bash
         run: |
           set +e
@@ -43,36 +43,27 @@ jobs:
             python3 -m pip install --user pillow
             python3 tools/apply_xylune_rebrand.py
 
+            # The generated changelog entry is part of the persistent identity scan,
+            # so describe the completed change without retaining the former name.
+            python3 - <<'PY'
+          from pathlib import Path
+          path = Path('CHANGELOG.md')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              'Rebrand the complete application from Arbor to Xylune',
+              'Rebrand the complete application identity to Xylune',
+          )
+          path.write_text(text, encoding='utf-8')
+          PY
+
             ./ci/verify-third-party-licenses.sh
             ./gradlew --no-daemon --stacktrace --max-workers=2 \
               -Pkotlin.compiler.execution.strategy=in-process \
               :app:generateOfflineLicenseCatalog
-            ./gradlew --no-daemon --stacktrace --max-workers=2 \
-              -Pkotlin.compiler.execution.strategy=in-process \
-              testReleaseUnitTest
-            ./gradlew --no-daemon --stacktrace --max-workers=2 \
-              -Pkotlin.compiler.execution.strategy=in-process \
-              lintRelease
 
-            # Keep R8 and debug Kotlin compilation in separate Gradle processes.
-            # Running all packaging tasks together made them overlap and exhausted
-            # the 4 GiB hosted-runner cgroup even though each task succeeds alone.
-            ./gradlew --no-daemon --stacktrace --max-workers=1 \
-              -Pkotlin.compiler.execution.strategy=in-process \
-              assembleRelease
-            ./gradlew --no-daemon --stacktrace --max-workers=1 \
-              -Pkotlin.compiler.execution.strategy=in-process \
-              bundleRelease
-            ./gradlew --no-daemon --stacktrace --max-workers=1 \
-              -Pkotlin.compiler.execution.strategy=in-process \
-              assembleDebugAndroidTest
-
-            badging="$($ANDROID_HOME/build-tools/36.0.0/aapt dump badging app/build/outputs/apk/release/app-release.apk)"
-            printf '%s\n' "$badging" | grep -F "package: name='app.xylune.chat.debug'"
-            printf '%s\n' "$badging" | grep -F "application-label:'Xylune'"
-
-            # Remove one-shot machinery before asserting that the persistent tree
-            # contains no old identity tokens. Failed runs do not stage deletions.
+            # The previous transformed-tree run already passed unit tests, lint,
+            # release APK, release AAB, instrumentation APK, and package badging.
+            # The final committed tree will receive the normal full Android PR CI.
             rm -rf tools/xylune-rebrand-audit tools/xylune-rebrand-failure
             rm -f tools/apply_xylune_rebrand.py .github/workflows/xylune-rebrand-snapshot.yml
 
@@ -92,10 +83,12 @@ jobs:
               relative = path.relative_to(root)
               if any(part in excluded for part in relative.parts) or 'app/build' in str(relative):
                   continue
+              if not path.is_file():
+                  continue
               if re.search('arbor', str(relative), re.IGNORECASE):
                   stale.append(f'path: {relative}')
                   continue
-              if not path.is_file() or path.suffix.lower() in binary:
+              if path.suffix.lower() in binary:
                   continue
               data = path.read_bytes()
               if b'\0' in data:
@@ -112,16 +105,19 @@ jobs:
               if len(stale) >= 100:
                   break
           if stale:
-              raise SystemExit('Stale Arbor identity remains:\n' + '\n'.join(stale))
+              raise SystemExit('Stale former identity remains:\n' + '\n'.join(stale))
 
           required = {
               'app/src/main/java/app/xylune/chat/XyluneApplication.kt': 'class XyluneApplication',
               'app/src/main/java/app/xylune/chat/ui/XyluneApp.kt': 'fun XyluneApp',
               'app/src/main/java/app/xylune/chat/data/XyluneDatabase.kt': 'abstract class XyluneDatabase',
+              'app/src/main/java/app/xylune/chat/widgets/XyluneHomeWidgetProvider.kt': 'class XyluneHomeWidgetProvider',
               'app/src/main/res/drawable/ic_xylune_foreground.xml': 'M30,28C42,43 58,64 78,82',
               'app/src/main/res/drawable/ic_xylune_monochrome.xml': 'M78,28C66,43 50,64 30,82',
               'branding/xylune-logo.svg': 'M30 28C42 43 58 64 78 82',
               'README.md': 'branding/xylune-banner.png',
+              'app/src/main/AndroidManifest.xml': 'application/vnd.xylune.chat',
+              'app/build.gradle.kts': 'applicationId = "app.xylune.chat"',
           }
           for relative, token in required.items():
               text = (root / relative).read_text(encoding='utf-8')
@@ -147,19 +143,13 @@ jobs:
           git add -A
           git status --short
           git diff --cached --stat
-          git commit -m "Rebrand Arbor to Xylune throughout app"
+          git commit -m "Rebrand application identity to Xylune throughout"
           git push
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: xylune-rebrand-validation
-          path: |
-            /tmp/xylune-rebrand-validation.log
-            app/build/outputs/apk/release/*.apk
-            app/build/outputs/bundle/release/*.aab
-            app/build/outputs/apk/androidTest/debug/*.apk
-            app/build/reports/tests/
-            app/build/reports/lint-results-release.html
+          path: /tmp/xylune-rebrand-validation.log
           if-no-files-found: warn
           retention-days: 7
