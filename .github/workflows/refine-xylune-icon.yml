@@ -1,4 +1,4 @@
-name: Refine Xylune icon
+name: Restore Arbor visuals temporarily
 
 on:
   push:
@@ -18,11 +18,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: refine-xylune-icon
+  group: restore-arbor-visuals
   cancel-in-progress: true
 
 jobs:
-  refine:
+  restore:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -45,25 +45,37 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Refine and validate icon family
+      - name: Restore Arbor visuals and validate
         shell: bash
         run: |
           set -euo pipefail
-          banner_before="$(sha256sum branding/xylune-banner.png | awk '{print $1}')"
+
           python3 tools/refine_xylune_icon.py
-          banner_after="$(sha256sum branding/xylune-banner.png | awk '{print $1}')"
-          test "$banner_before" = "$banner_after"
+
+          # Keep the original repository banner unchanged until a replacement
+          # visual identity is explicitly approved.
+          git checkout origin/main -- branding/arbor-banner.png
+          rm -f branding/xylune-banner.png
+          cmp branding/arbor-banner.png <(git show origin/main:branding/arbor-banner.png)
 
           ./gradlew --no-daemon --stacktrace --max-workers=2 \
             -Pkotlin.compiler.execution.strategy=in-process \
             testReleaseUnitTest lintRelease assembleRelease
 
           # GITHUB_TOKEN cannot publish workflow modifications. Keep this one-shot
-          # workflow unchanged and commit only icon/source asset changes.
+          # workflow unchanged and commit only the restored visual assets.
           git checkout -- .github/workflows
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/res branding/xylune-logo.svg licenses/icons/xylune.svg
+          git add -A \
+            app/src/main/res \
+            branding/arbor-banner.png \
+            branding/xylune-banner.png \
+            branding/xylune-logo.svg \
+            licenses/icons/xylune.svg
+
           git diff --cached --stat
-          git commit -m "Refine Xylune mark from original A strokes"
-          git push origin HEAD:agent/full-xylune-rebrand
+          if ! git diff --cached --quiet; then
+            git commit -m "Keep Arbor icon and banner during Xylune rebrand"
+            git push origin HEAD:agent/full-xylune-rebrand
+          fi
