@@ -1,0 +1,105 @@
+name: Harden Xylune cloud backup
+
+on:
+  push:
+    branches:
+      - agent/finish-cloud-backup
+    paths:
+      - .github/workflows/harden-cloud-backup.yml
+      - tools/harden_cloud_backup.py
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/harden-cloud-backup.yml
+      - tools/harden_cloud_backup.py
+
+permissions:
+  contents: write
+
+concurrency:
+  group: harden-xylune-cloud-backup
+  cancel-in-progress: true
+
+jobs:
+  harden-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/finish-cloud-backup
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply cloud hardening
+        run: python3 tools/harden_cloud_backup.py
+
+      - name: Verify licenses and offline catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./ci/verify-third-party-licenses.sh
+          ./gradlew --no-daemon --stacktrace --max-workers=2 \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            :app:generateOfflineLicenseCatalog
+
+      - name: Run release unit tests
+        shell: bash
+        run: |
+          ./gradlew --no-daemon --stacktrace --max-workers=2 \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            testReleaseUnitTest
+
+      - name: Run release lint
+        shell: bash
+        run: |
+          ./gradlew --no-daemon --stacktrace --max-workers=2 \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            lintRelease
+
+      - name: Assemble optimized release APK
+        shell: bash
+        run: |
+          ./gradlew --no-daemon --stacktrace --max-workers=2 \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            assembleRelease
+
+      - name: Verify release identity and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="app/build/outputs/apk/release/app-release.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$apk" > /tmp/xylune-cloud-hardening-badging.txt
+          grep -F "package: name='app.xylune.chat.debug' versionCode='170' versionName='0.23.1'" /tmp/xylune-cloud-hardening-badging.txt
+          grep -F "application-label:'Xylune'" /tmp/xylune-cloud-hardening-badging.txt
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"
+
+      - name: Commit validated cloud hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout -- .github/workflows
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A app CHANGELOG.md
+          git diff --cached --stat
+          if git diff --cached --quiet; then
+            echo "No cloud hardening changes were produced"
+            exit 1
+          fi
+          git commit -m "Harden Xylune cloud backup transport"
+          git push origin HEAD:agent/finish-cloud-backup
