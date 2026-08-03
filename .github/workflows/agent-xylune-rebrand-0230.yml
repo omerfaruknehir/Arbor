@@ -53,14 +53,17 @@ jobs:
               ':!app/src/main/python/pip/_vendor/**' \
               ':!third_party/**' \
               ':!licenses/texts/**'; then
-            echo 'Old first-party brand identity remains' >&2
+            echo 'Old first-party brand identity remains in tracked content' >&2
             exit 1
           fi
-          find app/src/main/java/app -maxdepth 3 -type d | sort
+          if git ls-files | grep -E '(^|/)(Arbor|arbor|ARBOR)(/|\.|_|-|$)'; then
+            echo 'Old first-party brand identity remains in a tracked path' >&2
+            exit 1
+          fi
+          find app/src/main/java/app/xylune -maxdepth 2 -type d | sort
           grep -nE 'namespace|applicationId|versionCode|versionName' app/build.gradle.kts
           grep -nE 'scheme|xylune' app/src/main/AndroidManifest.xml
           test -d app/src/main/java/app/xylune/chat
-          test ! -e app/src/main/java/app/arbor
           grep -Eq 'namespace[[:space:]]*=[[:space:]]*"app\.xylune\.chat"' app/build.gradle.kts
           grep -Eq 'applicationId[[:space:]]*=[[:space:]]*"app\.xylune\.chat"' app/build.gradle.kts
           grep -Eq 'versionCode[[:space:]]*=[[:space:]]*170' app/build.gradle.kts
