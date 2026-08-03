@@ -54,8 +54,6 @@ jobs:
             python3 -m pip install --user pillow
             python3 tools/apply_xylune_rebrand.py
 
-            # The generated changelog entry is part of the persistent identity scan,
-            # so describe the completed change without retaining the former name.
             python3 - <<'PY'
           from pathlib import Path
           path = Path('CHANGELOG.md')
@@ -72,18 +70,19 @@ jobs:
               -Pkotlin.compiler.execution.strategy=in-process \
               :app:generateOfflineLicenseCatalog
 
-            # A transformed-tree validation run already passed unit tests, lint,
-            # release APK, release AAB, instrumentation APK, and package badging.
-            # The final committed tree receives the normal full Android PR CI.
+            # GITHUB_TOKEN cannot publish workflow-file edits. Restore workflows
+            # here; the repository connector applies their branding edits after
+            # this atomic application/source commit lands.
+            git checkout -- .github/workflows
             rm -rf tools/xylune-rebrand-audit tools/xylune-rebrand-failure
-            rm -f tools/apply_xylune_rebrand.py .github/workflows/xylune-rebrand-snapshot.yml
 
             python3 - <<'PY'
           from pathlib import Path
           import re
 
           root = Path('.')
-          excluded = {'.git', '.gradle', 'build'}
+          excluded_parts = {'.git', '.gradle', 'build'}
+          excluded_files = {Path('tools/apply_xylune_rebrand.py')}
           binary = {
               '.aab', '.apk', '.class', '.dex', '.gif', '.gz', '.ico', '.jar', '.jpeg',
               '.jpg', '.jks', '.keystore', '.pdf', '.png', '.so', '.tar', '.ttf', '.webp',
@@ -92,7 +91,9 @@ jobs:
           stale = []
           for path in sorted(root.rglob('*')):
               relative = path.relative_to(root)
-              if any(part in excluded for part in relative.parts) or 'app/build' in str(relative):
+              if any(part in excluded_parts for part in relative.parts) or 'app/build' in str(relative):
+                  continue
+              if relative in excluded_files or relative.parts[:2] == ('.github', 'workflows'):
                   continue
               if not path.is_file():
                   continue
