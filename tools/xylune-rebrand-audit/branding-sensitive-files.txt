@@ -117,3 +117,9 @@ third_party/licenses/GPL-3.0.txt
 third_party/licenses/LGPL-3.0-or-later.txt
 third_party/licenses/libandroid-shmem-BSD-3-Clause.txt
 third_party/termux-recipes/README.md
+tools/xylune-rebrand-audit/all-files.txt
+tools/xylune-rebrand-audit/arbor-occurrences.json
+tools/xylune-rebrand-audit/branding-sensitive-files.txt
+tools/xylune-rebrand-audit/occurrence-summary.json
+tools/xylune-rebrand-audit/paths-with-arbor.txt
+tools/xylune-rebrand-audit/structure.txt

@@ -910,3 +910,9 @@ third_party/termux-recipes/README.md
 third_party/termux-recipes/libandroid-shmem-build.sh
 third_party/termux-recipes/libtalloc-build.sh
 third_party/termux-recipes/proot-build.sh
+tools/xylune-rebrand-audit/all-files.txt
+tools/xylune-rebrand-audit/arbor-occurrences.json
+tools/xylune-rebrand-audit/branding-sensitive-files.txt
+tools/xylune-rebrand-audit/occurrence-summary.json
+tools/xylune-rebrand-audit/paths-with-arbor.txt
+tools/xylune-rebrand-audit/structure.txt

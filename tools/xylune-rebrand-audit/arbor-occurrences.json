@@ -139,6 +139,14 @@
       {
         "line": 63,
         "text": "          (out / 'arbor-occurrences.json').write_text("
+      },
+      {
+        "line": 90,
+        "text": "              echo \"-- embedded Arbor strings --\""
+      },
+      {
+        "line": 91,
+        "text": "              strings \"$library\" | grep -i arbor || true"
       }
     ]
   },

@@ -234,3 +234,5 @@ branding/arbor-logo.svg
 ci/arbor-debug.keystore
 licenses/components/arbor.json
 licenses/icons/arbor.svg
+tools/xylune-rebrand-audit/arbor-occurrences.json
+tools/xylune-rebrand-audit/paths-with-arbor.txt
