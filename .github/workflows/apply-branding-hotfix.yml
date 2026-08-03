@@ -1,0 +1,104 @@
+name: Apply Xylune branding hotfix
+
+on:
+  push:
+    branches:
+      - fix/cloud-restore-and-icons
+    paths:
+      - tools/apply_xylune_branding.py
+      - .github/workflows/apply-branding-hotfix.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  XYLUNE_SOURCE_REPOSITORY: ${{ github.repository }}
+  XYLUNE_SOURCE_COMMIT: ${{ github.sha }}
+  XYLUNE_MICROSOFT_CLIENT_ID: ${{ vars.XYLUNE_MICROSOFT_CLIENT_ID }}
+  XYLUNE_DROPBOX_APP_KEY: ${{ vars.XYLUNE_DROPBOX_APP_KEY }}
+
+jobs:
+  apply-validate-publish-branch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/cloud-restore-and-icons
+          fetch-depth: 0
+
+      - name: Integrate latest main branding sources
+        run: |
+          git fetch origin main
+          git merge --no-edit origin/main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install deterministic SVG renderer
+        run: python -m pip install --disable-pip-version-check cairosvg==2.7.1 pillow==11.3.0
+
+      - name: Apply approved Xylune and provider artwork
+        run: python tools/apply_xylune_branding.py
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify third-party licenses
+        run: ./ci/verify-third-party-licenses.sh
+
+      - name: Verify offline license catalog
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:generateOfflineLicenseCatalog
+
+      - name: Run release unit tests
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
+
+      - name: Run release lint
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
+
+      - name: Assemble optimized release artifacts
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease bundleRelease assembleDebugAndroidTest
+
+      - name: Verify identity, signature, artwork and restore repair
+        shell: bash
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -F "package: name='app.xylune.chat' versionCode='171' versionName='0.23.2'" /tmp/badging.txt
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+          grep -F 'name="cloud_backups" path="cloud-backups/"' app/src/main/res/xml/file_paths.xml
+          ! grep -R -F 'M40,64C49,60 59,60 68,64' app/src/main/res/drawable app/src/main/res/drawable-v31
+          grep -R -F 'M33.549193,80.863216' app/src/main/res/drawable app/src/main/res/drawable-v31
+          test -s app/src/main/res/drawable-nodpi/ic_google_drive.png
+          test -s app/src/main/res/drawable-nodpi/ic_onedrive.png
+          test -s app/src/main/res/drawable-nodpi/ic_dropbox.png
+          test -s app/src/main/res/drawable-nodpi/ic_nextcloud.png
+          test ! -e app/src/main/res/drawable/ic_google_drive.xml
+          test ! -e app/src/main/res/drawable/ic_onedrive.xml
+          test ! -e app/src/main/res/drawable/ic_dropbox.xml
+          test ! -e app/src/main/res/drawable/ic_nextcloud.xml
+
+      - name: Commit validated branding and restore hotfix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A app branding CHANGELOG.md THIRD_PARTY_NOTICES.md docs/releases
+          if git diff --cached --quiet; then
+            echo "No generated changes to commit"
+          else
+            git commit -m "Apply Xylune branding and official cloud icons"
+          fi
+          git push origin HEAD:fix/cloud-restore-and-icons
