@@ -71,6 +71,11 @@ jobs:
             printf '%s\n' "$badging" | grep -F "package: name='app.xylune.chat.debug'"
             printf '%s\n' "$badging" | grep -F "application-label:'Xylune'"
 
+            # Remove one-shot machinery before asserting that the persistent tree
+            # contains no old identity tokens. Failed runs do not stage deletions.
+            rm -rf tools/xylune-rebrand-audit tools/xylune-rebrand-failure
+            rm -f tools/apply_xylune_rebrand.py .github/workflows/xylune-rebrand-snapshot.yml
+
             python3 - <<'PY'
           from pathlib import Path
           import re
@@ -139,8 +144,6 @@ jobs:
             exit "$status"
           fi
 
-          rm -rf tools/xylune-rebrand-audit tools/xylune-rebrand-failure
-          rm -f tools/apply_xylune_rebrand.py .github/workflows/xylune-rebrand-snapshot.yml
           git add -A
           git status --short
           git diff --cached --stat
