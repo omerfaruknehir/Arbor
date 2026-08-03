@@ -7,6 +7,12 @@ on:
     paths:
       - .github/workflows/refine-xylune-icon.yml
       - tools/refine_xylune_icon.py
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/refine-xylune-icon.yml
+      - tools/refine_xylune_icon.py
 
 permissions:
   contents: write
