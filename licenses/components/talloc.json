@@ -3,7 +3,7 @@
   "name": "talloc",
   "version": "2.4.3",
   "category": "Local tools",
-  "description": "Hierarchical memory allocator linked dynamically by Arbor's packaged PRoot launcher.",
+  "description": "Hierarchical memory allocator linked dynamically by Xylune's packaged PRoot launcher.",
   "projectUrl": "https://talloc.samba.org/",
   "icon": "icons/terminal.svg",
   "coordinates": [],

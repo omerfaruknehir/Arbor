@@ -63,12 +63,12 @@ The overlay now distinguishes:
 - **Long Gradle calls appeared to time out after healthy KSP work.** The outer command runner disconnected and canceled the single-use daemon. Run long gates through a detached log/exit wrapper, then inspect Gradle's real exit code and diagnostics.
 - **Cold Chaquopy merge warned that host Python 3.12 was unavailable.** This only disables host `.pyc` precompilation; it is not an Android packaging failure.
 
-Additional compiler, test, lint, packaging, and verification outcomes for this release are recorded in `Arbor-0.17.27-verification.txt`.
+Additional compiler, test, lint, packaging, and verification outcomes for this release are recorded in `Xylune-0.17.27-verification.txt`.
 
 ### Fastest safe workflow under the 4 GiB build limit
 
 ```bash
-source /mnt/data/android-toolchain/Android-Build-Tools-for-ChatGPT-Arbor-0.5.0/env.sh
+source /mnt/data/android-toolchain/Android-Build-Tools-for-ChatGPT-Xylune-0.5.0/env.sh
 
 # Edit/compile, tests, and lint: two workers.
 gradle --offline --no-daemon --max-workers=2 :app:compileDebugKotlin
@@ -81,22 +81,22 @@ gradle --offline --no-daemon --max-workers=1 :app:assembleDebug
 
 Do not run `clean`, lint, tests, D8, and bundle packaging together. Preserve the project build directory and Gradle cache. Build an AAB only when required. A temporary local source checkpoint may be created before D8, but delete it after the final verified source ZIP and APK exist; never retain a `source-checkpoint` ZIP or checkpoint checksum in the persistent Library.
 
-# Arbor build, profiler, and rendering repair notes
+# Xylune build, profiler, and rendering repair notes
 
-This is Arbor's durable engineering log. Record only observed failures, confirmed root causes, applied fixes, verification commands, and remaining runtime risk. Build success is not device-performance proof.
+This is Xylune's durable engineering log. Record only observed failures, confirmed root causes, applied fixes, verification commands, and remaining runtime risk. Build success is not device-performance proof.
 
 ## 0.17.23: device regression after 0.17.22
 
 ### Problem: 0.17.22 dropped to roughly 30 FPS and the blur looked wrong
 
-**Device observation:** The Galaxy S23+ build was reported at about 30 FPS, and Android's platform Gaussian did not preserve Arbor's previous glass appearance.
+**Device observation:** The Galaxy S23+ build was reported at about 30 FPS, and Android's platform Gaussian did not preserve Xylune's previous glass appearance.
 
 **What 0.17.22 got wrong:**
 
 - `RenderEffect.createBlurEffect` was applied to the entire scrolling viewport.
 - The later top/bottom mask only discarded pixels after the upstream full-resolution blur work had already happened.
 - Android therefore allocated and filtered a full offscreen layer every frame while the chat or page moved.
-- A platform Gaussian is not visually equivalent to Arbor's earlier 0.17.8 three-direction, nine-tap glass kernel.
+- A platform Gaussian is not visually equivalent to Xylune's earlier 0.17.8 three-direction, nine-tap glass kernel.
 
 **Confirmed lesson:** Fewer shader instructions do not automatically mean a faster renderer. Filtered pixel area, offscreen-layer size, memory bandwidth, composition cost, and texture traffic can dominate arithmetic cost.
 
@@ -126,13 +126,13 @@ This is Arbor's durable engineering log. Record only observed failures, confirme
 
 ### Purpose
 
-The ordinary FPS counter says that a frame is slow but cannot attribute the cause. Developer settings now include **Cause profiler**, which adds Android and Arbor-specific attribution while reproducing a problem.
+The ordinary FPS counter says that a frame is slow but cannot attribute the cause. Developer settings now include **Cause profiler**, which adds Android and Xylune-specific attribution while reproducing a problem.
 
 ### Metrics collected
 
 - Choreographer FPS, average/p95/p99 frame interval, jank, and missed-vsync estimate.
 - Android `FrameMetrics` stages: total, input, animation, layout/measure, UI draw/recording, render sync, render command issue, buffer swap, and GPU duration when the device reports it.
-- Arbor blur counters: CPU recording time per blur frame, filtered megapixels per second, source draws per frame, and effect rebuilds per second.
+- Xylune blur counters: CPU recording time per blur frame, filtered megapixels per second, source draws per frame, and effect rebuilds per second.
 - App-root and chat recompositions per second.
 - ART allocation throughput and blocking-GC rate.
 - App CPU, PSS, Java heap, active screen, and refresh rate.
@@ -178,7 +178,7 @@ nohup bash -c './gradlew --offline --daemon :app:compileDebugKotlin > build-comp
 
 ### 3. D8 was OOM-killed at `mergeExtDexDebug`
 
-**Observed failure:** The 4 GiB cgroup killed Gradle while D8 merged Arbor's bundled Python, ML, SQLCipher, and native runtime dependencies. Unit tests had already passed; this was a packaging-memory failure, not a Kotlin-source failure.
+**Observed failure:** The 4 GiB cgroup killed Gradle while D8 merged Xylune's bundled Python, ML, SQLCipher, and native runtime dependencies. Unit tests had already passed; this was a packaging-memory failure, not a Kotlin-source failure.
 
 **Fix:**
 
@@ -221,7 +221,7 @@ nohup bash -c './gradlew --offline --daemon :app:compileDebugKotlin > build-comp
 
 ### 8. Native libraries could not be stripped
 
-**Warning:** Several prebuilt Python, SQLCipher, ML Kit, and Arbor native libraries cannot be stripped in the debug build.
+**Warning:** Several prebuilt Python, SQLCipher, ML Kit, and Xylune native libraries cannot be stripped in the debug build.
 
 **Meaning:** They are packaged unchanged. This is informational unless release-size work requires rebuilding those binaries.
 
@@ -242,14 +242,14 @@ nohup bash -c './gradlew --offline --daemon :app:compileDebugKotlin > build-comp
 ### One-time toolchain setup
 
 ```bash
-cat /mnt/data/toolchain-chunks/Android-Build-Tools-for-ChatGPT-Arbor-0.9.2-2026-07-16.chunk-*.bin \
-  > /mnt/data/Android-Build-Tools-for-ChatGPT-Arbor-0.9.2-2026-07-16.tar.gz
-sha256sum /mnt/data/Android-Build-Tools-for-ChatGPT-Arbor-0.9.2-2026-07-16.tar.gz
+cat /mnt/data/toolchain-chunks/Android-Build-Tools-for-ChatGPT-Xylune-0.9.2-2026-07-16.chunk-*.bin \
+  > /mnt/data/Android-Build-Tools-for-ChatGPT-Xylune-0.9.2-2026-07-16.tar.gz
+sha256sum /mnt/data/Android-Build-Tools-for-ChatGPT-Xylune-0.9.2-2026-07-16.tar.gz
 # Expected: fed46723984f074fa7203fddcd603d09ca55caff8bc9da2e12bbe8bc25ae349d
 mkdir -p /mnt/data/android-build-tools-restored
-tar -xzf /mnt/data/Android-Build-Tools-for-ChatGPT-Arbor-0.9.2-2026-07-16.tar.gz \
+tar -xzf /mnt/data/Android-Build-Tools-for-ChatGPT-Xylune-0.9.2-2026-07-16.tar.gz \
   -C /mnt/data/android-build-tools-restored
-source /mnt/data/android-build-tools-restored/Android-Build-Tools-for-ChatGPT-Arbor-0.5.0/env.sh
+source /mnt/data/android-build-tools-restored/Android-Build-Tools-for-ChatGPT-Xylune-0.5.0/env.sh
 ```
 
 Keep the persistent Gradle home and use `--offline`.
@@ -259,8 +259,8 @@ Keep the persistent Gradle home and use `--offline`.
 ```bash
 ./gradlew --offline --daemon :app:compileDebugKotlin
 ./gradlew --offline --daemon :app:testDebugUnitTest \
-  --tests app.arbor.chat.ui.BackdropBlurTest \
-  --tests app.arbor.chat.ui.PerformanceOverlayTest
+  --tests app.xylune.chat.ui.BackdropBlurTest \
+  --tests app.xylune.chat.ui.PerformanceOverlayTest
 ./gradlew --offline --daemon :app:assembleDebug
 adb install -r -t app/build/outputs/apk/debug/app-debug.apk
 ```
@@ -285,7 +285,7 @@ Build/sign an AAB only when it is actually needed, in a separate process.
 4. Run changed test classes first; run the full suite once before delivery.
 5. Keep dependency and build-script edits to a minimum because they invalidate broad caches.
 6. Keep one daemon during edits; stop it only before memory-heavy final packaging when required.
-7. Do not increase workers blindly. For Arbor's large runtime graph, parallel D8 work can be slower and can trigger cgroup OOM.
+7. Do not increase workers blindly. For Xylune's large runtime graph, parallel D8 work can be slower and can trigger cgroup OOM.
 8. Keep Gradle build cache enabled.
 9. Keep configuration cache disabled until Chaquopy/KSP compatibility is explicitly verified.
 10. Checkpoint the source ZIP before lint/D8/bundle gates.
@@ -331,7 +331,7 @@ Never record a problem as solved before its verification command completes.
 - Android lint: 0 errors, 12 warnings.
 - APK assembly: `BUILD SUCCESSFUL` in 1m 45s.
 - Low-memory D8 configuration completed without `oom_kill`, although cgroup `memory.current` reached approximately 4.29 GB and `memory.events:max` increased while dex merging was active. Keep the one-worker staged build; there is effectively no headroom for parallel final gates.
-- APK identity: `app.arbor.chat.debug`, version code 100, version name `0.17.23-debug`.
+- APK identity: `app.xylune.chat.debug`, version code 100, version name `0.17.23-debug`.
 - APK is zip-aligned and verified with APK Signature Scheme v2 using the existing Android debug certificate.
 - AAB was intentionally not built in this iteration because it was not needed for device profiling and would add another memory-heavy packaging gate.
 - Real-device blur quality and 120 Hz performance remain unverified until installed on the Galaxy S23+.
@@ -363,7 +363,7 @@ Never record a problem as solved before its verification command completes.
 
 ### Conclusion
 
-Two workers are beneficial for cached compilation/resource work, but two-worker APK packaging has virtually no RAM headroom in this container. Do not make 3–5 workers the default merely because the CPUs exist. Arbor bundles Chaquopy, ML Kit, SQLCipher, and large native/runtime graphs; D8 and asset packaging can transiently consume the entire cgroup.
+Two workers are beneficial for cached compilation/resource work, but two-worker APK packaging has virtually no RAM headroom in this container. Do not make 3–5 workers the default merely because the CPUs exist. Xylune bundles Chaquopy, ML Kit, SQLCipher, and large native/runtime graphs; D8 and asset packaging can transiently consume the entire cgroup.
 
 Use this split policy:
 
@@ -374,13 +374,13 @@ Use this split policy:
 
 ### Fast safe helper
 
-Use `scripts/build-fast-safe.sh`. It uses two workers for CPU-friendly stages, one worker for the memory-heavy packaging stage, and supports an explicitly monitored `ARBOR_PACKAGE_WORKERS=2` override.
+Use `scripts/build-fast-safe.sh`. It uses two workers for CPU-friendly stages, one worker for the memory-heavy packaging stage, and supports an explicitly monitored `XYLUNE_PACKAGE_WORKERS=2` override.
 
 ## 0.17.24 device-profile findings — 2026-07-26
 
 ### 0.17.23 profiler falsely blamed the GPU
 
-**Observed device capture:** Galaxy S23+ at a reported 120 Hz showed approximately 98 FPS, 11.0 ms average FrameMetrics total duration, p95 25.0 ms, p99 66.8 ms, 4.0% jank, 2.5 ms GPU duration, 2.2 ms draw, 1.4 ms command issue, 0.7 ms swap, 0.12 ms Arbor blur CPU recording, and roughly two source draws per blur frame.
+**Observed device capture:** Galaxy S23+ at a reported 120 Hz showed approximately 98 FPS, 11.0 ms average FrameMetrics total duration, p95 25.0 ms, p99 66.8 ms, 4.0% jank, 2.5 ms GPU duration, 2.2 ms draw, 1.4 ms command issue, 0.7 ms swap, 0.12 ms Xylune blur CPU recording, and roughly two source draws per blur frame.
 
 **Incorrect result:** `Likely: GPU rendering (blur active)`.
 
@@ -394,13 +394,13 @@ Use `scripts/build-fast-safe.sh`. It uses two workers for CPU-friendly stages, o
 
 **Observed signal:** The profiler reported `src×2.0` on Settings with blur active. The 0.17.23 renderer called `drawContent()` while recording each strip and then called it again for the normal body. On screens with both top and bottom glass, that could become three Compose/display-list traversals per invalidated frame.
 
-**Fix:** Record one unfiltered `GraphicsLayer` source display list per invalidated frame. Draw the normal body from that layer and replay the same layer into the top and bottom filtered strip layers. Arbor-owned profiling now reports source traversals separately from layer replays and capture updates.
+**Fix:** Record one unfiltered `GraphicsLayer` source display list per invalidated frame. Draw the normal body from that layer and replay the same layer into the top and bottom filtered strip layers. Xylune-owned profiling now reports source traversals separately from layer replays and capture updates.
 
 **Expected device signal:** `src×1.0`. Replays can be greater than one because replaying one recorded layer is the intended cheap path.
 
 ### Profiler overlay was allowed to invalidate the app root
 
-**Problem:** `ArborApp` collected the profiler `StateFlow` at the top of the root composable. Every profiler update could recompose the root navigation/drawer host and contaminate the workload being measured.
+**Problem:** `XyluneApp` collected the profiler `StateFlow` at the top of the root composable. Every profiler update could recompose the root navigation/drawer host and contaminate the workload being measured.
 
 **Fix:** Move snapshot collection into a leaf-only `PerformanceOverlayHost`. Profiler text updates now recompose only the overlay subtree.
 
@@ -438,7 +438,7 @@ The target is lower work per frame and lower variance at the system-selected ref
 - Full unit suite: 205 tests across 35 suites, 0 failures, 0 errors, 0 skipped.
 - Android lint: 0 errors, 12 warnings, 1 informational finding.
 - APK assembly completed successfully with one packaging worker; final warm verification was fully up to date in 11 seconds.
-- APK identity: `app.arbor.chat.debug`, version code 101, version name `0.17.24-debug`.
+- APK identity: `app.xylune.chat.debug`, version code 101, version name `0.17.24-debug`.
 - APK is zip-aligned and verifies with APK Signature Scheme v2 using the existing Android debug certificate SHA-256 `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`.
 - Source regression tests reject forced refresh rate, preferred display mode, sustained-performance mode, and PerformanceHintManager clock requests.
 - Real-device 120 Hz performance, battery cost, and final visual quality remain unverified until this APK is tested on the Galaxy S23+.
@@ -452,8 +452,8 @@ The user explicitly requested the 0.17.18 blur feature back. Do not reinterpret 
 
 ### Correct restoration procedure
 
-1. Use `Arbor-0.17.18-source.zip` as the authoritative blur reference.
-2. Restore `app/src/main/java/app/arbor/chat/ui/BackdropBlur.kt` and its matching `BackdropBlurTest.kt`.
+1. Use `Xylune-0.17.18-source.zip` as the authoritative blur reference.
+2. Restore `app/src/main/java/app/xylune/chat/ui/BackdropBlur.kt` and its matching `BackdropBlurTest.kt`.
 3. Preserve the exact shader source, uniforms, three chained RuntimeShader RenderEffects, sample activation rules, panel masks, overlay gradients, edge-softness curve, radii, and axis constants.
 4. Keep later unrelated fixes and developer-profiler infrastructure.
 5. Profiler hooks may surround the renderer, but must not change shader math, sample locations, effect order, panel geometry, resolution, or quality.
@@ -479,7 +479,7 @@ This is an exact visual/behavioral restoration, not the later strip optimization
 - Full unit suite: 200 tests across 35 suites; 0 failures, 0 errors, 0 skipped.
 - Lint: 0 errors, 12 warnings, 1 informational finding.
 - APK assembly: successful with one packaging worker under the 4 GiB cgroup.
-- APK identity: `app.arbor.chat.debug`, version code 102, version name `0.17.25-debug`.
+- APK identity: `app.xylune.chat.debug`, version code 102, version name `0.17.25-debug`.
 - APK signing: v2 verified with the existing Android debug certificate SHA-256 `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`.
 - Zip alignment: verified.
 - The restored AGSL shader literal is byte-for-byte identical to the shader in the preserved 0.17.18 source. Only profiler calls surrounding the renderer were added; those calls do not modify shader math or visual output.
@@ -566,7 +566,7 @@ Do not claim 120 FPS, lower power use, or identical real-device blur output unti
 - Full unit suite: 205 tests across 35 suites; 0 failures, 0 errors, 0 skipped.
 - Android lint: 0 errors, 12 warnings, 1 informational finding.
 - APK assembly: successful in 32 seconds with one packaging worker.
-- APK identity: `app.arbor.chat.debug`, version code 103, version name `0.17.26-debug`, min SDK 26, target/compile SDK 35.
+- APK identity: `app.xylune.chat.debug`, version code 103, version name `0.17.26-debug`, min SDK 26, target/compile SDK 35.
 - APK is zip-aligned and verifies with APK Signature Scheme v2.
 - Debug certificate SHA-256 remains `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`.
 - The exact 0.17.18 shader-payload hash regression passed.
@@ -575,14 +575,14 @@ Do not claim 120 FPS, lower power use, or identical real-device blur output unti
 
 ## 0.17.27 verification outcome
 
-- Exact implementation baseline: `Arbor-0.17.26-source.zip`, SHA-256 `cb86c1ae9fb7063e29a8bb031a041e93074b7fbf6e32101c0e8b007fc2e9d724`.
-- `Arbor-0.17.18-source.zip` was consulted only as the visual-history reference; its renderer was not used as the implementation baseline.
+- Exact implementation baseline: `Xylune-0.17.26-source.zip`, SHA-256 `cb86c1ae9fb7063e29a8bb031a041e93074b7fbf6e32101c0e8b007fc2e9d724`.
+- `Xylune-0.17.18-source.zip` was consulted only as the visual-history reference; its renderer was not used as the implementation baseline.
 - Production Kotlin and debug instrumentation Kotlin compiled successfully. The moving-backdrop visual stress scene compiled, but no emulator or physical device was connected, so no screenshot claim is made.
 - Focused blur/profiler/compatibility tests passed.
 - Full unit suite: 213 tests across 36 suites; 0 failures, 0 errors, 0 skipped.
 - Android lint: 0 errors, 12 warnings, 1 informational finding.
 - APK assembly: successful with one packaging worker. The revised follow-up build required stopping the retained test/lint daemon before the single-use packaging JVM; the final run completed without an OOM kill.
-- APK identity: `app.arbor.chat.debug`, version code 104, version name `0.17.27-debug`, min SDK 26, target/compile SDK 35.
+- APK identity: `app.xylune.chat.debug`, version code 104, version name `0.17.27-debug`, min SDK 26, target/compile SDK 35.
 - APK zip alignment: verified.
 - APK Signature Scheme v2: verified. The signing certificate is unchanged from 0.17.26: `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`.
 - Room schemas and the main manifest are unchanged. Application/package identifiers, preference keys, migrations, and signing compatibility are therefore preserved.
@@ -593,7 +593,7 @@ Do not claim 120 FPS, lower power use, or identical real-device blur output unti
 
 1. **Focused-test source was compiled while assertions were still being edited.** The resulting malformed string diagnostics were test-source failures, not renderer failures. Final literal assertions compile and pass.
 2. **Two integer size checks incorrectly used a floating-point delta overload.** They were replaced with explicit ±1 pixel tolerance checks.
-3. **A compatibility test looked for `graphicsLayer` in `ArborApp.kt`.** The actual 0.17.26 isolation correctly lives in `InteractiveNavigationDrawer.kt` and `PredictiveNavigation.kt`; the test now checks the real ownership boundary rather than forcing code into the root.
+3. **A compatibility test looked for `graphicsLayer` in `XyluneApp.kt`.** The actual 0.17.26 isolation correctly lives in `InteractiveNavigationDrawer.kt` and `PredictiveNavigation.kt`; the test now checks the real ownership boundary rather than forcing code into the root.
 4. **Lint and D8 exceeded short command-wrapper windows.** Detached scripts with log and exit files showed real success. Neither was fixed by increasing memory, workers, or clocks.
 
 ### Remaining device validation
@@ -602,7 +602,7 @@ The build is structurally and statically verified, but visual smoothness, stale-
 
 ### Checkpoint cleanup
 
-The temporary local 0.17.27 checkpoint was deleted after the APK and final source ZIP verified. Persistent Library cleanup moved the remaining Arbor 0.17.25/0.17.26 checkpoint ZIPs and BlurLab 0.1.0–0.1.7 checkpoint ZIP/checksum pairs to Trash. Normal source archives, APKs, verification reports, and release checksums were preserved.
+The temporary local 0.17.27 checkpoint was deleted after the APK and final source ZIP verified. Persistent Library cleanup moved the remaining Xylune 0.17.25/0.17.26 checkpoint ZIPs and BlurLab 0.1.0–0.1.7 checkpoint ZIP/checksum pairs to Trash. Normal source archives, APKs, verification reports, and release checksums were preserved.
 
 ## 0.17.27 follow-up: overlay opacity and symmetric edge softness
 
@@ -639,7 +639,7 @@ A first follow-up `assembleDebug` attempt reset the 4 GiB container even with on
 
 ### Blur discontinuities
 
-The old 22–23% jump was caused by changing pyramid depth at a radius threshold. Even with identical shader text, changing level count changes reconstruction bandwidth and therefore the visible kernel. Arbor 0.18.0 keeps the bounded three-level pyramid fixed and varies the Kawase tap offset continuously.
+The old 22–23% jump was caused by changing pyramid depth at a radius threshold. Even with identical shader text, changing level count changes reconstruction bandwidth and therefore the visible kernel. Xylune 0.18.0 keeps the bounded three-level pyramid fixed and varies the Kawase tap offset continuously.
 
 The separate jump between exactly 0% and the first nonzero value came from bypassing the renderer at zero, then exposing a pyramid whose resample passes still had fixed per-level offsets. The corrected renderer keeps the exact-zero bypass, starts the radius-dependent tap offset at zero, and blends the processed backdrop contribution from zero to full strength continuously.
 
@@ -653,14 +653,14 @@ The full 68 dp softness range is retained. The softness profile straddles the no
 
 ### Release identity
 
-Arbor 0.18.0 uses `versionCode 105`, preserves `app.arbor.chat.debug`, and retains the existing debug signing certificate and persistent-data compatibility.
+Xylune 0.18.0 uses `versionCode 105`, preserves `app.xylune.chat.debug`, and retains the existing debug signing certificate and persistent-data compatibility.
 
 ### 0.18.0 verification outcome
 
 - Full unit suite: 36 suites, 215 tests, 0 failures, 0 errors, 0 skipped.
 - Android lint: 0 errors, 12 warnings, 1 informational finding.
 - APK assembly: passed with one worker; 20 seconds Gradle time (21.2 seconds measured wall time) and approximately 1.03 GiB maximum resident memory.
-- APK identity: `app.arbor.chat.debug`, version code 105, version name `0.18.0-debug`, min SDK 26, target/compile SDK 35.
+- APK identity: `app.xylune.chat.debug`, version code 105, version name `0.18.0-debug`, min SDK 26, target/compile SDK 35.
 - ZIP alignment: passed. APK Signature Scheme v2: passed.
 - Debug signing certificate SHA-256 remained `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`, identical to 0.17.27.
 - Main manifest and all exported Room schema files were byte-identical to the 0.17.27 source baseline.
@@ -671,7 +671,7 @@ Arbor 0.18.0 uses `versionCode 105`, preserves `app.arbor.chat.debug`, and retai
 
 ### Why the softened overlay and blur had different shapes
 
-Arbor 0.18.0 still used two independent geometry implementations:
+Xylune 0.18.0 still used two independent geometry implementations:
 
 - blur coverage came from an AGSL signed-distance function for the nominal rounded panel;
 - overlay coverage came from a Compose `bodyPath` plus a vertical fringe gradient clipped by a separately expanded rounded path.
@@ -710,7 +710,7 @@ Do not solve this by adding a gray/white tint, increasing overlay opacity, or sh
 - Android lint: 0 errors, 12 warnings.
 - Debug instrumentation Kotlin compilation: passed.
 - APK assembly: passed with one packaging worker after stopping retained Gradle daemons.
-- Package: `app.arbor.chat.debug`; min SDK 26; target/compile SDK 35.
+- Package: `app.xylune.chat.debug`; min SDK 26; target/compile SDK 35.
 - ZIP alignment and APK Signature Scheme v2 verification: passed.
 - Debug certificate SHA-256 remains `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`, identical to 0.18.0.
 - Runtime AGSL output still requires installation on the Galaxy S23+ for final visual confirmation. Host unit tests and APK verification cannot prove device GPU-driver rendering.
@@ -757,7 +757,7 @@ The fixed pyramid still processes panel-local pixels and records the source once
 
 ### 0.18.2 build-signing failure and actual fix
 
-**Observed failure:** The first assembled 0.18.2 APK verified correctly but had certificate SHA-256 `2102d09c...`, which did not match Arbor's established debug certificate `b9d95df7...`.
+**Observed failure:** The first assembled 0.18.2 APK verified correctly but had certificate SHA-256 `2102d09c...`, which did not match Xylune's established debug certificate `b9d95df7...`.
 
 **Root cause:** The offline toolchain's stable debug keystore existed under its dedicated `android-user-home`, but `ANDROID_USER_HOME` was not exported for the one-worker packaging process. Android Gradle Plugin therefore generated/selected another default debug keystore under the temporary build user home.
 
@@ -798,7 +798,7 @@ For the representative 1080x2340 two-panel test geometry, the revised pipeline p
 - Android lint: 0 errors, 12 warnings, 1 informational finding.
 - Debug instrumentation Kotlin compilation: passed.
 - APK assembly: passed with one packaging worker.
-- Package: `app.arbor.chat.debug`; min SDK 26; target/compile SDK 35.
+- Package: `app.xylune.chat.debug`; min SDK 26; target/compile SDK 35.
 - ZIP alignment and APK Signature Scheme v2 verification: passed.
 - Debug certificate SHA-256 remains `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`, identical to 0.18.2.
 - Main manifest and Room schema files are byte-identical to 0.18.2.
@@ -862,7 +862,7 @@ The representative panel-local pixel calculation remains materially below three 
 - Android lint: 0 errors, 12 warnings, 1 informational finding.
 - Debug instrumentation Kotlin compilation: passed.
 - APK assembly: passed with one packaging worker.
-- Package: `app.arbor.chat.debug`; min SDK 26; target/compile SDK 35.
+- Package: `app.xylune.chat.debug`; min SDK 26; target/compile SDK 35.
 - ZIP alignment and APK Signature Scheme v2 verification: passed.
 - Debug certificate SHA-256 remains `b9d95df7ad0661559341623227cb0cc5218524715af5d7b31af2ecd0e7d577b9`, identical to 0.18.3.
 - Main manifest and all Room schema files are byte-identical to 0.18.3.
@@ -873,7 +873,7 @@ The representative panel-local pixel calculation remains materially below three 
 
 ### Integration shape
 
-`openai-oauth` is a TypeScript SDK/proxy, not an Android library. Arbor therefore implements the documented protocol natively in Kotlin instead of bundling Node.js, JavaScript, an extension, a WebView, or a localhost API proxy.
+`openai-oauth` is a TypeScript SDK/proxy, not an Android library. Xylune therefore implements the documented protocol natively in Kotlin instead of bundling Node.js, JavaScript, an extension, a WebView, or a localhost API proxy.
 
 - `OpenAiOAuthManager` owns authorization-code + PKCE login, state verification, token exchange/refresh, encrypted token persistence, account-ID extraction, and account-aware model discovery.
 - The accepted redirect remains `http://localhost:1455/auth/callback`. Listen on both `::1` and `127.0.0.1`; Android browsers may resolve `localhost` to either family.
@@ -892,7 +892,7 @@ The representative panel-local pixel calculation remains materially below three 
 
 ### 0.19.0 validation outcome
 
-- Baseline: Arbor 0.18.4; its `BackdropBlur.kt` is byte-identical in 0.19.0.
+- Baseline: Xylune 0.18.4; its `BackdropBlur.kt` is byte-identical in 0.19.0.
 - Release identity: `versionName 0.19.0`, `versionCode 110`.
 - Full unit suite: 36 suites, 223 tests, 0 failures, 0 errors, 0 skipped.
 - Android lint: 0 errors, 12 warnings, 1 informational finding—the same warning count as 0.18.4.

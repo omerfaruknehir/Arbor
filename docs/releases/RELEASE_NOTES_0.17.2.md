@@ -1,4 +1,4 @@
-# Arbor 0.17.2
+# Xylune 0.17.2
 
 ## Chat scrolling
 
@@ -17,7 +17,7 @@
 
 ## Compatibility and validation
 
-- Package: `app.arbor.chat.debug`
+- Package: `app.xylune.chat.debug`
 - Version: `0.17.2-debug` (`versionCode 79`)
 - Room schema remains 13; no destructive migration is introduced.
 - Existing conversations, settings, credentials, workspaces, application IDs, and debug signing compatibility are preserved.

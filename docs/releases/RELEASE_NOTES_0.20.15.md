@@ -1,6 +1,6 @@
-# Arbor 0.20.15
+# Xylune 0.20.15
 
-Arbor 0.20.15 turns first launch into a complete, recoverable setup assistant instead of a provider-only gate.
+Xylune 0.20.15 turns first launch into a complete, recoverable setup assistant instead of a provider-only gate.
 
 ## Setup and appearance
 

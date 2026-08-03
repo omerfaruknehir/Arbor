@@ -9,6 +9,6 @@ captures/
 app/build/
 *.jks
 *.keystore
-!ci/arbor-debug.keystore
+!ci/xylune-debug.keystore
 
 .kotlin/

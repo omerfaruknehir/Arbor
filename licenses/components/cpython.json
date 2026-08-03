@@ -3,7 +3,7 @@
   "name": "CPython",
   "version": "3.12",
   "category": "Python runtime",
-  "description": "The embedded Python interpreter used by Arbor's local execution tools.",
+  "description": "The embedded Python interpreter used by Xylune's local execution tools.",
   "projectUrl": "https://github.com/python/cpython",
   "icon": "icons/python.svg",
   "coordinates": [],

@@ -1,4 +1,4 @@
-# Arbor 0.16.30
+# Xylune 0.16.30
 
 - Replaced predictive navigation's preview/AnimatedContent hand-off with stable page slots.
 - A predictive destination is composed exactly once and promoted in place on commit.

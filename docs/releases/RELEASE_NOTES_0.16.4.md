@@ -1,4 +1,4 @@
-# Arbor 0.16.4
+# Xylune 0.16.4
 
 - Added a shared automatic syntax-highlighting and lint-decoration pipeline for code shown throughout the app.
 - Code diagnostics now color and underline the affected token in fenced code blocks, tool inputs, generated-source recovery views, diagram source fallbacks, and terminal history.

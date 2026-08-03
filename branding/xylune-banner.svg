@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="480" viewBox="0 0 1600 480" role="img" aria-labelledby="title desc">
+  <title id="title">Xylune</title>
+  <desc id="desc">Xylune wordmark with a geometric X and leaf.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071c2a"/>
+      <stop offset="0.5" stop-color="#0b423c"/>
+      <stop offset="1" stop-color="#315675"/>
+    </linearGradient>
+    <linearGradient id="xstroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#84e0bb"/>
+      <stop offset="1" stop-color="#edfdf6"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".18"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity=".04"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="18"/>
+      <feOffset dy="16"/>
+      <feColorMatrix values="0 0 0 0 0 0 0 0 0 0.08 0 0 0 0 0.12 0 0 0 .45 0"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="1600" height="480" rx="52" fill="url(#bg)"/>
+  <circle cx="1320" cy="80" r="310" fill="#72d8b4" opacity=".08"/>
+  <circle cx="220" cy="520" r="340" fill="#8ea8ff" opacity=".08"/>
+  <g filter="url(#shadow)">
+    <rect x="150" y="80" width="320" height="320" rx="86" fill="url(#glass)" stroke="#ffffff" stroke-opacity=".2"/>
+    <path d="M235 165L385 315" fill="none" stroke="url(#xstroke)" stroke-width="34" stroke-linecap="round"/>
+    <path d="M385 165L235 315" fill="none" stroke="#f5fff9" stroke-width="34" stroke-linecap="round"/>
+    <path d="M358 174C374 133 415 120 445 143C431 184 398 202 358 187Z" fill="#f0c56b"/>
+    <path d="M370 181C397 168 416 151 436 139" fill="none" stroke="#f8fff9" stroke-width="7" stroke-linecap="round"/>
+  </g>
+  <text x="560" y="255" fill="#f4fff9" font-family="Inter,Segoe UI,Roboto,sans-serif" font-size="142" font-weight="700" letter-spacing="-5">Xylune</text>
+  <text x="568" y="322" fill="#cde6df" font-family="Inter,Segoe UI,Roboto,sans-serif" font-size="34" font-weight="500" letter-spacing="3">NATIVE ANDROID · PRIVATE BY DESIGN</text>
+</svg>

@@ -33,31 +33,31 @@ fun repositoryFromGitConfig(): String {
 }
 
 val sourceRepository = normalizeGitHubRepository(
-    providers.gradleProperty("ARBOR_SOURCE_REPOSITORY").orNull
-        ?: System.getenv("ARBOR_SOURCE_REPOSITORY")
+    providers.gradleProperty("XYLUNE_SOURCE_REPOSITORY").orNull
+        ?: System.getenv("XYLUNE_SOURCE_REPOSITORY")
         ?: System.getenv("GITHUB_REPOSITORY")
 ).ifBlank(::repositoryFromGitConfig)
 val sourceCommit = (
-    providers.gradleProperty("ARBOR_SOURCE_COMMIT").orNull
-        ?: System.getenv("ARBOR_SOURCE_COMMIT")
+    providers.gradleProperty("XYLUNE_SOURCE_COMMIT").orNull
+        ?: System.getenv("XYLUNE_SOURCE_COMMIT")
         ?: System.getenv("GITHUB_SHA")
         ?: ""
 ).trim().take(64)
 val microsoftClientId = (
-    providers.gradleProperty("ARBOR_MICROSOFT_CLIENT_ID").orNull
-        ?: System.getenv("ARBOR_MICROSOFT_CLIENT_ID")
+    providers.gradleProperty("XYLUNE_MICROSOFT_CLIENT_ID").orNull
+        ?: System.getenv("XYLUNE_MICROSOFT_CLIENT_ID")
         ?: ""
 ).trim()
 val dropboxAppKey = (
-    providers.gradleProperty("ARBOR_DROPBOX_APP_KEY").orNull
-        ?: System.getenv("ARBOR_DROPBOX_APP_KEY")
+    providers.gradleProperty("XYLUNE_DROPBOX_APP_KEY").orNull
+        ?: System.getenv("XYLUNE_DROPBOX_APP_KEY")
         ?: ""
 ).trim()
 
-val releaseStoreFile = providers.gradleProperty("ARBOR_KEYSTORE_FILE").orNull ?: System.getenv("ARBOR_KEYSTORE_FILE")
-val releaseStorePassword = providers.gradleProperty("ARBOR_KEYSTORE_PASSWORD").orNull ?: System.getenv("ARBOR_KEYSTORE_PASSWORD")
-val releaseKeyAlias = providers.gradleProperty("ARBOR_KEY_ALIAS").orNull ?: System.getenv("ARBOR_KEY_ALIAS")
-val releaseKeyPassword = providers.gradleProperty("ARBOR_KEY_PASSWORD").orNull ?: System.getenv("ARBOR_KEY_PASSWORD")
+val releaseStoreFile = providers.gradleProperty("XYLUNE_KEYSTORE_FILE").orNull ?: System.getenv("XYLUNE_KEYSTORE_FILE")
+val releaseStorePassword = providers.gradleProperty("XYLUNE_KEYSTORE_PASSWORD").orNull ?: System.getenv("XYLUNE_KEYSTORE_PASSWORD")
+val releaseKeyAlias = providers.gradleProperty("XYLUNE_KEY_ALIAS").orNull ?: System.getenv("XYLUNE_KEY_ALIAS")
+val releaseKeyPassword = providers.gradleProperty("XYLUNE_KEY_PASSWORD").orNull ?: System.getenv("XYLUNE_KEY_PASSWORD")
 val hasProtectedReleaseSigning = listOf(
     releaseStoreFile,
     releaseStorePassword,
@@ -216,22 +216,22 @@ val generateOfflineLicenseCatalog by tasks.registering {
 }
 
 android {
-    namespace = "app.arbor.chat"
+    namespace = "app.xylune.chat"
     compileSdk = 36
     buildToolsVersion = "36.0.0"
 
     defaultConfig {
-        applicationId = "app.arbor.chat"
+        applicationId = "app.xylune.chat"
         minSdk = 26
         targetSdk = 36
-        versionCode = 169
-        versionName = "0.22.5"
+        versionCode = 170
+        versionName = "0.23.0"
         buildConfigField("String", "SOURCE_REPOSITORY", "\"$sourceRepository\"")
         buildConfigField("String", "SOURCE_COMMIT", "\"$sourceCommit\"")
         buildConfigField("String", "MICROSOFT_CLIENT_ID", "\"$microsoftClientId\"")
         buildConfigField("String", "DROPBOX_APP_KEY", "\"$dropboxAppKey\"")
         manifestPlaceholders["dropboxOAuthScheme"] =
-            if (dropboxAppKey.isBlank()) "db-arbor-unconfigured" else "db-$dropboxAppKey"
+            if (dropboxAppKey.isBlank()) "db-xylune-unconfigured" else "db-$dropboxAppKey"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -243,7 +243,7 @@ android {
     signingConfigs {
         getByName("debug") {
             // Public test key: reproducible public builds and in-place upgrades.
-            storeFile = rootProject.file("ci/arbor-debug.keystore")
+            storeFile = rootProject.file("ci/xylune-debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"

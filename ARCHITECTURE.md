@@ -1,6 +1,6 @@
 # Architecture
 
-Arbor uses a single-activity Compose UI with an offline-first data layer.
+Xylune uses a single-activity Compose UI with an offline-first data layer.
 
 | Area | Implementation |
 |---|---|
@@ -18,9 +18,9 @@ Arbor uses a single-activity Compose UI with an offline-first data layer.
 | Ubuntu tools | Optional Canonical Ubuntu Base 26.04 rootfs under APK-embedded PRoot; current chat bind-mounted at `/workspace` |
 | Package policy | Shared pip/apt preflight; ask, trusted-list, model-review, or auto-approve decision modes |
 | Agent tools | Native OpenAI-compatible/Anthropic/Gemini calls with fenced fallback; direct Python, Linux commands, DuckDuckGo HTML search, page fetching, and explicit ordered file sending; encrypted tool traces |
-| Script revisions | Conversation workspace `.arbor/runs` records; canonical persisted source, bounded logs/diagnostics, atomic SHA-guarded unified patches, revision history, and source-free reruns |
+| Script revisions | Conversation workspace `.xylune/runs` records; canonical persisted source, bounded logs/diagnostics, atomic SHA-guarded unified patches, revision history, and source-free reruns |
 | Generated contract | `GeneratedContentCapabilityRegistry` is the prompt/validator authority for native UI, Home widgets, charts, diagrams, examples, limits, and repair excerpts |
-| Generated repair | Stable per-block state under `.arbor/generated-repairs`; same-model hidden repair, candidate fingerprints, bounded cycles, native editor fallback, and in-place timeline replacement |
+| Generated repair | Stable per-block state under `.xylune/generated-repairs`; same-model hidden repair, candidate fingerprints, bounded cycles, native editor fallback, and in-place timeline replacement |
 | Revisions | Active-path paging over retained DAG rows; edits and retries supersede rather than delete history |
 | Response ordering | Append-only per-message event timeline; only adjacent non-text events form a Working group |
 
@@ -33,9 +33,9 @@ Optional hybrid token counting runs before provider submission. Anthropic and Ge
 
 Messages contain stable node IDs, parent IDs, and branch IDs. A steering request cancels the current worker, preserves its partial text/reasoning as an interrupted assistant node, then appends the steer as a child user node. Resume reuses the interrupted assistant state; DeepSeek uses prefix continuation where supported, while other providers use a conservative continuation prompt fallback.
 
-An assistant may request one Arbor tool at a time. The worker removes the protocol fence from visible content, executes the enabled tool, records status/input/output on the same assistant node, and feeds the untrusted result back to the model. Up to six consecutive calls are allowed normally; Deep Research permits up to fourteen bounded rounds. Python and Ubuntu steps report changed paths but do not attach them automatically; the assistant must invoke `send_file` for each file it intends to return, and Arbor inserts that card as an ordered timeline event.
+An assistant may request one Xylune tool at a time. The worker removes the protocol fence from visible content, executes the enabled tool, records status/input/output on the same assistant node, and feeds the untrusted result back to the model. Up to six consecutive calls are allowed normally; Deep Research permits up to fourteen bounded rounds. Python and Ubuntu steps report changed paths but do not attach them automatically; the assistant must invoke `send_file` for each file it intends to return, and Xylune inserts that card as an ordered timeline event.
 
-Before executing model Python or Linux source, Arbor writes it to a stable run directory in the existing per-conversation workspace. A failed result carries only bounded logs, a relevant line-numbered excerpt, the current source hash, and its run ID. Subsequent `workspace_read`, `apply_patch`, and `rerun_script` calls reuse that record and appear in the same Working timeline. Environment metadata is allow-listed so credentials and arbitrary environment secrets cannot enter the record.
+Before executing model Python or Linux source, Xylune writes it to a stable run directory in the existing per-conversation workspace. A failed result carries only bounded logs, a relevant line-numbered excerpt, the current source hash, and its run ID. Subsequent `workspace_read`, `apply_patch`, and `rerun_script` calls reuse that record and appear in the same Working timeline. Environment metadata is allow-listed so credentials and arbitrary environment secrets cannot enter the record.
 
 Completed generated fences are independently segmented and validated before rendering. Invalid blocks keep their stable timeline position while `GeneratedBlockRepairCoordinator` requests exactly one corrected fence. Valid text/tables/blocks after an invalid block remain visible; provider failures are distinct from validation failures; repeated candidates are fingerprinted; and exhausted repairs become a safe native failure/editor card. No repair path executes generated code or writes chat list position.
 

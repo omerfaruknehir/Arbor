@@ -1,4 +1,4 @@
-# Arbor 0.16.15
+# Xylune 0.16.15
 
 - Reduced full-screen navigation transition work and shortened page motion to improve menu responsiveness.
 - Reworked streaming auto-follow so token updates no longer repeatedly snap the chat to the bottom.

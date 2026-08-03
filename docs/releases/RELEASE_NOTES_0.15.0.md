@@ -1,4 +1,4 @@
-# Arbor 0.15.0
+# Xylune 0.15.0
 
 This release simplifies the chat composer.
 

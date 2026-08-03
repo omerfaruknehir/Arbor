@@ -1,6 +1,6 @@
-# Arbor 0.13.0
+# Xylune 0.13.0
 
-Arbor 0.13.0 moves common chat controls out of Settings and into the composer.
+Xylune 0.13.0 moves common chat controls out of Settings and into the composer.
 
 ## Composer
 

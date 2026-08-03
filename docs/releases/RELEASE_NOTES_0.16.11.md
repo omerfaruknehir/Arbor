@@ -1,4 +1,4 @@
-# Arbor 0.16.11
+# Xylune 0.16.11
 
 - Fixed IME/keyboard composer geometry so the gradual blur and tint follow the visible composer instead of remaining pinned behind the keyboard.
 - Anchored bottom blur to the measured composer edge, including keyboard-open, attachment, and expanded-composer layouts.

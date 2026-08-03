@@ -1,4 +1,4 @@
-# Arbor 0.19.2
+# Xylune 0.19.2
 
 ## ChatGPT usage & limits
 
@@ -11,7 +11,7 @@ The ChatGPT OAuth provider card now shows the quota data reported for the signed
 - additional named limits such as code review when supplied
 - credit balance or unlimited-credit status when supplied
 
-The result is cached for one minute. Manual refresh is available, and Arbor keeps displaying the last successful snapshot if a refresh temporarily fails.
+The result is cached for one minute. Manual refresh is available, and Xylune keeps displaying the last successful snapshot if a refresh temporarily fails.
 
 ## Package installation progress
 
@@ -28,5 +28,5 @@ APT protocol status lines are stripped from the final readable log.
 ## Compatibility
 
 - Version code: 112
-- Application ID: `app.arbor.chat.debug`
+- Application ID: `app.xylune.chat.debug`
 - Existing Room schemas, app data, provider credentials, chats, workspaces, appearance settings, and debug-signing compatibility are preserved.

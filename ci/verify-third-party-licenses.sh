@@ -62,7 +62,7 @@ done
 
 for abi in arm64-v8a x86_64; do
   talloc_binary="app/src/main/jniLibs/$abi/libtalloc.so"
-  proot_binary="app/src/main/jniLibs/$abi/libarbor_proot.so"
+  proot_binary="app/src/main/jniLibs/$abi/libxylune_proot.so"
   test -f "$talloc_binary"
   test -f "$proot_binary"
   readelf -d "$proot_binary" | grep -F "Shared library: [libtalloc.so]" >/dev/null || {

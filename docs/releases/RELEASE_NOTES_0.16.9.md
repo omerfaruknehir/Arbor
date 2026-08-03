@@ -1,4 +1,4 @@
-# Arbor 0.16.9
+# Xylune 0.16.9
 
 - Increased the maximum gradual interface blur radius from 8 dp to 24 dp.
 - Made the top and bottom chrome tint directional and spatially gradual instead of a uniform translucent rectangle.

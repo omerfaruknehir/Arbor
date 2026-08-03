@@ -1,4 +1,4 @@
-# Arbor 0.16.60
+# Xylune 0.16.60
 
 - Stabilize the chat viewport through every Working-card expansion and collapse instead of correcting only after a manual collapse.
 - Manual expansion pins the card header so the card grows downward; manual collapse keeps the header fixed and still centers very large cards after the animation.

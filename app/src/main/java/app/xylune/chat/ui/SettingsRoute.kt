@@ -1,0 +1,17 @@
+package app.xylune.chat.ui
+
+enum class SettingsRoute(val title: String) {
+    HOME("Settings"),
+    DEFAULTS("New chat defaults"),
+    AUTOMATION("Automation"),
+    MEMORY("Memory"),
+    APPEARANCE("Appearance"),
+    PRIVACY("Privacy & safety"),
+    BACKUP("Backup & transfer"),
+    LOCAL_EXECUTION("Local tools"),
+    DEVELOPER("Developer settings"),
+    SYSTEM_PROMPTS("Custom instructions"),
+    PROVIDERS("Providers & models"),
+    ABOUT("About Xylune"),
+    LICENSES("Licenses & notices"),
+}

@@ -1,4 +1,4 @@
-# Arbor 0.19.14
+# Xylune 0.19.14
 
 This release fixes the remaining native Gaussian scroll flicker by recording one complete frame and replaying that same immutable source normally and through the panel filter, instead of attaching RenderEffect directly to the scrolling root layer.
 

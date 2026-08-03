@@ -10,7 +10,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
-        android:name=".ArborApplication"
+        android:name=".XyluneApplication"
         android:allowBackup="true"
         android:usesCleartextTraffic="false"
         android:networkSecurityConfig="@xml/network_security_config"
@@ -22,7 +22,7 @@
         android:localeConfig="@xml/locales_config"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Arbor"
+        android:theme="@style/Theme.Xylune"
         tools:targetApi="33">
 
         <activity
@@ -44,7 +44,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="arbor" android:host="oauth-complete" />
+                <data android:scheme="xylune" android:host="oauth-complete" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -67,47 +67,47 @@
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="application/vnd.arbor.chat" />
-                <data android:mimeType="application/vnd.arbor.backup" />
+                <data android:mimeType="application/vnd.xylune.chat" />
+                <data android:mimeType="application/vnd.xylune.backup" />
             </intent-filter>
         </activity>
 
         <activity
-            android:name=".LauncherArborActivity"
+            android:name=".LauncherXyluneActivity"
             android:exported="false"
             android:noHistory="true"
             android:process=":launcher_icon"
-            android:theme="@style/Theme.Arbor.Launcher.Arbor" />
+            android:theme="@style/Theme.Xylune.Launcher.Xylune" />
         <activity
             android:name=".LauncherSystemActivity"
             android:exported="false"
             android:noHistory="true"
             android:process=":launcher_icon"
-            android:theme="@style/Theme.Arbor.Launcher.System" />
+            android:theme="@style/Theme.Xylune.Launcher.System" />
         <activity
             android:name=".LauncherGraphiteActivity"
             android:exported="false"
             android:noHistory="true"
             android:process=":launcher_icon"
-            android:theme="@style/Theme.Arbor.Launcher.Graphite" />
+            android:theme="@style/Theme.Xylune.Launcher.Graphite" />
         <activity
             android:name=".LauncherOceanActivity"
             android:exported="false"
             android:noHistory="true"
             android:process=":launcher_icon"
-            android:theme="@style/Theme.Arbor.Launcher.Ocean" />
+            android:theme="@style/Theme.Xylune.Launcher.Ocean" />
         <activity
             android:name=".LauncherVioletActivity"
             android:exported="false"
             android:noHistory="true"
             android:process=":launcher_icon"
-            android:theme="@style/Theme.Arbor.Launcher.Violet" />
+            android:theme="@style/Theme.Xylune.Launcher.Violet" />
         <activity
             android:name=".LauncherSunsetActivity"
             android:exported="false"
             android:noHistory="true"
             android:process=":launcher_icon"
-            android:theme="@style/Theme.Arbor.Launcher.Sunset" />
+            android:theme="@style/Theme.Xylune.Launcher.Sunset" />
 
         <receiver
             android:name=".settings.LauncherIconSwitchReceiver"
@@ -115,12 +115,12 @@
             android:process=":launcher_icon" />
 
          <activity-alias
-            android:name=".LauncherArbor"
+            android:name=".LauncherXylune"
             android:enabled="true"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/app_name"
-            android:targetActivity=".LauncherArborActivity">
+            android:targetActivity=".LauncherXyluneActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -202,7 +202,7 @@
             android:exported="false" />
 
         <receiver
-            android:name=".widgets.ArborHomeWidgetProvider"
+            android:name=".widgets.XyluneHomeWidgetProvider"
             android:exported="false"
             android:label="@string/home_widget_name">
             <intent-filter>
@@ -210,7 +210,7 @@
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/arbor_home_widget_info" />
+                android:resource="@xml/xylune_home_widget_info" />
         </receiver>
 
         <receiver

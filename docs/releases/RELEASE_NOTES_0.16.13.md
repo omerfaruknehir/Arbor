@@ -1,4 +1,4 @@
-# Arbor 0.16.13
+# Xylune 0.16.13
 
 This release repairs the chat/header geometry, makes Deep Research state explicit and per-response, improves source previews, and removes two failure modes in long agent runs and table-link interaction.
 
@@ -11,9 +11,9 @@ This release repairs the chat/header geometry, makes Deep Research state explici
 ## Deep Research
 
 - Research visuals are tied to the immutable generation snapshot, not the chat's current toggle.
-- Arbor no longer guesses Plan/Read/Verify states from search counts.
+- Xylune no longer guesses Plan/Read/Verify states from search counts.
 - Models receive an explicit machine-readable research-state protocol with task-specific steps, factual progress, blocked state, synthesis state, and final report state.
-- When the tool budget is reached, Arbor requests a final no-tools synthesis instead of immediately inserting a “too many tool calls” failure.
+- When the tool budget is reached, Xylune requests a final no-tools synthesis instead of immediately inserting a “too many tool calls” failure.
 
 ## Links and sources
 

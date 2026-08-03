@@ -1,12 +1,12 @@
-# Arbor 0.20.26
+# Xylune 0.20.26
 
 ## Snippets and widgets
 
-- `arbor-snippet/1` is now the only in-chat interactive format.
-- `arbor-widget/1` is now the only Android Home-screen format.
+- `xylune-snippet/1` is now the only in-chat interactive format.
+- `xylune-widget/1` is now the only Android Home-screen format.
 - Both use one general component tree and bounded action language instead of named widget categories.
 - Each pinned widget receives its own explicit network, location, folder, and background-refresh grants.
-- Legacy `arbor-ui`, `ui`, `arbor-form`, `widget`, `mini_app`, specialized widget types, layouts, and storage are intentionally unsupported.
+- Legacy `xylune-ui`, `ui`, `xylune-form`, `widget`, `mini_app`, specialized widget types, layouts, and storage are intentionally unsupported.
 
 ## Google Drive backup
 

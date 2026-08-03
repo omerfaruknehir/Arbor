@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
-    <include domain="sharedpref" path="arbor_app_settings.xml" />
-    <include domain="sharedpref" path="arbor_ui_session.xml" />
-    <include domain="sharedpref" path="arbor_linux_runtime.xml" />
+    <include domain="sharedpref" path="xylune_app_settings.xml" />
+    <include domain="sharedpref" path="xylune_ui_session.xml" />
+    <include domain="sharedpref" path="xylune_linux_runtime.xml" />
 </full-backup-content>

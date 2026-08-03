@@ -3,7 +3,7 @@
   "name": "SQLCipher for Android",
   "version": "4.6.1",
   "category": "Encrypted storage",
-  "description": "Encrypted SQLite runtime used for Arbor's local chat database.",
+  "description": "Encrypted SQLite runtime used for Xylune's local chat database.",
   "projectUrl": "https://github.com/sqlcipher/sqlcipher-android",
   "icon": "icons/sqlcipher.png",
   "coordinates": [

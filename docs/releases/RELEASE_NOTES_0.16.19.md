@@ -1,4 +1,4 @@
-# Arbor 0.16.19
+# Xylune 0.16.19
 
 - Replaced the chat title's list-anchor geometry with the same Material 3 `exitUntilCollapsed` scroll controller used by Settings.
 - Chat title position is now determined only by accumulated nested-scroll distance; there is no message-index inference or separate animation clock.

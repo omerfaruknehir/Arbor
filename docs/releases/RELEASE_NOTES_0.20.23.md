@@ -1,8 +1,8 @@
-# Arbor 0.20.23
+# Xylune 0.20.23
 
 ## Provider models are a real multi-select
 
-After Arbor fetches a provider's model catalog, every model is selected by default. You can search, clear, select all, or choose any subset. Only that subset is stored for the provider.
+After Xylune fetches a provider's model catalog, every model is selected by default. You can search, clear, select all, or choose any subset. Only that subset is stored for the provider.
 
 ## Cloud backups without forced passwords
 
@@ -10,4 +10,4 @@ After Arbor fetches a provider's model catalog, every model is selected by defau
 
 ## Portable chat sharing
 
-Chats can be shared as `.arborchat` files. Visible messages and attachments are the safe default, while reasoning, tool traces, custom prompts, and request metadata are separate opt-in controls. Arbor previews incoming files before importing them as non-destructive copies and can immediately continue the imported chat.
+Chats can be shared as `.xylunechat` files. Visible messages and attachments are the safe default, while reasoning, tool traces, custom prompts, and request metadata are separate opt-in controls. Xylune previews incoming files before importing them as non-destructive copies and can immediately continue the imported chat.

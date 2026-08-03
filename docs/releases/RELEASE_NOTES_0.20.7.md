@@ -1,4 +1,4 @@
-# Arbor 0.20.7
+# Xylune 0.20.7
 
 This release repairs the offline license catalog artwork and adds an explicit
 development disclosure and liability disclaimer.
@@ -18,14 +18,14 @@ development disclosure and liability disclaimer.
 
 ## Development disclosure
 
-The README and the in-app **About Arbor → Licenses & notices** area now state
-that Arbor was made with full vibe coding and AI-assisted coding tools. They
-also state that Arbor is provided **AS IS**, without warranties, that use is at
+The README and the in-app **About Xylune → Licenses & notices** area now state
+that Xylune was made with full vibe coding and AI-assisted coding tools. They
+also state that Xylune is provided **AS IS**, without warranties, that use is at
 the user's own risk, and that the author and contributors are not responsible
 to the maximum extent permitted by applicable law for data loss, device damage,
 account loss, charges, security incidents, or other consequences.
 
-The disclosure is itself bundled offline with the app and repeated on Arbor's
+The disclosure is itself bundled offline with the app and repeated on Xylune's
 own catalog entry.
 
 Existing package identity, debug signer, Room schema, migrations, chats,

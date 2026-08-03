@@ -1,4 +1,4 @@
-# Arbor 0.16.14
+# Xylune 0.16.14
 
 This release includes all 0.16.13 header, Deep Research, source-preview, and table-link fixes, plus an Android 16 native-diagram crash fix.
 

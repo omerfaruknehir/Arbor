@@ -1,24 +1,24 @@
-# Arbor snippets and programmable widgets
+# Xylune snippets and programmable widgets
 
-Contract family: `arbor-generated-content/2`
+Contract family: `xylune-generated-content/2`
 Validator: `2.4.0`
 
 `GeneratedContentCapabilityRegistry` is the prompt-time and validation-time authority. This document is the human-readable skill specification supplied with the app.
 
 ## The hard boundary
 
-Arbor has two generated-program surfaces. They are intentionally incompatible.
+Xylune has two generated-program surfaces. They are intentionally incompatible.
 
 | Surface | Fence | Schema | Lives where | External capabilities |
 |---|---|---|---|---|
-| Snippet | `arbor-snippet` | `arbor-snippet/1` | Inside one chat message | None |
-| Widget | `arbor-widget` | `arbor-widget/1` | Android Home screen | Explicit per-widget grants |
+| Snippet | `xylune-snippet` | `xylune-snippet/1` | Inside one chat message | None |
+| Widget | `xylune-widget` | `xylune-widget/1` | Android Home screen | Explicit per-widget grants |
 
 A **snippet** is a chat interaction: a quiz, short questionnaire, calculator, checklist, configuration form, simple question, or other temporary interactive answer.
 
-A **widget** is an Android launcher program. Arbor shows an installation card inside chat, but the program itself runs outside the app after the user reviews its manifest and pins it.
+A **widget** is an Android launcher program. Xylune shows an installation card inside chat, but the program itself runs outside the app after the user reviews its manifest and pins it.
 
-The removed `arbor-ui`, `ui`, `arbor-form`, `widget`, category-based widget roots, and `mini_app` schema are not parsed or migrated.
+The removed `xylune-ui`, `ui`, `xylune-form`, `widget`, category-based widget roots, and `mini_app` schema are not parsed or migrated.
 
 ## One component language, not widget categories
 
@@ -76,7 +76,7 @@ Theme color tokens are `primary`, `secondary`, `tertiary`, `surface`, `surface_v
 
 ## State, templates, conditions, and actions
 
-State is a flat map of at most 64 primitive values. `{{name}}` inserts a state value. `{{=count*2}}` evaluates Arbor's numeric expression language. `{{urlencode:name}}` percent-encodes a state value for an HTTP query parameter.
+State is a flat map of at most 64 primitive values. `{{name}}` inserts a state value. `{{=count*2}}` evaluates Xylune's numeric expression language. `{{urlencode:name}}` percent-encodes a state value for an HTTP query parameter.
 
 Expressions allow numbers, state identifiers, `+ - * / % ^`, parentheses, and `min`, `max`, `abs`, `round`, and `pow`. There are no loops, imports, user-defined functions, or object access.
 
@@ -89,7 +89,7 @@ Actions are named groups containing ordered operations:
 - `submit` for sending an explicit snippet result back into the chat
 - `refresh` for requesting one widget data source
 - `write_folder` for replacing the file of a declared `folder_text` source after a `read_write` grant
-- `open_app` for opening Arbor from a launcher widget
+- `open_app` for opening Xylune from a launcher widget
 
 Later operations see state changes made by earlier operations in the same group.
 
@@ -97,9 +97,9 @@ Later operations see state changes made by earlier operations in the same group.
 
 Use a snippet only when the interaction belongs in the answer itself. Snippets cannot request network, background work, location, folders, notifications, contacts, camera, microphone, or other Android permissions.
 
-```arbor-snippet
+```xylune-snippet
 {
-  "schema": "arbor-snippet/1",
+  "schema": "xylune-snippet/1",
   "id": "prime_quiz",
   "title": "Prime-number check",
   "state": {"answer": "", "checked": false},
@@ -137,7 +137,7 @@ A widget requires a stable `id`, a general UI tree, named actions, an explicit c
 
 ### Compile before display
 
-Arbor does not present a raw `arbor-widget` block as a usable widget. It first compiles the definition into the typed widget runtime and runs a bounded preflight:
+Xylune does not present a raw `xylune-widget` block as a usable widget. It first compiles the definition into the typed widget runtime and runs a bounded preflight:
 
 1. Parse and validate the complete schema and capability graph.
 2. Seed representative location/folder values, then execute public HTTP JSON sources in dependency order.
@@ -150,7 +150,7 @@ Only a candidate that passes this cycle is shown with its install/preview card. 
 
 ### Capability manifest
 
-Each capability has a user-facing `reason`. Arbor rejects a data source unless its matching capability is present, then asks the user to grant it for that pinned widget instance.
+Each capability has a user-facing `reason`. Xylune rejects a data source unless its matching capability is present, then asks the user to grant it for that pinned widget instance.
 
 - `network`: exact HTTPS origins only, for example `https://api.open-meteo.com`. No wildcards, path grants, embedded credentials, or private/local IPs. HTTPS redirects are followed for at most five hops only when every destination origin is explicitly declared.
 - `location`: `approximate` or `precise`; the Android runtime permission must still exist when the widget refreshes.
@@ -167,9 +167,9 @@ A widget that requests no capabilities remains fully local.
 
 Location and folder sources run before HTTP sources, so their state can safely parameterize an allowed URL.
 
-```arbor-widget
+```xylune-widget
 {
-  "schema": "arbor-widget/1",
+  "schema": "xylune-widget/1",
   "id": "local_weather",
   "title": "Weather",
   "description": "Live temperature for the current area",
@@ -221,11 +221,11 @@ Network grants expose the device IP address to only the listed origin. Location 
 
 ## Model capability delivery
 
-Arbor injects an always-on compact widget manifest into the system context and selects the full schema from up to sixteen recent conversation messages. This preserves capability awareness across follow-ups and multilingual requests instead of relying only on the latest user sentence.
+Xylune injects an always-on compact widget manifest into the system context and selects the full schema from up to sixteen recent conversation messages. This preserves capability awareness across follow-ups and multilingual requests instead of relying only on the latest user sentence.
 
 Generated widgets should be glanceable, honest about unavailable live data, usable when resized, and limited to a small set of meaningful launcher actions. The compiler enforces readable launcher typography (normally 15sp+, supporting text 13sp+, primary metrics around 28–32sp), bounded rows/actions, and representative resize checks before display. The chat install card provides an interactive local preview, grant progress, grouped origin approval, clearer launcher feedback, and per-instance permission explanations. The launcher widget uses a dedicated refresh affordance and avoids drawing duplicate action controls into the bitmap.
 ## Native compiler tool protocol
 
-Tool-capable models receive a native `compile_widget` function. A candidate is passed as the complete JSON `source` argument without a Markdown fence. Arbor returns `arbor-widget-compiler-result/1` with `success`, the active contract version, a source SHA-256, bounded structured diagnostics, and an exact next instruction.
+Tool-capable models receive a native `compile_widget` function. A candidate is passed as the complete JSON `source` argument without a Markdown fence. Xylune returns `xylune-widget-compiler-result/1` with `success`, the active contract version, a source SHA-256, bounded structured diagnostics, and an exact next instruction.
 
-The model must keep failed candidates inside tool calls, replace the complete source, and call the compiler again. It may emit an `arbor-widget` fence only after `success=true`, using the exact source from the successful call (or `compiledSource` when the compiler supplies a normalized replacement). Models without native tool support continue through the post-generation compiler and repair fallback.
+The model must keep failed candidates inside tool calls, replace the complete source, and call the compiler again. It may emit an `xylune-widget` fence only after `success=true`, using the exact source from the successful call (or `compiledSource` when the compiler supplies a normalized replacement). Models without native tool support continue through the post-generation compiler and repair fallback.

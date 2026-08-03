@@ -1,6 +1,6 @@
-# Arbor third-party runtime notices
+# Xylune third-party runtime notices
 
-Arbor embeds the Android launcher components below so its target-SDK 36 app can start a selected user-space Linux tooling environment without executing downloaded Android code. Linux root filesystems are **not** bundled in the APK: Arbor downloads the selected Ubuntu 26.04 archive from Canonical, Debian 13 PRoot-Distro artifact from Termux, or Alpine 3.24.1 minirootfs from Alpine Linux, and verifies a pinned published SHA-256 before extraction.
+Xylune embeds the Android launcher components below so its target-SDK 36 app can start a selected user-space Linux tooling environment without executing downloaded Android code. Linux root filesystems are **not** bundled in the APK: Xylune downloads the selected Ubuntu 26.04 archive from Canonical, Debian 13 PRoot-Distro artifact from Termux, or Alpine 3.24.1 minirootfs from Alpine Linux, and verifies a pinned published SHA-256 before extraction.
 
 ## PRoot (Termux fork)
 
@@ -11,7 +11,7 @@ Arbor embeds the Android launcher components below so its target-SDK 36 app can 
 - Package SHA-256: `59ace3b02894a9b87348eb5ccf246ed52ec64465021839422a151d7128acfe97` (aarch64), `98f30502dcc3c455ed5562e7fe0b8c04619b2b08633b3701a7750a86c6287e5d` (x86_64)
 - Corresponding source: `third_party/sources/termux-proot-v5.1.107.84.zip` (`a44ddbf18bc72c9780d56948b03aeda6d285392503ece0cae17cfc02e7bc7928`)
 
-Arbor's packaged launcher changes the dynamic dependency string `libtalloc.so.2` to `libtalloc.so` so Android's APK native-library extractor will install it. No PRoot program logic is changed. The original Termux build recipe is included under `third_party/termux-recipes/`.
+Xylune's packaged launcher changes the dynamic dependency string `libtalloc.so.2` to `libtalloc.so` so Android's APK native-library extractor will install it. No PRoot program logic is changed. The original Termux build recipe is included under `third_party/termux-recipes/`.
 
 ## talloc
 
@@ -24,7 +24,7 @@ Arbor's packaged launcher changes the dynamic dependency string `libtalloc.so.2`
 The exact upstream archive's `LICENSE`, `talloc.c`, and `talloc.h` identify the
 library as LGPL-3.0-or-later. The retained historical Termux recipe labels the
 whole source package GPL-3.0 because the archive also contains GPL-only
-ancillary Python/test material; that material is not part of Arbor's packaged
+ancillary Python/test material; that material is not part of Xylune's packaged
 `libtalloc.so`. The GNU GPL v3 text remains alongside the LGPL v3 text because
 LGPL v3 sections 3 and 4 require distributors of linked object code to
 accompany it with both documents. This does not relicense talloc as GPL-3.0.
@@ -41,7 +41,7 @@ Verified native-source license texts remain under `third_party/licenses/`.
 The build-validated `licenses/` catalog combines those native notices with
 Android and Python runtime notices, local icons, descriptions, official source
 links, SPDX classifications where applicable, and complete license documents.
-It is generated into the APK for the offline **About Arbor → Licenses &
+It is generated into the APK for the offline **About Xylune → Licenses &
 notices** screen.
 
 ## Ubuntu Base 26.04
@@ -54,7 +54,7 @@ Ubuntu, Debian, or Alpine packages installed later remain subject to their indiv
 
 ## OpenAI OAuth compatibility implementation
 
-Arbor 0.19.0 includes a clean-room Kotlin/Android implementation interoperable with
+Xylune 0.19.0 includes a clean-room Kotlin/Android implementation interoperable with
 `EvanZhouDev/openai-oauth`, based on its documented OAuth and Codex transport behavior.
 The upstream project is Copyright 2026 Evan Zhou and OpenAI OAuth contributors and is
 licensed under the Apache License, Version 2.0. No JavaScript package or browser extension

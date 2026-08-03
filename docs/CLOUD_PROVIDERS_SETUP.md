@@ -1,6 +1,6 @@
 # Cloud provider setup
 
-Arbor supports six cloud paths:
+Xylune supports six cloud paths:
 
 1. Android's scoped folder picker
 2. Google Drive `appDataFolder`
@@ -15,8 +15,8 @@ No provider refresh token, user password, S3 access key, or storage secret belon
 
 Two provider values are public application identifiers and are embedded in the APK. Configure them as **Repository variables**, not secrets:
 
-- `ARBOR_MICROSOFT_CLIENT_ID`
-- `ARBOR_DROPBOX_APP_KEY`
+- `XYLUNE_MICROSOFT_CLIENT_ID`
+- `XYLUNE_DROPBOX_APP_KEY`
 
 Repository path: **Settings → Secrets and variables → Actions → Variables**.
 
@@ -29,10 +29,10 @@ The repository owner must create or select one Google Cloud project:
 1. Enable Google Drive API.
 2. Configure the OAuth consent screen.
 3. Create an Android OAuth client for every officially distributed package/signing pair.
-4. Register the exact package and SHA-1 shown by Arbor's diagnostic card.
+4. Register the exact package and SHA-1 shown by Xylune's diagnostic card.
 5. Keep the requested scope limited to `https://www.googleapis.com/auth/drive.appdata`.
 
-The normal public GitHub release currently uses package `app.arbor.chat.debug`. Protected production releases use `app.arbor.chat` and need their private release certificate SHA-1 registered separately in the same Cloud project.
+The normal public GitHub release currently uses package `app.xylune.chat.debug`. Protected production releases use `app.xylune.chat` and need their private release certificate SHA-1 registered separately in the same Cloud project.
 
 Google Android OAuth clients have no client secret to embed.
 
@@ -42,11 +42,11 @@ Create one Microsoft Entra app registration:
 
 1. Choose supported account types. For personal OneDrive plus work/school accounts, allow organizational directories and personal Microsoft accounts.
 2. Add the Microsoft Graph delegated permission `Files.ReadWrite.AppFolder`.
-3. Add the Android platform using Arbor's package name and signature hash. Arbor shows the exact `msauth://...` redirect URI in the provider card.
+3. Add the Android platform using Xylune's package name and signature hash. Xylune shows the exact `msauth://...` redirect URI in the provider card.
 4. Enable public-client/native flows.
-5. Put the Application (client) ID in repository variable `ARBOR_MICROSOFT_CLIENT_ID`.
+5. Put the Application (client) ID in repository variable `XYLUNE_MICROSOFT_CLIENT_ID`.
 
-Arbor uses Authorization Code + PKCE and requests `offline_access`; do not create or embed a client secret.
+Xylune uses Authorization Code + PKCE and requests `offline_access`; do not create or embed a client secret.
 
 ## Dropbox
 
@@ -55,9 +55,9 @@ Create one scoped Dropbox API app:
 1. Choose **App folder** access, not Full Dropbox.
 2. Enable `account_info.read`, `files.metadata.read`, `files.content.read`, and `files.content.write`.
 3. Add redirect URI `db-APP_KEY://2/token`, replacing `APP_KEY` with the app key.
-4. Put the app key in repository variable `ARBOR_DROPBOX_APP_KEY`.
+4. Put the app key in repository variable `XYLUNE_DROPBOX_APP_KEY`.
 
-Arbor uses Authorization Code + PKCE with refresh tokens. A Dropbox app secret is not used by the Android app.
+Xylune uses Authorization Code + PKCE with refresh tokens. A Dropbox app secret is not used by the Android app.
 
 ## Nextcloud / WebDAV
 
@@ -70,10 +70,10 @@ No developer project or repository variable is required. Each user enters:
 A typical Nextcloud URL is:
 
 ```text
-https://cloud.example.com/remote.php/dav/files/USERNAME/Arbor/
+https://cloud.example.com/remote.php/dav/files/USERNAME/Xylune/
 ```
 
-Arbor refuses unencrypted HTTP endpoints and stores credentials in encrypted local preferences.
+Xylune refuses unencrypted HTTP endpoints and stores credentials in encrypted local preferences.
 
 ## S3-compatible storage
 
