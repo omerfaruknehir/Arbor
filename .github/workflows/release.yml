@@ -103,13 +103,23 @@ jobs:
         shell: bash
         run: "$ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk"
 
-      - name: Prepare release assets
+      - name: Prepare fixed release asset set
         shell: bash
         run: |
+          set -euo pipefail
+          rm -rf release
           mkdir -p release
+
           apk_asset="Xylune-${XYLUNE_VERSION}-release.apk"
+          aab_asset="Xylune-${XYLUNE_VERSION}-release.aab"
+          source_zip_asset="Xylune-${XYLUNE_VERSION}-source.zip"
+          source_tar_asset="Xylune-${XYLUNE_VERSION}-source.tar.gz"
+          manifest_asset="Xylune-${XYLUNE_VERSION}-release.json"
+          checksum_asset="Xylune-${XYLUNE_VERSION}-SHA256.txt"
+
           cp app/build/outputs/apk/release/app-release.apk "release/$apk_asset"
-          cp app/build/outputs/bundle/release/app-release.aab "release/Xylune-${XYLUNE_VERSION}-release.aab"
+          cp app/build/outputs/bundle/release/app-release.aab "release/$aab_asset"
+
           apk_sha256="$(sha256sum "release/$apk_asset" | awk '{print $1}')"
           cert_sha256="$(
             "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "release/$apk_asset" \
@@ -122,7 +132,8 @@ jobs:
               | head -n 1
           )"
           version_code="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
-          export apk_asset apk_sha256 cert_sha256 package_name version_code
+          export apk_asset apk_sha256 cert_sha256 package_name version_code manifest_asset
+
           python3 - <<'PY'
           import json
           import os
@@ -141,39 +152,104 @@ jobs:
               "signingCertificateSha256": os.environ["cert_sha256"],
               "sourceCommit": os.environ["GITHUB_SHA"],
           }
-          Path(f"release/Xylune-{version}-release.json").write_text(
+          Path("release", os.environ["manifest_asset"]).write_text(
               json.dumps(manifest, indent=2, sort_keys=True) + "\n"
           )
           PY
+
           git archive --format=zip --prefix="Xylune-${XYLUNE_VERSION}/" \
-            -o "release/Xylune-${XYLUNE_VERSION}-source.zip" "$GITHUB_SHA"
+            -o "release/$source_zip_asset" "$GITHUB_SHA"
           git archive --format=tar --prefix="Xylune-${XYLUNE_VERSION}/" "$GITHUB_SHA" \
-            | gzip -n > "release/Xylune-${XYLUNE_VERSION}-source.tar.gz"
+            | gzip -n > "release/$source_tar_asset"
+
           (
             cd release
-            sha256sum * > "Xylune-${XYLUNE_VERSION}-SHA256.txt"
+            sha256sum \
+              "$apk_asset" \
+              "$aab_asset" \
+              "$source_zip_asset" \
+              "$source_tar_asset" \
+              "$manifest_asset" \
+              > "$checksum_asset"
           )
+
+          assets=(
+            "$apk_asset"
+            "$aab_asset"
+            "$source_zip_asset"
+            "$source_tar_asset"
+            "$manifest_asset"
+            "$checksum_asset"
+          )
+          mapfile -t actual_assets < <(find release -maxdepth 1 -type f -printf '%f\n' | sort)
+          mapfile -t expected_assets < <(printf '%s\n' "${assets[@]}" | sort)
+          if [[ ${#actual_assets[@]} -ne 6 ]]; then
+            printf 'Expected exactly 6 release assets, found %d:\n' "${#actual_assets[@]}" >&2
+            printf '  %s\n' "${actual_assets[@]}" >&2
+            exit 1
+          fi
+          diff -u \
+            <(printf '%s\n' "${expected_assets[@]}") \
+            <(printf '%s\n' "${actual_assets[@]}")
 
       - uses: actions/upload-artifact@v4
         with:
           name: Xylune-${{ env.XYLUNE_TAG }}-Android-release
           if-no-files-found: error
-          path: release/*
+          path: |
+            release/Xylune-${{ env.XYLUNE_VERSION }}-release.apk
+            release/Xylune-${{ env.XYLUNE_VERSION }}-release.aab
+            release/Xylune-${{ env.XYLUNE_VERSION }}-source.zip
+            release/Xylune-${{ env.XYLUNE_VERSION }}-source.tar.gz
+            release/Xylune-${{ env.XYLUNE_VERSION }}-release.json
+            release/Xylune-${{ env.XYLUNE_VERSION }}-SHA256.txt
 
-      - name: Publish GitHub Release
+      - name: Publish six assets in canonical order
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           notes="docs/releases/RELEASE_NOTES_${XYLUNE_VERSION}.md"
           if [[ ! -f "$notes" ]]; then
             notes="CHANGELOG.md"
           fi
-          if gh release view "$XYLUNE_TAG" >/dev/null 2>&1; then
-            gh release upload "$XYLUNE_TAG" release/* --clobber
-          else
-            gh release create "$XYLUNE_TAG" release/* \
-              --target "$GITHUB_SHA" \
-              --title "Xylune ${XYLUNE_VERSION}" \
-              --notes-file "$notes"
+
+          assets=(
+            "Xylune-${XYLUNE_VERSION}-release.apk"
+            "Xylune-${XYLUNE_VERSION}-release.aab"
+            "Xylune-${XYLUNE_VERSION}-source.zip"
+            "Xylune-${XYLUNE_VERSION}-source.tar.gz"
+            "Xylune-${XYLUNE_VERSION}-release.json"
+            "Xylune-${XYLUNE_VERSION}-SHA256.txt"
+          )
+
+          gh release create "$XYLUNE_TAG" \
+            --draft \
+            --target "$GITHUB_SHA" \
+            --title "Xylune ${XYLUNE_VERSION}" \
+            --notes-file "$notes"
+
+          for asset in "${assets[@]}"; do
+            gh release upload "$XYLUNE_TAG" "release/$asset"
+          done
+
+          release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${XYLUNE_TAG}" --jq '.id')"
+          mapfile -t remote_assets < <(
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets?per_page=100" \
+              --jq '.[].name'
+          )
+          if [[ ${#remote_assets[@]} -ne 6 ]]; then
+            printf 'Refusing to publish: expected 6 remote assets, found %d.\n' "${#remote_assets[@]}" >&2
+            exit 1
           fi
+          for index in "${!assets[@]}"; do
+            if [[ "${remote_assets[$index]}" != "${assets[$index]}" ]]; then
+              printf 'Refusing to publish: asset %d is %s, expected %s.\n' \
+                "$((index + 1))" "${remote_assets[$index]}" "${assets[$index]}" >&2
+              exit 1
+            fi
+          done
+
+          gh release edit "$XYLUNE_TAG" --draft=false
