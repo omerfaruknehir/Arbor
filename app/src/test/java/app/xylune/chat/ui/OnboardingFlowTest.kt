@@ -1,7 +1,7 @@
 package app.xylune.chat.ui
 
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -41,15 +41,15 @@ class OnboardingFlowTest {
         assertFalse(source.contains("ColorPalette.SYSTEM -> MaterialTheme.colorScheme.tertiary"))
         assertTrue(source.contains("Choose a Linux distribution"))
         assertTrue(source.contains("Choose and install a distribution"))
-        assertTrue(source.contains("this switch does not download a distribution"))
-        assertTrue(source.contains("Exit setup for now"))
-        assertTrue(source.contains("HorizontalPager("))
-        assertTrue(source.contains("animateScrollToPage"))
-        assertTrue(source.contains("pagerState.currentPage to pagerState.currentPageOffsetFraction"))
-        assertTrue(source.contains("scrollToPage(initialPage, initialOffset)"))
+        assertTrue(source.contains("does not download anything"))
+        assertTrue(source.contains("TextButton(onClick = onLater)"))
+        assertTrue(source.contains("PredictiveNavigationHost("))
+        assertTrue(source.contains("label = \"XyluneSetupNavigation\""))
+        assertTrue(source.contains("backTarget = steps.getOrNull(currentPage - 1)"))
         assertTrue(source.contains("verticalScroll(pageScrollStates[page])"))
-        assertTrue(source.contains("setupProgressForSegment(pagePosition, index)"))
-        assertTrue(source.contains("BackHandler(enabled = currentPage > 0)"))
+        assertTrue(source.contains("setupProgressForSegment(currentStepIndex.toFloat(), index)"))
+        assertFalse(source.contains("HorizontalPager("))
+        assertFalse(source.contains("BackHandler(enabled = currentPage > 0)"))
     }
 
     @Test
@@ -76,7 +76,7 @@ class OnboardingFlowTest {
     }
 
     @Test
-    fun `setup progress maps continuously across swipes and animations`() {
+    fun `setup progress maps continuously`() {
         assertEquals(1f, setupProgressForSegment(0f, 0), 0f)
         assertEquals(0f, setupProgressForSegment(0f, 1), 0f)
         assertEquals(0.35f, setupProgressForSegment(0.35f, 1), 0.0001f)
@@ -116,7 +116,6 @@ class OnboardingFlowTest {
         assertFalse(terminal.contains("installUbuntu"))
         assertFalse(terminal.contains("removeUbuntu"))
     }
-
 
     @Test
     fun `provider detours return to the persisted setup step`() {
