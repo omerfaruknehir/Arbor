@@ -10,7 +10,7 @@
         </aapt:attr>
     </path>
     <path android:fillColor="@android:color/transparent" android:strokeWidth="11"
-        android:strokeLineCap="round" android:pathData="M30,28C42,43 58,64 78,82">
+        android:strokeLineCap="round" android:pathData="M28,82C38,66 70,43 80,27">
         <aapt:attr name="android:strokeColor">
             <gradient android:type="linear" android:startX="27" android:startY="84"
                 android:endX="55" android:endY="25"
@@ -18,8 +18,8 @@
         </aapt:attr>
     </path>
     <path android:fillColor="@android:color/transparent" android:strokeColor="#FFF8FF"
-        android:strokeWidth="11" android:strokeLineCap="round" android:pathData="M78,28C66,43 50,64 30,82" />
+        android:strokeWidth="11" android:strokeLineCap="round" android:pathData="M28,27C38,43 70,66 80,82" />
     <path android:fillColor="@android:color/transparent" android:strokeColor="#FFB4A9"
-        android:strokeWidth="8" android:strokeLineCap="round" android:pathData="M69,35C74,31 78,27 82,24" />
-    <path android:fillColor="#FFB4A9" android:pathData="M68,32C74,22 84,19 92,25C87,35 78,39 69,35Z" />
+        android:strokeWidth="8" android:strokeLineCap="round" android:pathData="M72,36C76,32 79,28 82,25" />
+    <path android:fillColor="#FFB4A9" android:pathData="M78,27C82,20 89,19 94,24C90,31 84,33 79,30Z" />
 </vector>
