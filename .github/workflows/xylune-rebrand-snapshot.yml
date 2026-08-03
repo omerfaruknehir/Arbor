@@ -1,0 +1,72 @@
+name: Xylune rebrand snapshot
+
+on:
+  push:
+    branches:
+      - agent/full-xylune-rebrand
+    paths:
+      - .github/workflows/xylune-rebrand-snapshot.yml
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build source and branding audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/xylune-snapshot/audit
+
+          git ls-files -z | sort -z | tr '\0' '\n' > /tmp/xylune-snapshot/audit/all-files.txt
+          git ls-files | grep -Ei '(^|/)(arbor|.*arbor.*)($|/|\.)' > /tmp/xylune-snapshot/audit/paths-with-arbor.txt || true
+          git ls-files | grep -Ei '(icon|logo|brand|launcher|splash|license|widget|backup|archive|cloud|drive|manifest|gradle|readme)' > /tmp/xylune-snapshot/audit/branding-sensitive-files.txt || true
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          import re
+
+          root = Path('.')
+          tokens = re.compile(r'Arbor|arbor|ARBOR')
+          binary_exts = {
+              '.png', '.jpg', '.jpeg', '.webp', '.gif', '.ico', '.zip', '.gz', '.jar',
+              '.keystore', '.jks', '.so', '.apk', '.aab', '.pdf', '.woff', '.woff2', '.ttf',
+          }
+          occurrences = []
+          for path in sorted(root.rglob('*')):
+              if not path.is_file() or '.git' in path.parts or path.suffix.lower() in binary_exts:
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except (UnicodeDecodeError, OSError):
+                  continue
+              matches = []
+              for line_no, line in enumerate(text.splitlines(), 1):
+                  if tokens.search(line):
+                      matches.append({'line': line_no, 'text': line[:500]})
+              if matches:
+                  occurrences.append({'path': str(path), 'matches': matches})
+          Path('/tmp/xylune-snapshot/audit/arbor-occurrences.json').write_text(
+              json.dumps(occurrences, indent=2, ensure_ascii=False) + '\n', encoding='utf-8'
+          )
+          PY
+
+          tar \
+            --exclude='.git' \
+            --exclude='./build' \
+            --exclude='./app/build' \
+            -czf /tmp/xylune-snapshot/source.tar.gz .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xylune-rebrand-snapshot
+          path: /tmp/xylune-snapshot
+          if-no-files-found: error
+          retention-days: 3
