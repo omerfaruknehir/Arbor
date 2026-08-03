@@ -7,6 +7,12 @@ on:
     paths:
       - .github/workflows/port-cloud-providers.yml
       - tools/port_cloud_providers_to_xylune.py
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/port-cloud-providers.yml
+      - tools/port_cloud_providers_to_xylune.py
   workflow_dispatch:
 
 permissions:
