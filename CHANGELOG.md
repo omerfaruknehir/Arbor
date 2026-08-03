@@ -3,6 +3,7 @@
 - Complete direct cloud backup providers for OneDrive App Folder, Dropbox App Folder, WebDAV/Nextcloud, and S3-compatible storage while retaining Google Drive app-data and Android's scoped folder picker.
 - Use OAuth Authorization Code with PKCE for OneDrive and Dropbox, encrypted local credential storage, HTTPS-only direct endpoints, least-privilege app-folder scopes, paginated backup browsing, resumable uploads, and confirmed deletion.
 - Support first-run browsing, preview, and restore across every cloud provider, including multipart S3 uploads for Linux-inclusive backups; keep cloud credentials and sessions excluded from portable archives.
+- Harden cloud transport by constraining authenticated WebDAV URLs to the configured HTTPS folder, parsing S3 continuation tokens correctly, rejecting repeated pagination cursors, removing the fixed whole-transfer deadline, and allowing pending OAuth sign-in to be cancelled.
 
 ## 0.23.0 — 2026-08-03
 
