@@ -273,9 +273,8 @@ android {
             if (hasProtectedReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             } else {
-                // Public GitHub releases stay update-compatible with the previously
-                // distributed .debug package while using the optimized release build type.
-                applicationIdSuffix = ".debug"
+                // Public GitHub releases use Xylune's canonical package while retaining
+                // the repository's reproducible public signing certificate.
                 signingConfig = signingConfigs.getByName("debug")
             }
         }

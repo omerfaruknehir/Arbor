@@ -32,7 +32,7 @@ The repository owner must create or select one Google Cloud project:
 4. Register the exact package and SHA-1 shown by Xylune's diagnostic card.
 5. Keep the requested scope limited to `https://www.googleapis.com/auth/drive.appdata`.
 
-The normal public GitHub release currently uses package `app.xylune.chat.debug`. Protected production releases use `app.xylune.chat` and need their private release certificate SHA-1 registered separately in the same Cloud project.
+The normal public GitHub release currently uses package `app.xylune.chat`. Protected production releases use `app.xylune.chat` and need their private release certificate SHA-1 registered separately in the same Cloud project.
 
 Google Android OAuth clients have no client secret to embed.
 
@@ -47,6 +47,14 @@ Create one Microsoft Entra app registration:
 5. Put the Application (client) ID in repository variable `XYLUNE_MICROSOFT_CLIENT_ID`.
 
 Xylune uses Authorization Code + PKCE and requests `offline_access`; do not create or embed a client secret.
+
+For the public GitHub release:
+
+- Package: `app.xylune.chat`
+- Microsoft signature hash: `WVR0y8wAc3RlOnBT3zeS2+0WrZk=`
+- Generated redirect URI: `msauth://app.xylune.chat/WVR0y8wAc3RlOnBT3zeS2%2B0WrZk%3D`
+
+The signature hash is the standard Base64 encoding of the signing certificate's SHA-1 digest. A privately signed release needs a second Android platform entry with the same package and its own signature hash.
 
 ## Dropbox
 
@@ -80,3 +88,12 @@ Xylune refuses unencrypted HTTP endpoints and stores credentials in encrypted lo
 No repository-level cloud account is required. Each user enters an HTTPS endpoint, region, bucket, prefix, access key, and secret key. The client uses AWS Signature Version 4 and supports AWS S3, Cloudflare R2, Backblaze B2 S3, MinIO, and compatible services.
 
 Use a dedicated key restricted to the selected bucket and prefix. A minimal policy should allow only listing that prefix and getting, putting, and deleting objects inside it. Never put a user's S3 keys in GitHub Actions.
+
+## Public legal URLs
+
+- Homepage: `https://omerfaruknehir.github.io/Xylune/`
+- Privacy: `https://omerfaruknehir.github.io/Xylune/privacy/`
+- Terms: `https://omerfaruknehir.github.io/Xylune/terms/`
+- Data deletion: `https://omerfaruknehir.github.io/Xylune/data-deletion/`
+
+Use these URLs in Google Auth Platform, Microsoft Entra, Dropbox, and provider review forms.

@@ -272,7 +272,8 @@ class CloudOAuthManager(
         val fingerprint = appContext.currentAppInstallIdentity().signingSha1
         val raw = fingerprint.split(':').mapNotNull { it.toIntOrNull(16)?.toByte() }.toByteArray()
         require(raw.isNotEmpty()) { "Could not read Xylune's signing certificate" }
-        return "msauth://${BuildConfig.APPLICATION_ID}/${base64Url(raw)}"
+        val signatureHash = Base64.encodeToString(raw, Base64.NO_WRAP)
+        return "msauth://${BuildConfig.APPLICATION_ID}/${Uri.encode(signatureHash)}"
     }
 
     private fun initialState(provider: CloudOAuthProvider): CloudOAuthState {
