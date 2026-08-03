@@ -9,9 +9,12 @@ import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -30,6 +33,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -76,69 +81,140 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
     var cloudSource by remember { mutableStateOf(SetupCloudSource.CHOOSE) }
     var entries by remember { mutableStateOf<List<CloudBackupEntry>>(emptyList()) }
     var googleAccessToken by remember { mutableStateOf<String?>(null) }
+    var pendingOAuthProvider by remember { mutableStateOf<CloudOAuthProvider?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var operationMessage by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var compactStatus by remember { mutableStateOf<String?>(null) }
+
+    fun beginOperation(message: String) {
+        busy = true
+        operationMessage = message
+        error = null
+    }
+
+    fun finishOperation(message: String? = null) {
+        busy = false
+        operationMessage = message
+    }
 
     fun showBackups(source: SetupCloudSource, values: List<CloudBackupEntry>) {
         cloudSource = source
         entries = values
-        error = if (values.isEmpty()) "No Xylune backups were found in this app-only location." else null
+        error = null
+        finishOperation(
+            if (values.isEmpty()) {
+                "Connected to ${source.setupLabel()}, but no Xylune backups were found."
+            } else {
+                "Found ${values.size} Xylune backup${if (values.size == 1) "" else "s"} in ${source.setupLabel()}."
+            },
+        )
         cloudDialogOpen = true
     }
 
     fun loadGoogleBackups(accessToken: String) {
         googleAccessToken = accessToken
         scope.launch {
-            busy = true
-            error = null
+            beginOperation("Checking Google Drive app storage…")
             runCatching { viewModel.listGoogleDriveBackups(accessToken) }
                 .onSuccess { showBackups(SetupCloudSource.GOOGLE_DRIVE, it) }
-                .onFailure { error = it.message ?: "Could not read Google Drive app storage" }
-            busy = false
+                .onFailure {
+                    finishOperation()
+                    error = it.message ?: "Could not read Google Drive app storage"
+                }
         }
     }
 
     fun loadDirectBackups(provider: DirectCloudProvider, source: SetupCloudSource) {
         scope.launch {
-            busy = true
-            error = null
+            beginOperation("Checking ${provider.displayName}…")
             runCatching { viewModel.listDirectCloudBackups(provider) }
                 .onSuccess { showBackups(source, it) }
-                .onFailure { error = it.message ?: "Could not read ${provider.displayName} backups" }
-            busy = false
+                .onFailure {
+                    finishOperation()
+                    error = it.message ?: "Could not read ${provider.displayName} backups"
+                }
         }
     }
 
     fun connectDirectOAuth(provider: CloudOAuthProvider) {
-        runCatching { viewModel.beginDirectCloudOAuth(provider) }
-            .onSuccess { uri -> context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
-            .onFailure { error = it.message ?: "Could not open ${provider.displayName} sign-in" }
+        when (val state = oauthStates[provider]) {
+            is CloudOAuthState.Connected -> {
+                loadDirectBackups(provider.directProvider(), provider.setupSource())
+                return
+            }
+            is CloudOAuthState.Unavailable -> {
+                error = state.reason
+                operationMessage = null
+                return
+            }
+            else -> Unit
+        }
+
+        error = null
+        pendingOAuthProvider = provider
+        operationMessage = "Opening ${provider.displayName} sign-in…"
+        runCatching {
+            val uri = viewModel.beginDirectCloudOAuth(provider)
+            context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+        }.onSuccess {
+            operationMessage = "Waiting for ${provider.displayName} sign-in to finish…"
+        }.onFailure {
+            pendingOAuthProvider = null
+            operationMessage = null
+            error = it.message ?: "Could not open ${provider.displayName} sign-in"
+        }
+    }
+
+    LaunchedEffect(pendingOAuthProvider, oauthStates) {
+        val provider = pendingOAuthProvider ?: return@LaunchedEffect
+        when (val state = oauthStates[provider]) {
+            is CloudOAuthState.Connected -> {
+                pendingOAuthProvider = null
+                loadDirectBackups(provider.directProvider(), provider.setupSource())
+            }
+            is CloudOAuthState.Error -> {
+                pendingOAuthProvider = null
+                finishOperation()
+                error = state.message
+            }
+            is CloudOAuthState.Unavailable -> {
+                pendingOAuthProvider = null
+                finishOperation()
+                error = state.reason
+            }
+            is CloudOAuthState.Authorizing -> {
+                operationMessage = "Waiting for ${provider.displayName} sign-in to finish…"
+            }
+            CloudOAuthState.Disconnected, null -> Unit
+        }
     }
 
     val googleAuthorizationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult(),
     ) { result ->
         if (result.resultCode != Activity.RESULT_OK) {
-            busy = false
+            finishOperation("Google Drive sign-in was cancelled.")
             return@rememberLauncherForActivityResult
         }
         runCatching { authorizationClient.getAuthorizationResultFromIntent(result.data ?: Intent()) }
             .onSuccess { authorization ->
                 val token = authorization.accessToken
                 if (token.isNullOrBlank()) {
-                    busy = false
+                    finishOperation()
                     error = "Google Drive authorization returned no access token"
-                } else loadGoogleBackups(token)
+                } else {
+                    loadGoogleBackups(token)
+                }
             }
             .onFailure {
-                busy = false
+                finishOperation()
                 error = it.message ?: "Google Drive authorization failed"
             }
     }
 
     fun authorizeGoogleDrive() {
-        busy = true
-        error = null
+        beginOperation("Requesting access to Google Drive app storage…")
         val request = AuthorizationRequest.builder()
             .setRequestedScopes(listOf(Scope(Scopes.DRIVE_APPFOLDER)))
             .build()
@@ -147,9 +223,10 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                 if (result.hasResolution()) {
                     val pendingIntent = result.pendingIntent
                     if (pendingIntent == null) {
-                        busy = false
+                        finishOperation()
                         error = "Google Drive authorization could not be opened"
                     } else {
+                        operationMessage = "Waiting for Google Drive approval…"
                         googleAuthorizationLauncher.launch(
                             IntentSenderRequest.Builder(pendingIntent.intentSender).build(),
                         )
@@ -157,13 +234,15 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                 } else {
                     val token = result.accessToken
                     if (token.isNullOrBlank()) {
-                        busy = false
+                        finishOperation()
                         error = "Google Drive authorization returned no access token"
-                    } else loadGoogleBackups(token)
+                    } else {
+                        loadGoogleBackups(token)
+                    }
                 }
             }
             .addOnFailureListener {
-                busy = false
+                finishOperation()
                 error = it.message ?: "Google Drive authorization failed"
             }
     }
@@ -171,61 +250,122 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
     val localPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
-        uri?.let(viewModel::receivePortableArchive)
+        if (uri == null) {
+            compactStatus = "No backup file selected."
+        } else {
+            compactStatus = "Opening backup preview…"
+            viewModel.receivePortableArchive(uri)
+        }
     }
 
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree(),
     ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
+        if (uri == null) {
+            finishOperation("Folder selection was cancelled.")
+            return@rememberLauncherForActivityResult
+        }
         scope.launch {
-            busy = true
-            error = null
+            beginOperation("Checking the selected backup folder…")
             runCatching {
                 viewModel.connectCloudFolder(uri)
                 viewModel.listConnectedFolderBackups()
             }.onSuccess { showBackups(SetupCloudSource.FOLDER, it) }
-                .onFailure { error = it.message ?: "Could not read the selected cloud folder" }
-            busy = false
+                .onFailure {
+                    finishOperation()
+                    error = it.message ?: "Could not read the selected cloud folder"
+                }
+        }
+    }
+
+    fun openFolderPicker() {
+        beginOperation("Opening Android's folder picker…")
+        folderPicker.launch(viewModel.connectedCloudFolderUri())
+    }
+
+    fun refreshCurrentSource() {
+        when (cloudSource) {
+            SetupCloudSource.FOLDER -> scope.launch {
+                beginOperation("Checking the selected backup folder…")
+                runCatching { viewModel.listConnectedFolderBackups() }
+                    .onSuccess { showBackups(SetupCloudSource.FOLDER, it) }
+                    .onFailure {
+                        finishOperation()
+                        error = it.message ?: "Could not read the connected cloud folder"
+                    }
+            }
+            SetupCloudSource.GOOGLE_DRIVE -> googleAccessToken?.let(::loadGoogleBackups) ?: authorizeGoogleDrive()
+            SetupCloudSource.ONEDRIVE -> loadDirectBackups(DirectCloudProvider.ONEDRIVE, SetupCloudSource.ONEDRIVE)
+            SetupCloudSource.DROPBOX -> loadDirectBackups(DirectCloudProvider.DROPBOX, SetupCloudSource.DROPBOX)
+            SetupCloudSource.WEBDAV -> loadDirectBackups(DirectCloudProvider.WEBDAV, SetupCloudSource.WEBDAV)
+            SetupCloudSource.S3 -> loadDirectBackups(DirectCloudProvider.S3, SetupCloudSource.S3)
+            SetupCloudSource.CHOOSE -> Unit
         }
     }
 
     Surface(
-        color = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        contentColor = MaterialTheme.colorScheme.onSurface,
         shape = MaterialTheme.shapes.extraLarge,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Already use Xylune?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(
-                "Restore chats, app settings, provider configuration, projects, prompt profiles, and optional Linux environments before continuing setup. Credentials are never stored in backups.",
-                style = MaterialTheme.typography.bodySmall,
-            )
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.size(42.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                        Icon(Icons.Outlined.Cloud, null, Modifier.size(22.dp))
+                    }
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("Restore an existing setup", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Optional. Preview a local or cloud backup before importing anything.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     onClick = {
+                        compactStatus = "Opening file picker…"
                         localPicker.launch(
                             arrayOf(XYLUNE_BACKUP_MIME, XYLUNE_CHAT_MIME, "application/octet-stream", "application/zip"),
                         )
                     },
                     modifier = Modifier.weight(1f),
                 ) {
-                    Icon(Icons.Outlined.FileOpen, null)
-                    Text("Local", Modifier.padding(start = 6.dp))
+                    Icon(Icons.Outlined.FileOpen, null, Modifier.size(20.dp))
+                    Text("File", Modifier.padding(start = 7.dp))
                 }
                 Button(
                     onClick = {
                         cloudSource = SetupCloudSource.CHOOSE
                         entries = emptyList()
+                        operationMessage = null
                         error = null
                         cloudDialogOpen = true
                     },
                     modifier = Modifier.weight(1f),
                 ) {
-                    Icon(Icons.Outlined.Cloud, null)
-                    Text("Cloud", Modifier.padding(start = 6.dp))
+                    Icon(Icons.Outlined.Cloud, null, Modifier.size(20.dp))
+                    Text("Cloud", Modifier.padding(start = 7.dp))
                 }
+            }
+            compactStatus?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -233,145 +373,124 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
     if (cloudDialogOpen) {
         XyluneAlertDialog(
             onDismissRequest = { if (!busy) cloudDialogOpen = false },
-            title = { Text(if (cloudSource == SetupCloudSource.CHOOSE) "Restore from cloud" else "Choose a backup") },
+            title = {
+                Text(if (cloudSource == SetupCloudSource.CHOOSE) "Restore a backup" else "Choose a backup")
+            },
             text = {
                 Column(
-                    Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
+                    Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     if (cloudSource == SetupCloudSource.CHOOSE) {
                         Text(
-                            "Each option is limited to Xylune's app storage or a folder you explicitly choose. Xylune never asks to browse an entire cloud account.",
+                            "Choose where Xylune should look. Every option is limited to app-only storage or a folder you explicitly select.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Button(
+                        SetupCloudAction(
+                            title = "Google Drive",
+                            subtitle = "Private Xylune app storage",
+                            filled = true,
+                            enabled = !busy,
                             onClick = ::authorizeGoogleDrive,
+                            icon = { SetupProviderIcon(R.drawable.ic_google_drive, "Google Drive") },
+                        )
+                        SetupCloudAction(
+                            title = "Choose a backup folder",
+                            subtitle = "Google Drive, OneDrive, Nextcloud, USB, or local storage through Android",
                             enabled = !busy,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            SetupProviderIcon(R.drawable.ic_google_drive, "Google Drive")
-                            Text("Google Drive app storage", Modifier.padding(start = 10.dp))
-                        }
-                        OutlinedButton(
-                            onClick = { folderPicker.launch(viewModel.connectedCloudFolderUri()) },
+                            onClick = ::openFolderPicker,
+                            icon = { SetupVectorIcon(Icons.Outlined.FolderOpen, "Choose folder") },
+                        )
+                        SetupCloudAction(
+                            title = "OneDrive",
+                            subtitle = oauthActionSubtitle(CloudOAuthProvider.ONEDRIVE, oauthStates[CloudOAuthProvider.ONEDRIVE]),
                             enabled = !busy,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Icon(Icons.Outlined.FolderOpen, null)
-                            Text("Choose an app backup folder", Modifier.padding(start = 10.dp))
-                        }
-                        OutlinedButton(
+                            onClick = { connectDirectOAuth(CloudOAuthProvider.ONEDRIVE) },
+                            icon = { SetupProviderIcon(R.drawable.ic_onedrive, "OneDrive") },
+                        )
+                        SetupCloudAction(
+                            title = "Dropbox",
+                            subtitle = oauthActionSubtitle(CloudOAuthProvider.DROPBOX, oauthStates[CloudOAuthProvider.DROPBOX]),
+                            enabled = !busy,
+                            onClick = { connectDirectOAuth(CloudOAuthProvider.DROPBOX) },
+                            icon = { SetupProviderIcon(R.drawable.ic_dropbox, "Dropbox") },
+                        )
+                        SetupCloudAction(
+                            title = "Nextcloud / WebDAV",
+                            subtitle = directConfigurations.webDav?.let { "Configured as ${it.label} • tap to check backups" }
+                                ?: "Enter a server folder and credentials",
+                            enabled = !busy,
                             onClick = {
-                                when (oauthStates[CloudOAuthProvider.ONEDRIVE]) {
-                                    is CloudOAuthState.Connected -> loadDirectBackups(
-                                        DirectCloudProvider.ONEDRIVE,
-                                        SetupCloudSource.ONEDRIVE,
-                                    )
-                                    else -> connectDirectOAuth(CloudOAuthProvider.ONEDRIVE)
+                                if (directConfigurations.webDav == null) {
+                                    cloudDialogOpen = false
+                                    webDavDialogOpen = true
+                                } else {
+                                    loadDirectBackups(DirectCloudProvider.WEBDAV, SetupCloudSource.WEBDAV)
                                 }
                             },
-                            enabled = !busy && oauthStates[CloudOAuthProvider.ONEDRIVE] !is CloudOAuthState.Unavailable,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            SetupProviderIcon(R.drawable.ic_onedrive, "OneDrive")
-                            Text(
-                                if (oauthStates[CloudOAuthProvider.ONEDRIVE] is CloudOAuthState.Connected) {
-                                    "OneDrive app folder"
-                                } else "Connect OneDrive",
-                                Modifier.padding(start = 10.dp),
-                            )
-                        }
-                        OutlinedButton(
+                            icon = { SetupProviderIcon(R.drawable.ic_nextcloud, "Nextcloud / WebDAV") },
+                        )
+                        SetupCloudAction(
+                            title = "S3-compatible storage",
+                            subtitle = directConfigurations.s3?.let { "Configured as ${it.label} • tap to check backups" }
+                                ?: "Amazon S3, MinIO, Backblaze B2, or another compatible bucket",
+                            enabled = !busy,
                             onClick = {
-                                when (oauthStates[CloudOAuthProvider.DROPBOX]) {
-                                    is CloudOAuthState.Connected -> loadDirectBackups(
-                                        DirectCloudProvider.DROPBOX,
-                                        SetupCloudSource.DROPBOX,
-                                    )
-                                    else -> connectDirectOAuth(CloudOAuthProvider.DROPBOX)
+                                if (directConfigurations.s3 == null) {
+                                    cloudDialogOpen = false
+                                    s3DialogOpen = true
+                                } else {
+                                    loadDirectBackups(DirectCloudProvider.S3, SetupCloudSource.S3)
                                 }
                             },
-                            enabled = !busy && oauthStates[CloudOAuthProvider.DROPBOX] !is CloudOAuthState.Unavailable,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            SetupProviderIcon(R.drawable.ic_dropbox, "Dropbox")
-                            Text(
-                                if (oauthStates[CloudOAuthProvider.DROPBOX] is CloudOAuthState.Connected) {
-                                    "Dropbox app folder"
-                                } else "Connect Dropbox",
-                                Modifier.padding(start = 10.dp),
-                            )
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                if (directConfigurations.webDav == null) webDavDialogOpen = true
-                                else loadDirectBackups(DirectCloudProvider.WEBDAV, SetupCloudSource.WEBDAV)
-                            },
-                            enabled = !busy,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            SetupProviderIcon(R.drawable.ic_nextcloud, "Nextcloud / WebDAV")
-                            Text(
-                                if (directConfigurations.webDav == null) "Configure Nextcloud / WebDAV"
-                                else directConfigurations.webDav?.label ?: "WebDAV",
-                                Modifier.padding(start = 10.dp),
-                            )
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                if (directConfigurations.s3 == null) s3DialogOpen = true
-                                else loadDirectBackups(DirectCloudProvider.S3, SetupCloudSource.S3)
-                            },
-                            enabled = !busy,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Icon(Icons.Outlined.Storage, contentDescription = "S3-compatible storage")
-                            Text(
-                                if (directConfigurations.s3 == null) "Configure S3-compatible storage"
-                                else directConfigurations.s3?.label ?: "S3",
-                                Modifier.padding(start = 10.dp),
-                            )
-                        }
+                            icon = { SetupVectorIcon(Icons.Outlined.Storage, "S3-compatible storage") },
+                        )
                         if (viewModel.connectedCloudFolderUri() != null) {
-                            OutlinedButton(
-                                onClick = {
-                                    scope.launch {
-                                        busy = true
-                                        error = null
-                                        runCatching { viewModel.listConnectedFolderBackups() }
-                                            .onSuccess { showBackups(SetupCloudSource.FOLDER, it) }
-                                            .onFailure { error = it.message ?: "Could not read the connected cloud folder" }
-                                        busy = false
-                                    }
-                                },
+                            SetupCloudAction(
+                                title = "Use connected folder",
+                                subtitle = viewModel.connectedCloudFolderLabel() ?: "Previously selected backup folder",
                                 enabled = !busy,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Icon(Icons.Outlined.Refresh, null)
-                                Text("Use connected folder", Modifier.padding(start = 10.dp))
-                            }
+                                onClick = {
+                                    cloudSource = SetupCloudSource.FOLDER
+                                    refreshCurrentSource()
+                                },
+                                icon = { SetupVectorIcon(Icons.Outlined.Refresh, "Use connected folder") },
+                            )
                         }
                     } else {
                         Text(
-                            when (cloudSource) {
-                                SetupCloudSource.FOLDER -> viewModel.connectedCloudFolderLabel()?.let { "Folder: $it" } ?: "Selected app backup folder"
-                                SetupCloudSource.GOOGLE_DRIVE -> "Google Drive hidden Xylune app storage"
-                                SetupCloudSource.ONEDRIVE -> "OneDrive Apps/Xylune folder"
-                                SetupCloudSource.DROPBOX -> "Dropbox Xylune App folder"
-                                SetupCloudSource.WEBDAV -> directConfigurations.webDav?.label ?: "WebDAV / Nextcloud"
-                                SetupCloudSource.S3 -> directConfigurations.s3?.label ?: "S3-compatible storage"
-                                SetupCloudSource.CHOOSE -> ""
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            cloudSource.setupLabel(),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
                         )
+                        if (entries.isEmpty() && !busy) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                                shape = MaterialTheme.shapes.large,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    "This location is connected, but it does not contain a Xylune backup yet.",
+                                    modifier = Modifier.padding(14.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = ::refreshCurrentSource,
+                                enabled = !busy,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Icon(Icons.Outlined.Refresh, null, Modifier.size(20.dp))
+                                Text("Check again", Modifier.padding(start = 8.dp))
+                            }
+                        }
                         entries.forEachIndexed { index, entry ->
                             if (index > 0) HorizontalDivider()
                             Row(
-                                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                Modifier.fillMaxWidth().padding(vertical = 5.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
                                 Column(Modifier.weight(1f)) {
                                     Text(entry.name, fontWeight = FontWeight.Medium)
@@ -384,13 +503,14 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                                 OutlinedButton(
                                     onClick = {
                                         scope.launch {
-                                            busy = true
-                                            error = null
+                                            beginOperation("Downloading ${entry.name}…")
                                             runCatching {
                                                 when (entry.provider) {
                                                     CloudBackupProvider.SCOPED_FOLDER -> viewModel.openConnectedFolderBackup(entry)
                                                     CloudBackupProvider.GOOGLE_DRIVE_APP_DATA -> {
-                                                        val token = requireNotNull(googleAccessToken) { "Google Drive authorization expired" }
+                                                        val token = requireNotNull(googleAccessToken) {
+                                                            "Google Drive authorization expired"
+                                                        }
                                                         viewModel.downloadGoogleDriveBackup(token, entry)
                                                     }
                                                     CloudBackupProvider.ONEDRIVE_APP_FOLDER ->
@@ -403,30 +523,54 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                                                         viewModel.downloadDirectCloudBackup(DirectCloudProvider.S3, entry)
                                                 }
                                             }.onSuccess { uri ->
+                                                finishOperation()
                                                 cloudDialogOpen = false
+                                                viewModel.postNotice("Backup downloaded. Opening preview…")
                                                 viewModel.receivePortableArchive(uri)
                                             }.onFailure { failure ->
+                                                finishOperation()
                                                 error = failure.message ?: "Could not download and inspect the cloud backup"
                                             }
-                                            busy = false
                                         }
                                     },
                                     enabled = !busy,
-                                ) { Text("Review & restore") }
+                                ) { Text("Review") }
                             }
                         }
                     }
                     if (busy) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            CircularProgressIndicator(strokeWidth = 2.dp)
-                            Text("Loading backups…")
+                        Surface(
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            shape = MaterialTheme.shapes.large,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                                Text(operationMessage ?: "Working…", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    } else {
+                        operationMessage?.let {
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                shape = MaterialTheme.shapes.large,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(it, Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     }
                     error?.let {
                         Surface(
                             color = MaterialTheme.colorScheme.errorContainer,
                             contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                            shape = MaterialTheme.shapes.medium,
+                            shape = MaterialTheme.shapes.large,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(it, Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall)
@@ -440,6 +584,7 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                         onClick = {
                             cloudSource = SetupCloudSource.CHOOSE
                             entries = emptyList()
+                            operationMessage = null
                             error = null
                         },
                         enabled = !busy,
@@ -455,14 +600,22 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
     if (webDavDialogOpen) {
         WebDavConfigDialog(
             existing = directConfigurations.webDav,
-            onDismiss = { webDavDialogOpen = false },
+            onDismiss = {
+                webDavDialogOpen = false
+                cloudDialogOpen = true
+            },
             onSave = { config: WebDavCloudConfig ->
                 runCatching { viewModel.saveWebDavCloud(config) }
                     .onSuccess {
                         webDavDialogOpen = false
+                        cloudDialogOpen = true
                         loadDirectBackups(DirectCloudProvider.WEBDAV, SetupCloudSource.WEBDAV)
                     }
-                    .onFailure { error = it.message ?: "Invalid WebDAV configuration" }
+                    .onFailure {
+                        webDavDialogOpen = false
+                        cloudDialogOpen = true
+                        error = it.message ?: "Invalid WebDAV configuration"
+                    }
             },
         )
     }
@@ -470,16 +623,61 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
     if (s3DialogOpen) {
         S3ConfigDialog(
             existing = directConfigurations.s3,
-            onDismiss = { s3DialogOpen = false },
+            onDismiss = {
+                s3DialogOpen = false
+                cloudDialogOpen = true
+            },
             onSave = { config: S3CloudConfig ->
                 runCatching { viewModel.saveS3Cloud(config) }
                     .onSuccess {
                         s3DialogOpen = false
+                        cloudDialogOpen = true
                         loadDirectBackups(DirectCloudProvider.S3, SetupCloudSource.S3)
                     }
-                    .onFailure { error = it.message ?: "Invalid S3 configuration" }
+                    .onFailure {
+                        s3DialogOpen = false
+                        cloudDialogOpen = true
+                        error = it.message ?: "Invalid S3 configuration"
+                    }
             },
         )
+    }
+}
+
+@Composable
+private fun SetupCloudAction(
+    title: String,
+    subtitle: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    icon: @Composable () -> Unit,
+    filled: Boolean = false,
+) {
+    val content: @Composable () -> Unit = {
+        Row(
+            Modifier.fillMaxWidth().padding(vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            icon()
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.SemiBold)
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (filled) {
+                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f)
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
+        }
+    }
+    if (filled) {
+        Button(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth()) { content() }
+    } else {
+        OutlinedButton(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth()) { content() }
     }
 }
 
@@ -489,7 +687,49 @@ private fun SetupProviderIcon(@DrawableRes drawable: Int, description: String) {
         painter = painterResource(drawable),
         contentDescription = description,
         tint = Color.Unspecified,
+        modifier = Modifier.size(28.dp),
     )
+}
+
+@Composable
+private fun SetupVectorIcon(image: ImageVector, description: String) {
+    Icon(
+        imageVector = image,
+        contentDescription = description,
+        modifier = Modifier.size(26.dp),
+    )
+}
+
+private fun oauthActionSubtitle(provider: CloudOAuthProvider, state: CloudOAuthState?): String = when (state) {
+    is CloudOAuthState.Connected -> buildString {
+        append("Connected")
+        state.accountLabel?.takeIf(String::isNotBlank)?.let { append(" as $it") }
+        append(" • tap to check backups")
+    }
+    is CloudOAuthState.Authorizing -> "Waiting for sign-in to finish"
+    is CloudOAuthState.Error -> "Connection failed • tap to retry"
+    is CloudOAuthState.Unavailable -> "Unavailable in this build • tap for details"
+    CloudOAuthState.Disconnected, null -> "Sign in; Xylune only uses its app folder"
+}
+
+private fun CloudOAuthProvider.directProvider(): DirectCloudProvider = when (this) {
+    CloudOAuthProvider.ONEDRIVE -> DirectCloudProvider.ONEDRIVE
+    CloudOAuthProvider.DROPBOX -> DirectCloudProvider.DROPBOX
+}
+
+private fun CloudOAuthProvider.setupSource(): SetupCloudSource = when (this) {
+    CloudOAuthProvider.ONEDRIVE -> SetupCloudSource.ONEDRIVE
+    CloudOAuthProvider.DROPBOX -> SetupCloudSource.DROPBOX
+}
+
+private fun SetupCloudSource.setupLabel(): String = when (this) {
+    SetupCloudSource.FOLDER -> "the selected backup folder"
+    SetupCloudSource.GOOGLE_DRIVE -> "Google Drive app storage"
+    SetupCloudSource.ONEDRIVE -> "OneDrive Apps/Xylune"
+    SetupCloudSource.DROPBOX -> "Dropbox Xylune App folder"
+    SetupCloudSource.WEBDAV -> "Nextcloud / WebDAV"
+    SetupCloudSource.S3 -> "S3-compatible storage"
+    SetupCloudSource.CHOOSE -> "cloud storage"
 }
 
 private fun setupBackupMetadata(entry: CloudBackupEntry): String = buildString {
