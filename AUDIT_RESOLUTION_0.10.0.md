@@ -1,6 +1,6 @@
-# Arbor 0.10.0 audit resolution
+# Xylune 0.10.0 audit resolution
 
-This file records how the 2026-07-16 Arbor 0.9.2 source audit was handled. It distinguishes implemented repairs from boundaries which cannot honestly be declared production-verified without a real Android test matrix.
+This file records how the 2026-07-16 Xylune 0.9.2 source audit was handled. It distinguishes implemented repairs from boundaries which cannot honestly be declared production-verified without a real Android test matrix.
 
 | Audit area | 0.10.0 disposition |
 |---|---|
@@ -10,7 +10,7 @@ This file records how the 2026-07-16 Arbor 0.9.2 source audit was handled. It di
 | Lost usage on partial/resumed calls | Fixed with an append-only per-provider-round usage ledger. |
 | Compression truncation/cursor skips | Fixed with bounded chronological batches and stable `(createdAt,rowId)` cursors. |
 | Missing upgraded-database FTS | Fixed in migration 7→8 with table/trigger creation and backfill. |
-| Python process isolation | Not claimed. Import/install behavior is transactional and repaired, but Python still runs under Arbor's app process and UID. |
+| Python process isolation | Not claimed. Import/install behavior is transactional and repaired, but Python still runs under Xylune's app process and UID. |
 | pip review did not resolve dependencies | Fixed with resolver reports, exact plan fingerprints, import-health repair detection, pinned candidates, staging verification, and rollback. Android-wheel availability remains an ecosystem limit. |
 | Queue/concurrency races | Fixed with monotonic positions, Room transactions, all-active-stream queries, and same-chat cancellation tags. |
 | Attachment memory/storage | Fixed with file/chat/app quotas, free-space checks, bounded native encoding/OCR/context, cleanup, and streamed/downsampled handling where applicable. |

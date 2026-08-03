@@ -20,19 +20,19 @@
         android:fillColor="@android:color/transparent"
         android:strokeWidth="11"
         android:strokeLineCap="round"
-        android:pathData="M28,82C35,64 43,45 53,28">
+        android:pathData="M30,28C42,43 58,64 78,82">
         <aapt:attr name="android:strokeColor">
             <gradient
                 android:type="linear"
-                android:startX="27"
-                android:startY="84"
-                android:endX="55"
-                android:endY="25"
+                android:startX="30"
+                android:startY="28"
+                android:endX="78"
+                android:endY="82"
                 android:startColor="#86DFB8"
                 android:endColor="#DDFBEA" />
         </aapt:attr>
     </path>
-    <path android:fillColor="@android:color/transparent" android:strokeColor="#F1FFF7" android:strokeWidth="11" android:strokeLineCap="round" android:pathData="M55,28C65,45 73,64 80,82" />
-    <path android:fillColor="@android:color/transparent" android:strokeColor="#F4C761" android:strokeWidth="8" android:strokeLineCap="round" android:pathData="M40,64C49,60 59,60 68,64" />
-    <path android:fillColor="#F4C761" android:pathData="M54,29C60,21 69,19 76,24C73,33 65,37 55,33Z" />
+    <path android:fillColor="@android:color/transparent" android:strokeColor="#F1FFF7" android:strokeWidth="11" android:strokeLineCap="round" android:pathData="M78,28C66,43 50,64 30,82" />
+    <path android:fillColor="@android:color/transparent" android:strokeColor="#F4C761" android:strokeWidth="8" android:strokeLineCap="round" android:pathData="M69,35C74,31 78,27 82,24" />
+    <path android:fillColor="#F4C761" android:pathData="M68,32C74,22 84,19 92,25C87,35 78,39 69,35Z" />
 </vector>

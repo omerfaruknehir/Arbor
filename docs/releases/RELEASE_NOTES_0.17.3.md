@@ -1,4 +1,4 @@
-# Arbor 0.17.3
+# Xylune 0.17.3
 
 This maintenance release fixes gesture ownership on secondary pages.
 

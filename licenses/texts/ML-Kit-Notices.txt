@@ -1,6 +1,6 @@
 Google ML Kit Text Recognition
 
-Arbor uses the on-device Google ML Kit Text Recognition Android library.
+Xylune uses the on-device Google ML Kit Text Recognition Android library.
 Use of the library and its binary components is governed by Google's ML Kit
 terms and the terms distributed with the Android artifact.
 

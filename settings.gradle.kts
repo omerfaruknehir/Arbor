@@ -21,5 +21,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Arbor"
+rootProject.name = "Xylune"
 include(":app")

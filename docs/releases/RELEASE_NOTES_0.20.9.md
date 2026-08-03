@@ -1,4 +1,4 @@
-# Arbor 0.20.9
+# Xylune 0.20.9
 
 This release fixes raster license icons and changes the public distributable builds from debug variants to optimized release variants.
 
@@ -17,8 +17,8 @@ This repairs the Chaquopy, OkHttp, and SQLCipher icons, which previously fell ba
 
 - GitHub Releases now publish R8-minified, resource-shrunk release APK and AAB artifacts instead of debug APK/AAB artifacts.
 - CI verifies `testReleaseUnitTest`, `lintRelease`, `assembleRelease`, and `bundleRelease` and validates the produced APK signature.
-- The public release build remains signed with Arbor's reproducible public update key and keeps package ID `app.arbor.chat.debug`, preserving in-place updates and existing app data from earlier GitHub debug builds.
-- The Android package is non-debuggable. Arbor's in-app Developer settings remain available because they are product settings rather than Android debugger functionality.
-- Protected signing variables still produce the production package ID `app.arbor.chat` with the protected production key.
+- The public release build remains signed with Xylune's reproducible public update key and keeps package ID `app.xylune.chat.debug`, preserving in-place updates and existing app data from earlier GitHub debug builds.
+- The Android package is non-debuggable. Xylune's in-app Developer settings remain available because they are product settings rather than Android debugger functionality.
+- Protected signing variables still produce the production package ID `app.xylune.chat` with the protected production key.
 
 Room schema, migrations, chats, credentials, OAuth sessions, workspaces, attachments, Python environments, and Linux environments are unchanged.

@@ -1,45 +1,45 @@
 <p align="center">
-  <img src="branding/arbor-banner.png" alt="Arbor — Native Android. Private by design." width="100%">
+  <img src="branding/xylune-banner.png" alt="Xylune — Native Android. Private by design." width="100%">
 </p>
 
 <p align="center">
-  A native Android workspace for private AI chat, research, files, and local tools.
+  Xylune (pronounced <strong>“Zy-loon”</strong>) is a native Android workspace for private AI chat, research, files, and local tools.
 </p>
 
 <p align="center">
-  <a href="https://github.com/omerfaruknehir/Arbor/releases/latest"><strong>Download the latest APK</strong></a>
+  <a href="https://github.com/omerfaruknehir/Xylune/releases/latest"><strong>Download the latest APK</strong></a>
   ·
   <a href="BUILDING.md">Build from source</a>
   ·
-  <a href="https://github.com/omerfaruknehir/Arbor/issues">Report an issue</a>
+  <a href="https://github.com/omerfaruknehir/Xylune/issues">Report an issue</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/omerfaruknehir/Arbor/actions/workflows/android.yml"><img alt="Android checks" src="https://github.com/omerfaruknehir/Arbor/actions/workflows/android.yml/badge.svg"></a>
-  <a href="https://github.com/omerfaruknehir/Arbor/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/omerfaruknehir/Arbor?display_name=tag&sort=semver"></a>
+  <a href="https://github.com/omerfaruknehir/Xylune/actions/workflows/android.yml"><img alt="Android checks" src="https://github.com/omerfaruknehir/Xylune/actions/workflows/android.yml/badge.svg"></a>
+  <a href="https://github.com/omerfaruknehir/Xylune/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/omerfaruknehir/Xylune?display_name=tag&sort=semver"></a>
   <img alt="Android 8+" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white">
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white">
   <a href="LICENSE"><img alt="Apache License 2.0" src="https://img.shields.io/badge/License-Apache%202.0-blue"></a>
 </p>
 
-Arbor is a bring-your-own-provider AI client. It connects your phone directly to the services you choose—without a WebView, hosted Arbor account, application backend, telemetry, or advertising. API keys are protected with Android Keystore-backed encryption, chats live in a local SQLCipher database, and imported files remain in app-private storage.
+Xylune is a bring-your-own-provider AI client. It connects your phone directly to the services you choose—without a WebView, hosted Xylune account, application backend, telemetry, or advertising. API keys are protected with Android Keystore-backed encryption, chats live in a local SQLCipher database, and imported files remain in app-private storage.
 
-Current version: **0.20.15**
+Current version: **0.23.0**
 
 ## Development disclosure and disclaimer
 
-Arbor was made with **full vibe coding**: features and changes were primarily directed in natural language and implemented with AI-assisted coding tools, with human review and testing. That process does not guarantee correctness, security, availability, or fitness for any purpose, and the app may contain serious defects.
+Xylune was made with **full vibe coding**: features and changes were primarily directed in natural language and implemented with AI-assisted coding tools, with human review and testing. That process does not guarantee correctness, security, availability, or fitness for any purpose, and the app may contain serious defects.
 
-Arbor is provided **“AS IS”**, without warranties of any kind. Use, modify, and distribute it at your own risk. To the maximum extent permitted by applicable law, the author and contributors are not responsible for data loss, device damage, account loss, service charges, security incidents, or any other direct or indirect consequences arising from the app. Review the source, keep backups, and do not rely on Arbor for safety-critical or irreplaceable work.
+Xylune is provided **“AS IS”**, without warranties of any kind. Use, modify, and distribute it at your own risk. To the maximum extent permitted by applicable law, the author and contributors are not responsible for data loss, device damage, account loss, service charges, security incidents, or any other direct or indirect consequences arising from the app. Review the source, keep backups, and do not rely on Xylune for safety-critical or irreplaceable work.
 
-## What makes Arbor different
+## What makes Xylune different
 
 ### Android-native and private by design
 
 - Built with Kotlin, Jetpack Compose, and Material 3—never a wrapped website.
 - Connect ChatGPT, OpenAI-compatible APIs, Anthropic, Gemini, DeepSeek, OpenRouter, xAI, or a local model server.
 - Keep credentials, conversations, workspaces, and attachments on your device.
-- Talk directly to the selected provider; Arbor does not relay requests through its own server.
+- Talk directly to the selected provider; Xylune does not relay requests through its own server.
 
 ### A capable everyday chat client
 
@@ -58,15 +58,15 @@ Arbor is provided **“AS IS”**, without warranties of any kind. Use, modify, 
 
 ## Install
 
-1. Download `Arbor-0.20.15-release.apk` from the [latest GitHub Release](https://github.com/omerfaruknehir/Arbor/releases/latest).
+1. Download `Xylune-0.23.0-release.apk` from the [latest GitHub Release](https://github.com/omerfaruknehir/Xylune/releases/latest).
 2. Allow installation from your browser or file manager when Android asks.
-3. Open Arbor and follow the welcome flow.
+3. Open Xylune and follow the welcome flow.
 4. Connect a ChatGPT account, API provider, or local model server.
 5. Start a chat. Optional Python and Linux tools can be prepared later from **Settings → Local tools**.
 
-The public APK is an R8-minified, resource-shrunk **release build**. It intentionally keeps package ID `app.arbor.chat.debug` and Arbor's public reproducible signer so it can update the earlier GitHub debug builds without deleting chats or settings. The Android build is not debuggable, but Arbor's in-app **Developer settings** remain available. Protected production signing switches to the production package ID `app.arbor.chat`.
+The public APK is an R8-minified, resource-shrunk **release build**. It intentionally keeps package ID `app.xylune.chat.debug` and Xylune's public reproducible signer so it can update the earlier GitHub debug builds without deleting chats or settings. The Android build is not debuggable, but Xylune's in-app **Developer settings** remain available. Protected production signing switches to the production package ID `app.xylune.chat`.
 
-Local OpenAI-compatible servers default to `http://127.0.0.1:11434/v1`. On a physical phone, `127.0.0.1` means the phone itself. Arbor permits cleartext HTTP only for loopback and the Android emulator host alias; remote machines require HTTPS.
+Local OpenAI-compatible servers default to `http://127.0.0.1:11434/v1`. On a physical phone, `127.0.0.1` means the phone itself. Xylune permits cleartext HTTP only for loopback and the Android emulator host alias; remote machines require HTTPS.
 
 ## Build
 
@@ -108,21 +108,21 @@ Production distribution deliberately requires your own protected signing key. No
 
 ## Security boundaries
 
-Arbor's Python and Linux workspaces are private app storage, not operating-system sandboxes. Python runs inside the Arbor process. PRoot supplies Linux path and syscall compatibility under the same Android app UID; it is not a VM or privilege boundary. Do not run untrusted code.
+Xylune's Python and Linux workspaces are private app storage, not operating-system sandboxes. Python runs inside the Xylune process. PRoot supplies Linux path and syscall compatibility under the same Android app UID; it is not a VM or privilege boundary. Do not run untrusted code.
 
 Runtime package installation blocks unsafe command-line options by default and may reject packages without compatible Android wheels. Optional Linux distributions are downloaded only when selected, checked against pinned publisher SHA-256 values, and kept isolated from one another.
 
-For dependency sources, bundled native component notices, hashes, and build recipes, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), the build-validated [`licenses/`](licenses/) catalog, and `third_party/`. The same catalog, local icons, and full texts are generated into Arbor's offline **About Arbor → Licenses & notices** screen.
+For dependency sources, bundled native component notices, hashes, and build recipes, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), the build-validated [`licenses/`](licenses/) catalog, and `third_party/`. The same catalog, local icons, and full texts are generated into Xylune's offline **About Xylune → Licenses & notices** screen.
 
 ## Project
 
-Arbor is created by [@omerfaruknehir](https://github.com/omerfaruknehir).
+Xylune is created by [@omerfaruknehir](https://github.com/omerfaruknehir).
 
 - [Changelog](CHANGELOG.md)
 - [Latest release notes](docs/releases/RELEASE_NOTES_0.20.15.md)
-- [Source repository](https://github.com/omerfaruknehir/Arbor)
-- [Issue tracker](https://github.com/omerfaruknehir/Arbor/issues)
+- [Source repository](https://github.com/omerfaruknehir/Xylune)
+- [Issue tracker](https://github.com/omerfaruknehir/Xylune/issues)
 
 ## License
 
-Arbor is licensed under the [Apache License 2.0](LICENSE). Bundled third-party components retain their own licenses as documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the local [`licenses/`](licenses/) catalog.
+Xylune is licensed under the [Apache License 2.0](LICENSE). Bundled third-party components retain their own licenses as documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the local [`licenses/`](licenses/) catalog.

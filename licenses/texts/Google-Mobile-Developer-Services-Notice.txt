@@ -1,10 +1,10 @@
 Google Play services Auth and Google Drive API usage
 
-The Google Play services client library and Google APIs used by Arbor are provided by Google and are subject to the applicable Google Mobile Developer Services Terms of Service, Google APIs Terms of Service, Google API Services User Data Policy, and product-specific terms.
+The Google Play services client library and Google APIs used by Xylune are provided by Google and are subject to the applicable Google Mobile Developer Services Terms of Service, Google APIs Terms of Service, Google API Services User Data Policy, and product-specific terms.
 
 Official terms:
 https://developers.google.com/mobile/terms
 https://developers.google.com/terms
 https://developers.google.com/terms/api-services-user-data-policy
 
-Arbor requests only the Google Drive application-data scope (drive.appdata) for direct Google Drive backups. It does not request access to My Drive or all files in the user's account.
+Xylune requests only the Google Drive application-data scope (drive.appdata) for direct Google Drive backups. It does not request access to My Drive or all files in the user's account.

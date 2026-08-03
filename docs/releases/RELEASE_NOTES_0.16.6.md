@@ -1,4 +1,4 @@
-# Arbor 0.16.6
+# Xylune 0.16.6
 
 - Replaced the ineffective self-blur modifier with a shared backdrop-capture layer that blurs the actual conversation or settings content behind translucent app bars and the composer on Android 12 and newer.
 - Kept blur gradual: the radius grows smoothly with scroll while the surface tint remains constant.

@@ -1,4 +1,4 @@
-# Arbor 0.20.21
+# Xylune 0.20.21
 
 ## Setup is a real standalone flow
 
@@ -6,7 +6,7 @@ Setup is no longer exposed as a destination inside Settings. It remains a dedica
 
 ## Exact setup viewport restoration
 
-Arbor now journals the setup pager page, fractional swipe offset, and the vertical scroll offset of every setup page. Launcher-icon changes synchronously flush that viewport state alongside chats, drafts, files, and other UI state, then restore the same setup position after relaunch.
+Xylune now journals the setup pager page, fractional swipe offset, and the vertical scroll offset of every setup page. Launcher-icon changes synchronously flush that viewport state alongside chats, drafts, files, and other UI state, then restore the same setup position after relaunch.
 
 ## Swipe-linked progress
 

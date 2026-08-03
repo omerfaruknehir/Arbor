@@ -1,4 +1,4 @@
-# Arbor 0.16.46
+# Xylune 0.16.46
 
 - Preserve the exact detached viewport through every frame of working-card expansion/collapse and through newly inserted Python/tool blocks.
 - Let manual drag or fling take priority, then adopt the resulting visible message as the new stable anchor.

@@ -1,6 +1,6 @@
 # Offline license catalog
 
-This directory is the source of truth for Arbor's in-app **Licenses & notices**
+This directory is the source of truth for Xylune's in-app **Licenses & notices**
 screen. The build reads these local files, validates them, and generates
 `licenses/catalog.json` inside the APK. It never downloads legal text, metadata,
 or icon artwork.

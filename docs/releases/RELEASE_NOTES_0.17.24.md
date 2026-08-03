@@ -1,4 +1,4 @@
-# Arbor 0.17.24
+# Xylune 0.17.24
 
 ## Full-quality glass without brute-force performance policy
 
@@ -11,7 +11,7 @@
 
 ## Profiler corrections
 
-- Isolates profiler snapshot collection to the overlay leaf so updates no longer recompose the Arbor application root.
+- Isolates profiler snapshot collection to the overlay leaf so updates no longer recompose the Xylune application root.
 - Separates source traversal, layer replay, capture-update rate, effect rebuild rate, and filtered megapixels.
 - Stops labeling a healthy 2.5 ms GPU stage as the cause merely because total frame duration missed an 8.33 ms deadline.
 - Reports frame pacing / scheduling stalls when no measured stage independently consumes enough of the frame budget.

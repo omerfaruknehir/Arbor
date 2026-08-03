@@ -1,5 +1,5 @@
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@drawable/ic_arbor_background_violet" />
-    <foreground android:drawable="@drawable/ic_arbor_foreground_violet" />
-    <monochrome android:drawable="@drawable/ic_arbor_monochrome" />
+    <background android:drawable="@drawable/ic_xylune_background_violet" />
+    <foreground android:drawable="@drawable/ic_xylune_foreground_violet" />
+    <monochrome android:drawable="@drawable/ic_xylune_monochrome" />
 </adaptive-icon>

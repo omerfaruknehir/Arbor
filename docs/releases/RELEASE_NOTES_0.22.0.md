@@ -1,8 +1,8 @@
-# Arbor 0.22.0
+# Xylune 0.22.0
 
 Version code: `164`
 
-This release ships the adaptive Home-widget renderer and substantially upgrades Arbor's cross-chat memory management.
+This release ships the adaptive Home-widget renderer and substantially upgrades Xylune's cross-chat memory management.
 
 ## Memory management
 
@@ -22,7 +22,7 @@ This release ships the adaptive Home-widget renderer and substantially upgrades 
 - Makes compact list and metric nodes use their available space efficiently.
 - Tests compact, standard, and expanded launcher canvases instead of the artificial 84dp compiler canvas.
 - Reduces launcher chrome so generated content receives more usable height.
-- Accepts common generated style aliases such as `fontWeight` and `size`, then stores canonical Arbor schema.
+- Accepts common generated style aliases such as `fontWeight` and `size`, then stores canonical Xylune schema.
 - Adds regression coverage for six-row prayer lists and genuine three-row prayer layouts.
 
 ## Verification

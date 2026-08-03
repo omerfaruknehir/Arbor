@@ -1,4 +1,4 @@
-# Arbor 0.17.4
+# Xylune 0.17.4
 
 This release repairs gradual interface blur on devices where the 0.17.2/0.17.3 single-pass Poisson AGSL shader produced no visible blur.
 

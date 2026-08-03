@@ -1,8 +1,14 @@
+## 0.23.0 — 2026-08-03
+
+- Rebrand the complete application identity to Xylune, including the Android namespace, application ID, source packages, storage and transfer formats, widgets, native tools, release assets, documentation, and build metadata.
+- Replace the original A-shaped mark with an organic X while retaining the gold leaf; use the same geometry for launcher variants, dynamic color, monochrome icons, in-app marks, the license catalog, and repository artwork.
+- Rename internal protocols and identifiers without legacy compatibility because the project has no deployed user base, then validate the release build, lint, unit tests, instrumentation compilation, and offline license catalog.
+
 ## 0.20.35 — 2026-08-02
 
 - Continue output-limited responses automatically for up to three additional segments, while stopping safely when a provider reports a limit without making progress.
 - Make Resume honor the chat's current context, working-history, output-token, and token-counting limits instead of replaying the immutable limits captured when the response first started.
-- Keep provider prefix continuation anchored to the exact partial assistant text; move Arbor's saved tool activity into a separate context item so hidden working metadata cannot become the continuation target.
+- Keep provider prefix continuation anchored to the exact partial assistant text; move Xylune's saved tool activity into a separate context item so hidden working metadata cannot become the continuation target.
 
 ## 0.20.30
 
@@ -12,7 +18,7 @@
 
 - Added `compile_widget` as a first-class native model tool. Widget drafts stay inside tool calls until the compiler returns success.
 - Compiler failures now return trusted structured phase/path/message diagnostics directly to the active model so it can revise and retry in the same response.
-- Successful compiler results instruct the model to emit the exact tested source unchanged; Arbor's existing post-generation compiler remains a safety fallback.
+- Successful compiler results instruct the model to emit the exact tested source unchanged; Xylune's existing post-generation compiler remains a safety fallback.
 - Added dedicated widget-compiler activity labels and prevented internal compiler results from being marked as untrusted external data.
 
 # Changelog
@@ -32,7 +38,7 @@
 
 ## 0.20.26 — 2026-07-31
 
-- Replace category-based generated widgets and the `mini_app` compatibility layer with separate `arbor-snippet/1` and `arbor-widget/1` program surfaces.
+- Replace category-based generated widgets and the `mini_app` compatibility layer with separate `xylune-snippet/1` and `xylune-widget/1` program surfaces.
 - Add a general component-tree and bounded action runtime for AI-composed snippets and Android Home-screen widgets, including custom styling, persistent state, canvas rendering, and live data bindings.
 - Add per-widget capability manifests and grants for exact HTTPS origins, approximate or precise location, one selected document-provider folder, and scheduled refresh.
 - Rebuild Google Drive backup as a connected-account flow with account selection, silent reuse, backup browsing, preview/restore, switching, disconnect/revoke, progress, and inline diagnostics.
@@ -50,18 +56,18 @@
 ## 0.20.24 — 2026-07-31
 
 - Let portable backups include installed Ubuntu, Debian, and Alpine environments, preserving rootfs permissions, symbolic links, hard links, packages, and configuration.
-- Add a persistent Android document-provider folder target for Google Drive, OneDrive, Dropbox, Nextcloud, USB, and local storage; Arbor receives access only to the folder the user explicitly selects.
-- Add direct Google Drive app-data backup using only the non-sensitive `drive.appdata` scope and Drive's hidden Arbor-only `appDataFolder`.
+- Add a persistent Android document-provider folder target for Google Drive, OneDrive, Dropbox, Nextcloud, USB, and local storage; Xylune receives access only to the folder the user explicitly selects.
+- Add direct Google Drive app-data backup using only the non-sensitive `drive.appdata` scope and Drive's hidden Xylune-only `appDataFolder`.
 - Enable Android/Google One app backup only for small non-secret preferences. Chats, attachments, encrypted database material, credentials, workspaces, and Linux root filesystems remain excluded.
 - Keep passwords optional for every local and cloud portable backup target.
 
 ## 0.20.23 — 2026-07-31
 
-- Replace the single, mostly useless model choice in API-provider setup with a searchable multi-select list. Every discovered model starts selected, and Arbor stores only the models left selected.
+- Replace the single, mostly useless model choice in API-provider setup with a searchable multi-select list. Every discovered model starts selected, and Xylune stores only the models left selected.
 - Add Android-native cloud/file backups through the Storage Access Framework, including Google Drive, OneDrive, Dropbox, Nextcloud, USB, and local destinations exposed by the device.
 - Make archive passwords genuinely optional. Unencrypted backups and chat files remain allowed with a prominent disclosure instead of an artificial password requirement.
-- Add a portable `.arborchat` format with configurable attachments, reasoning, tool traces, system prompts, and request metadata; safe fields remain excluded by default.
-- Let Arbor open shared chat and backup files, show a content/privacy preview, unlock encrypted archives, import non-destructive copies, and immediately continue an imported chat.
+- Add a portable `.xylunechat` format with configurable attachments, reasoning, tool traces, system prompts, and request metadata; safe fields remain excluded by default.
+- Let Xylune open shared chat and backup files, show a content/privacy preview, unlock encrypted archives, import non-destructive copies, and immediately continue an imported chat.
 - Keep API keys and OAuth sessions out of portable files by design.
 
 ## 0.20.22 — 2026-07-31
@@ -69,7 +75,7 @@
 - Make setup immediately acknowledge configured API, ChatGPT, and local providers, with Continue and Manage providers actions instead of presenting the unconfigured state again.
 - Separate the Linux default toggle from distribution installation, show the live install state, require an explicit distro choice/install action when Linux is enabled, and provide a Continue without Linux path.
 - Make the final setup summary report the actual provider count and Linux installation state.
-- Keep the Android Dynamic launcher alias multicolored by removing its monochrome override, while using live Android system accent resources for both the launcher artwork and in-app Arbor mark.
+- Keep the Android Dynamic launcher alias multicolored by removing its monochrome override, while using live Android system accent resources for both the launcher artwork and in-app Xylune mark.
 
 ## 0.20.21 — 2026-07-31
 
@@ -80,24 +86,24 @@
 
 ## 0.20.20 — 2026-07-31
 
-- Replace the unreliable deferred launcher-alias workaround with an intentional stateful restart: synchronously save the active screen, selected chat, settings/setup page, chat and Settings scroll positions, per-chat drafts, and staged file attachments before switching the icon, then reopen Arbor through the selected launcher alias.
-- Add a system-owned alarm fallback so One UI can tear down every Arbor process during the alias change without losing the relaunch.
-- Persist composer text independently for every conversation; staged attachments remain durable in Arbor private storage and reappear with their matching chat draft.
+- Replace the unreliable deferred launcher-alias workaround with an intentional stateful restart: synchronously save the active screen, selected chat, settings/setup page, chat and Settings scroll positions, per-chat drafts, and staged file attachments before switching the icon, then reopen Xylune through the selected launcher alias.
+- Add a system-owned alarm fallback so One UI can tear down every Xylune process during the alias change without losing the relaunch.
+- Persist composer text independently for every conversation; staged attachments remain durable in Xylune private storage and reappear with their matching chat draft.
 - Make the Android splash and launcher handoff use the selected palette and launcher artwork. Dynamic now reads the live wallpaper-derived Android system accent and neutral resources.
 - Rebuild setup as a horizontally swipeable pager with animated transitions, persisted step restoration, and resumable Provider/Linux detours.
 - Add a permanent Setup assistant entry in Settings so setup can always be reopened.
 
 ## 0.20.19 — 2026-07-31
 
-- Stop mutating launcher aliases while Arbor is visible; icon choices are now persisted and committed only after the app leaves the screen.
+- Stop mutating launcher aliases while Xylune is visible; icon choices are now persisted and committed only after the app leaves the screen.
 - Flush pending icon changes from both MainActivity.onStop and Android's UI-hidden callback, with the component mutation still isolated in the launcher process.
 - Acknowledge a pending icon only after the requested alias was applied, preventing lost updates across process teardown.
 - Update Appearance and onboarding copy to describe the safe deferred refresh behavior.
 
 ## 0.20.18 — 2026-07-31
 
-- Render the drawer, onboarding, and Arbor license entry from the exact active launcher-icon drawable instead of a separately approximated logo.
-- Move launcher alias mutation into an isolated `:launcher_icon` process so OEM package-manager behavior cannot tear down the foreground Arbor process.
+- Render the drawer, onboarding, and Xylune license entry from the exact active launcher-icon drawable instead of a separately approximated logo.
+- Move launcher alias mutation into an isolated `:launcher_icon` process so OEM package-manager behavior cannot tear down the foreground Xylune process.
 - Give completed user messages a static full-source rendering path and show the complete plain-text fallback while Markdown parsing finishes, preventing prefix-only message bubbles while preserving the editable source.
 - Add regression coverage for icon fidelity, isolated alias switching, dynamic license branding, and completed-message rendering.
 
@@ -105,12 +111,12 @@
 
 - Route launcher aliases through a transparent trampoline so changing the icon cannot close the active MainActivity task.
 - Reuse the existing single-task app screen when any launcher alias is tapped and apply alias changes atomically on Android 13+.
-- Render the onboarding and drawer Arbor marks from the active Material color scheme, including wallpaper-derived Dynamic Color.
+- Render the onboarding and drawer Xylune marks from the active Material color scheme, including wallpaper-derived Dynamic Color.
 - Add regression coverage for alias task isolation, no-kill flags, atomic switching, and removal of static in-app green marks.
 
 ## 0.20.16 — 2026-07-31
 
-- Add an opt-in launcher-icon setting that follows Arbor, Dynamic, Graphite, Ocean, Violet, or Sunset while retaining the classic Arbor icon when disabled.
+- Add an opt-in launcher-icon setting that follows Xylune, Dynamic, Graphite, Ocean, Violet, or Sunset while retaining the classic Xylune icon when disabled.
 - Add polished adaptive icons and activity-alias switching with Android's `DONT_KILL_APP` flag.
 - Fix Dynamic palette previews borrowing colors from the currently selected scheme; previews now use the device's actual wallpaper-derived Material palette.
 - Replace single-color preview dots with accurate three-color swatches in onboarding and Appearance.
@@ -119,7 +125,7 @@
 ## 0.20.15 — 2026-07-31
 
 - Replace the shallow first-run screen with a five-step setup assistant covering appearance, provider readiness, local Python, optional Linux tooling, and a final readiness summary.
-- Add live color-palette selection during setup and expand Appearance to Arbor, Dynamic, Graphite, Ocean, Violet, and Sunset palettes.
+- Add live color-palette selection during setup and expand Appearance to Xylune, Dynamic, Graphite, Ocean, Violet, and Sunset palettes.
 - Add AMOLED selection to setup and keep every choice immediately previewable and editable later.
 - Make Linux onboarding explicit about download, storage, verification, retry behavior, rootless execution, and /workspace preservation.
 - Fix edge Back gestures dismissing popups on pointer-down or pointer cancellation.
@@ -130,7 +136,7 @@
 - Add a repository-owned `licenses/` catalog with one metadata record per bundled runtime component, local icons, useful descriptions, official source links, SPDX expressions where applicable, and complete checked-in license documents.
 - Generate the in-app catalog deterministically from local paths only; no legal text or metadata is fetched from the network at build time or runtime.
 - Fail the build when component metadata is malformed, referenced local files are missing, IDs are duplicated, paths escape the catalog, or an `implementation` dependency has no catalog coverage.
-- Replace the duplicate web-only license and third-party notice rows in About Arbor with one searchable **Licenses & notices** destination that works fully offline.
+- Replace the duplicate web-only license and third-party notice rows in About Xylune with one searchable **Licenses & notices** destination that works fully offline.
 - Add a component detail sheet with version, included Maven modules, attribution notes, official project link, and selectable full license text.
 - Classify PRoot as GPL-2.0-or-later, keep talloc correctly classified as LGPL-3.0-or-later, and retain the GPL v3 companion text without mislabeling talloc itself as GPL.
 - Keep Google ML Kit vendor terms distinct from Apache-2.0 documentation sample licensing.
@@ -142,7 +148,7 @@
 - Correct the packaged talloc 2.4.3 shared library's license classification from the retained Termux package-level GPL-3.0 label to the library's upstream LGPL-3.0-or-later license.
 - Add the exact upstream LGPL v3 text to repository and APK assets while retaining the GPL v3 text required by the LGPL v3 distribution terms.
 - Explain the distinction between the packaged library and GPL-only ancillary Python/test material in the corresponding source archive.
-- Add a directly accessible Third-party notices entry to About Arbor.
+- Add a directly accessible Third-party notices entry to About Xylune.
 - Add CI provenance checks for the talloc source hash, upstream license headers, mirrored notices, packaged ABI libraries, and shared-library boundary.
 - Preserve package identity, debug signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, attachments, and Linux workspace data.
 
@@ -150,8 +156,8 @@
 
 - Replace the misleading hard-coded `SDK 26–35` About row with separate minimum and target Android rows derived from the installed app metadata.
 - Show Android 8.0 / API 26 as an open-ended minimum instead of implying that newer Android releases are unsupported.
-- Update Arbor's compile and target SDK from Android 15 / API 35 to Android 16 / API 36, while retaining Android 8.0 / API 26 as the minimum.
-- Keep Android 17 / API 37 as a deliberate future compatibility migration because it changes local-network permissions and native dynamic-code loading behavior relevant to Arbor.
+- Update Xylune's compile and target SDK from Android 15 / API 35 to Android 16 / API 36, while retaining Android 8.0 / API 26 as the minimum.
+- Keep Android 17 / API 37 as a deliberate future compatibility migration because it changes local-network permissions and native dynamic-code loading behavior relevant to Xylune.
 - Add a two-step first-run welcome and provider setup flow that reappears when the app has no usable provider, with a session-only option to explore first.
 - Replace the generic empty chat with an actionable provider setup state and disable message controls until a usable provider is connected.
 - Warn inside the per-chat Tools menu when Linux is not installed and link directly to its workspace manager.
@@ -176,23 +182,23 @@
 - Keep completed and failed Working steps compact instead of auto-expanding raw code, output, and diagnostics.
 - Replace the oversized nested script-run card with a concise failure summary and compact Retry action.
 - Hide raw tool inputs, outputs, source paths, and copyable diagnostics unless both Developer settings and the new Tool diagnostics toggle are enabled.
-- Move Developer settings out of the main Settings categories and place its entry at the bottom of About Arbor.
-- Rebuild About Arbor with creator, source, issue, version, build, package, Android SDK, runtime, ABI, and privacy information.
+- Move Developer settings out of the main Settings categories and place its entry at the bottom of About Xylune.
+- Rebuild About Xylune with creator, source, issue, version, build, package, Android SDK, runtime, ABI, and privacy information.
 - Preserve package identity, debug signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
 
 ## 0.20.1
 
-- Replace the invisible complete-frame blur replay with Arbor's physical-device-proven direct RenderEffect path from 0.17.8, adapted to the current top/bottom panel bounds, rounded/flat geometry, and symmetric softness.
+- Replace the invisible complete-frame blur replay with Xylune's physical-device-proven direct RenderEffect path from 0.17.8, adapted to the current top/bottom panel bounds, rounded/flat geometry, and symmetric softness.
 - Remove the one-pixel join between the solid and feathered panel regions by drawing each soft tint as one continuous gradient.
 - Make fully opaque tint explain that it hides background blur instead of presenting a working blur control with no visible result.
-- Replace Material 3's vertical bar thumb with a circular Arbor thumb while keeping Material gesture, accessibility, keyboard, RTL, cancellation, and drawer-priority behavior.
+- Replace Material 3's vertical bar thumb with a circular Xylune thumb while keeping Material gesture, accessibility, keyboard, RTL, cancellation, and drawer-priority behavior.
 - Restore Thinking effort as a continuous finger-tracked slider with visible level marks, boundary haptics, and a damped nearest-level spring only after release.
 - Shift the Thinking, Search, and Tools pill row 12 dp left in the composer.
 - Preserve package identity, debug signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
 
 ## 0.20.0
 
-- Replace the custom magnetic slider engine with Material 3's maintained slider interaction model, preserving Arbor haptics, semantic progress, RTL behavior, and drawer-gesture priority while removing pointer, spring, and state synchronization races.
+- Replace the custom magnetic slider engine with Material 3's maintained slider interaction model, preserving Xylune haptics, semantic progress, RTL behavior, and drawer-gesture priority while removing pointer, spring, and state synchronization races.
 - Replace Thinking effort's misleading discrete slider with explicit named choices and descriptions.
 - Split Appearance edge geometry into a clear **Rounded / Flat** choice and an independently labeled **Edge softness** control without changing stored settings or the Room schema.
 - Make Working cards honor their visibility setting, name the current action, summarize steps and failures, auto-open active/error details, and keep completed steps compact.
@@ -204,9 +210,9 @@
 
 ## 0.19.15
 
-- Replace Arbor's layered Material-slider wrapper with one custom slider engine that owns pointer tracking, magnetic hysteresis, velocity, haptics, spring settling, accessibility, external-state synchronization, and rendering.
-- Remove the hidden Material Slider state machine that could override Arbor's release animation, duplicate ticks, jump values, or race preference updates.
-- Draw every Arbor slider with the same 48 dp touch target, 16 dp rounded track, Material-style interior ticks, and 44 dp pill thumb; range endpoints are represented only by the track caps.
+- Replace Xylune's layered Material-slider wrapper with one custom slider engine that owns pointer tracking, magnetic hysteresis, velocity, haptics, spring settling, accessibility, external-state synchronization, and rendering.
+- Remove the hidden Material Slider state machine that could override Xylune's release animation, duplicate ticks, jump values, or race preference updates.
+- Draw every Xylune slider with the same 48 dp touch target, 16 dp rounded track, Material-style interior ticks, and 44 dp pill thumb; range endpoints are represented only by the track caps.
 - Keep continuous controls completely free of snap behavior, make stepped controls and Thinking move continuously under the finger and spring only after release, and retain the bounded rounded-hard/flat-hard lane for Edge Smoothness.
 - Add stable magnetic-well selection with hysteresis so adjacent anchors cannot flicker or fight around their midpoint, plus a single final value commit after the visual spring completes.
 - Preserve slider priority over drawer gestures, live setting previews during drag, system-respecting haptics, RTL mapping, accessibility progress actions, package identity, signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
@@ -258,7 +264,7 @@
 
 - Replace weak release-only slider snapping with a visible spring well while dragging and a damped spring settle animation on release.
 - Increase snap capture tolerance while preserving velocity-aware behavior, so slow precise drags settle reliably and fast flicks remain easier to pass through.
-- Draw tick dots at every explicit Arbor snap point, including the rounded-hard and flat-hard edge anchors and all Thinking effort choices.
+- Draw tick dots at every explicit Xylune snap point, including the rounded-hard and flat-hard edge anchors and all Thinking effort choices.
 - Simplify the edge-softness readout to **Hard edges** across the complete two-anchor 0% lane; numeric percentages appear only after actual edge feathering begins.
 - Keep the Thinking thumb continuous during drag, then spring it to the nearest effort only after release instead of teleporting between values.
 - Preserve slider priority over drawer gestures, native Gaussian blur, configurable panel height, package identity, signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
@@ -269,7 +275,7 @@
 - Correct the native Gaussian compositor so blurred pixels replace the original panel region instead of visually accumulating as bloom, with complementary original/blur branches combined exactly once.
 - Redesign edge softness as two distinct 0% anchors: rounded 0%, a continuous unsnapped shape-transition lane, flat 0%, then a continuous 0–100% feather range.
 - Migrate existing edge-softness settings so prior nonzero softness retains the same visual feather amount in the new post-flat range.
-- Remove live value warping from Arbor sliders by default; retain small release-only anchors and tactile proximity feedback without thumb oscillation or discontinuous jumps.
+- Remove live value warping from Xylune sliders by default; retain small release-only anchors and tactile proximity feedback without thumb oscillation or discontinuous jumps.
 - Keep the Thinking slider physically continuous while its menu is open and select the nearest effort on release without snapping or resetting the thumb to integer values.
 - Preserve slider priority over drawer gestures, configurable panel height, haptics, package identity, signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
 - Add regression coverage for the two-zero-anchor mapping, preference-preserving control conversion, complementary Gaussian composition, and continuous Thinking slider state.
@@ -279,7 +285,7 @@
 - Repair the native Gaussian backdrop renderer by replacing RuntimeShader child-image filter chaining with independent native Gaussian, color-filter, alpha-mask, and source-over effects for each panel.
 - Preserve pattern-free high-radius blur while avoiding black, stale, or missing output on affected Android GPU/Skia paths.
 - Keep blur, tint, feather, rounded corners, and highlights on the exact shared root-coordinate panel bounds introduced in 0.19.7.
-- Give Arbor sliders horizontal gesture priority over the navigation drawer, including sliders near the left edge of the Settings root.
+- Give Xylune sliders horizontal gesture priority over the navigation drawer, including sliders near the left edge of the Settings root.
 - Preserve the configurable 64–240 dp top-panel height, magnetic snapping, haptics, package identity, signer, Room schema, migrations, chats, credentials, OAuth sessions, workspaces, and attachments.
 - Add unit coverage for the native effect graph, color matrix, independent mask path, and slider gesture ownership, plus an Android instrumentation construction test for both panel edges.
 
@@ -294,7 +300,7 @@
 
 ## 0.19.6
 
-- Restore the proven Arbor 0.17.8 three-direction AGSL backdrop blur and remove the later capture/composite path which could produce stale frames, black backgrounds, hard strength jumps, and block artifacts.
+- Restore the proven Xylune 0.17.8 three-direction AGSL backdrop blur and remove the later capture/composite path which could produce stale frames, black backgrounds, hard strength jumps, and block artifacts.
 - Retain the current exact blur, overlay, edge-softness, merge-distance, saturation, contrast, brightness, and edge-highlight controls, including rounded exact-zero edge-softness behavior.
 - Replace hard slider snapping with a continuous magnetic force curve, a tiny exact-settle core, and velocity-aware release behavior so fast flicks stay free while slow drags settle confidently.
 - Add centralized system-respecting haptic feedback for sliders, drawer gestures, message actions, branch navigation, settings, sidebar navigation, composer controls, toggles, and confirmations.
@@ -306,7 +312,7 @@
 - Restore official OpenAI image models to the normal provider/model picker even when `/models` omits them, and repair existing catalog rows without changing Room schema or migrations.
 - Replace the generic image-generation capability checkbox with automatic preset transport selection and a compact Chat/Image generation request-type selector only for truly custom OpenAI-compatible providers.
 - Route official GPT Image models through `/images/generations` while keeping chat models on normal chat/completions transport.
-- Render reasoning with Arbor's full Markdown, table, code, link, blockquote, and LaTeX renderer during streaming.
+- Render reasoning with Xylune's full Markdown, table, code, link, blockquote, and LaTeX renderer during streaming.
 - Enforce a display-only reasoning boundary: fenced code, widgets, generated-content blocks, scripts, package requests, and tools are rendered but never executed from hidden thinking.
 - Add regression coverage for catalog merging, normal-picker visibility, endpoint selection, custom request types, Markdown reasoning, and non-executable reasoning fences.
 
@@ -338,9 +344,9 @@
 
 ## 0.19.0
 
-- Add native one-tap Sign in with ChatGPT using OAuth authorization-code + PKCE and Arbor's own localhost callback; no extension, WebView, Node.js process, proxy, copied token, or API key is required.
+- Add native one-tap Sign in with ChatGPT using OAuth authorization-code + PKCE and Xylune's own localhost callback; no extension, WebView, Node.js process, proxy, copied token, or API key is required.
 - Encrypt OAuth tokens in the existing secure store, refresh sessions automatically, retry once after authentication expiry, and provide complete sign-out cleanup.
-- Discover account-available Codex models and integrate them into the normal Arbor provider/model selector.
+- Discover account-available Codex models and integrate them into the normal Xylune provider/model selector.
 - Add direct Responses streaming with reasoning summaries, native tools, encrypted item replay, images, usage, and Responses-lite handling.
 - Rebase on 0.18.4 and preserve its blur/edge repairs, package IDs, Room data, settings, credentials, workspaces, and debug signing compatibility.
 
@@ -373,7 +379,7 @@
 ## 0.17.26
 
 - Preserve the exact 0.17.18 adaptive blur kernel while filtering only progressively cropped full-resolution top and bottom dependency regions.
-- Isolate drawer drag offset from root composition so continuous drawer motion does not recompose ArborApp and ChatScreen every frame.
+- Isolate drawer drag offset from root composition so continuous drawer motion does not recompose XyluneApp and ChatScreen every frame.
 - Keep navigation transition state out of kept-alive page composition and stabilize the page-content function.
 - Preserve adaptive refresh and thermal policy; no quality reduction or forced performance mode.
 
@@ -408,7 +414,7 @@
 - Blur 0% now means no blur; overlay opacity 100% now means fully opaque.
 - APK-only release workflow by default.
 
-# Arbor 0.17.12
+# Xylune 0.17.12
 
 - Preserve the 0.17.8 three-axis glass-blur character while increasing real samples from 9 to 15 per pass.
 - Keep the proven top blur range as the canonical top panel geometry.
@@ -416,18 +422,18 @@
 - Paint tint overlays in the scrolling source coordinate space so blur and tint share identical ranges and rounded masks.
 - Preserve live Python/shell output, Running states, deferred popup dismissal, Room data, workspaces, and signing compatibility.
 
-# Arbor 0.17.10
+# Xylune 0.17.10
 
 - Native Gaussian glass blur with a shared blur/tint panel mask.
 - Fixed top and bottom mask alignment.
 
-# Arbor 0.17.9
+# Xylune 0.17.9
 
 - Replaced directional multi-pass blur with a 49-sample isotropic glass kernel to remove grids and streaks.
 - Aligned top overlay geometry to the proven top blur mask and bottom blur geometry to the proven composer overlay bounds.
 - Stream Python and Linux stdout/stderr while processes are running in chat cards, code blocks, and Tool workspaces.
 
-# Arbor 0.17.8
+# Xylune 0.17.8
 
 - Add independent Blur and Gradual switches, yielding four panel modes: gradual blur, panel blur, gradual panel, and normal panel.
 - Keep the existing 16 dp minimum blur in gradual mode and use the configured blur maximum immediately in uniform panel-blur mode.
@@ -435,7 +441,7 @@
 - Defer dropdown-menu and anchored link-popup outside dismissal until pointer release so Android edge Back gestures are not interrupted on touch-down.
 - Preserve 0.17.6 scrolling, navigation, data, workspace, and signing behavior.
 
-# Arbor 0.17.6
+# Xylune 0.17.6
 
 - Keep gradual chrome blur active whenever the feature is enabled, with a 16 dp minimum radius before any chat scrolling occurs.
 - Map the strength control from the minimum radius to the 56 dp maximum instead of allowing enabled blur to collapse to zero.
@@ -444,27 +450,27 @@
 - Widen the top fade to 128 dp and the composer fade to 208 dp for a more gradual blur and overlay transition.
 - Preserve the 0.17.5 three-direction blur, gesture fixes, chat scrolling optimizations, Room data, settings, workspaces, and signing compatibility.
 
-# Arbor 0.17.5
+# Xylune 0.17.5
 
 - Replace the remaining two-line blur structure with three non-axis-aligned passes distributed around the image plane.
 - Increase the maximum blur radius to 56 dp and strengthen the translucent surface tint for a more Mica-like result.
 - Preserve the 0.17.4 device-working RuntimeShader/RenderEffect architecture and all prior navigation and scrolling fixes.
 
-# Arbor 0.17.4
+# Xylune 0.17.4
 
 - Restore the proven two-pass AGSL backdrop blur after the 0.17.2 single-pass Poisson shader rendered as an unblurred pass-through on real devices.
 - Rotate the two orthogonal Gaussian passes by 22.5 degrees so the blur remains isotropic without the horizontal/vertical grid pattern of the old axis-aligned implementation.
 - Keep the stronger 36 dp maximum radius and widened chrome fades introduced in 0.17.2.
 - Preserve the 0.17.3 gesture ownership fixes, chat scrolling optimizations, application IDs, Room schema/data, settings, conversations, provider credentials, workspaces, and debug signing compatibility.
 
-# Arbor 0.17.3
+# Xylune 0.17.3
 
 - Reserve both Android system-gesture edges for Back on Settings, Search, Sandbox, and Terminal; pull-to-open remains available on Chat.
 - Keep the drawer button functional on every secondary page without installing the conflicting full-screen drawer drag recognizer.
 - Hand Back ownership to page navigation as soon as a closing drawer is visually gone, eliminating the animation-end gap that could fall through to Activity exit.
 - Preserve application IDs, Room schema/data, settings, conversations, provider credentials, workspaces, and debug signing compatibility.
 
-# Arbor 0.17.2
+# Xylune 0.17.2
 
 - Reuse native Markdown and table TextViews while LazyColumn recycles message slots, avoiding repeated Android view allocation and span/editor setup during fast scrolling.
 - Move paging-key bookkeeping out of chat composition and perform it only when the Paging snapshot actually changes.
@@ -473,7 +479,7 @@
 - Increase the maximum gradual blur radius from 24 dp to 36 dp and widen the chat chrome fade for a stronger result.
 - Preserve application IDs, Room schema/data, settings, conversations, provider credentials, workspaces, and debug signing compatibility.
 
-# Arbor 0.17.1
+# Xylune 0.17.1
 
 - Give code blocks, tables, diagrams, and other horizontal chat surfaces gesture priority over the left drawer.
 - Keep Chat composed while Settings and other global pages are open, preserving its exact viewport and state for instant Back navigation.
@@ -481,7 +487,7 @@
 - Cut gradual-blur texture sampling from seventeen to nine fetches per axis with bilinear-paired Gaussian taps.
 - Preserve application IDs, Room schema/data, settings, conversations, provider credentials, workspaces, and debug signing compatibility.
 
-# Arbor 0.17.0
+# Xylune 0.17.0
 
 - Make pull-to-open available from anywhere in the chat surface after a deliberate 6 dp horizontal movement, with tolerant accumulated-motion arbitration, a 30% settle threshold, and an 850 dp/s fling threshold. The starting touch location no longer gates the gesture, and crossing the movement threshold never triggers an independent open animation.
 - Restore chat chrome blur activation to the actual list scroll position instead of the independently collapsed header state, and add modest extra top and bottom chat gutters for more comfortable end-of-list scrolling.
@@ -492,7 +498,7 @@
 - Preserve the Room schema at version 13; no destructive migration or data reset is required.
 - Add deterministic regression coverage for drawer physics/arbitration, run revisions and atomic patches, capability consistency, repair retry/exhaustion/persistence, and ordered streaming content.
 
-# Arbor 0.16.60
+# Xylune 0.16.60
 
 - Stabilize the chat viewport through every Working-card expansion and collapse instead of correcting only after a manual collapse.
 - Manual expansion pins the card header so the card grows downward; manual collapse keeps the header fixed and still centers very large cards after the animation.
@@ -501,26 +507,26 @@
 - Add regression tests for the Working-card anchor strategy.
 
 
-# Arbor 0.16.59
+# Xylune 0.16.59
 
 - Added a streaming scroll-anchor guard. Room/Paging refreshes can no longer reset the visible list to item 0 and then make the nonlinear follower race back down.
 - Preserved stable message keys across transient Paging refresh gaps.
 - Restored pull-to-open for the conversation drawer with a 56 dp edge zone and a low 10 dp horizontal trigger.
 - Kept the drawer gesture edge-only while closed so vertical chat/table scrolling is not captured; native pull-to-close remains enabled while open.
 
-# Arbor 0.16.58
+# Xylune 0.16.58
 
 - Fixed random jumps to the top of a newly appended streaming item followed by a scroll back down.
 - Removed hard list positioning from the active-generation reattachment path.
 - Kept nonlinear auto-follow as the only streaming scroll controller.
 
-# Arbor 0.16.57
+# Xylune 0.16.57
 
 - Replaced constant-velocity off-screen auto-follow with distance- and time-sensitive exponential acceleration.
 - Raised the measured-tail correction ceiling from 2,800 px/s to 48,000 px/s and the off-screen seek ceiling to 72,000 px/s.
 - Kept small final corrections gentle while allowing large table, tool, and file-card insertions to catch up almost immediately.
 
-# Arbor 0.16.56
+# Xylune 0.16.56
 
 - Fixed live rich-message updates being stuck on the first captured streaming snapshot; tables and all following content now appear without reopening the chat.
 - Increased eased auto-follow speed and large-insertion catch-up speed.
@@ -598,7 +604,7 @@
 
 ## 0.20.19 — 2026-07-31
 
-- Stop mutating launcher aliases while Arbor is visible; icon choices are now persisted and committed only after the app leaves the screen.
+- Stop mutating launcher aliases while Xylune is visible; icon choices are now persisted and committed only after the app leaves the screen.
 - Flush pending icon changes from both MainActivity.onStop and Android's UI-hidden callback, with the component mutation still isolated in the launcher process.
 - Acknowledge a pending icon only after the requested alias was applied, preventing lost updates across process teardown.
 - Update Appearance and onboarding copy to describe the safe deferred refresh behavior.
@@ -730,7 +736,7 @@
 
 - Replaced the wide composer thinking controls with one compact persistent chip. Tapping the label toggles thinking; the arrow opens a Minimal/Low/Medium/High effort menu.
 - Rebuilt Global Settings as a categorized home screen instead of a dense tab strip. Providers, new-chat defaults, automation, appearance, privacy, and about information now open as focused pages.
-- Added persistent Follow-device, Light, and Dark theme modes while retaining Arbor, dynamic Material You, graphite, and AMOLED options.
+- Added persistent Follow-device, Light, and Dark theme modes while retaining Xylune, dynamic Material You, graphite, and AMOLED options.
 - Simplified provider management: provider selection is separate from a compact connection summary, while endpoint, key, and custom headers stay in an edit sheet.
 - Replaced the oversized model editor with a focused bottom sheet. Basic identity and token limits stay visible; capabilities use compact chips and optional pricing is collapsed by default.
 - Improved model catalog readability with search, concise capability summaries, and cleaner navigation rows.
@@ -742,7 +748,7 @@
 - Added persistent per-chat and new-chat-default thinking controls, including an enable switch and Minimal/Low/Medium/High effort selector mapped to OpenAI-compatible, Anthropic, and Gemini request formats.
 - Simplified agent permissions to independent Web, Python, and Linux switches. Existing chats retain their own choices; every settings change also becomes the starting profile for newly created chats.
 - Added Room migration 9→10 and immutable generation-snapshot fields for thinking state so queued, resumed, and retried work preserves the settings selected when it was submitted.
-- Added native structured tool calls for OpenAI-compatible, Anthropic, and Gemini providers while retaining Arbor's fenced protocol as a compatibility fallback. Streaming tool arguments, provider-specific reasoning blocks, and multi-step tool results are preserved.
+- Added native structured tool calls for OpenAI-compatible, Anthropic, and Gemini providers while retaining Xylune's fenced protocol as a compatibility fallback. Streaming tool arguments, provider-specific reasoning blocks, and multi-step tool results are preserved.
 - Added safe local text extraction for DOCX, PPTX, and XLSX attachments, with archive-size, entry-count, XML-size, and path-safety bounds.
 - Expanded protocol, settings inheritance, request snapshot, Office extraction, permission, and fragmented-stream regression tests.
 
@@ -759,13 +765,13 @@
 - Added durable generated-render recovery. Widget, chart, or diagram crashes automatically enable a persisted safe-rendering mode on the next launch; the offending source and chat remain intact, and full rendering can be retried from the crash dialog, placeholder card, or Settings without clearing app data.
 - New conversations now remain in memory and do not enter Room or the sidebar until their first message or stored attachment. Repeated New-chat taps cannot create database spam, and the upgrade removes only legacy rows with no messages and no attachments.
 - Expanded the optional Linux tool layer from Ubuntu-only to persisted Ubuntu 26.04, Debian 13, and Alpine 3.24.1 choices, with isolated root filesystems, pinned SHA-256 verification, apt/apk-aware preflight, exact approval fingerprints, already-installed detection, and no-change install blocking.
-- Added view-model-owned Python and Linux runs which continue while navigating around Arbor, show an app-wide background status, warn after ten seconds, report elapsed time, enforce configurable hard deadlines, and expose cancellation. Python uses a cooperative stop marker; PRoot processes are forcibly terminated on cancellation.
+- Added view-model-owned Python and Linux runs which continue while navigating around Xylune, show an app-wide background status, warn after ten seconds, report elapsed time, enforce configurable hard deadlines, and expose cancellation. Python uses a cooperative stop marker; PRoot processes are forcibly terminated on cancellation.
 - Agent Python/Linux tools now use bounded default deadlines, accept explicitly bounded longer deadlines, report timeout timing to the model, and forbid silent retry or direct apt/apk/pip/package-manager use outside the visible approval flow.
 - Generalized Linux labels, package request fences, command linting, agent permissions, and durable package transactions while retaining older Ubuntu aliases for saved chats and model compatibility.
 
 ## 0.10.0
 
-- Rebuilt provider onboarding around protocol-aware model discovery. Arbor validates credentials and endpoints, fetches searchable model lists from OpenAI-compatible, Anthropic, and Gemini APIs, registers every discovered model, keeps manual entry as a fallback, and can refresh an existing provider without recreating it.
+- Rebuilt provider onboarding around protocol-aware model discovery. Xylune validates credentials and endpoints, fetches searchable model lists from OpenAI-compatible, Anthropic, and Gemini APIs, registers every discovered model, keeps manual entry as a fallback, and can refresh an existing provider without recreating it.
 - Added immutable request snapshots and an append-only per-call usage ledger so queued/resumed work retains its original endpoint, limits, capabilities, pricing, and billed usage even if conversation settings later change.
 - Added recoverable streaming retries with connectivity constraints, cancellable provider calls, durable partial state, bounded error handling, deterministic same-chat queue positions, and cancellation of every same-chat worker during steering.
 - Added a Room 7-to-8 migration which creates/backfills FTS, persists package transactions and generation usage, stores request snapshots, and advances context summaries with stable row cursors.
@@ -774,7 +780,7 @@
 - Added a dedicated `send_file` agent tool. Workspace diffs no longer hoist unrelated files; each returned file or image appears at its exact response-timeline location with native preview, save, and share controls.
 - Remastered raster viewing with clean inline previews, a full-screen black viewer, double-tap and button zoom, clamped pinch/pan, OCR overlays only when requested, and multi-page PDF navigation.
 - Added first-use consent for live generated UI, an always-available local capability/risk review, an optional independent model security opinion, expiring Home-widget handoff state, and a separate confirmation before launcher pinning.
-- Added calm Arbor, Material You, and graphite palettes with optional AMOLED surfaces; refreshed the launcher mark, provider/model switcher, attachment layout, package cards, and searchable result navigation.
+- Added calm Xylune, Material You, and graphite palettes with optional AMOLED surfaces; refreshed the launcher mark, provider/model switcher, attachment layout, package cards, and searchable result navigation.
 - Ubuntu now inherits the active Android network's DNS servers when available instead of unconditionally bypassing VPN/private-DNS configuration.
 
 ## 0.9.2
@@ -789,8 +795,8 @@
 ## 0.9.1
 
 - Separated conversation interaction from Android Home-screen widgets at both the fence and schema levels.
-- Added `arbor-ui` for chat-only questions, requirement forms, configuration, previews, quizzes, and mini-apps; it never exposes launcher pinning.
-- Changed Home eligibility to opt-in. Even `arbor-widget` content must explicitly declare `surface: "home"`, `surface: "both"`, or legacy `home: true` before the pin action can appear.
+- Added `xylune-ui` for chat-only questions, requirement forms, configuration, previews, quizzes, and mini-apps; it never exposes launcher pinning.
+- Changed Home eligibility to opt-in. Even `xylune-widget` content must explicitly declare `surface: "home"`, `surface: "both"`, or legacy `home: true` before the pin action can appear.
 - Made `surface: "chat"` authoritative even if conflicting legacy Home metadata is present, and reject unknown surface values.
 - Updated the agent contract to prohibit marking clarifying questions, implementation questionnaires, ordinary answer controls, or requested in-app screens as Home-screen widgets.
 - Added regression tests for chat-only defaults, explicit Home/both eligibility, conflict handling, and invalid surfaces.
@@ -810,7 +816,7 @@
 ## 0.8.0
 
 - Replaced the four-button Home-widget approximation with purpose-built native layouts for calculator, live metrics/stocks, and ordered schedule/prayer-time mini-apps.
-- Added a complete persistent Home-screen calculator keypad with clear, backspace, sign, percentage, decimal, operators, and safe expression evaluation without opening Arbor.
+- Added a complete persistent Home-screen calculator keypad with clear, backspace, sign, percentage, decimal, operators, and safe expression evaluation without opening Xylune.
 - Added public HTTPS JSON data sources with explicit dot/array-path bindings, 1 MB response limits, redirect blocking, private/local-address rejection at DNS resolution, cached last-good values, visible refresh state, and manual refresh.
 - Added per-widget WorkManager refresh jobs with Android's 15-minute periodic floor, network constraints, retryable manual refresh, lifecycle cleanup, and immediate initial loading.
 - Added live stock/metric cards in chat with source disclosure, refresh, snapshot submission, numeric formatting, and matching pin-to-Home behavior.
@@ -821,7 +827,7 @@
 ## 0.7.0
 
 - Replaced the edge-list Mermaid placeholder with a native flow/state/sequence diagram canvas supporting labels, chained edges, direction, dashed messages, scrolling, and expanded previews.
-- Added native bar, line, area, scatter, pie, and donut charts from structured `arbor-chart` JSON while retaining simple `label: value` compatibility.
+- Added native bar, line, area, scatter, pie, and donut charts from structured `xylune-chart` JSON while retaining simple `label: value` compatibility.
 - Raster image attachments now render as full-width, uncropped inline previews; tapping opens a near-full-screen pinch-zoom and pan preview with correctly transformed OCR highlights.
 - Returned files are inserted as explicit visible timeline events at their actual tool-output position instead of being hoisted above the assistant's entire response. Existing saved tool outputs are positioned from their attachment timestamps.
 - AI-created images no longer receive unnecessary OCR, and old assistant-image OCR metadata is cleaned on upgrade. User photos always open as normal originals; OCR is an optional hidden overlay with a clear fallback warning for text-only models.
