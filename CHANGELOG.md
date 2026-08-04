@@ -1,3 +1,9 @@
+## 0.23.16 — 2026-08-04
+
+- Remove the continuous LazyColumn-to-top-bar projection that caused a layout feedback loop, jitter, jumps, and unrelated title-state changes.
+- Restore Material nested scroll as the sole live gesture and fling owner.
+- Synchronize opening/restoration, Send, search jumps, and Go to latest explicitly, including short chats with no physical scroll range.
+
 ## 0.23.15 — 2026-08-04
 
 - Drive the chat title collapse directly from the LazyColumn's first visible item and pixel offset instead of relying on Material nested-scroll callbacks.
