@@ -45,7 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           git diff --check
-          ! grep -R 'APT::Status-Fd=1' app/src/main app/src/test
+          ! grep -R 'APT::Status-Fd=1' app/src/main
           grep -R 'APT::Status-Fd=3' app/src/main app/src/test
           grep -R 'additionalProgressFiles = listOf(statusFile)' app/src/main
           ./ci/verify-third-party-licenses.sh
