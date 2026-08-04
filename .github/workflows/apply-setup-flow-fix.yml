@@ -1,0 +1,207 @@
+name: Apply setup flow fix
+
+on:
+  push:
+    branches:
+      - fix/setup-flow-animations
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/setup-flow-animations
+          fetch-depth: 0
+
+      - name: Apply guarded source changes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str, count: int = 1) -> None:
+              file = Path(path)
+              text = file.read_text()
+              found = text.count(old)
+              if found != count:
+                  raise SystemExit(f"{path}: expected {count} occurrence(s), found {found}: {old[:120]!r}")
+              file.write_text(text.replace(old, new, count))
+
+          def prepend(path: str, text: str) -> None:
+              file = Path(path)
+              current = file.read_text()
+              if current.startswith(text):
+                  return
+              file.write_text(text + current)
+
+          onboarding = "app/src/main/java/app/xylune/chat/ui/OnboardingScreen.kt"
+          replace_exact(
+              onboarding,
+              "import androidx.compose.foundation.BorderStroke\n",
+              "import androidx.compose.animation.AnimatedContent\n"
+              "import androidx.compose.animation.core.FastOutSlowInEasing\n"
+              "import androidx.compose.animation.core.animateFloatAsState\n"
+              "import androidx.compose.animation.core.tween\n"
+              "import androidx.compose.animation.fadeIn\n"
+              "import androidx.compose.animation.fadeOut\n"
+              "import androidx.compose.animation.slideInHorizontally\n"
+              "import androidx.compose.animation.slideOutHorizontally\n"
+              "import androidx.compose.animation.togetherWith\n"
+              "import androidx.compose.foundation.BorderStroke\n",
+          )
+          replace_exact(
+              onboarding,
+              "    onOpenLinuxSetup: () -> Unit,\n    onExplore: () -> Unit,\n) {",
+              "    onOpenLinuxSetup: () -> Unit,\n    onSkipForNow: () -> Unit,\n    onFinish: () -> Unit,\n) {",
+          )
+          replace_exact(
+              onboarding,
+              "                onLater = {\n                    haptics.selection()\n                    onExplore()\n                },",
+              "                onSkipForNow = {\n                    haptics.selection()\n                    onSkipForNow()\n                },",
+          )
+          replace_exact(onboarding, "                keepAlive = { true },", "                keepAlive = { false },")
+          replace_exact(
+              onboarding,
+              "            OnboardingStepActions(\n                step = step,\n                configuredProviderCount = configuredProviderCount,\n                linuxEnabled = linuxEnabled,\n                linuxStatus = linuxStatus,\n                onContinue = { moveTo(currentPage + 1) },\n                onOpenProviderSetup = onOpenProviderSetup,\n                onOpenLinuxSetup = onOpenLinuxSetup,\n                onExplore = onExplore,\n            )",
+              "            AnimatedContent(\n                targetState = step,\n                transitionSpec = {\n                    val forward = targetState.ordinal >= initialState.ordinal\n                    val enter = slideInHorizontally(\n                        animationSpec = tween(220, easing = FastOutSlowInEasing),\n                        initialOffsetX = { width -> if (forward) width / 5 else -width / 5 },\n                    ) + fadeIn(tween(150))\n                    val exit = slideOutHorizontally(\n                        animationSpec = tween(180, easing = FastOutSlowInEasing),\n                        targetOffsetX = { width -> if (forward) -width / 6 else width / 6 },\n                    ) + fadeOut(tween(120))\n                    enter togetherWith exit\n                },\n                label = \"XyluneSetupActions\",\n            ) { actionStep ->\n                OnboardingStepActions(\n                    step = actionStep,\n                    configuredProviderCount = configuredProviderCount,\n                    linuxEnabled = linuxEnabled,\n                    linuxStatus = linuxStatus,\n                    onContinue = { moveTo(currentPage + 1) },\n                    onOpenProviderSetup = onOpenProviderSetup,\n                    onOpenLinuxSetup = onOpenLinuxSetup,\n                    onFinish = onFinish,\n                )\n            }",
+          )
+          replace_exact(
+              onboarding,
+              "    onOpenLinuxSetup: () -> Unit,\n    onExplore: () -> Unit,\n) {\n    val haptics = rememberXyluneHaptics()",
+              "    onOpenLinuxSetup: () -> Unit,\n    onFinish: () -> Unit,\n) {\n    val haptics = rememberXyluneHaptics()",
+          )
+          replace_exact(onboarding, "                        onExplore()", "                        onFinish()")
+          replace_exact(
+              onboarding,
+              "    onLater: () -> Unit,\n) {",
+              "    onSkipForNow: () -> Unit,\n) {",
+          )
+          replace_exact(
+              onboarding,
+              "                TextButton(onClick = onLater) { Text(\"Later\") }",
+              "                TextButton(onClick = onSkipForNow) { Text(\"Skip for now\") }",
+          )
+          replace_exact(
+              onboarding,
+              "                val fill = setupProgressForSegment(currentStepIndex.toFloat(), index)\n",
+              "                val fill = animateFloatAsState(\n"
+              "                    targetValue = setupProgressForSegment(currentStepIndex.toFloat(), index),\n"
+              "                    animationSpec = tween(220, easing = FastOutSlowInEasing),\n"
+              "                    label = \"SetupProgress$index\",\n"
+              "                ).value\n",
+          )
+
+          app = "app/src/main/java/app/xylune/chat/ui/XyluneApp.kt"
+          replace_exact(
+              app,
+              "                onOpenLinuxSetup = viewModel::openLinuxSetupFromSetup,\n                onExplore = viewModel::finishSetup,",
+              "                onOpenLinuxSetup = viewModel::openLinuxSetupFromSetup,\n                onSkipForNow = viewModel::skipSetup,\n                onFinish = viewModel::finishSetup,",
+          )
+
+          vm = "app/src/main/java/app/xylune/chat/ui/ChatViewModel.kt"
+          replace_exact(
+              vm,
+              ". Provider credentials and OAuth sessions were excluded; reconnect them in the next setup step",
+              ". Provider credentials and OAuth sessions were excluded; reconnect them from Settings > Finish setup or Providers & models",
+          )
+          replace_exact(
+              vm,
+              "                    if (restoredDuringSetup) {\n                        setupActive.value = true\n                        setupStepIndex.value = 2\n                        setupPageOffsetFraction.value = 0f\n                        setupTemporarilyAway.value = false\n                        setupDismissed.value = false\n                        settingsRoute.value = SettingsRoute.HOME\n                        screen.value = Screen.CHAT\n                    }",
+              "                    if (restoredDuringSetup) {\n                        setupPageOffsetFraction.value = 0f\n                        setupTemporarilyAway.value = false\n                        settingsRoute.value = SettingsRoute.HOME\n                        screen.value = Screen.CHAT\n                        if (result.settingsRestored) {\n                            setupActive.value = false\n                            setupStepIndex.value = 2\n                            setupDismissed.value = true\n                            notices.tryEmit(\"Backup restored. Setup was paused; finish provider access later from Settings.\")\n                        } else {\n                            setupActive.value = true\n                            setupDismissed.value = false\n                        }\n                    }",
+          )
+          replace_exact(
+              vm,
+              "    fun finishSetup() {\n        setupActive.value = false\n        setupPageOffsetFraction.value = 0f\n        setupDismissed.value = true\n        setupTemporarilyAway.value = false\n        screen.value = Screen.CHAT\n    }",
+              "    fun skipSetup() {\n        setupActive.value = false\n        setupPageOffsetFraction.value = 0f\n        setupDismissed.value = true\n        setupTemporarilyAway.value = false\n        settingsRoute.value = SettingsRoute.HOME\n        screen.value = Screen.CHAT\n    }\n\n    fun finishSetup() {\n        setupActive.value = false\n        setupStepIndex.value = 4\n        setupPageOffsetFraction.value = 0f\n        setupDismissed.value = true\n        setupTemporarilyAway.value = false\n        settingsRoute.value = SettingsRoute.HOME\n        screen.value = Screen.CHAT\n    }",
+          )
+
+          settings = "app/src/main/java/app/xylune/chat/ui/SettingsScreen.kt"
+          replace_exact(
+              settings,
+              "    val setupTemporarilyAway by viewModel.setupTemporarilyAway.collectAsState()\n",
+              "    val setupTemporarilyAway by viewModel.setupTemporarilyAway.collectAsState()\n"
+              "    val setupDismissed by viewModel.setupDismissed.collectAsState()\n"
+              "    val setupStepIndex by viewModel.setupStepIndex.collectAsState()\n",
+          )
+          replace_exact(
+              settings,
+              "                        SettingsRoute.HOME -> SettingsHome(\n                            providerCount = registeredProviders.size,\n                            onOpen = viewModel::openSettingsRoute,\n                        )",
+              "                        SettingsRoute.HOME -> SettingsHome(\n                            providerCount = registeredProviders.size,\n                            setupDeferred = setupDismissed && setupStepIndex < 4,\n                            setupStepIndex = setupStepIndex,\n                            onFinishSetup = { viewModel.startSetup(setupStepIndex) },\n                            onOpen = viewModel::openSettingsRoute,\n                        )",
+          )
+          replace_exact(
+              settings,
+              "private fun SettingsHome(\n    providerCount: Int,\n    onOpen: (SettingsRoute) -> Unit,\n) = SettingsPage {\n    SettingsGroup(\"AI & models\") {",
+              "private fun SettingsHome(\n    providerCount: Int,\n    setupDeferred: Boolean,\n    setupStepIndex: Int,\n    onFinishSetup: () -> Unit,\n    onOpen: (SettingsRoute) -> Unit,\n) = SettingsPage {\n    if (setupDeferred) {\n        SettingsGroup(\"Setup\") {\n            SettingsDestination(\n                icon = Icons.Outlined.CheckCircle,\n                title = \"Finish setup\",\n                subtitle = \"Continue from step ${setupStepIndex + 1} of 5\",\n                onClick = onFinishSetup,\n            )\n        }\n    }\n    SettingsGroup(\"AI & models\") {",
+          )
+
+          tests = "app/src/test/java/app/xylune/chat/ui/OnboardingFlowTest.kt"
+          replace_exact(
+              tests,
+              "        assertTrue(source.contains(\"TextButton(onClick = onLater)\"))",
+              "        assertTrue(source.contains(\"TextButton(onClick = onSkipForNow)\"))\n"
+              "        assertTrue(source.contains(\"Skip for now\"))\n"
+              "        assertTrue(source.contains(\"animateFloatAsState(\"))\n"
+              "        assertTrue(source.contains(\"keepAlive = { false }\"))",
+          )
+          replace_exact(
+              tests,
+              "        assertFalse(settings.contains(\"Setup assistant\"))",
+              "        assertTrue(settings.contains(\"title = \\\"Finish setup\\\"\"))\n"
+              "        assertTrue(settings.contains(\"viewModel.startSetup(setupStepIndex)\"))\n"
+              "        assertTrue(viewModel.contains(\"fun skipSetup()\"))\n"
+              "        assertTrue(viewModel.contains(\"Setup was paused\"))",
+          )
+
+          restore_tests = "app/src/test/java/app/xylune/chat/ui/SetupRestoreSettingsFeatureTest.kt"
+          replace_exact(
+              restore_tests,
+              "    @Test\n    fun setupCanPreviewArchiveWithoutLeavingOnboarding() {",
+              "    @Test\n    fun restoredSettingsPauseSetupButKeepItResumable() {\n"
+              "        val viewModel = source(\"src/main/java/app/xylune/chat/ui/ChatViewModel.kt\")\n"
+              "        val settings = source(\"src/main/java/app/xylune/chat/ui/SettingsScreen.kt\")\n"
+              "        assertTrue(viewModel.contains(\"if (result.settingsRestored)\"))\n"
+              "        assertTrue(viewModel.contains(\"setupActive.value = false\"))\n"
+              "        assertTrue(viewModel.contains(\"setupStepIndex.value = 2\"))\n"
+              "        assertTrue(settings.contains(\"Finish setup\"))\n"
+              "    }\n\n"
+              "    @Test\n    fun setupCanPreviewArchiveWithoutLeavingOnboarding() {",
+          )
+
+          replace_exact(
+              "app/build.gradle.kts",
+              "        versionCode = 174\n        versionName = \"0.23.5\"",
+              "        versionCode = 175\n        versionName = \"0.23.6\"",
+          )
+
+          release_notes = Path("docs/releases/RELEASE_NOTES_0.23.6.md")
+          release_notes.write_text(
+              "# Xylune 0.23.6\n\n"
+              "- Repair setup navigation animations by retiring inactive wizard pages instead of keeping five overlapping scroll trees alive, and animate the footer controls and progress indicator consistently with step direction.\n"
+              "- Replace the ambiguous Later action with Skip for now while preserving the exact unfinished step.\n"
+              "- Add a Finish setup entry in Settings so deferred onboarding can be resumed at any time.\n"
+              "- After a full settings restore, enter Xylune immediately and defer only the credential/provider step because portable backups intentionally exclude credentials and OAuth sessions.\n"
+          )
+          prepend(
+              "CHANGELOG.md",
+              "## 0.23.6 — 2026-08-04\n\n"
+              "- Repair setup navigation animations by removing overlapping kept-alive wizard pages and animating step actions and progress coherently.\n"
+              "- Make Skip for now preserve the unfinished step and expose Finish setup in Settings.\n"
+              "- Defer setup after restoring app settings while retaining provider reconnection as a resumable step.\n\n",
+          )
+
+          Path(".github/workflows/apply-setup-flow-fix.yml").unlink()
+          PY
+
+      - name: Commit patched source
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix setup animations and resumable deferral"
+          git push origin HEAD:fix/setup-flow-animations
