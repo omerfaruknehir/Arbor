@@ -1,0 +1,58 @@
+name: Apply Linux progress and pipe repair
+
+on:
+  push:
+    branches:
+      - fix/linux-progress-pipe-0.23.10
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-linux-progress-pipe-0.23.10
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/linux-progress-pipe-0.23.10
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Apply repair
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python3 .github/scripts/apply-linux-progress-pipe-0.23.10.py
+      - name: Remove one-shot repair files
+        run: |
+          rm -f \
+            .github/scripts/apply-linux-progress-pipe-0.23.10.py \
+            .github/workflows/apply-linux-progress-pipe-0.23.10.yml
+      - name: Verify repair
+        run: |
+          set -euo pipefail
+          git diff --check
+          ./ci/verify-third-party-licenses.sh
+          ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest lintRelease assembleRelease
+      - name: Commit repaired tree
+        run: |
+          set -euo pipefail
+          git status --short
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Improve Linux setup progress and keep process pipes drained"
+          git pull --rebase origin fix/linux-progress-pipe-0.23.10
+          git push origin HEAD:fix/linux-progress-pipe-0.23.10
