@@ -3,7 +3,7 @@
 **Effective date: August 3, 2026**  
 [Türkçe metin aşağıdadır.](#xylune-gizlilik-politikası-ve-kvkk-aydınlatma-metni)
 
-Xylune is a local-first, bring-your-own-provider Android application maintained from Türkiye by **Ömer Faruk Nehir**. Xylune does not require a Xylune account and does not operate a central server that receives copies of chats or cloud backups.
+Xylune is a local-first, bring-your-own-provider Android application maintained from Türkiye by **Ömer Faruk Nehir**. Xylune does not require an account and does not operate a central server that receives copies of chats or cloud backups.
 
 ## Data handled on the device
 
@@ -46,7 +46,7 @@ Privacy questions and requests may be submitted through the [Xylune issue tracke
 
 **Yürürlük tarihi: 3 Ağustos 2026**
 
-Xylune, **Ömer Faruk Nehir** tarafından Türkiye'den sürdürülen, yerel öncelikli ve kullanıcının kendi sağlayıcısını bağladığı bir Android uygulamasıdır. Xylune hesabı zorunlu değildir. Xylune geliştiricisi, sohbetlerin veya bulut yedeklerinin kopyalarını alan merkezi bir sunucu işletmez.
+Xylune, **Ömer Faruk Nehir** tarafından Türkiye'den sürdürülen, yerel öncelikli ve kullanıcının kendi sağlayıcısını bağladığı bir Android uygulamasıdır. Xylune, herhangi bir online hesap açılmasını gerektirmez.. Xylune geliştiricisi, sohbetlerin veya bulut yedeklerinin kopyalarını alan merkezi bir sunucu işletmez.
 
 ## Veri sorumlusu ve kapsam
 
