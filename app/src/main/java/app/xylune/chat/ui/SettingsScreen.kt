@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -130,6 +131,8 @@ import app.xylune.chat.settings.ColorPalette
 import app.xylune.chat.settings.DeveloperSettings
 import app.xylune.chat.settings.PerformanceOverlayPosition
 import app.xylune.chat.settings.NewChatDefaults
+import app.xylune.chat.settings.DEFAULT_XYLUNE_SYSTEM_PROMPT
+import app.xylune.chat.settings.XYLUNE_CORE_PROMPT_REVISION
 import app.xylune.chat.settings.ThemeMode
 import app.xylune.chat.settings.chromeEdgeControlPositionForSoftness
 import app.xylune.chat.settings.displayedChromeEdgeSoftness
@@ -1010,6 +1013,7 @@ private fun PrivacySettingsPage(
     generatedRepairMaxAttempts: Int,
     viewModel: ChatViewModel,
 ) = SettingsPage {
+    val uriHandler = LocalUriHandler.current
     SectionTitle("Generated content", "Controls how Xylune handles AI-generated interactive UI.")
     SettingsSwitch("Safe generated rendering", renderSafeMode, viewModel::setRenderSafeMode)
     Text(
@@ -1026,6 +1030,26 @@ private fun PrivacySettingsPage(
         steps = 3,
         supportingText = "Invalid completed widgets, charts, and diagrams are repaired in place up to this limit.",
     )
+
+    HorizontalDivider()
+    SectionTitle(
+        "Third-party AI and services",
+        "Xylune is a client, not an AI model host. Responses come from the provider or local server selected by the user.",
+    )
+    Text(
+        "The Xylune maintainer does not create, train, host, pre-review, or endorse individual model outputs. AI output can be wrong, unsafe, biased, or unsuitable; verify it before relying on it. Provider terms, fees, retention, and content rules apply independently.",
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(
+            onClick = { uriHandler.openUri("https://github.com/omerfaruknehir/Xylune/blob/main/PRIVACY.md") },
+            modifier = Modifier.weight(1f),
+        ) { Text("Privacy") }
+        OutlinedButton(
+            onClick = { uriHandler.openUri("https://github.com/omerfaruknehir/Xylune/blob/main/TERMS.md") },
+            modifier = Modifier.weight(1f),
+        ) { Text("Terms") }
+    }
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Security, null)
@@ -1670,14 +1694,49 @@ private fun ChatOptionsEditor(
     }
 
     HorizontalDivider()
-    SectionTitle("Xylune core prompt", "Built into this app version and updated with Xylune. It is intentionally not editable or copied into chats.")
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.Security, null, tint = MaterialTheme.colorScheme.primary)
-            Column(Modifier.padding(start = 12.dp)) {
-                Text("Managed by Xylune", fontWeight = FontWeight.SemiBold)
-                Text("Use Custom instruction profiles for tone and workflow preferences.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    SectionTitle(
+        "Xylune core prompt",
+        "The exact prompt bundled with this app version is shown below. It is selectable for inspection and intentionally read-only.",
+    )
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Security, null, tint = MaterialTheme.colorScheme.primary)
+                Column(Modifier.padding(start = 12.dp)) {
+                    Text("Managed by Xylune · revision $XYLUNE_CORE_PROMPT_REVISION", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Use custom instruction profiles for additional tone and workflow preferences.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = DEFAULT_XYLUNE_SYSTEM_PROMPT,
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            }
+            Text(
+                "Xylune adds request-specific date, enabled-tool, research, memory, attachment, and generated-content instructions at runtime. Those dynamic layers are not editable either and are not presented as one misleading static block.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

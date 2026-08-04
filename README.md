@@ -12,6 +12,10 @@
   <a href="BUILDING.md">Build from source</a>
   ·
   <a href="https://github.com/omerfaruknehir/Xylune/issues">Report an issue</a>
+  ·
+  <a href="PRIVACY.md">Privacy</a>
+  ·
+  <a href="TERMS.md">Terms</a>
 </p>
 
 <p align="center">
@@ -24,13 +28,13 @@
 
 Xylune is a bring-your-own-provider AI client. It connects your phone directly to the services you choose—without a WebView, hosted Xylune account, application backend, telemetry, or advertising. API keys are protected with Android Keystore-backed encryption, chats live in a local SQLCipher database, and imported files remain in app-private storage.
 
-Current version: **0.23.0**
+Current version: **0.23.5**
 
 ## Development disclosure and disclaimer
 
 Xylune was made with **full vibe coding**: features and changes were primarily directed in natural language and implemented with AI-assisted coding tools, with human review and testing. That process does not guarantee correctness, security, availability, or fitness for any purpose, and the app may contain serious defects.
 
-Xylune is provided **“AS IS”**, without warranties of any kind. Use, modify, and distribute it at your own risk. To the maximum extent permitted by applicable law, the author and contributors are not responsible for data loss, device damage, account loss, service charges, security incidents, or any other direct or indirect consequences arising from the app. Review the source, keep backups, and do not rely on Xylune for safety-critical or irreplaceable work.
+Xylune is provided **“AS IS”**, without warranties of any kind. Use, modify, and distribute it at your own risk. Xylune is a client rather than an AI-model host: the maintainer does not create, train, host, pre-review, or endorse individual third-party model outputs. Review the source and output, keep backups, and do not rely on Xylune for safety-critical or irreplaceable work. The detailed allocation of responsibility and all mandatory-rights exceptions are in the [Terms of Use](TERMS.md).
 
 ## What makes Xylune different
 
@@ -58,7 +62,7 @@ Xylune is provided **“AS IS”**, without warranties of any kind. Use, modify,
 
 ## Install
 
-1. Download `Xylune-0.23.0-release.apk` from the [latest GitHub Release](https://github.com/omerfaruknehir/Xylune/releases/latest).
+1. Download `Xylune-0.23.5-release.apk` from the [latest GitHub Release](https://github.com/omerfaruknehir/Xylune/releases/latest).
 2. Allow installation from your browser or file manager when Android asks.
 3. Open Xylune and follow the welcome flow.
 4. Connect a ChatGPT account, API provider, or local model server.

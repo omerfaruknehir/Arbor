@@ -13,13 +13,21 @@ class PredictiveNavigationMathTest {
     }
 
     @Test
-    fun outgoingPageStaysOpaqueUntilEndpointFadeAndEndsTransparent() {
-        assertEquals(1f, predictiveBackOutgoingAlpha(0f), .0001f)
-        assertEquals(1f, predictiveBackOutgoingAlpha(.62f), .0001f)
-        assertEquals(0f, predictiveBackOutgoingAlpha(1f), .0001f)
+    fun predictiveVisualProgressIsClampedAndMonotonic() {
+        assertEquals(0f, predictiveBackVisualProgress(-1f), .0001f)
+        assertEquals(0f, predictiveBackVisualProgress(0f), .0001f)
+        assertEquals(1f, predictiveBackVisualProgress(1f), .0001f)
+        assertEquals(1f, predictiveBackVisualProgress(2f), .0001f)
 
-        val values = (0..20).map { predictiveBackOutgoingAlpha(it / 20f) }
-        values.zipWithNext().forEach { (a, b) -> assertTrue(b <= a) }
+        val values = (0..20).map { predictiveBackVisualProgress(it / 20f) }
+        values.zipWithNext().forEach { (a, b) -> assertTrue(b >= a) }
+    }
+
+    @Test
+    fun predictiveSourceScaleRemainsVisibleAndEndsAtNinetySixPercent() {
+        assertEquals(1f, predictiveBackSourceScale(0f), .0001f)
+        assertEquals(.96f, predictiveBackSourceScale(1f), .0001f)
+        assertTrue(predictiveBackSourceScale(.5f) in .96f..1f)
     }
 
     @Test

@@ -1,3 +1,11 @@
+## 0.23.5 — 2026-08-04
+
+- Keep predictive-back pages fully opaque, reduce the excessive page travel, and remove the short gesture dead zone while a prior page transition is settling.
+- Show the exact bundled Xylune core prompt as selectable, non-editable text, including its revision and a clear distinction from request-specific runtime layers.
+- Rewrite the bilingual privacy notice around Xylune's actual local/direct architecture, worldwide use, data the maintainer can genuinely access, and mandatory-rights-only response obligations.
+- Add bilingual Terms of Use that separate Xylune from third-party AI providers, reject warranties and support SLAs where lawful, and preserve non-waivable consumer rights.
+- Retain the six-file canonical GitHub release asset count and upload order introduced in 0.23.4.
+
 ## 0.23.2 — 2026-08-04
 
 - Repair cloud restore from OneDrive, Dropbox, WebDAV/Nextcloud, and S3 by exposing only Xylune's private downloaded-backup cache through its non-exported FileProvider.
