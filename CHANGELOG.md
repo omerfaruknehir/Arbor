@@ -1,3 +1,9 @@
+## 0.23.14 — 2026-08-04
+
+- Replace the full-width page travel with a balanced half-slide, half-fade transition for ordinary and predictive Back.
+- Keep the outgoing page alive until it is fully transparent and the destination is fully opaque, so the animation still finishes cleanly without the previous cut-and-vanish behavior.
+- Apply the same motion model to forward navigation, toolbar Back, predictive Back commit, and predictive Back cancellation.
+
 ## 0.23.13 — 2026-08-04
 
 - Finish ordinary and predictive Back transitions as complete edge-to-edge page slides instead of moving a page only a few percent and then abruptly removing it.

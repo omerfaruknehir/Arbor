@@ -24,11 +24,21 @@ class PredictiveNavigationMathTest {
     }
 
     @Test
-    fun pageSlideTravelsTheEntireViewportBeforeTheSourceIsRetired() {
+    fun pageSlideTravelsHalfTheViewportWhileFadeFinishesTheTransition() {
         assertEquals(0f, pageSlideOffset(1080f, 0f), .0001f)
-        assertEquals(540f, pageSlideOffset(1080f, .5f), .0001f)
-        assertEquals(1080f, pageSlideOffset(1080f, 1f), .0001f)
-        assertEquals(1080f, pageSlideOffset(1080f, 2f), .0001f)
+        assertEquals(270f, pageSlideOffset(1080f, .5f), .0001f)
+        assertEquals(540f, pageSlideOffset(1080f, 1f), .0001f)
+        assertEquals(540f, pageSlideOffset(1080f, 2f), .0001f)
+    }
+
+    @Test
+    fun pageOpacityCrossfadesCompletelyWithoutAnEndCut() {
+        assertEquals(1f, navigationSourceAlpha(0f), .0001f)
+        assertEquals(.5f, navigationSourceAlpha(.5f), .0001f)
+        assertEquals(0f, navigationSourceAlpha(1f), .0001f)
+        assertEquals(0f, navigationDestinationAlpha(0f), .0001f)
+        assertEquals(.5f, navigationDestinationAlpha(.5f), .0001f)
+        assertEquals(1f, navigationDestinationAlpha(1f), .0001f)
     }
 
     @Test

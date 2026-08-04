@@ -49,8 +49,16 @@ internal fun predictiveBackCompletionDurationMillis(progress: Float): Int {
 internal fun predictiveBackVisualProgress(progress: Float): Float =
     NavigationEasing.transform(progress.coerceIn(0f, 1f))
 
+private const val NavigationSlideFraction = 0.5f
+
 internal fun pageSlideOffset(widthPx: Float, progress: Float): Float =
-    widthPx.coerceAtLeast(0f) * progress.coerceIn(0f, 1f)
+    widthPx.coerceAtLeast(0f) * NavigationSlideFraction * progress.coerceIn(0f, 1f)
+
+internal fun navigationSourceAlpha(progress: Float): Float =
+    1f - progress.coerceIn(0f, 1f)
+
+internal fun navigationDestinationAlpha(progress: Float): Float =
+    progress.coerceIn(0f, 1f)
 
 internal enum class PredictiveCancellationResolution {
     ROLLBACK,
@@ -300,6 +308,8 @@ internal fun <T : Any> PredictiveNavigationHost(
                         .zIndex(z)
                         .graphicsLayer {
                             clip = true
+                            translationX = 0f
+                            alpha = 1f
                             if (isParked) {
                                 alpha = 0f
                                 compositingStrategy = CompositingStrategy.ModulateAlpha
@@ -309,30 +319,48 @@ internal fun <T : Any> PredictiveNavigationHost(
                                 NavigationTransitionMode.PREDICTIVE -> {
                                     val visualProgress = predictiveBackVisualProgress(p)
                                     val slide = pageSlideOffset(widthPx, visualProgress)
+                                    val maxSlide = pageSlideOffset(widthPx, 1f)
                                     when {
                                         isSource -> {
-                                            // Keep the two opaque pages edge-to-edge throughout the
-                                            // gesture. At commit the source reaches a complete
-                                            // off-screen position instead of disappearing after a
-                                            // short preview translation.
                                             translationX = predictiveDirection * slide
+                                            alpha = navigationSourceAlpha(visualProgress)
+                                            compositingStrategy = CompositingStrategy.ModulateAlpha
                                         }
                                         isDestination -> {
-                                            translationX = -predictiveDirection * (widthPx - slide)
+                                            translationX = -predictiveDirection * (maxSlide - slide)
+                                            alpha = navigationDestinationAlpha(visualProgress)
+                                            compositingStrategy = CompositingStrategy.ModulateAlpha
                                         }
                                     }
                                 }
                                 NavigationTransitionMode.ORDINARY -> {
                                     val slide = pageSlideOffset(widthPx, p)
+                                    val maxSlide = pageSlideOffset(widthPx, 1f)
                                     if (transitionForward) {
                                         when {
-                                            isSource -> translationX = -slide
-                                            isDestination -> translationX = widthPx - slide
+                                            isSource -> {
+                                                translationX = -slide
+                                                alpha = navigationSourceAlpha(p)
+                                                compositingStrategy = CompositingStrategy.ModulateAlpha
+                                            }
+                                            isDestination -> {
+                                                translationX = maxSlide - slide
+                                                alpha = navigationDestinationAlpha(p)
+                                                compositingStrategy = CompositingStrategy.ModulateAlpha
+                                            }
                                         }
                                     } else {
                                         when {
-                                            isSource -> translationX = slide
-                                            isDestination -> translationX = -(widthPx - slide)
+                                            isSource -> {
+                                                translationX = slide
+                                                alpha = navigationSourceAlpha(p)
+                                                compositingStrategy = CompositingStrategy.ModulateAlpha
+                                            }
+                                            isDestination -> {
+                                                translationX = -(maxSlide - slide)
+                                                alpha = navigationDestinationAlpha(p)
+                                                compositingStrategy = CompositingStrategy.ModulateAlpha
+                                            }
                                         }
                                     }
                                 }
