@@ -1,0 +1,68 @@
+name: Prepare Xylune 0.23.5 PR
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: prepare-xylune-0.23.5-pr
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: >-
+      github.actor != 'github-actions[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'xylune/0.23.5-back-legal-prompt'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: xylune/0.23.5-back-legal-prompt
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Merge current main into preparation branch
+        run: |
+          git fetch origin main
+          git merge --no-edit origin/main
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - name: Apply 0.23.5 changes
+        run: |
+          test -f tools/prepare_0_23_5.py
+          python3 tools/prepare_0_23_5.py
+
+      - name: Validate source and Android build
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
+
+      - name: Commit validated changes and remove bootstrap files
+        run: |
+          rm -f \
+            tools/prepare_0_23_5.py \
+            tools/trigger_0_23_5.txt \
+            .github/workflows/prepare-0.23.5.yml \
+            .github/workflows/prepare-0.23.5-pr.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'Prepare Xylune 0.23.5 predictive back and legal clarity'
+          git push origin HEAD:xylune/0.23.5-back-legal-prompt
