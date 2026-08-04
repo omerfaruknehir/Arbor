@@ -1,3 +1,9 @@
+## 0.23.15 — 2026-08-04
+
+- Drive the chat title collapse directly from the LazyColumn's first visible item and pixel offset instead of relying on Material nested-scroll callbacks.
+- Keep the header synchronized during user scrolling, auto-follow after sending, streaming, search jumps, restored positions, card expansion corrections, and programmatic scrolls.
+- Reconstruct the header from the restored list anchor instead of restoring an independently persisted offset that can become stale and overlap messages.
+
 ## 0.23.14 — 2026-08-04
 
 - Replace the full-width page travel with a balanced half-slide, half-fade transition for ordinary and predictive Back.

@@ -28,9 +28,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 
 /**
- * Chat counterpart of [CollapsingTranslucentTopBar]. The Material top-app-bar
- * state owns the collapse distance, exactly as it does on Settings screens.
- * There is no message-index, anchor-item, timer, or independent animation state.
+ * Chat counterpart of [CollapsingTranslucentTopBar]. Its Material state is driven
+ * directly from the chat LazyList position, so finger scrolling, programmatic
+ * auto-follow, search jumps, restoration, and viewport correction all share the
+ * same collapse fraction without an independent animation owner.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
