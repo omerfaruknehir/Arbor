@@ -1,3 +1,9 @@
+## 0.23.17 — 2026-08-05
+
+- Feed in-process provider chunks directly to the visible response instead of waiting for Room/Paging invalidation.
+- Replace 96-character/50-ms prose dumps with display-paced adaptive micro-batches whose configured cap is actually enforced.
+- Cap auto-follow movement per frame and reduce extreme seek speeds so a delayed frame cannot teleport the chat.
+
 ## 0.23.16 — 2026-08-04
 
 - Remove the continuous LazyColumn-to-top-bar projection that caused a layout feedback loop, jitter, jumps, and unrelated title-state changes.

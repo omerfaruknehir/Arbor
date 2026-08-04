@@ -237,8 +237,8 @@ internal fun RichMessage(
         // Agora-style cadence: table/Markdown layout is intentionally not
         // rebuilt for every provider token. Each table flush contains the newest
         // complete source snapshot, while ordinary prose remains more fluid.
-        intervalNanos = if (useTableCadence) 250_000_000L else 50_000_000L,
-        maxStepChars = if (useTableCadence) Int.MAX_VALUE else 96,
+        intervalNanos = if (useTableCadence) 250_000_000L else 16_500_000L,
+        maxStepChars = if (useTableCadence) Int.MAX_VALUE else 48,
     )
     // Completion can arrive while the frame-batched renderer still has a
     // backlog. Keep the tail on the streaming path until it catches up.

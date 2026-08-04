@@ -121,6 +121,10 @@ class GenerationWorker(
             )
             advanceQueue()
             Result.success()
+        } finally {
+            // The durable row has been flushed or marked retrying/interrupted by
+            // every exit path above. Avoid retaining completed previews forever.
+            StreamingPreviewStore.clear(assistantId)
         }
     }
 
@@ -236,6 +240,15 @@ class GenerationWorker(
         var persistedContentLength = savedContent.length
         var persistedReasoningLength = savedReasoning.length
 
+        fun publishPreview() {
+            StreamingPreviewStore.publish(
+                nodeId = assistantId,
+                content = savedContent,
+                reasoning = savedReasoning,
+            )
+        }
+        publishPreview()
+
         // A response started on an older app version has no ordered timeline.
         // Preserve it on resume, but reference the aggregate fields instead of
         // duplicating potentially megabytes of text inside timelineJson.
@@ -294,6 +307,7 @@ class GenerationWorker(
         }
 
         suspend fun persistTimeline(forceMetadata: Boolean = false) {
+            publishPreview()
             if (forceMetadata || timelineDirty || tracesDirty) {
                 repository.replaceWorkingState(
                     assistantId,
@@ -818,6 +832,7 @@ class GenerationWorker(
                         chunk.toolCallProgress.forEach { progress -> upsertToolCallProgress(progress, callId) }
                         if (chunk.toolCalls.isNotEmpty()) passToolCalls += chunk.toolCalls
                         if (chunk.nativeProviderPayloadJson.isNotBlank()) passNativePayload = chunk.nativeProviderPayloadJson
+                        val previewChanged = chunk.reasoning.isNotEmpty() || chunk.text.isNotEmpty()
                         if (chunk.reasoning.isNotEmpty()) {
                             savedReasoning += chunk.reasoning
                             appendTimeline("reasoning", chunk.reasoning)
@@ -832,6 +847,7 @@ class GenerationWorker(
                         passOutput = chunk.outputTokens ?: passOutput
                         passCached = chunk.cachedInputTokens ?: passCached
                         passFinishReason = chunk.finishReason ?: passFinishReason
+                        if (previewChanged) publishPreview()
                         if (pendingCharacters >= STREAM_FLUSH_CHARACTERS || System.currentTimeMillis() - lastFlush >= STREAM_FLUSH_MS) flush()
                     }
                     flush()
