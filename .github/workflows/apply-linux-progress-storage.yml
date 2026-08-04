@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fix/linux-setup-progress-storage-0.23.9
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
