@@ -36,4 +36,7 @@ latest_replacement = "\\n".join(
 chat = latest_pattern.sub(lambda _: latest_replacement, chat, count=1)'''
 
 source = source[:start] + replacement + source[end:]
-exec(compile(source, str(patcher), "exec"), {"__name__": "__main__", "__file__": str(patcher)})
+exec(
+    compile(source, str(patcher), "exec"),
+    {"__name__": "__main__", "__file__": str(patcher), "re": re},
+)
