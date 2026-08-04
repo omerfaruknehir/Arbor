@@ -95,6 +95,19 @@ class PackageInstallProgressTest {
     }
 
     @Test
+    fun aptProgressUsesDedicatedFileDescriptorInsteadOfMaintainerScriptOutput() {
+        val command = buildAptCommandWithStatusFile(
+            arguments = "install -y python3 ca-certificates",
+            guestStatusPath = "/tmp/.xylune-apt-status-test",
+        )
+
+        assertTrue(command.contains("exec 3>>'/tmp/.xylune-apt-status-test'"))
+        assertTrue(command.contains("APT::Status-Fd=3"))
+        assertTrue(command.contains("Dpkg::Use-Pty=0"))
+        assertFalse(command.contains("APT::Status-Fd=1"))
+    }
+
+    @Test
     fun fallsBackToHumanReadableAptOutput() {
         val progress = packageInstallProgressFromApt(
             ExecutionProgress(stdoutTail = "Reading package lists... Done\nBuilding dependency tree... Done"),
