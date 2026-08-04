@@ -66,13 +66,9 @@ class OpenAiCompatibleProvider(
             val dsmlChannels = protocolTools.takeIf { it.isNotEmpty() }?.let(::DsmlChannelsAdapter)
             val rawText = StringBuilder()
             val rawReasoning = StringBuilder()
-            val bufferedVisibleText = StringBuilder()
-            val bufferedVisibleReasoning = StringBuilder()
-            // DeepSeek tool turns and no-tool finalization turns are held until EOF.
-            // The latter is the critical case: after the execution budget is exhausted,
-            // a stale DSML request must never be streamed into the conversation.
-            val quarantineToolText = attemptRequest.isDeepSeekFamily() ||
-                (exposedTools.isEmpty() && protocolTools.isNotEmpty())
+            // DSML is filtered incrementally by DsmlChannelsAdapter. Never
+            // quarantine an entire DeepSeek response until EOF: doing so turns
+            // a real token stream into one late bulk update.
             var meaningfulPayloadReceived = false
             var finishReason: String? = null
             var attemptInputTokens: Long? = null
@@ -96,11 +92,9 @@ class OpenAiCompatibleProvider(
                         rawReasoning.append(chunk.reasoning)
                         val adapted = dsmlChannels?.accept(chunk.text, chunk.reasoning)
                             ?: DsmlChannelDelta(chunk.text, chunk.reasoning)
-                        val outgoing = if (quarantineToolText) {
-                            bufferedVisibleText.append(adapted.text)
-                            bufferedVisibleReasoning.append(adapted.reasoning)
-                            chunk.copy(text = "", reasoning = "")
-                        } else if (adapted.text == chunk.text && adapted.reasoning == chunk.reasoning) {
+                        val outgoing = if (
+                            adapted.text == chunk.text && adapted.reasoning == chunk.reasoning
+                        ) {
                             chunk
                         } else {
                             chunk.copy(text = adapted.text, reasoning = adapted.reasoning)
@@ -116,10 +110,6 @@ class OpenAiCompatibleProvider(
             }
 
             val adapted = dsmlChannels?.finish()
-            if (quarantineToolText) {
-                bufferedVisibleText.append(adapted?.tailText.orEmpty())
-                bufferedVisibleReasoning.append(adapted?.tailReasoning.orEmpty())
-            }
             val completedStructuredCalls = calls.toSortedMap()
             val recoveredProtocolCalls = adapted?.calls.orEmpty()
             val recoveredPlainTextCalls = if (completedStructuredCalls.isEmpty() && protocolTools.isNotEmpty()) {
@@ -173,26 +163,15 @@ class OpenAiCompatibleProvider(
                 break
             }
 
-            if (quarantineToolText) {
+            adapted?.let { result ->
                 val finalChunk = StreamChunk(
-                    text = bufferedVisibleText.toString(),
-                    reasoning = bufferedVisibleReasoning.toString(),
+                    text = result.tailText,
+                    reasoning = result.tailReasoning,
+                    toolCalls = if (completedStructuredCalls.isEmpty()) result.calls else emptyList(),
                 )
                 if (finalChunk.hasMeaningfulPayload()) {
                     meaningfulPayloadReceived = true
                     emit(finalChunk)
-                }
-            } else {
-                adapted?.let { result ->
-                    val finalChunk = StreamChunk(
-                        text = result.tailText,
-                        reasoning = result.tailReasoning,
-                        toolCalls = if (completedStructuredCalls.isEmpty()) result.calls else emptyList(),
-                    )
-                    if (finalChunk.hasMeaningfulPayload()) {
-                        meaningfulPayloadReceived = true
-                        emit(finalChunk)
-                    }
                 }
             }
 

@@ -5,6 +5,7 @@ import androidx.work.Data
 import androidx.work.BackoffPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.Constraints
 import androidx.work.NetworkType
 import androidx.work.WorkManager
@@ -72,6 +73,7 @@ class GenerationScheduler(
             .build()
         val request = OneTimeWorkRequestBuilder<GenerationWorker>()
             .setInputData(input)
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
             .addTag("generation")

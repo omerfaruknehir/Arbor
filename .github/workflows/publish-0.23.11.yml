@@ -1,4 +1,4 @@
-name: Publish Xylune 0.23.17
+name: Publish Xylune 0.23.18
 
 # Reused hotfix publication workflow; keeping the path stable avoids release-file churn.
 on:
@@ -37,9 +37,9 @@ jobs:
       - name: Verify release source
         run: |
           set -euo pipefail
-          grep -F 'versionCode = 186' app/build.gradle.kts
-          grep -F 'versionName = "0.23.17"' app/build.gradle.kts
-          test -f docs/releases/RELEASE_NOTES_0.23.17.md
+          grep -F 'versionCode = 187' app/build.gradle.kts
+          grep -F 'versionName = "0.23.18"' app/build.gradle.kts
+          test -f docs/releases/RELEASE_NOTES_0.23.18.md
           grep -F 'Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
           ! grep -F 'ChatChromeScrollSample(' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
           ! grep -F 'projectChatChromeFromScroll(' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
@@ -48,6 +48,11 @@ jobs:
           grep -F 'val targetOffset = if (uiIndex <= 0) 0f else limit' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
           grep -F 'StreamingPreviewStore.publish(' app/src/main/java/app/xylune/chat/generation/GenerationWorker.kt
           grep -F 'if (previewChanged) publishPreview()' app/src/main/java/app/xylune/chat/generation/GenerationWorker.kt
+          grep -F 'allowModelCall = false' app/src/main/java/app/xylune/chat/generation/GenerationWorker.kt
+          grep -F 'InputMessage(MessageRole.SYSTEM, INITIAL_RESEARCH_STATE_INSTRUCTION)' app/src/main/java/app/xylune/chat/generation/GenerationWorker.kt
+          grep -F '.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)' app/src/main/java/app/xylune/chat/generation/GenerationScheduler.kt
+          grep -F 'safeVisiblePrefixLength(pending)' app/src/main/java/app/xylune/chat/provider/DsmlToolProtocol.kt
+          ! grep -F 'quarantineToolText' app/src/main/java/app/xylune/chat/provider/OpenAiCompatibleProvider.kt
           grep -F 'StreamingPreviewStore.previews.collectAsStateWithLifecycle()' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
           grep -F 'ChatFollowMaxFrameStepPx' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
           grep -F 'ChatFollowSeekMaxFrameStepPx' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
@@ -62,35 +67,35 @@ jobs:
           set -euo pipefail
           ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest lintRelease assembleRelease
           mkdir -p release-assets
-          cp app/build/outputs/apk/release/app-release.apk release-assets/Xylune-0.23.17.apk
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs release-assets/Xylune-0.23.17.apk
-          sha256sum release-assets/Xylune-0.23.17.apk > release-assets/SHA256SUMS-0.23.17.txt
+          cp app/build/outputs/apk/release/app-release.apk release-assets/Xylune-0.23.18.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs release-assets/Xylune-0.23.18.apk
+          sha256sum release-assets/Xylune-0.23.18.apk > release-assets/SHA256SUMS-0.23.18.txt
       - name: Publish or repair GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view v0.23.17 >/dev/null 2>&1; then
-            gh release edit v0.23.17 \
+          if gh release view v0.23.18 >/dev/null 2>&1; then
+            gh release edit v0.23.18 \
               --target "$GITHUB_SHA" \
-              --title 'Xylune 0.23.17' \
-              --notes-file docs/releases/RELEASE_NOTES_0.23.17.md
-            gh release upload v0.23.17 \
-              release-assets/Xylune-0.23.17.apk \
-              release-assets/SHA256SUMS-0.23.17.txt \
+              --title 'Xylune 0.23.18' \
+              --notes-file docs/releases/RELEASE_NOTES_0.23.18.md
+            gh release upload v0.23.18 \
+              release-assets/Xylune-0.23.18.apk \
+              release-assets/SHA256SUMS-0.23.18.txt \
               --clobber
           else
-            gh release create v0.23.17 \
-              release-assets/Xylune-0.23.17.apk \
-              release-assets/SHA256SUMS-0.23.17.txt \
+            gh release create v0.23.18 \
+              release-assets/Xylune-0.23.18.apk \
+              release-assets/SHA256SUMS-0.23.18.txt \
               --target "$GITHUB_SHA" \
-              --title 'Xylune 0.23.17' \
-              --notes-file docs/releases/RELEASE_NOTES_0.23.17.md
+              --title 'Xylune 0.23.18' \
+              --notes-file docs/releases/RELEASE_NOTES_0.23.18.md
           fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Xylune-0.23.17-release
+          name: Xylune-0.23.18-release
           path: |
             release-assets/*
             app/build/reports/tests/

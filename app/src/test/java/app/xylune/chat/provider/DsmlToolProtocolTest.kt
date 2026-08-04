@@ -173,4 +173,34 @@ class DsmlToolProtocolTest {
         assertTrue(result.calls.isEmpty())
         assertFalse((visible + result.visibleText).contains("linux_exec"))
     }
+
+    @Test
+    fun ordinaryProseStreamsImmediatelyWithoutACharacterGate() {
+        val adapter = DsmlToolStreamAdapter(setOf("web_fetch"))
+
+        assertEquals("Hello", adapter.accept("Hello"))
+        assertEquals(" world", adapter.accept(" world"))
+        assertEquals("", adapter.finish().visibleText)
+    }
+
+    @Test
+    fun onlyAnActuallyAmbiguousMarkerSuffixIsHeld() {
+        val adapter = DsmlToolStreamAdapter(setOf("web_fetch"))
+
+        assertEquals("Hello ", adapter.accept("Hello <"))
+        assertEquals("<there", adapter.accept("there"))
+        assertEquals("", adapter.finish().visibleText)
+    }
+
+    @Test
+    fun splitDsmlPrefixRemainsHiddenUntilTheMarkerCompletes() {
+        val adapter = DsmlToolStreamAdapter(setOf("web_fetch"))
+
+        assertEquals("Before ", adapter.accept("Before <|DSM"))
+        assertEquals("", adapter.accept("L|tool_calls>"))
+        val result = adapter.finish()
+        assertTrue(result.malformed)
+        assertFalse(result.visibleText.contains("DSML"))
+    }
+
 }

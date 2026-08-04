@@ -287,7 +287,7 @@ internal class DsmlToolStreamAdapter(private val allowedTools: Set<String>) {
                     insideProtocol = true
                     continue
                 }
-                val flushCount = (pending.length - MARKER_LOOKBEHIND).coerceAtLeast(0)
+                val flushCount = safeVisiblePrefixLength(pending)
                 if (flushCount > 0) {
                     visible.append(pending.substring(0, flushCount))
                     pending.delete(0, flushCount)
@@ -339,7 +339,159 @@ internal class DsmlToolStreamAdapter(private val allowedTools: Set<String>) {
         )
     }
 
+    /**
+     * Returns the ordinary-text prefix which cannot become the beginning of a
+     * split DSML marker. The old fixed 256-character window delayed every
+     * tool-capable response even when the bytes were plainly normal prose.
+     */
+    private fun safeVisiblePrefixLength(value: CharSequence): Int {
+        for (index in value.indices) {
+            val character = value[index]
+            if (character != '<' && character != '&') continue
+            val normalized = normalizeOpeningCandidate(value.subSequence(index, value.length))
+                ?: continue
+            if (isOpeningMarkerPrefix(normalized)) return index
+        }
+        return value.length
+    }
+
+    private fun normalizeOpeningCandidate(candidate: CharSequence): String? {
+        val normalized = StringBuilder(candidate.length)
+        var index = 0
+        while (index < candidate.length) {
+            val character = candidate[index]
+            when {
+                isMarkerGap(character) -> index++
+                character == '<' || character == '>' || character == '/' -> {
+                    normalized.append(character)
+                    index++
+                }
+                character in PIPE_GLYPHS -> {
+                    normalized.append('|')
+                    index++
+                }
+                character == '&' -> {
+                    var end = index + 1
+                    while (end < candidate.length && candidate[end] != ';') end++
+                    if (end >= candidate.length) {
+                        val partial = candidate.subSequence(index, candidate.length)
+                            .toString()
+                            .lowercase()
+                        if (!isMarkerEntityPrefix(partial)) return null
+                        return normalized.toString()
+                    }
+                    val decoded = decodeMarkerEntity(
+                        candidate.subSequence(index, end + 1).toString(),
+                    ) ?: return null
+                    normalized.append(decoded)
+                    index = end + 1
+                }
+                character.isLetterOrDigit() || character == '_' -> {
+                    normalized.append(character.lowercaseChar())
+                    index++
+                }
+                else -> return null
+            }
+        }
+        return normalized.toString()
+    }
+
+    private fun isOpeningMarkerPrefix(value: String): Boolean {
+        var index = 0
+        if (value.isEmpty()) return true
+        if (value[index++] != '<') return false
+        if (index == value.length) return true
+
+        var pipes = 0
+        while (index < value.length && value[index] == '|') {
+            pipes++
+            index++
+        }
+        if (pipes == 0) return false
+        if (index == value.length) return true
+
+        for (expected in "dsml") {
+            if (index == value.length) return true
+            if (value[index++] != expected) return false
+        }
+        if (index == value.length) return true
+
+        pipes = 0
+        while (index < value.length && value[index] == '|') {
+            pipes++
+            index++
+        }
+        if (pipes == 0) return false
+        if (index == value.length) return true
+
+        for (expected in "tool_calls") {
+            if (index == value.length) return true
+            if (value[index++] != expected) return false
+        }
+        if (index == value.length) return true
+        if (value[index++] != '>') return false
+        return index == value.length
+    }
+
+    private fun isMarkerGap(character: Char): Boolean {
+        if (character.isWhitespace()) return true
+        return when (Character.getType(character)) {
+            Character.SPACE_SEPARATOR.toInt(),
+            Character.LINE_SEPARATOR.toInt(),
+            Character.PARAGRAPH_SEPARATOR.toInt(),
+            Character.FORMAT.toInt(),
+            -> true
+            else -> false
+        }
+    }
+
+    private fun decodeMarkerEntity(value: String): Char? {
+        val normalized = value.lowercase()
+        return when (normalized) {
+            "&lt;" -> '<'
+            "&gt;" -> '>'
+            "&vert;", "&verticalline;" -> '|'
+            else -> {
+                val number = when {
+                    normalized.startsWith("&#x") && normalized.endsWith(';') ->
+                        normalized.substring(3, normalized.length - 1).toIntOrNull(16)
+                    normalized.startsWith("&#") && normalized.endsWith(';') ->
+                        normalized.substring(2, normalized.length - 1).toIntOrNull(10)
+                    else -> null
+                }
+                when (number) {
+                    47 -> '/'
+                    60 -> '<'
+                    62 -> '>'
+                    124 -> '|'
+                    else -> null
+                }
+            }
+        }
+    }
+
+    private fun isMarkerEntityPrefix(value: String): Boolean {
+        if (NAMED_MARKER_ENTITIES.any { it.startsWith(value) }) return true
+        if (!value.startsWith("&#")) return false
+        val digits = value.removePrefix("&#")
+        return if (digits.firstOrNull() == 'x') {
+            val hexadecimal = digits.drop(1)
+            hexadecimal.length <= 8 && hexadecimal.all {
+                it.isDigit() || it in 'a'..'f'
+            }
+        } else {
+            digits.length <= 8 && digits.all(Char::isDigit)
+        }
+    }
+
     private companion object {
         const val MARKER_LOOKBEHIND = 256
+        val PIPE_GLYPHS = setOf('|', '｜', '¦', '∣', '│', '❘', '￨')
+        val NAMED_MARKER_ENTITIES = listOf(
+            "&lt;",
+            "&gt;",
+            "&vert;",
+            "&verticalline;",
+        )
     }
 }
