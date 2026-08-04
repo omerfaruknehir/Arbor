@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fix/linux-file-backed-logs-0.23.11
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
