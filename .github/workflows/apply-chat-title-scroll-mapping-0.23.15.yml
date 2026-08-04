@@ -1,0 +1,64 @@
+name: Apply chat title scroll mapping
+
+on:
+  push:
+    branches:
+      - fix/chat-title-scroll-mapping-0.23.15
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-chat-title-scroll-mapping-0.23.15
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/chat-title-scroll-mapping-0.23.15
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Apply repair
+        run: python3 .github/scripts/apply-chat-title-scroll-mapping-0.23.15.py
+      - name: Remove one-shot repair files
+        run: |
+          rm -f \
+            .github/scripts/apply-chat-title-scroll-mapping-0.23.15.py \
+            .github/workflows/apply-chat-title-scroll-mapping-0.23.15.yml
+      - name: Verify source contracts
+        run: |
+          set -euo pipefail
+          git diff --check
+          grep -F 'versionCode = 184' app/build.gradle.kts
+          grep -F 'versionName = "0.23.15"' app/build.gradle.kts
+          grep -F 'ChatChromeScrollSample(' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
+          grep -F 'projectChatChromeFromScroll(' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
+          grep -F 'user drags, fling settling, auto-follow scrollBy calls' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
+          ! grep -F 'Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
+          ! grep -F 'snapshot?.topBarHeightOffset' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
+          ./ci/verify-third-party-licenses.sh
+      - name: Test, lint, and build
+        run: |
+          ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest lintRelease assembleRelease
+      - name: Commit repaired tree
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Map chat title directly to message scroll"
+          git pull --rebase origin fix/chat-title-scroll-mapping-0.23.15
+          git push origin HEAD:fix/chat-title-scroll-mapping-0.23.15
