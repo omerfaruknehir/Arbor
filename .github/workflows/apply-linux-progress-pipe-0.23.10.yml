@@ -37,11 +37,14 @@ jobs:
       - name: Apply repair
         env:
           PYTHONDONTWRITEBYTECODE: '1'
-        run: python3 .github/scripts/apply-linux-progress-pipe-0.23.10.py
+        run: |
+          python3 .github/scripts/apply-linux-progress-pipe-0.23.10.py
+          python3 .github/scripts/apply-linux-progress-structural-test.py
       - name: Remove one-shot repair files
         run: |
           rm -f \
             .github/scripts/apply-linux-progress-pipe-0.23.10.py \
+            .github/scripts/apply-linux-progress-structural-test.py \
             .github/workflows/apply-linux-progress-pipe-0.23.10.yml
       - name: Verify repair
         run: |
