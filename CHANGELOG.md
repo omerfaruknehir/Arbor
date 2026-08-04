@@ -1,3 +1,10 @@
+## 0.23.12 — 2026-08-04
+
+- Fix the remaining Ubuntu `ca-certificates` setup failure by moving APT machine-readable progress off file descriptor 1. APT now writes status records to a dedicated app-private regular file on fd 3, while package maintainer scripts keep normal stdout/stderr.
+- Tail the dedicated APT status file into the existing live progress UI without exposing package scripts to an internal progress channel.
+- Apply the same safe APT execution path to later package installs and dependency repairs, not only first-run Python setup.
+- Remove the obsolete Java pipe-reader implementation and add regression checks forbidding `APT::Status-Fd=1` in production code.
+
 ## 0.23.11 — 2026-08-04
 
 - Capture Linux command output in app-private temporary files instead of Java pipes, so `dpkg` maintainer scripts cannot lose stdout/stderr and fail with `I/O error` during certificate setup.

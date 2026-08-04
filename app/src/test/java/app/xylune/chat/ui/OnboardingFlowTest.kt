@@ -141,6 +141,9 @@ class OnboardingFlowTest {
         assertTrue(runtime.contains("builder.redirectOutput(stdoutLog)"))
         assertTrue(runtime.contains("builder.redirectError(stderrLog)"))
         assertTrue(runtime.contains("readLogTail(stdoutLog"))
+        assertTrue(runtime.contains("APT::Status-Fd=3"))
+        assertTrue(runtime.contains("additionalProgressFiles = listOf(statusFile)"))
+        assertFalse(runtime.contains("APT::Status-Fd=1"))
         assertFalse(runtime.contains("root.walkTopDown().filter(File::isFile).sumOf(File::length)"))
     }
 

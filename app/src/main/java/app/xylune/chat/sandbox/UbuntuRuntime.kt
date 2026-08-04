@@ -8,13 +8,9 @@ import android.system.Os
 import android.system.OsConstants
 import androidx.core.content.edit
 import java.io.File
-import java.io.IOException
-import java.io.InterruptedIOException
 import java.security.MessageDigest
 import java.util.ArrayDeque
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -238,6 +234,15 @@ internal fun readLogTail(file: File, maxChars: Int): String {
     return String(buffer, 0, offset, Charsets.UTF_8).takeLast(maxChars)
 }
 
+internal fun buildAptCommandWithStatusFile(arguments: String, guestStatusPath: String): String {
+    require(arguments.isNotBlank()) { "APT arguments are empty" }
+    require(guestStatusPath.matches(Regex("/tmp/[A-Za-z0-9._-]+"))) { "Unsafe APT status path" }
+    val statusPath = shellQuote(guestStatusPath)
+    return "rm -f $statusPath; : > $statusPath; exec 3>>$statusPath; " +
+        "DEBIAN_FRONTEND=noninteractive apt-get " +
+        "-o APT::Status-Fd=3 -o Dpkg::Progress-Fancy=0 -o Dpkg::Use-Pty=0 $arguments"
+}
+
 data class UbuntuPackageInstallResult(
     val success: Boolean,
     val stdout: String = "",
@@ -392,21 +397,30 @@ class UbuntuRuntime(
             }
 
             publish(UbuntuStage.CONFIGURING, 0.74f, 7, "Installing Python and certificate tools")
-            val aptProgressOptions = "-o APT::Status-Fd=1 -o Dpkg::Progress-Fancy=0 -o Dpkg::Use-Pty=0"
-            val pythonPackages = if (distro.packageManager == LinuxPackageManager.APT) {
-                "DEBIAN_FRONTEND=noninteractive apt-get $aptProgressOptions install -y --no-install-recommends python3 python3-pip python3-venv ca-certificates"
-            } else {
-                "apk add --progress python3 py3-pip py3-virtualenv ca-certificates"
-            }
-            val pythonSetup = executeInternal(pythonPackages, sharedWorkspace(), 900, allowBeforeMarker = true) { progress ->
-                val parsed = if (distro.packageManager == LinuxPackageManager.APT) {
-                    packageInstallProgressFromApt(progress, "Installing Python tools", 0.74f, 0.98f)
-                } else {
-                    packageInstallProgressFromOutput(progress, "Installing Python tools", 0.74f, 0.98f)
+            val pythonSetup = if (distro.packageManager == LinuxPackageManager.APT) {
+                executeAptInternal(
+                    arguments = "install -y --no-install-recommends python3 python3-pip python3-venv ca-certificates",
+                    workspace = sharedWorkspace(),
+                    timeoutSeconds = 900,
+                    allowBeforeMarker = true,
+                ) { progress ->
+                    val parsed = packageInstallProgressFromApt(progress, "Installing Python tools", 0.74f, 0.98f)
+                    val detail = parsed.phase + parsed.currentPackage?.let { " • $it" }.orEmpty() +
+                        parsed.detail.takeIf(String::isNotBlank)?.let { " — $it" }.orEmpty()
+                    publish(UbuntuStage.CONFIGURING, parsed.percent ?: 0.74f, 7, detail)
                 }
-                val detail = parsed.phase + parsed.currentPackage?.let { " • $it" }.orEmpty() +
-                    parsed.detail.takeIf(String::isNotBlank)?.let { " — $it" }.orEmpty()
-                publish(UbuntuStage.CONFIGURING, parsed.percent ?: 0.74f, 7, detail)
+            } else {
+                executeInternal(
+                    command = "apk add --progress python3 py3-pip py3-virtualenv ca-certificates",
+                    workspace = sharedWorkspace(),
+                    timeoutSeconds = 900,
+                    allowBeforeMarker = true,
+                ) { progress ->
+                    val parsed = packageInstallProgressFromOutput(progress, "Installing Python tools", 0.74f, 0.98f)
+                    val detail = parsed.phase + parsed.currentPackage?.let { " • $it" }.orEmpty() +
+                        parsed.detail.takeIf(String::isNotBlank)?.let { " — $it" }.orEmpty()
+                    publish(UbuntuStage.CONFIGURING, parsed.percent ?: 0.74f, 7, detail)
+                }
             }
             check(pythonSetup.exitCode == 0) {
                 "Python setup failed inside ${distro.displayName}: ${stripAptStatusLines(pythonSetup.stderr.ifBlank { pythonSetup.stdout }).takeLast(600)}"
@@ -778,11 +792,10 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
             )
         }
 
-        val aptProgressOptions = "-o APT::Status-Fd=1 -o Dpkg::Progress-Fancy=0 -o Dpkg::Use-Pty=0"
-        val repair = execute(
-            conversationId,
-            "DEBIAN_FRONTEND=noninteractive apt-get $aptProgressOptions -f install -y --no-install-recommends",
-            900,
+        val repair = executeApt(
+            conversationId = conversationId,
+            arguments = "-f install -y --no-install-recommends",
+            timeoutSeconds = 900,
         ) { progress ->
             emit(packageInstallProgressFromApt(progress, "Repairing dependencies", 0.10f, 0.30f))
         }
@@ -804,10 +817,10 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
             )
         }
 
-        val install = execute(
-            conversationId,
-            "DEBIAN_FRONTEND=noninteractive apt-get $aptProgressOptions install -y --no-install-recommends ${requests.joinToString(" ") { shellQuote(it) }}",
-            900,
+        val install = executeApt(
+            conversationId = conversationId,
+            arguments = "install -y --no-install-recommends ${requests.joinToString(" ") { shellQuote(it) }}",
+            timeoutSeconds = 900,
         ) { progress ->
             emit(packageInstallProgressFromApt(progress, "Installing packages", 0.30f, 0.99f))
         }
@@ -832,11 +845,54 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
         )
     }
 
+    private suspend fun executeApt(
+        conversationId: String,
+        arguments: String,
+        timeoutSeconds: Int,
+        onProgress: suspend (ExecutionProgress) -> Unit = {},
+    ): UbuntuExecutionResult = processMutex.withLock {
+        val distro = distribution.value
+        check(status.value.installed || rootfsMarker().isFile) { "Install ${distro.displayName} from Tool workspaces first." }
+        executeAptInternal(
+            arguments = arguments,
+            workspace = python.workspace(conversationId),
+            timeoutSeconds = timeoutSeconds.coerceIn(1, 3_600),
+            onProgress = onProgress,
+        )
+    }
+
+    private suspend fun executeAptInternal(
+        arguments: String,
+        workspace: File,
+        timeoutSeconds: Int,
+        allowBeforeMarker: Boolean = false,
+        onProgress: suspend (ExecutionProgress) -> Unit = {},
+    ): UbuntuExecutionResult {
+        val statusName = ".xylune-apt-status-${System.nanoTime()}"
+        val statusFile = File(rootfs(), "tmp/$statusName").also {
+            it.parentFile?.mkdirs()
+            it.delete()
+        }
+        return try {
+            executeInternal(
+                command = buildAptCommandWithStatusFile(arguments, "/tmp/$statusName"),
+                workspace = workspace,
+                timeoutSeconds = timeoutSeconds,
+                allowBeforeMarker = allowBeforeMarker,
+                additionalProgressFiles = listOf(statusFile),
+                onProgress = onProgress,
+            )
+        } finally {
+            statusFile.delete()
+        }
+    }
+
     private suspend fun executeInternal(
         command: String,
         workspace: File,
         timeoutSeconds: Int,
         allowBeforeMarker: Boolean = false,
+        additionalProgressFiles: List<File> = emptyList(),
         onProgress: suspend (ExecutionProgress) -> Unit = {},
     ): UbuntuExecutionResult = withContext(Dispatchers.IO) {
         val distro = distribution.value
@@ -880,9 +936,16 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
 
         suspend fun emitProgress(force: Boolean = false) {
             val now = System.currentTimeMillis()
-            val stdoutSnapshot = readLogTail(stdoutLog, LIVE_OUTPUT_TAIL_CHARS)
+            val primaryStdout = readLogTail(stdoutLog, LIVE_OUTPUT_TAIL_CHARS)
+            val extraProgress = additionalProgressFiles
+                .joinToString("\n") { readLogTail(it, LIVE_OUTPUT_TAIL_CHARS) }
+            val stdoutSnapshot = listOf(primaryStdout, extraProgress)
+                .filter(String::isNotBlank)
+                .joinToString("\n")
+                .takeLast(LIVE_OUTPUT_TAIL_CHARS)
             val stderrSnapshot = readLogTail(stderrLog, LIVE_OUTPUT_TAIL_CHARS)
-            val signature = "${stdoutLog.length()}:${stderrLog.length()}:${stdoutSnapshot.takeLast(64)}:${stderrSnapshot.takeLast(64)}"
+            val extraLengths = additionalProgressFiles.joinToString(",") { it.length().toString() }
+            val signature = "${stdoutLog.length()}:${stderrLog.length()}:$extraLengths:${stdoutSnapshot.takeLast(64)}:${stderrSnapshot.takeLast(64)}"
             if (force || signature != lastProgressSignature || now - lastProgressAt >= 1_000L) {
                 onProgress(ExecutionProgress(stdoutSnapshot, stderrSnapshot, now - started))
                 lastProgressSignature = signature
@@ -913,8 +976,12 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
                 emitProgress(force = true)
             }
             val after = fileState(workspace)
+            val stdout = listOf(
+                readCappedLogFile(stdoutLog, LOG_CAPTURE_LIMIT_BYTES),
+                additionalProgressFiles.joinToString("\n") { readCappedLogFile(it, LOG_CAPTURE_LIMIT_BYTES) },
+            ).filter(String::isNotBlank).joinToString("\n").take(LOG_CAPTURE_LIMIT_BYTES)
             UbuntuExecutionResult(
-                stdout = readCappedLogFile(stdoutLog, LOG_CAPTURE_LIMIT_BYTES),
+                stdout = stdout,
                 stderr = readCappedLogFile(stderrLog, LOG_CAPTURE_LIMIT_BYTES),
                 exitCode = if (complete) process.exitValue() else -1,
                 files = after.filter { (path, state) -> before[path] != state }.keys.take(500),
@@ -1054,57 +1121,6 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
     }
 
     private fun fileState(root: File): Map<String, Pair<Long, Long>> = root.walkTopDown().filter(File::isFile).associate { it.relativeTo(root).path to (it.length() to it.lastModified()) }
-    private fun startStreamPump(
-        name: String,
-        input: java.io.InputStream,
-        output: StringBuilder,
-        closing: AtomicBoolean,
-        failure: AtomicReference<IOException?>,
-    ): Thread = Thread({
-        try {
-            copyCapped(input, output, closing, failure)
-        } catch (error: Throwable) {
-            // Never let a process-reader daemon terminate through Android's
-            // global uncaught-exception handler. Process streams are routinely
-            // closed from the coroutine thread during cancellation/timeout.
-            if (!isExpectedStreamShutdown(error, closing.get())) {
-                failure.compareAndSet(null, error as? IOException ?: IOException("Output capture failed", error))
-            }
-        }
-    }, name).apply {
-        isDaemon = true
-        start()
-    }
-
-    private fun copyCapped(
-        input: java.io.InputStream,
-        output: StringBuilder,
-        closing: AtomicBoolean,
-        failure: AtomicReference<IOException?>,
-        limit: Int = 1_000_000,
-    ) {
-        try {
-            input.bufferedReader().use { reader ->
-                // Keep draining the child pipe after the retained log reaches its cap.
-                // Closing stdout/stderr early makes package maintainer scripts fail with EIO.
-                drainCappedText(reader, output, limit)
-            }
-        } catch (error: Throwable) {
-            if (!isExpectedStreamShutdown(error, closing.get())) {
-                failure.compareAndSet(null, error as? IOException ?: IOException("Output capture failed", error))
-            }
-        }
-    }
-
-    private fun isExpectedStreamShutdown(error: Throwable, closing: Boolean): Boolean {
-        if (closing) return true
-        return generateSequence(error as Throwable?) { it.cause }.any { cause ->
-            cause is InterruptedIOException ||
-                cause.message?.contains("read interrupted by close", ignoreCase = true) == true ||
-                cause.message?.contains("stream closed", ignoreCase = true) == true ||
-                cause.message?.contains("closed", ignoreCase = true) == true && cause is IOException
-        }
-    }
 
     companion object {
         const val RELEASE = "26.04"
