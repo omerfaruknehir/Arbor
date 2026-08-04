@@ -1,3 +1,9 @@
+## 0.23.11 — 2026-08-04
+
+- Capture Linux command output in app-private temporary files instead of Java pipes, so `dpkg` maintainer scripts cannot lose stdout/stderr and fail with `I/O error` during certificate setup.
+- Keep live installer progress by tailing those files while the process runs, while retaining a strict one-megabyte result cap and deleting logs afterward.
+- Add regression tests for capped file capture, live tails, and the no-pipe process contract.
+
 ## 0.23.10 — 2026-08-04
 
 - Redesign Linux setup progress as a thicker rounded, animated indicator with visible stage segments, current step, percentage, current activity, and readable elapsed time.

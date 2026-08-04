@@ -202,6 +202,42 @@ internal fun drainCappedText(
     }
 }
 
+internal fun readCappedLogFile(file: File, limitBytes: Int): String {
+    require(limitBytes >= 0) { "Log limit must not be negative" }
+    if (!file.isFile || limitBytes == 0) return ""
+    val byteCount = minOf(file.length(), limitBytes.toLong()).toInt()
+    val buffer = ByteArray(byteCount)
+    var offset = 0
+    file.inputStream().buffered().use { input ->
+        while (offset < byteCount) {
+            val count = input.read(buffer, offset, byteCount - offset)
+            if (count < 0) break
+            offset += count
+        }
+    }
+    return String(buffer, 0, offset, Charsets.UTF_8)
+}
+
+internal fun readLogTail(file: File, maxChars: Int): String {
+    require(maxChars >= 0) { "Tail size must not be negative" }
+    if (!file.isFile || maxChars == 0) return ""
+    val maxBytes = maxChars.toLong().times(4L).coerceAtMost(1_000_000L)
+    val length = file.length()
+    val start = (length - maxBytes).coerceAtLeast(0L)
+    val byteCount = (length - start).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    val buffer = ByteArray(byteCount)
+    var offset = 0
+    file.inputStream().use { input ->
+        input.channel.position(start)
+        while (offset < byteCount) {
+            val count = input.read(buffer, offset, byteCount - offset)
+            if (count < 0) break
+            offset += count
+        }
+    }
+    return String(buffer, 0, offset, Charsets.UTF_8).takeLast(maxChars)
+}
+
 data class UbuntuPackageInstallResult(
     val success: Boolean,
     val stdout: String = "",
@@ -828,27 +864,15 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
             put("PROOT_TMP_DIR", tmp.absolutePath)
             put("PROOT_NO_SECCOMP", "1")
         }
+        val logDirectory = File(context.cacheDir, "linux-process-logs").also { it.mkdirs() }
+        val logToken = "${distro.id}-${System.nanoTime()}"
+        val stdoutLog = File(logDirectory, "$logToken.stdout")
+        val stderrLog = File(logDirectory, "$logToken.stderr")
+        builder.redirectOutput(stdoutLog)
+        builder.redirectError(stderrLog)
+
         val started = System.currentTimeMillis()
         val process = builder.start()
-        val stdout = StringBuilder()
-        val stderr = StringBuilder()
-        val closingStreams = AtomicBoolean(false)
-        val stdoutFailure = AtomicReference<IOException?>(null)
-        val stderrFailure = AtomicReference<IOException?>(null)
-        val outThread = startStreamPump(
-            name = "xylune-linux-stdout",
-            input = process.inputStream,
-            output = stdout,
-            closing = closingStreams,
-            failure = stdoutFailure,
-        )
-        val errThread = startStreamPump(
-            name = "xylune-linux-stderr",
-            input = process.errorStream,
-            output = stderr,
-            closing = closingStreams,
-            failure = stderrFailure,
-        )
         var complete = false
         var timedOut = false
         var lastProgressSignature = ""
@@ -856,9 +880,9 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
 
         suspend fun emitProgress(force: Boolean = false) {
             val now = System.currentTimeMillis()
-            val stdoutSnapshot = synchronized(stdout) { stdout.toString().takeLast(LIVE_OUTPUT_TAIL_CHARS) }
-            val stderrSnapshot = synchronized(stderr) { stderr.toString().takeLast(LIVE_OUTPUT_TAIL_CHARS) }
-            val signature = "${stdoutSnapshot.length}:${stderrSnapshot.length}:${stdoutSnapshot.takeLast(64)}:${stderrSnapshot.takeLast(64)}"
+            val stdoutSnapshot = readLogTail(stdoutLog, LIVE_OUTPUT_TAIL_CHARS)
+            val stderrSnapshot = readLogTail(stderrLog, LIVE_OUTPUT_TAIL_CHARS)
+            val signature = "${stdoutLog.length()}:${stderrLog.length()}:${stdoutSnapshot.takeLast(64)}:${stderrSnapshot.takeLast(64)}"
             if (force || signature != lastProgressSignature || now - lastProgressAt >= 1_000L) {
                 onProgress(ExecutionProgress(stdoutSnapshot, stderrSnapshot, now - started))
                 lastProgressSignature = signature
@@ -867,42 +891,40 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
         }
 
         try {
-            emitProgress(force = true)
-            val deadline = started + timeoutSeconds * 1_000L
-            while (!process.waitFor(PROGRESS_POLL_MS, TimeUnit.MILLISECONDS)) {
-                currentCoroutineContext().ensureActive()
-                emitProgress()
-                if (System.currentTimeMillis() >= deadline) {
-                    timedOut = true
-                    process.destroyForcibly()
-                    break
+            try {
+                emitProgress(force = true)
+                val deadline = started + timeoutSeconds * 1_000L
+                while (!process.waitFor(PROGRESS_POLL_MS, TimeUnit.MILLISECONDS)) {
+                    currentCoroutineContext().ensureActive()
+                    emitProgress()
+                    if (System.currentTimeMillis() >= deadline) {
+                        timedOut = true
+                        process.destroyForcibly()
+                        break
+                    }
                 }
+                if (!timedOut) complete = true
+            } catch (cancelled: CancellationException) {
+                process.destroyForcibly()
+                process.waitFor(2, TimeUnit.SECONDS)
+                throw cancelled
+            } finally {
+                if (timedOut) process.waitFor(2, TimeUnit.SECONDS)
+                emitProgress(force = true)
             }
-            if (!timedOut) complete = true
-        } catch (cancelled: CancellationException) {
-            process.destroyForcibly()
-            throw cancelled
+            val after = fileState(workspace)
+            UbuntuExecutionResult(
+                stdout = readCappedLogFile(stdoutLog, LOG_CAPTURE_LIMIT_BYTES),
+                stderr = readCappedLogFile(stderrLog, LOG_CAPTURE_LIMIT_BYTES),
+                exitCode = if (complete) process.exitValue() else -1,
+                files = after.filter { (path, state) -> before[path] != state }.keys.take(500),
+                elapsedMs = System.currentTimeMillis() - started,
+                timedOut = timedOut,
+            )
         } finally {
-            closingStreams.set(true)
-            if (timedOut) process.waitFor(2, TimeUnit.SECONDS)
-            runCatching { process.inputStream.close() }
-            runCatching { process.errorStream.close() }
-            outThread.join(2_000)
-            errThread.join(2_000)
-            emitProgress(force = true)
+            stdoutLog.delete()
+            stderrLog.delete()
         }
-        val after = fileState(workspace)
-        val captureWarning = listOfNotNull(stdoutFailure.get(), stderrFailure.get())
-            .distinctBy { it::class.java.name to it.message }
-            .joinToString("\n") { "Output capture warning: ${it.message ?: it::class.java.simpleName}" }
-        UbuntuExecutionResult(
-            stdout = synchronized(stdout) { stdout.toString() },
-            stderr = listOf(synchronized(stderr) { stderr.toString() }, captureWarning).filter(String::isNotBlank).joinToString("\n"),
-            exitCode = if (complete) process.exitValue() else -1,
-            files = after.filter { (path, state) -> before[path] != state }.keys.take(500),
-            elapsedMs = System.currentTimeMillis() - started,
-            timedOut = timedOut,
-        )
     }
 
     private fun configure(root: File, distro: LinuxDistribution) {
@@ -1091,6 +1113,7 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
         private const val KEY_DISTRIBUTION = "selected_distribution"
         private const val PROGRESS_POLL_MS = 250L
         private const val LIVE_OUTPUT_TAIL_CHARS = 16_000
+        private const val LOG_CAPTURE_LIMIT_BYTES = 1_000_000
         private const val INSTALL_STEP_COUNT = 8
         private const val FILE_SYSTEM_BLOCK_BYTES = 512L
     }
