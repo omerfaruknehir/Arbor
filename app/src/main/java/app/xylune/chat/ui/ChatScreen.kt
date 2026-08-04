@@ -208,41 +208,6 @@ internal fun chatTopBarHeightOffsetForScroll(
     endPx,
 )
 
-internal data class ChatChromeProjection(
-    val heightOffset: Float,
-    val contentOffset: Float,
-)
-
-internal fun projectChatChromeFromScroll(
-    firstVisibleItemIndex: Int,
-    firstVisibleItemScrollOffset: Int,
-    startPx: Int,
-    endPx: Int,
-    heightOffsetLimit: Float,
-): ChatChromeProjection {
-    val safeIndex = firstVisibleItemIndex.coerceAtLeast(0)
-    val safeOffset = firstVisibleItemScrollOffset.coerceAtLeast(0)
-    val cumulativeScrollPx = (
-        safeIndex.toLong() * endPx.coerceAtLeast(1).toLong() + safeOffset.toLong()
-    ).coerceAtMost(Int.MAX_VALUE.toLong())
-    return ChatChromeProjection(
-        heightOffset = chatTopBarHeightOffsetForScroll(
-            firstVisibleItemIndex = safeIndex,
-            firstVisibleItemScrollOffset = safeOffset,
-            startPx = startPx,
-            endPx = endPx,
-            heightOffsetLimit = heightOffsetLimit,
-        ),
-        contentOffset = -cumulativeScrollPx.toFloat(),
-    )
-}
-
-private data class ChatChromeScrollSample(
-    val firstVisibleItemIndex: Int,
-    val firstVisibleItemScrollOffset: Int,
-    val heightOffsetLimit: Float,
-)
-
 internal fun calculateAutoFollowStepPx(
     distancePx: Float,
     frameSeconds: Float,
@@ -802,53 +767,28 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 snapChatToBottom(messageListState, paging.itemCount - 1, messageBottomInsetPx)
             }
 
-            // The header is always reconstructed from the restored list anchor.
-            // A separately saved app-bar offset can become stale when paging keys,
-            // message heights, or the composer inset change between sessions.
+            // Restore chrome once after the list anchor settles. Material nested
+            // scroll is the only live owner after this point; continuously deriving
+            // chrome from LazyColumn coordinates creates a feedback loop because
+            // the changing app-bar height also changes the list's top inset.
             val limit = snapshotFlow { topAppBarState.heightOffsetLimit }.first { it < 0f }
-            val projection = projectChatChromeFromScroll(
-                firstVisibleItemIndex = messageListState.firstVisibleItemIndex,
-                firstVisibleItemScrollOffset = messageListState.firstVisibleItemScrollOffset,
-                startPx = chromeStartPx,
-                endPx = chromeEndPx,
-                heightOffsetLimit = limit,
-            )
-            topAppBarState.heightOffset = projection.heightOffset.coerceIn(limit, 0f)
-            topAppBarState.contentOffset = projection.contentOffset
-            initialPositioned = true
-        }
-    }
-
-    // Make the title a direct projection of the LazyColumn position. This observes
-    // user drags, fling settling, auto-follow scrollBy calls, scrollToItem jumps,
-    // search navigation, restored anchors, and viewport corrections identically.
-    // The Material nested-scroll connection is deliberately not attached to the
-    // Scaffold, so there is only one owner and no double-consumed scroll distance.
-    LaunchedEffect(messageListState, conversation?.id, topAppBarState, initialPositioned) {
-        if (!initialPositioned) return@LaunchedEffect
-        snapshotFlow {
-            ChatChromeScrollSample(
-                firstVisibleItemIndex = messageListState.firstVisibleItemIndex,
-                firstVisibleItemScrollOffset = messageListState.firstVisibleItemScrollOffset,
-                heightOffsetLimit = topAppBarState.heightOffsetLimit,
-            )
-        }
-            .distinctUntilChanged()
-            .collect { sample ->
-                if (sample.heightOffsetLimit >= 0f) return@collect
-                val projection = projectChatChromeFromScroll(
-                    firstVisibleItemIndex = sample.firstVisibleItemIndex,
-                    firstVisibleItemScrollOffset = sample.firstVisibleItemScrollOffset,
+            val restoredHeightOffset = if (paging.itemCount > 0 && (snapshot == null || snapshot.atLatest)) {
+                // A non-empty chat opened at its latest message uses compact chrome,
+                // even when the short list has no physical scroll range.
+                limit
+            } else {
+                chatTopBarHeightOffsetForScroll(
+                    firstVisibleItemIndex = messageListState.firstVisibleItemIndex,
+                    firstVisibleItemScrollOffset = messageListState.firstVisibleItemScrollOffset,
                     startPx = chromeStartPx,
                     endPx = chromeEndPx,
-                    heightOffsetLimit = sample.heightOffsetLimit,
+                    heightOffsetLimit = limit,
                 )
-                topAppBarState.heightOffset = projection.heightOffset.coerceIn(
-                    sample.heightOffsetLimit,
-                    0f,
-                )
-                topAppBarState.contentOffset = projection.contentOffset
             }
+            topAppBarState.heightOffset = restoredHeightOffset.coerceIn(limit, 0f)
+            topAppBarState.contentOffset = restoredHeightOffset
+            initialPositioned = true
+        }
     }
 
     LaunchedEffect(messageListState, conversation?.id, topAppBarState, initialPositioned) {
@@ -1043,6 +983,12 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 manualFollowHold = true
                 followMode = ChatFollowMode.DETACHED
                 messageListState.scrollToItem(uiIndex.coerceAtLeast(0))
+                val limit = topAppBarState.heightOffsetLimit
+                if (limit < 0f) {
+                    val targetOffset = if (uiIndex <= 0) 0f else limit
+                    topAppBarState.heightOffset = targetOffset
+                    topAppBarState.contentOffset = targetOffset
+                }
                 searchFocusHandled = true
             }
         }
@@ -1053,6 +999,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     }
 
     Scaffold(
+        modifier = Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
         contentWindowInsets = WindowInsets(0),
         topBar = {
             ChatCollapsingTranslucentTopBar(
@@ -1143,6 +1090,13 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 onImmediateSend = {
                     manualFollowHold = false
                     followMode = ChatFollowMode.FOLLOWING
+                    val limit = topAppBarState.heightOffsetLimit
+                    if (limit < 0f) {
+                        // Sending compacts the header even if this short conversation
+                        // cannot consume enough LazyColumn scroll to collapse it.
+                        topAppBarState.heightOffset = limit
+                        topAppBarState.contentOffset = limit
+                    }
                 },
             )
         },
@@ -1235,6 +1189,11 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     onClick = {
                         manualFollowHold = false
                         followMode = ChatFollowMode.FOLLOWING
+                        val limit = topAppBarState.heightOffsetLimit
+                        if (limit < 0f) {
+                            topAppBarState.heightOffset = limit
+                            topAppBarState.contentOffset = limit
+                        }
                         listScope.launch { snapChatToBottom(messageListState, paging.itemCount - 1, messageBottomInsetPx) }
                     },
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,

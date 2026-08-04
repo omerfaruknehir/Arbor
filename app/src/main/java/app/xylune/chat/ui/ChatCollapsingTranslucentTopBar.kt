@@ -28,10 +28,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 
 /**
- * Chat counterpart of [CollapsingTranslucentTopBar]. Its Material state is driven
- * directly from the chat LazyList position, so finger scrolling, programmatic
- * auto-follow, search jumps, restoration, and viewport correction all share the
- * same collapse fraction without an independent animation owner.
+ * Chat counterpart of [CollapsingTranslucentTopBar]. Material nested scroll owns
+ * live gesture and fling motion. Deliberate programmatic navigation synchronizes the
+ * state only at its boundary, without feeding layout changes back into Scaffold.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
