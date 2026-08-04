@@ -43,14 +43,16 @@ class KeyboardSearchDriveRegressionTest {
     }
 
     @Test
-    fun topBarsUseNestedScrollAsTheirOnlyLiveScrollOwner() {
+    fun chatTopBarMapsEveryListMovementWhileSettingsKeepsNestedScroll() {
         val chat = java.io.File("src/main/java/app/xylune/chat/ui/ChatScreen.kt").readText()
         val settings = java.io.File("src/main/java/app/xylune/chat/ui/SettingsScreen.kt").readText()
-        assertTrue(chat.contains("Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)"))
+        assertFalse(chat.contains("Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)"))
         assertTrue(settings.contains("Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)"))
-        assertFalse(chat.contains("Triple(\n                messageListState.firstVisibleItemIndex"))
-        assertFalse(settings.contains("snapshotFlow { scrollState.value to state.heightOffsetLimit }"))
-        assertTrue(chat.contains("Restore chrome once after the list anchor is restored"))
+        assertTrue(chat.contains("ChatChromeScrollSample("))
+        assertTrue(chat.contains("projectChatChromeFromScroll("))
+        assertTrue(chat.contains("user drags, fling settling, auto-follow scrollBy calls"))
+        assertTrue(chat.contains("topAppBarState.heightOffset = projection.heightOffset"))
+        assertFalse(chat.contains("snapshot?.topBarHeightOffset"))
         assertTrue(settings.contains("initialize the title once after measurement"))
     }
 
@@ -58,5 +60,20 @@ class KeyboardSearchDriveRegressionTest {
     fun fullCollapseBoundaryRemainsCollapsed() {
         assertEquals(1f, calculateTopChromeProgress(0, 176, 56, 176), 0f)
         assertEquals(1f, calculateTopChromeProgress(1, 0, 56, 176), 0f)
+    }
+
+    @Test
+    fun chatChromeProjectionTracksTheActualListPosition() {
+        val expanded = projectChatChromeFromScroll(0, 0, 56, 176, -120f)
+        assertEquals(0f, expanded.heightOffset, 0f)
+        assertEquals(0f, expanded.contentOffset, 0f)
+
+        val halfway = projectChatChromeFromScroll(0, 116, 56, 176, -120f)
+        assertEquals(-60f, halfway.heightOffset, .0001f)
+        assertEquals(-116f, halfway.contentOffset, .0001f)
+
+        val laterItem = projectChatChromeFromScroll(1, 0, 56, 176, -120f)
+        assertEquals(-120f, laterItem.heightOffset, 0f)
+        assertEquals(-176f, laterItem.contentOffset, 0f)
     }
 }
