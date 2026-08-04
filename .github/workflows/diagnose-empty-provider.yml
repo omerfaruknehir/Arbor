@@ -16,9 +16,14 @@ jobs:
       - name: Show setup pager and empty provider contexts
         shell: bash
         run: |
-          set -euxo pipefail
-          grep -n -C 16 'HorizontalPager' app/src/main/java/app/xylune/chat/ui/OnboardingScreen.kt
-          grep -n -C 30 'Add a provider' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
-          grep -n -C 30 'ChatScreen(' app/src/main/java/app/xylune/chat/ui/XyluneApp.kt
-          grep -n -C 30 'onOpenProviderSetup' app/src/main/java/app/xylune/chat/ui/XyluneApp.kt || true
-          grep -n -C 20 'Providers & models' app/src/main/java/app/xylune/chat/ui/XyluneApp.kt || true
+          set -uxo pipefail
+          printf '\n=== SETUP PAGER ===\n'
+          grep -n -C 16 'HorizontalPager' app/src/main/java/app/xylune/chat/ui/OnboardingScreen.kt || true
+          printf '\n=== CHAT PROVIDER STRINGS ===\n'
+          grep -ni -C 24 -E 'add.*provider|provider.*add|no.*provider|provider.*empty|usableProviders' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt || true
+          printf '\n=== CHATSCREEN CALLS ===\n'
+          grep -n -C 40 'ChatScreen(' app/src/main/java/app/xylune/chat/ui/XyluneApp.kt || true
+          printf '\n=== PROVIDER NAVIGATION ===\n'
+          grep -ni -C 32 -E 'openProvider|providerSetup|Providers.*models|SettingsDestination.*Provider|Provider.*SettingsDestination' app/src/main/java/app/xylune/chat/ui/XyluneApp.kt || true
+          printf '\n=== SETTINGS ROUTES ===\n'
+          grep -ni -C 24 -E 'enum class Settings|PROVIDER|Providers.*models|Add provider' app/src/main/java/app/xylune/chat/ui/SettingsScreen.kt || true
