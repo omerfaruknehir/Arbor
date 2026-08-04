@@ -126,6 +126,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInRoot
@@ -1099,7 +1100,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     EmptyConversation(
                         providerConfigured = usableProviders.isNotEmpty(),
                         onSetUpProvider = viewModel::openProviderSetup,
-                        modifier = Modifier.padding(
+                        modifier = Modifier.zIndex(1f).padding(
                             top = padding.calculateTopPadding(),
                             bottom = padding.calculateBottomPadding(),
                         ),

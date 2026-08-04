@@ -1,3 +1,8 @@
+## 0.23.8 — 2026-08-04
+
+- Add a visible 16 dp gap between setup pager pages while preserving direct swipe navigation and opaque page surfaces.
+- Keep the empty-chat provider action above the empty message list so its setup button receives taps and opens Providers & models.
+
 ## 0.23.7 — 2026-08-04
 
 - Replace overlapping setup transitions with a real opaque HorizontalPager that supports direct left/right swiping.
