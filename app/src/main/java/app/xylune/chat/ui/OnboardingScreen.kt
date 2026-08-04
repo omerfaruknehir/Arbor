@@ -1,14 +1,6 @@
 package app.xylune.chat.ui
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
@@ -28,6 +20,8 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -59,6 +53,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,6 +69,7 @@ import app.xylune.chat.settings.ColorPalette
 import app.xylune.chat.settings.ThemeMode
 import app.xylune.chat.ui.theme.palettePreviewColors
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 private enum class OnboardingStep(val setupTitle: String) {
     WELCOME("Welcome"),
@@ -140,8 +136,7 @@ internal fun OnboardingScreen(
     onFinish: () -> Unit,
 ) {
     val steps = OnboardingStep.entries
-    val currentPage = stepIndex.coerceIn(0, steps.lastIndex)
-    val step = steps[currentPage]
+    val initialPage = stepIndex.coerceIn(0, steps.lastIndex)
     val pageScrollStates = listOf(
         rememberScrollState(initial = scrollOffsetForStep(0)),
         rememberScrollState(initial = scrollOffsetForStep(1)),
@@ -150,16 +145,40 @@ internal fun OnboardingScreen(
         rememberScrollState(initial = scrollOffsetForStep(4)),
     )
     val haptics = rememberXyluneHaptics()
+    val coroutineScope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(
+        initialPage = initialPage,
+        initialPageOffsetFraction = stepOffsetFraction.coerceIn(-0.499f, 0.499f),
+        pageCount = { steps.size },
+    )
+    val visiblePage = pagerState.currentPage.coerceIn(0, steps.lastIndex)
+    val step = steps[visiblePage]
 
     fun moveTo(page: Int) {
-        onPagerPositionChanged(page.coerceIn(0, steps.lastIndex), 0f)
+        val target = page.coerceIn(0, steps.lastIndex)
+        coroutineScope.launch { pagerState.animateScrollToPage(target) }
     }
 
-    LaunchedEffect(currentPage, stepOffsetFraction) {
-        if (stepOffsetFraction != 0f) onPagerPositionChanged(currentPage, 0f)
+    LaunchedEffect(stepIndex) {
+        val target = stepIndex.coerceIn(0, steps.lastIndex)
+        if (!pagerState.isScrollInProgress &&
+            (pagerState.currentPage != target || pagerState.currentPageOffsetFraction != 0f)
+        ) {
+            pagerState.animateScrollToPage(target)
+        }
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage to pagerState.currentPageOffsetFraction }
+            .distinctUntilChanged()
+            .collect { (page, offset) -> onPagerPositionChanged(page, offset) }
     }
     pageScrollStates.forEachIndexed { page, state ->
         SetupScrollReporter(page, state, onStepScrollChanged)
+    }
+
+    BackHandler(enabled = visiblePage > 0) {
+        haptics.selection()
+        moveTo(visiblePage - 1)
     }
 
     Surface(
@@ -174,14 +193,15 @@ internal fun OnboardingScreen(
                 .padding(horizontal = 16.dp, vertical = 10.dp),
         ) {
             OnboardingProgressHeader(
-                currentStepIndex = currentPage,
+                currentStepIndex = visiblePage,
+                pagePosition = pagerState.currentPage + pagerState.currentPageOffsetFraction,
                 stepCount = steps.size,
                 stepTitle = step.setupTitle,
-                showBack = currentPage > 0,
-                showLater = currentPage < steps.lastIndex,
+                showBack = visiblePage > 0,
+                showLater = visiblePage < steps.lastIndex,
                 onBack = {
                     haptics.selection()
-                    moveTo(currentPage - 1)
+                    moveTo(visiblePage - 1)
                 },
                 onSkipForNow = {
                     haptics.selection()
@@ -189,97 +209,81 @@ internal fun OnboardingScreen(
                 },
             )
             Spacer(Modifier.height(10.dp))
-            PredictiveNavigationHost(
-                targetState = step,
-                backTarget = steps.getOrNull(currentPage - 1),
-                onBack = { destination ->
-                    haptics.selection()
-                    moveTo(destination.ordinal)
-                },
-                depth = { it.ordinal },
+            HorizontalPager(
+                state = pagerState,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
-                backEnabled = currentPage > 0,
-                keepAlive = { false },
-                label = "XyluneSetupNavigation",
-            ) { destination ->
-                val page = destination.ordinal
+                beyondViewportPageCount = 0,
+                userScrollEnabled = true,
+                key = { steps[it] },
+            ) { page ->
+                val destination = steps[page]
                 Column(
                     Modifier
                         .fillMaxSize()
-                        .verticalScroll(pageScrollStates[page])
-                        .padding(top = 8.dp, bottom = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                        .background(MaterialTheme.colorScheme.background),
                 ) {
-                    when (destination) {
-                        OnboardingStep.WELCOME -> WelcomeStep(viewModel)
-                        OnboardingStep.APPEARANCE -> AppearanceStep(
-                            currentThemeMode = currentThemeMode,
-                            currentPalette = currentPalette,
-                            matchLauncherIconToPalette = matchLauncherIconToPalette,
-                            amoled = amoled,
-                            onThemeModeChanged = {
-                                haptics.selection()
-                                onThemeModeChanged(it)
-                            },
-                            onPaletteChanged = {
-                                haptics.selection()
-                                onPaletteChanged(it)
-                            },
-                            onMatchLauncherIconToPaletteChanged = onMatchLauncherIconToPaletteChanged,
-                            onAmoledChanged = onAmoledChanged,
-                        )
-                        OnboardingStep.PROVIDER -> ProviderStep(
-                            providerCatalogDelayed = providerCatalogDelayed,
-                            configuredProviderCount = configuredProviderCount,
-                        )
-                        OnboardingStep.TOOLS -> ToolsStep(
-                            pythonEnabled = pythonEnabled,
-                            linuxEnabled = linuxEnabled,
-                            linuxStatus = linuxStatus,
-                            onPythonEnabledChanged = onPythonEnabledChanged,
-                            onLinuxEnabledChanged = onLinuxEnabledChanged,
-                        )
-                        OnboardingStep.READY -> ReadyStep(
-                            themeMode = currentThemeMode,
-                            palette = currentPalette,
-                            matchLauncherIconToPalette = matchLauncherIconToPalette,
-                            configuredProviderCount = configuredProviderCount,
-                            pythonEnabled = pythonEnabled,
-                            linuxEnabled = linuxEnabled,
-                            linuxStatus = linuxStatus,
-                        )
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(pageScrollStates[page])
+                            .padding(top = 8.dp, bottom = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        when (destination) {
+                            OnboardingStep.WELCOME -> WelcomeStep(viewModel)
+                            OnboardingStep.APPEARANCE -> AppearanceStep(
+                                currentThemeMode = currentThemeMode,
+                                currentPalette = currentPalette,
+                                matchLauncherIconToPalette = matchLauncherIconToPalette,
+                                amoled = amoled,
+                                onThemeModeChanged = {
+                                    haptics.selection()
+                                    onThemeModeChanged(it)
+                                },
+                                onPaletteChanged = {
+                                    haptics.selection()
+                                    onPaletteChanged(it)
+                                },
+                                onMatchLauncherIconToPaletteChanged = onMatchLauncherIconToPaletteChanged,
+                                onAmoledChanged = onAmoledChanged,
+                            )
+                            OnboardingStep.PROVIDER -> ProviderStep(
+                                providerCatalogDelayed = providerCatalogDelayed,
+                                configuredProviderCount = configuredProviderCount,
+                            )
+                            OnboardingStep.TOOLS -> ToolsStep(
+                                pythonEnabled = pythonEnabled,
+                                linuxEnabled = linuxEnabled,
+                                linuxStatus = linuxStatus,
+                                onPythonEnabledChanged = onPythonEnabledChanged,
+                                onLinuxEnabledChanged = onLinuxEnabledChanged,
+                            )
+                            OnboardingStep.READY -> ReadyStep(
+                                themeMode = currentThemeMode,
+                                palette = currentPalette,
+                                matchLauncherIconToPalette = matchLauncherIconToPalette,
+                                configuredProviderCount = configuredProviderCount,
+                                pythonEnabled = pythonEnabled,
+                                linuxEnabled = linuxEnabled,
+                                linuxStatus = linuxStatus,
+                            )
+                        }
                     }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(Modifier.height(10.dp))
+                    OnboardingStepActions(
+                        step = destination,
+                        configuredProviderCount = configuredProviderCount,
+                        linuxEnabled = linuxEnabled,
+                        linuxStatus = linuxStatus,
+                        onContinue = { moveTo(page + 1) },
+                        onOpenProviderSetup = onOpenProviderSetup,
+                        onOpenLinuxSetup = onOpenLinuxSetup,
+                        onFinish = onFinish,
+                    )
                 }
-            }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Spacer(Modifier.height(10.dp))
-            AnimatedContent(
-                targetState = step,
-                transitionSpec = {
-                    val forward = targetState.ordinal >= initialState.ordinal
-                    val enter = slideInHorizontally(
-                        animationSpec = tween(220, easing = FastOutSlowInEasing),
-                        initialOffsetX = { width -> if (forward) width / 5 else -width / 5 },
-                    ) + fadeIn(tween(150))
-                    val exit = slideOutHorizontally(
-                        animationSpec = tween(180, easing = FastOutSlowInEasing),
-                        targetOffsetX = { width -> if (forward) -width / 6 else width / 6 },
-                    ) + fadeOut(tween(120))
-                    enter togetherWith exit
-                },
-                label = "XyluneSetupActions",
-            ) { actionStep ->
-                OnboardingStepActions(
-                    step = actionStep,
-                    configuredProviderCount = configuredProviderCount,
-                    linuxEnabled = linuxEnabled,
-                    linuxStatus = linuxStatus,
-                    onContinue = { moveTo(currentPage + 1) },
-                    onOpenProviderSetup = onOpenProviderSetup,
-                    onOpenLinuxSetup = onOpenLinuxSetup,
-                    onFinish = onFinish,
-                )
             }
         }
     }
@@ -448,6 +452,7 @@ private fun SetupScrollReporter(
 @Composable
 private fun OnboardingProgressHeader(
     currentStepIndex: Int,
+    pagePosition: Float,
     stepCount: Int,
     stepTitle: String,
     showBack: Boolean,
@@ -484,11 +489,7 @@ private fun OnboardingProgressHeader(
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             repeat(stepCount) { index ->
-                val fill = animateFloatAsState(
-                    targetValue = setupProgressForSegment(currentStepIndex.toFloat(), index),
-                    animationSpec = tween(220, easing = FastOutSlowInEasing),
-                    label = "SetupProgress$index",
-                ).value
+                val fill = setupProgressForSegment(pagePosition, index)
                 Box(
                     Modifier
                         .weight(1f)

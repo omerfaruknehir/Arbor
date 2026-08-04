@@ -1,3 +1,8 @@
+## 0.23.7 — 2026-08-04
+
+- Replace overlapping setup transitions with a real opaque HorizontalPager that supports direct left/right swiping.
+- Remove setup fades and scales so each page and its actions move as one plain slide.
+
 ## 0.23.6 — 2026-08-04
 
 - Repair setup navigation animations by removing overlapping kept-alive wizard pages and animating step actions and progress coherently.
