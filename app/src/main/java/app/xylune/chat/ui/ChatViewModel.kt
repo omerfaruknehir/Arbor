@@ -456,19 +456,25 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
                         }
                     }
                     val credentialNote = if (result.settingsRestored) {
-                        ". Provider credentials and OAuth sessions were excluded; reconnect them in the next setup step"
+                        ". Provider credentials and OAuth sessions were excluded; reconnect them from Settings > Finish setup or Providers & models"
                     } else ""
                     notices.tryEmit("Imported ${parts.joinToString(" and ")}$credentialNote")
                     if (result.linuxEnvironmentCount > 0) container.ubuntuRuntime.refresh()
                     if (result.settingsRestored) reconcileLauncherIcon()
                     if (restoredDuringSetup) {
-                        setupActive.value = true
-                        setupStepIndex.value = 2
                         setupPageOffsetFraction.value = 0f
                         setupTemporarilyAway.value = false
-                        setupDismissed.value = false
                         settingsRoute.value = SettingsRoute.HOME
                         screen.value = Screen.CHAT
+                        if (result.settingsRestored) {
+                            setupActive.value = false
+                            setupStepIndex.value = 2
+                            setupDismissed.value = true
+                            notices.tryEmit("Backup restored. Setup was paused; finish provider access later from Settings.")
+                        } else {
+                            setupActive.value = true
+                            setupDismissed.value = false
+                        }
                     }
                 }
                 .onFailure { error -> incomingArchive.value = state.copy(importing = false, error = error.message ?: "Import failed") }
@@ -616,11 +622,22 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         screen.value = Screen.CHAT
     }
 
-    fun finishSetup() {
+    fun skipSetup() {
         setupActive.value = false
         setupPageOffsetFraction.value = 0f
         setupDismissed.value = true
         setupTemporarilyAway.value = false
+        settingsRoute.value = SettingsRoute.HOME
+        screen.value = Screen.CHAT
+    }
+
+    fun finishSetup() {
+        setupActive.value = false
+        setupStepIndex.value = 4
+        setupPageOffsetFraction.value = 0f
+        setupDismissed.value = true
+        setupTemporarilyAway.value = false
+        settingsRoute.value = SettingsRoute.HOME
         screen.value = Screen.CHAT
     }
 
