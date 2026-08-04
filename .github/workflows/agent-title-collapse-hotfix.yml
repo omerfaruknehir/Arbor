@@ -1,4 +1,4 @@
-name: Apply and validate title collapse hotfix
+name: Publish validated title collapse hotfix source
 
 on:
   push:
@@ -9,383 +9,36 @@ on:
 permissions:
   contents: write
 
-env:
-  XYLUNE_SOURCE_REPOSITORY: ${{ github.repository }}
-  XYLUNE_SOURCE_COMMIT: ${{ github.sha }}
-  XYLUNE_MICROSOFT_CLIENT_ID: ${{ vars.XYLUNE_MICROSOFT_CLIENT_ID }}
-  XYLUNE_DROPBOX_APP_KEY: ${{ vars.XYLUNE_DROPBOX_APP_KEY }}
-
 jobs:
-  patch-test-commit:
+  publish-source:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: agent/title-collapse-hotfix-0.23.16
           fetch-depth: 0
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-          cache: gradle
-      - name: Set up Android 16 SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Apply hotfix
-        shell: bash
+      - name: Recreate the already validated source tree
         run: |
           set -euo pipefail
-          python3 <<'PY'
-          from pathlib import Path
-
-          def replace_once(text: str, old: str, new: str, label: str) -> str:
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{label}: expected exactly one match, found {count}")
-              return text.replace(old, new, 1)
-
-          chat_path = Path("app/src/main/java/app/xylune/chat/ui/ChatScreen.kt")
-          chat = chat_path.read_text()
-
-          projection_block = '''internal data class ChatChromeProjection(
-              val heightOffset: Float,
-              val contentOffset: Float,
-          )
-
-          internal fun projectChatChromeFromScroll(
-              firstVisibleItemIndex: Int,
-              firstVisibleItemScrollOffset: Int,
-              startPx: Int,
-              endPx: Int,
-              heightOffsetLimit: Float,
-          ): ChatChromeProjection {
-              val safeIndex = firstVisibleItemIndex.coerceAtLeast(0)
-              val safeOffset = firstVisibleItemScrollOffset.coerceAtLeast(0)
-              val cumulativeScrollPx = (
-                  safeIndex.toLong() * endPx.coerceAtLeast(1).toLong() + safeOffset.toLong()
-              ).coerceAtMost(Int.MAX_VALUE.toLong())
-              return ChatChromeProjection(
-                  heightOffset = chatTopBarHeightOffsetForScroll(
-                      firstVisibleItemIndex = safeIndex,
-                      firstVisibleItemScrollOffset = safeOffset,
-                      startPx = startPx,
-                      endPx = endPx,
-                      heightOffsetLimit = heightOffsetLimit,
-                  ),
-                  contentOffset = -cumulativeScrollPx.toFloat(),
-              )
-          }
-
-          private data class ChatChromeScrollSample(
-              val firstVisibleItemIndex: Int,
-              val firstVisibleItemScrollOffset: Int,
-              val heightOffsetLimit: Float,
-          )
-
-          '''
-          chat = replace_once(chat, projection_block, "", "remove estimated projection")
-
-          current_restore = '''            // The header is always reconstructed from the restored list anchor.
-                      // A separately saved app-bar offset can become stale when paging keys,
-                      // message heights, or the composer inset change between sessions.
-                      val limit = snapshotFlow { topAppBarState.heightOffsetLimit }.first { it < 0f }
-                      val projection = projectChatChromeFromScroll(
-                          firstVisibleItemIndex = messageListState.firstVisibleItemIndex,
-                          firstVisibleItemScrollOffset = messageListState.firstVisibleItemScrollOffset,
-                          startPx = chromeStartPx,
-                          endPx = chromeEndPx,
-                          heightOffsetLimit = limit,
-                      )
-                      topAppBarState.heightOffset = projection.heightOffset.coerceIn(limit, 0f)
-                      topAppBarState.contentOffset = projection.contentOffset
-                      initialPositioned = true
-                  }
-              }
-          '''
-          fixed_restore = '''            // Restore chrome once, after the list anchor has settled. The live header
-                      // is then owned only by Material nested scroll, avoiding a feedback loop where
-                      // changing top padding changes the list offset that is driving that same padding.
-                      val limit = snapshotFlow { topAppBarState.heightOffsetLimit }.first { it < 0f }
-                      val restoredHeightOffset = if (snapshot == null || snapshot.atLatest) {
-                          // Any non-empty chat opened at its latest message uses compact chrome, even
-                          // when the short list has no physical scroll range.
-                          limit
-                      } else {
-                          chatTopBarHeightOffsetForScroll(
-                              firstVisibleItemIndex = messageListState.firstVisibleItemIndex,
-                              firstVisibleItemScrollOffset = messageListState.firstVisibleItemScrollOffset,
-                              startPx = chromeStartPx,
-                              endPx = chromeEndPx,
-                              heightOffsetLimit = limit,
-                          )
-                      }
-                      topAppBarState.heightOffset = restoredHeightOffset.coerceIn(limit, 0f)
-                      topAppBarState.contentOffset = restoredHeightOffset
-                      initialPositioned = true
-                  }
-              }
-          '''
-          chat = replace_once(chat, current_restore, fixed_restore, "replace restore behavior")
-
-          projection_effect = '''
-              // Make the title a direct projection of the LazyColumn position. This observes
-              // user drags, fling settling, auto-follow scrollBy calls, scrollToItem jumps,
-              // search navigation, restored anchors, and viewport corrections identically.
-              // The Material nested-scroll connection is deliberately not attached to the
-              // Scaffold, so there is only one owner and no double-consumed scroll distance.
-              LaunchedEffect(messageListState, conversation?.id, topAppBarState, initialPositioned) {
-                  if (!initialPositioned) return@LaunchedEffect
-                  snapshotFlow {
-                      ChatChromeScrollSample(
-                          firstVisibleItemIndex = messageListState.firstVisibleItemIndex,
-                          firstVisibleItemScrollOffset = messageListState.firstVisibleItemScrollOffset,
-                          heightOffsetLimit = topAppBarState.heightOffsetLimit,
-                      )
-                  }
-                      .distinctUntilChanged()
-                      .collect { sample ->
-                          if (sample.heightOffsetLimit >= 0f) return@collect
-                          val projection = projectChatChromeFromScroll(
-                              firstVisibleItemIndex = sample.firstVisibleItemIndex,
-                              firstVisibleItemScrollOffset = sample.firstVisibleItemScrollOffset,
-                              startPx = chromeStartPx,
-                              endPx = chromeEndPx,
-                              heightOffsetLimit = sample.heightOffsetLimit,
-                          )
-                          topAppBarState.heightOffset = projection.heightOffset.coerceIn(
-                              sample.heightOffsetLimit,
-                              0f,
-                          )
-                          topAppBarState.contentOffset = projection.contentOffset
-                      }
-              }
-          '''
-          chat = replace_once(chat, projection_effect, "", "remove live projection effect")
-
-          chat = replace_once(
-              chat,
-              '''    Scaffold(
-                  contentWindowInsets = WindowInsets(0),''',
-              '''    Scaffold(
-                  modifier = Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
-                  contentWindowInsets = WindowInsets(0),''',
-              "restore Material nested scroll",
-          )
-
-          chat = replace_once(
-              chat,
-              '''                onImmediateSend = {
-                              manualFollowHold = false
-                              followMode = ChatFollowMode.FOLLOWING
-                          },''',
-              '''                onImmediateSend = {
-                              manualFollowHold = false
-                              followMode = ChatFollowMode.FOLLOWING
-                              val limit = topAppBarState.heightOffsetLimit
-                              if (limit < 0f) {
-                                  // Sending must compact the header even when the conversation is
-                                  // too short for LazyColumn to consume any scroll distance.
-                                  topAppBarState.heightOffset = limit
-                                  topAppBarState.contentOffset = limit
-                              }
-                          },''',
-              "collapse on send",
-          )
-
-          chat = replace_once(
-              chat,
-              '''                messageListState.scrollToItem(uiIndex.coerceAtLeast(0))
-                          searchFocusHandled = true''',
-              '''                messageListState.scrollToItem(uiIndex.coerceAtLeast(0))
-                          val limit = topAppBarState.heightOffsetLimit
-                          if (limit < 0f) {
-                              val targetOffset = if (uiIndex <= 0) 0f else limit
-                              topAppBarState.heightOffset = targetOffset
-                              topAppBarState.contentOffset = targetOffset
-                          }
-                          searchFocusHandled = true''',
-              "sync search jump",
-          )
-
-          chat = replace_once(
-              chat,
-              '''                    manualFollowHold = false
-                                  followMode = ChatFollowMode.FOLLOWING
-                                  listScope.launch { snapChatToBottom(messageListState, paging.itemCount - 1, messageBottomInsetPx) }''',
-              '''                    manualFollowHold = false
-                                  followMode = ChatFollowMode.FOLLOWING
-                                  val limit = topAppBarState.heightOffsetLimit
-                                  if (limit < 0f) {
-                                      topAppBarState.heightOffset = limit
-                                      topAppBarState.contentOffset = limit
-                                  }
-                                  listScope.launch { snapChatToBottom(messageListState, paging.itemCount - 1, messageBottomInsetPx) }''',
-              "sync go-to-latest",
-          )
-
-          if "ChatChromeScrollSample(" in chat or "projectChatChromeFromScroll(" in chat:
-              raise SystemExit("estimated projection code remains")
-          if "Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)" not in chat:
-              raise SystemExit("Material nested scroll was not restored")
-          if "snapshot == null || snapshot.atLatest" not in chat:
-              raise SystemExit("latest-message compact restore is missing")
-          chat_path.write_text(chat)
-
-          topbar_path = Path("app/src/main/java/app/xylune/chat/ui/ChatCollapsingTranslucentTopBar.kt")
-          topbar = topbar_path.read_text()
-          topbar = replace_once(
-              topbar,
-              ''' * Chat counterpart of [CollapsingTranslucentTopBar]. Its Material state is driven
-           * directly from the chat LazyList position, so finger scrolling, programmatic
-           * auto-follow, search jumps, restoration, and viewport correction all share the
-           * same collapse fraction without an independent animation owner.''',
-              ''' * Chat counterpart of [CollapsingTranslucentTopBar]. Material nested scroll owns
-           * live gesture and fling motion. Deliberate programmatic navigation synchronizes the
-           * state at its boundary, without continuously feeding LazyList layout changes back
-           * into Scaffold top padding.''',
-              "update top-bar ownership comment",
-          )
-          topbar_path.write_text(topbar)
-
-          test_path = Path("app/src/test/java/app/xylune/chat/ui/KeyboardSearchDriveRegressionTest.kt")
-          test_path.write_text('''package app.xylune.chat.ui
-
-          import android.app.Activity
-          import org.junit.Assert.assertEquals
-          import org.junit.Assert.assertFalse
-          import org.junit.Assert.assertTrue
-          import org.junit.Test
-
-          class KeyboardSearchDriveRegressionTest {
-              @Test
-              fun keyboardOwnsBackBeforeDrawerOrPageNavigation() {
-                  assertFalse(appBackHandlerEnabled(ownerEnabled = true, imeVisible = true))
-                  assertTrue(appBackHandlerEnabled(ownerEnabled = true, imeVisible = false))
-                  assertFalse(pageBackEnabled(drawerVisible = false, imeVisible = true))
-                  assertFalse(pageBackEnabled(drawerVisible = true, imeVisible = false))
-                  assertTrue(pageBackEnabled(drawerVisible = false, imeVisible = false))
-              }
-
-              @Test
-              fun authorizationDataWinsOverCanceledResultCode() {
-                  assertEquals(
-                      GoogleAuthorizationResultRoute.PARSE_RESULT,
-                      googleAuthorizationResultRoute(Activity.RESULT_CANCELED, hasData = true),
-                  )
-                  assertEquals(
-                      GoogleAuthorizationResultRoute.CANCELLED,
-                      googleAuthorizationResultRoute(Activity.RESULT_CANCELED, hasData = false),
-                  )
-                  assertEquals(
-                      GoogleAuthorizationResultRoute.MISSING_RESULT,
-                      googleAuthorizationResultRoute(Activity.RESULT_OK, hasData = false),
-                  )
-              }
-
-              @Test
-              fun searchUsesCompactPinnedImeAwareLayout() {
-                  val source = java.io.File("src/main/java/app/xylune/chat/ui/SearchScreen.kt").readText()
-                  assertFalse(source.contains("CollapsingTranslucentTopBar"))
-                  assertFalse(source.contains("LargeTopAppBar"))
-                  assertTrue(source.contains("TopAppBar("))
-                  assertTrue(source.contains(".imePadding()"))
-                  assertTrue(source.indexOf("OutlinedTextField(") < source.indexOf("LazyColumn("))
-              }
-
-              @Test
-              fun chatTopBarHasOneLiveScrollOwnerAndExplicitProgrammaticBoundaries() {
-                  val chat = java.io.File("src/main/java/app/xylune/chat/ui/ChatScreen.kt").readText()
-                  val settings = java.io.File("src/main/java/app/xylune/chat/ui/SettingsScreen.kt").readText()
-                  assertTrue(chat.contains("Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)"))
-                  assertTrue(settings.contains("Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)"))
-                  assertFalse(chat.contains("ChatChromeScrollSample("))
-                  assertFalse(chat.contains("projectChatChromeFromScroll("))
-                  assertTrue(chat.contains("snapshot == null || snapshot.atLatest"))
-                  assertTrue(chat.contains("Sending must compact the header"))
-                  assertTrue(chat.contains("val targetOffset = if (uiIndex <= 0) 0f else limit"))
-                  assertTrue(settings.contains("initialize the title once after measurement"))
-              }
-
-              @Test
-              fun fullCollapseBoundaryRemainsCollapsed() {
-                  assertEquals(1f, calculateTopChromeProgress(0, 176, 56, 176), 0f)
-                  assertEquals(1f, calculateTopChromeProgress(1, 0, 56, 176), 0f)
-              }
-          }
-          '''.replace("\n          ", "\n").lstrip())
-
-          gradle_path = Path("app/build.gradle.kts")
-          gradle = gradle_path.read_text()
-          gradle = replace_once(gradle, 'versionCode = 184', 'versionCode = 185', "version code")
-          gradle = replace_once(gradle, 'versionName = "0.23.15"', 'versionName = "0.23.16"', "version name")
-          gradle_path.write_text(gradle)
-
-          changelog_path = Path("CHANGELOG.md")
-          changelog = changelog_path.read_text()
-          if changelog.startswith("## 0.23.16"):
-              raise SystemExit("0.23.16 changelog already exists")
-          changelog_path.write_text('''## 0.23.16 — 2026-08-04
-
-          - Remove the continuous LazyColumn-to-top-bar projection that created a layout feedback loop, jitter, jumps, and inconsistent title states.
-          - Restore Material nested scroll as the sole live gesture/fling owner.
-          - Compact the title explicitly when opening a non-empty chat at the latest message, sending, jumping from search, or returning to the latest message—even when a short chat cannot physically scroll.
-
-          '''.replace("\n          ", "\n") + changelog)
-
-          release_notes = Path("docs/releases/RELEASE_NOTES_0.23.16.md")
-          release_notes.write_text('''# Xylune 0.23.16
-
-          ## Chat title collapse hotfix
-
-          This release removes the 0.23.15 feedback loop between the message list position and the changing top-bar inset. Finger scrolling and flings are again handled by one Material nested-scroll owner, so the title no longer jitters, jumps, or reacts to unrelated message-height changes.
-
-          Programmatic boundaries are synchronized explicitly: a non-empty chat opened at the latest message, Send, search navigation, and Go to latest all choose the correct compact or expanded state even when the conversation is too short to provide physical scroll distance.
-          '''.replace("\n          ", "\n"))
-
-          publish_path = Path(".github/workflows/publish-0.23.11.yml")
-          publish = publish_path.read_text()
-          publish = publish.replace("0.23.15", "0.23.16")
-          publish = replace_once(publish, "versionCode = 184", "versionCode = 185", "publish version code")
-          old_checks = '''          grep -F 'ChatChromeScrollSample(' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
-                    grep -F 'projectChatChromeFromScroll(' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
-                    grep -F 'user drags, fling settling, auto-follow scrollBy calls' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
-                    ! grep -F 'Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
-                    ! grep -F 'snapshot?.topBarHeightOffset' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
-          '''
-          new_checks = '''          grep -F 'Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
-                    ! grep -F 'ChatChromeScrollSample(' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
-                    ! grep -F 'projectChatChromeFromScroll(' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
-                    grep -F 'snapshot == null || snapshot.atLatest' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
-                    grep -F 'Sending must compact the header' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
-          '''
-          publish = replace_once(publish, old_checks, new_checks, "publish regression checks")
-          publish_path.write_text(publish)
-          PY
-      - name: Validate source changes
-        run: |
-          set -euo pipefail
+          python3 ci/run-title-collapse-hotfix.py
           grep -F 'versionCode = 185' app/build.gradle.kts
           grep -F 'versionName = "0.23.16"' app/build.gradle.kts
           grep -F 'Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
           ! grep -F 'ChatChromeScrollSample(' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
           ! grep -F 'projectChatChromeFromScroll(' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
-          grep -F 'snapshot == null || snapshot.atLatest' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
-          grep -F 'Sending must compact the header' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
-          test -f docs/releases/RELEASE_NOTES_0.23.16.md
-          ./ci/verify-third-party-licenses.sh
-      - name: Test, lint, and build APK
+          grep -F 'paging.itemCount > 0 && (snapshot == null || snapshot.atLatest)' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
+      - name: Commit only non-workflow files
         run: |
           set -euo pipefail
-          ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest lintRelease assembleRelease
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
-      - name: Commit validated hotfix
-        run: |
-          set -euo pipefail
-          rm .github/workflows/agent-title-collapse-hotfix.yml
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
+          git add \
+            CHANGELOG.md \
+            app/build.gradle.kts \
+            app/src/main/java/app/xylune/chat/ui/ChatScreen.kt \
+            app/src/main/java/app/xylune/chat/ui/ChatCollapsingTranslucentTopBar.kt \
+            app/src/test/java/app/xylune/chat/ui/KeyboardSearchDriveRegressionTest.kt \
+            docs/releases/RELEASE_NOTES_0.23.16.md
           git commit -m 'Fix chat title collapse regressions'
           git push origin HEAD:agent/title-collapse-hotfix-0.23.16
