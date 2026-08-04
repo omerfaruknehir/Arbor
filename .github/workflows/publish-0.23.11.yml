@@ -1,5 +1,6 @@
 name: Publish Xylune 0.23.11
 
+# One-shot publication workflow for the update-compatible 0.23.11 APK.
 on:
   push:
     branches: [ main ]
