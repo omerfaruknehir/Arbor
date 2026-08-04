@@ -1,4 +1,4 @@
-name: Publish Xylune 0.23.12
+name: Publish Xylune 0.23.13
 
 # Reused hotfix publication workflow; keeping the path stable avoids release-file churn.
 on:
@@ -37,46 +37,49 @@ jobs:
       - name: Verify release source
         run: |
           set -euo pipefail
-          grep -F 'versionCode = 181' app/build.gradle.kts
-          grep -F 'versionName = "0.23.12"' app/build.gradle.kts
-          test -f docs/releases/RELEASE_NOTES_0.23.12.md
-          ! grep -R 'APT::Status-Fd=1' app/src/main
-          grep -R 'APT::Status-Fd=3' app/src/main
+          grep -F 'versionCode = 182' app/build.gradle.kts
+          grep -F 'versionName = "0.23.13"' app/build.gradle.kts
+          test -f docs/releases/RELEASE_NOTES_0.23.13.md
+          grep -F 'pageSlideOffset(widthPx' app/src/main/java/app/xylune/chat/ui/PredictiveNavigation.kt
+          grep -F 'onSettled = { settled ->' app/src/main/java/app/xylune/chat/ui/XyluneApp.kt
+          ! grep -F 'widthPx * 0.10f' app/src/main/java/app/xylune/chat/ui/PredictiveNavigation.kt
+          ! grep -F 'widthPx / 8f' app/src/main/java/app/xylune/chat/ui/PredictiveNavigation.kt
+          ! grep -F 'viewModel.returnToSetup()' app/src/main/java/app/xylune/chat/ui/SettingsScreen.kt
           ./ci/verify-third-party-licenses.sh
       - name: Test, lint, and build APK
         run: |
           set -euo pipefail
           ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest lintRelease assembleRelease
           mkdir -p release-assets
-          cp app/build/outputs/apk/release/app-release.apk release-assets/Xylune-0.23.12.apk
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs release-assets/Xylune-0.23.12.apk
-          sha256sum release-assets/Xylune-0.23.12.apk > release-assets/SHA256SUMS-0.23.12.txt
+          cp app/build/outputs/apk/release/app-release.apk release-assets/Xylune-0.23.13.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs release-assets/Xylune-0.23.13.apk
+          sha256sum release-assets/Xylune-0.23.13.apk > release-assets/SHA256SUMS-0.23.13.txt
       - name: Publish or repair GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view v0.23.12 >/dev/null 2>&1; then
-            gh release edit v0.23.12 \
+          if gh release view v0.23.13 >/dev/null 2>&1; then
+            gh release edit v0.23.13 \
               --target "$GITHUB_SHA" \
-              --title 'Xylune 0.23.12' \
-              --notes-file docs/releases/RELEASE_NOTES_0.23.12.md
-            gh release upload v0.23.12 \
-              release-assets/Xylune-0.23.12.apk \
-              release-assets/SHA256SUMS-0.23.12.txt \
+              --title 'Xylune 0.23.13' \
+              --notes-file docs/releases/RELEASE_NOTES_0.23.13.md
+            gh release upload v0.23.13 \
+              release-assets/Xylune-0.23.13.apk \
+              release-assets/SHA256SUMS-0.23.13.txt \
               --clobber
           else
-            gh release create v0.23.12 \
-              release-assets/Xylune-0.23.12.apk \
-              release-assets/SHA256SUMS-0.23.12.txt \
+            gh release create v0.23.13 \
+              release-assets/Xylune-0.23.13.apk \
+              release-assets/SHA256SUMS-0.23.13.txt \
               --target "$GITHUB_SHA" \
-              --title 'Xylune 0.23.12' \
-              --notes-file docs/releases/RELEASE_NOTES_0.23.12.md
+              --title 'Xylune 0.23.13' \
+              --notes-file docs/releases/RELEASE_NOTES_0.23.13.md
           fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Xylune-0.23.12-release
+          name: Xylune-0.23.13-release
           path: |
             release-assets/*
             app/build/reports/tests/
