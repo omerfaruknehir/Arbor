@@ -1,4 +1,4 @@
-name: Publish Xylune 0.23.14
+name: Publish Xylune 0.23.15
 
 # Reused hotfix publication workflow; keeping the path stable avoids release-file churn.
 on:
@@ -37,50 +37,52 @@ jobs:
       - name: Verify release source
         run: |
           set -euo pipefail
-          grep -F 'versionCode = 183' app/build.gradle.kts
-          grep -F 'versionName = "0.23.14"' app/build.gradle.kts
-          test -f docs/releases/RELEASE_NOTES_0.23.14.md
+          grep -F 'versionCode = 184' app/build.gradle.kts
+          grep -F 'versionName = "0.23.15"' app/build.gradle.kts
+          test -f docs/releases/RELEASE_NOTES_0.23.15.md
+          grep -F 'ChatChromeScrollSample(' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
+          grep -F 'projectChatChromeFromScroll(' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
+          grep -F 'user drags, fling settling, auto-follow scrollBy calls' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
+          ! grep -F 'Modifier.nestedScroll(topAppBarScrollBehavior.nestedScrollConnection)' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
+          ! grep -F 'snapshot?.topBarHeightOffset' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
           grep -F 'NavigationSlideFraction = 0.5f' app/src/main/java/app/xylune/chat/ui/PredictiveNavigation.kt
           grep -F 'navigationSourceAlpha' app/src/main/java/app/xylune/chat/ui/PredictiveNavigation.kt
           grep -F 'navigationDestinationAlpha' app/src/main/java/app/xylune/chat/ui/PredictiveNavigation.kt
-          grep -F 'onSettled = { settled ->' app/src/main/java/app/xylune/chat/ui/XyluneApp.kt
-          ! grep -F 'widthPx - slide' app/src/main/java/app/xylune/chat/ui/PredictiveNavigation.kt
-          ! grep -F 'viewModel.returnToSetup()' app/src/main/java/app/xylune/chat/ui/SettingsScreen.kt
           ./ci/verify-third-party-licenses.sh
       - name: Test, lint, and build APK
         run: |
           set -euo pipefail
           ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest lintRelease assembleRelease
           mkdir -p release-assets
-          cp app/build/outputs/apk/release/app-release.apk release-assets/Xylune-0.23.14.apk
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs release-assets/Xylune-0.23.14.apk
-          sha256sum release-assets/Xylune-0.23.14.apk > release-assets/SHA256SUMS-0.23.14.txt
+          cp app/build/outputs/apk/release/app-release.apk release-assets/Xylune-0.23.15.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs release-assets/Xylune-0.23.15.apk
+          sha256sum release-assets/Xylune-0.23.15.apk > release-assets/SHA256SUMS-0.23.15.txt
       - name: Publish or repair GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view v0.23.14 >/dev/null 2>&1; then
-            gh release edit v0.23.14 \
+          if gh release view v0.23.15 >/dev/null 2>&1; then
+            gh release edit v0.23.15 \
               --target "$GITHUB_SHA" \
-              --title 'Xylune 0.23.14' \
-              --notes-file docs/releases/RELEASE_NOTES_0.23.14.md
-            gh release upload v0.23.14 \
-              release-assets/Xylune-0.23.14.apk \
-              release-assets/SHA256SUMS-0.23.14.txt \
+              --title 'Xylune 0.23.15' \
+              --notes-file docs/releases/RELEASE_NOTES_0.23.15.md
+            gh release upload v0.23.15 \
+              release-assets/Xylune-0.23.15.apk \
+              release-assets/SHA256SUMS-0.23.15.txt \
               --clobber
           else
-            gh release create v0.23.14 \
-              release-assets/Xylune-0.23.14.apk \
-              release-assets/SHA256SUMS-0.23.14.txt \
+            gh release create v0.23.15 \
+              release-assets/Xylune-0.23.15.apk \
+              release-assets/SHA256SUMS-0.23.15.txt \
               --target "$GITHUB_SHA" \
-              --title 'Xylune 0.23.14' \
-              --notes-file docs/releases/RELEASE_NOTES_0.23.14.md
+              --title 'Xylune 0.23.15' \
+              --notes-file docs/releases/RELEASE_NOTES_0.23.15.md
           fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: Xylune-0.23.14-release
+          name: Xylune-0.23.15-release
           path: |
             release-assets/*
             app/build/reports/tests/
