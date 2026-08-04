@@ -1,0 +1,24 @@
+name: Diagnose empty provider navigation
+
+on:
+  push:
+    branches:
+      - fix/setup-spacing-empty-provider
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show setup pager and empty provider contexts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          grep -n -C 16 'HorizontalPager' app/src/main/java/app/xylune/chat/ui/OnboardingScreen.kt
+          grep -n -C 30 'Add a provider' app/src/main/java/app/xylune/chat/ui/ChatScreen.kt
+          grep -n -C 30 'ChatScreen(' app/src/main/java/app/xylune/chat/ui/XyluneApp.kt
+          grep -n -C 30 'onOpenProviderSetup' app/src/main/java/app/xylune/chat/ui/XyluneApp.kt || true
+          grep -n -C 20 'Providers & models' app/src/main/java/app/xylune/chat/ui/XyluneApp.kt || true
