@@ -1,0 +1,62 @@
+name: Apply half-slide half-fade navigation
+
+on:
+  push:
+    branches: [ fix/half-slide-half-fade-0.23.14 ]
+    paths:
+      - .github/workflows/apply-half-slide-half-fade.yml
+      - ci/apply-half-slide-half-fade.py
+
+permissions:
+  contents: write
+
+env:
+  XYLUNE_SOURCE_REPOSITORY: ${{ github.repository }}
+  XYLUNE_SOURCE_COMMIT: ${{ github.sha }}
+  XYLUNE_MICROSOFT_CLIENT_ID: ${{ vars.XYLUNE_MICROSOFT_CLIENT_ID }}
+  XYLUNE_DROPBOX_APP_KEY: ${{ vars.XYLUNE_DROPBOX_APP_KEY }}
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/half-slide-half-fade-0.23.14
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Apply repair
+        run: python3 ci/apply-half-slide-half-fade.py
+      - name: Remove one-shot repair files
+        run: rm -f ci/apply-half-slide-half-fade.py .github/workflows/apply-half-slide-half-fade.yml
+      - name: Verify source contracts
+        run: |
+          set -euo pipefail
+          grep -F 'versionCode = 183' app/build.gradle.kts
+          grep -F 'versionName = "0.23.14"' app/build.gradle.kts
+          grep -F 'NavigationSlideFraction = 0.5f' app/src/main/java/app/xylune/chat/ui/PredictiveNavigation.kt
+          grep -F 'navigationSourceAlpha' app/src/main/java/app/xylune/chat/ui/PredictiveNavigation.kt
+          grep -F 'navigationDestinationAlpha' app/src/main/java/app/xylune/chat/ui/PredictiveNavigation.kt
+          ! grep -F 'widthPx - slide' app/src/main/java/app/xylune/chat/ui/PredictiveNavigation.kt
+          test -f docs/releases/RELEASE_NOTES_0.23.14.md
+          ./ci/verify-third-party-licenses.sh
+      - name: Test, lint, and build
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest lintRelease assembleRelease
+      - name: Commit repaired tree
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Use half-slide half-fade page transitions'
+          git push origin HEAD:fix/half-slide-half-fade-0.23.14
