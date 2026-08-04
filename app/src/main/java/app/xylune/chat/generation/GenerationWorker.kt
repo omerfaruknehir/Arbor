@@ -197,7 +197,11 @@ class GenerationWorker(
         }
 
         val newest = repository.recent(conversationId)
-        val compressedContext = container.auxiliaryModels.prepareContextSummary(conversation, newest)
+        val compressedContext = container.auxiliaryModels.prepareContextSummary(
+            conversation,
+            newest,
+            allowModelCall = false,
+        )
         val automationSettings = repository.automationSettingsNow()
         val activeMemories = if (automationSettings.memoryEnabled) {
             repository.memoriesForContext(newest, conversation.id)
@@ -671,10 +675,14 @@ class GenerationWorker(
         if (conversation.deepResearchEnabled &&
             !ResearchStateEnforcer.hasValidBlock(savedContent + "\n" + savedReasoning)
         ) {
-            requestModelReportedResearchState(
-                instruction = INITIAL_RESEARCH_STATE_INSTRUCTION,
-                usageRound = -1,
-            )?.let { persistResearchState(it, addToContext = true) }
+            // Fold research-state initialization into the first visible request
+            // instead of blocking on a separate invisible generation.
+            val insertionIndex = messages.indexOfLast { it.role == MessageRole.SYSTEM }
+                .let { if (it >= 0) it + 1 else 0 }
+            messages.add(
+                insertionIndex,
+                InputMessage(MessageRole.SYSTEM, INITIAL_RESEARCH_STATE_INSTRUCTION),
+            )
         }
 
         var finalizationRequested = false
@@ -979,14 +987,8 @@ class GenerationWorker(
                     content = "",
                     nativeToolResults = results,
                 )
-                if (conversation.deepResearchEnabled &&
-                    !ResearchStateEnforcer.hasValidBlock(passText + "\n" + passReasoning)
-                ) {
-                    requestModelReportedResearchState(
-                        instruction = UPDATE_RESEARCH_STATE_INSTRUCTION,
-                        usageRound = round,
-                    )?.let { persistResearchState(it, addToContext = true) }
-                }
+                // The tool result already carries the mandatory research
+                // state reminder. Never insert another hidden model request here.
                 continue
             }
 
