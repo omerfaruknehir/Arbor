@@ -27,11 +27,15 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
+      - name: Validate temporary patch scripts
+        run: python3 -m py_compile .github/scripts/apply-apk-progress-parser.py .github/scripts/apply-linux-runtime-progress-storage-v2.py .github/scripts/apply-linux-ui-release.py
       - name: Apply runtime repair
-        run: python3 .github/scripts/apply-linux-runtime-progress-storage.py
+        run: |
+          python3 .github/scripts/apply-apk-progress-parser.py
+          python3 .github/scripts/apply-linux-runtime-progress-storage-v2.py
       - name: Apply UI and release metadata
         run: python3 .github/scripts/apply-linux-ui-release.py
-      - name: Escape structural-test interpolation
+      - name: Escape structural-test interpolation and remove temporary scripts
         shell: bash
         run: |
           python3 - <<'PY'
@@ -44,6 +48,9 @@ jobs:
               raise SystemExit(f'Expected one structural assertion, found {text.count(old)}')
           path.write_text(text.replace(old, new, 1))
           PY
+          rm -f \
+            .github/scripts/apply-apk-progress-parser.py \
+            .github/scripts/apply-linux-runtime-progress-storage-v2.py
       - name: Verify patch
         run: |
           set -euo pipefail
