@@ -192,7 +192,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                 blurArea = STANDARD_TOP_PANEL_HEIGHT_DP.dp,
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (setupTemporarilyAway) viewModel.returnToSetup()
+                        if (setupTemporarilyAway) viewModel.screen.value = Screen.CHAT
                         else viewModel.screen.value = Screen.SETTINGS
                     }) {
                         Icon(

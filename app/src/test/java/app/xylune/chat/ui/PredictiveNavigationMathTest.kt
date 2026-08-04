@@ -7,9 +7,9 @@ import org.junit.Test
 class PredictiveNavigationMathTest {
     @Test
     fun completionDurationShrinksAsGestureApproachesDestination() {
-        assertEquals(150, predictiveBackCompletionDurationMillis(0f))
-        assertEquals(115, predictiveBackCompletionDurationMillis(.5f))
-        assertEquals(80, predictiveBackCompletionDurationMillis(1f))
+        assertEquals(360, predictiveBackCompletionDurationMillis(0f))
+        assertEquals(260, predictiveBackCompletionDurationMillis(.5f))
+        assertEquals(160, predictiveBackCompletionDurationMillis(1f))
     }
 
     @Test
@@ -24,10 +24,11 @@ class PredictiveNavigationMathTest {
     }
 
     @Test
-    fun predictiveSourceScaleRemainsVisibleAndEndsAtNinetySixPercent() {
-        assertEquals(1f, predictiveBackSourceScale(0f), .0001f)
-        assertEquals(.96f, predictiveBackSourceScale(1f), .0001f)
-        assertTrue(predictiveBackSourceScale(.5f) in .96f..1f)
+    fun pageSlideTravelsTheEntireViewportBeforeTheSourceIsRetired() {
+        assertEquals(0f, pageSlideOffset(1080f, 0f), .0001f)
+        assertEquals(540f, pageSlideOffset(1080f, .5f), .0001f)
+        assertEquals(1080f, pageSlideOffset(1080f, 1f), .0001f)
+        assertEquals(1080f, pageSlideOffset(1080f, 2f), .0001f)
     }
 
     @Test

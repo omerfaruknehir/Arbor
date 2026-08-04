@@ -1,3 +1,10 @@
+## 0.23.13 — 2026-08-04
+
+- Finish ordinary and predictive Back transitions as complete edge-to-edge page slides instead of moving a page only a few percent and then abruptly removing it.
+- Lengthen commit and rollback timing so the remaining motion is visible after release without becoming sluggish.
+- Keep the setup page composed as the real destination while returning from Providers or Tool workspace, and defer the setup state switch until the navigation host has fully settled.
+- Route toolbar Back and successful provider detours through the same animated root transition, eliminating immediate root-content cuts.
+
 ## 0.23.12 — 2026-08-04
 
 - Fix the remaining Ubuntu `ca-certificates` setup failure by moving APT machine-readable progress off file descriptor 1. APT now writes status records to a dedicated app-private regular file on fd 3, while package maintainer scripts keep normal stdout/stderr.
