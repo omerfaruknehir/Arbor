@@ -179,6 +179,8 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val developerSettings by viewModel.developerSettings.collectAsState()
     val providerSetupRequested by viewModel.providerSetupRequested.collectAsState()
     val setupTemporarilyAway by viewModel.setupTemporarilyAway.collectAsState()
+    val setupDismissed by viewModel.setupDismissed.collectAsState()
+    val setupStepIndex by viewModel.setupStepIndex.collectAsState()
     val registeredProviders = remember(providers, credentialRevision) { viewModel.registeredProviders(providers) }
     val configuredProviders = remember(providers, credentialRevision) { viewModel.configuredProviders(providers) }
     val route by viewModel.settingsRoute.collectAsState()
@@ -260,6 +262,9 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     when (currentRoute) {
                         SettingsRoute.HOME -> SettingsHome(
                             providerCount = registeredProviders.size,
+                            setupDeferred = setupDismissed && setupStepIndex < 4,
+                            setupStepIndex = setupStepIndex,
+                            onFinishSetup = { viewModel.startSetup(setupStepIndex) },
                             onOpen = viewModel::openSettingsRoute,
                         )
                         SettingsRoute.DEFAULTS -> NewChatDefaultsSettings(defaults, configuredProviders, viewModel)
@@ -305,8 +310,21 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
 @Composable
 private fun SettingsHome(
     providerCount: Int,
+    setupDeferred: Boolean,
+    setupStepIndex: Int,
+    onFinishSetup: () -> Unit,
     onOpen: (SettingsRoute) -> Unit,
 ) = SettingsPage {
+    if (setupDeferred) {
+        SettingsGroup("Setup") {
+            SettingsDestination(
+                icon = Icons.Outlined.CheckCircle,
+                title = "Finish setup",
+                subtitle = "Continue from step ${setupStepIndex + 1} of 5",
+                onClick = onFinishSetup,
+            )
+        }
+    }
     SettingsGroup("AI & models") {
         SettingsDestination(
             icon = Icons.Outlined.Cloud,

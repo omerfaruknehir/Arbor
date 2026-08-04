@@ -1,3 +1,9 @@
+## 0.23.6 — 2026-08-04
+
+- Repair setup navigation animations by removing overlapping kept-alive wizard pages and animating step actions and progress coherently.
+- Make Skip for now preserve the unfinished step and expose Finish setup in Settings.
+- Defer setup after restoring app settings while retaining provider reconnection as a resumable step.
+
 ## 0.23.5 — 2026-08-04
 
 - Keep predictive-back pages fully opaque, reduce the excessive page travel, and remove the short gesture dead zone while a prior page transition is settling.

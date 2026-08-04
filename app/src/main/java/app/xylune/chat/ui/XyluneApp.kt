@@ -134,7 +134,8 @@ fun XyluneApp(viewModel: ChatViewModel, activity: Activity) {
                 },
                 onOpenProviderSetup = viewModel::openProviderSetupFromSetup,
                 onOpenLinuxSetup = viewModel::openLinuxSetupFromSetup,
-                onExplore = viewModel::finishSetup,
+                onSkipForNow = viewModel::skipSetup,
+                onFinish = viewModel::finishSetup,
             )
             incomingArchive?.let { state -> IncomingArchiveDialog(viewModel, state) }
             SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))

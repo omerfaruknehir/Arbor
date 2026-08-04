@@ -1,5 +1,14 @@
 package app.xylune.chat.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
@@ -127,7 +136,8 @@ internal fun OnboardingScreen(
     onLinuxEnabledChanged: (Boolean) -> Unit,
     onOpenProviderSetup: () -> Unit,
     onOpenLinuxSetup: () -> Unit,
-    onExplore: () -> Unit,
+    onSkipForNow: () -> Unit,
+    onFinish: () -> Unit,
 ) {
     val steps = OnboardingStep.entries
     val currentPage = stepIndex.coerceIn(0, steps.lastIndex)
@@ -173,9 +183,9 @@ internal fun OnboardingScreen(
                     haptics.selection()
                     moveTo(currentPage - 1)
                 },
-                onLater = {
+                onSkipForNow = {
                     haptics.selection()
-                    onExplore()
+                    onSkipForNow()
                 },
             )
             Spacer(Modifier.height(10.dp))
@@ -189,7 +199,7 @@ internal fun OnboardingScreen(
                 depth = { it.ordinal },
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 backEnabled = currentPage > 0,
-                keepAlive = { true },
+                keepAlive = { false },
                 label = "XyluneSetupNavigation",
             ) { destination ->
                 val page = destination.ordinal
@@ -244,16 +254,33 @@ internal fun OnboardingScreen(
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Spacer(Modifier.height(10.dp))
-            OnboardingStepActions(
-                step = step,
-                configuredProviderCount = configuredProviderCount,
-                linuxEnabled = linuxEnabled,
-                linuxStatus = linuxStatus,
-                onContinue = { moveTo(currentPage + 1) },
-                onOpenProviderSetup = onOpenProviderSetup,
-                onOpenLinuxSetup = onOpenLinuxSetup,
-                onExplore = onExplore,
-            )
+            AnimatedContent(
+                targetState = step,
+                transitionSpec = {
+                    val forward = targetState.ordinal >= initialState.ordinal
+                    val enter = slideInHorizontally(
+                        animationSpec = tween(220, easing = FastOutSlowInEasing),
+                        initialOffsetX = { width -> if (forward) width / 5 else -width / 5 },
+                    ) + fadeIn(tween(150))
+                    val exit = slideOutHorizontally(
+                        animationSpec = tween(180, easing = FastOutSlowInEasing),
+                        targetOffsetX = { width -> if (forward) -width / 6 else width / 6 },
+                    ) + fadeOut(tween(120))
+                    enter togetherWith exit
+                },
+                label = "XyluneSetupActions",
+            ) { actionStep ->
+                OnboardingStepActions(
+                    step = actionStep,
+                    configuredProviderCount = configuredProviderCount,
+                    linuxEnabled = linuxEnabled,
+                    linuxStatus = linuxStatus,
+                    onContinue = { moveTo(currentPage + 1) },
+                    onOpenProviderSetup = onOpenProviderSetup,
+                    onOpenLinuxSetup = onOpenLinuxSetup,
+                    onFinish = onFinish,
+                )
+            }
         }
     }
 }
@@ -267,7 +294,7 @@ private fun OnboardingStepActions(
     onContinue: () -> Unit,
     onOpenProviderSetup: () -> Unit,
     onOpenLinuxSetup: () -> Unit,
-    onExplore: () -> Unit,
+    onFinish: () -> Unit,
 ) {
     val haptics = rememberXyluneHaptics()
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -289,7 +316,7 @@ private fun OnboardingStepActions(
                 Button(
                     onClick = {
                         haptics.confirm()
-                        onExplore()
+                        onFinish()
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Enter Xylune") }
@@ -426,7 +453,7 @@ private fun OnboardingProgressHeader(
     showBack: Boolean,
     showLater: Boolean,
     onBack: () -> Unit,
-    onLater: () -> Unit,
+    onSkipForNow: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
@@ -450,14 +477,18 @@ private fun OnboardingProgressHeader(
                 )
             }
             if (showLater) {
-                TextButton(onClick = onLater) { Text("Later") }
+                TextButton(onClick = onSkipForNow) { Text("Skip for now") }
             } else {
                 Spacer(Modifier.size(48.dp))
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             repeat(stepCount) { index ->
-                val fill = setupProgressForSegment(currentStepIndex.toFloat(), index)
+                val fill = animateFloatAsState(
+                    targetValue = setupProgressForSegment(currentStepIndex.toFloat(), index),
+                    animationSpec = tween(220, easing = FastOutSlowInEasing),
+                    label = "SetupProgress$index",
+                ).value
                 Box(
                     Modifier
                         .weight(1f)

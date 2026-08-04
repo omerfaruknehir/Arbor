@@ -68,6 +68,16 @@ class SetupRestoreSettingsFeatureTest {
     }
 
     @Test
+    fun restoredSettingsPauseSetupButKeepItResumable() {
+        val viewModel = source("src/main/java/app/xylune/chat/ui/ChatViewModel.kt")
+        val settings = source("src/main/java/app/xylune/chat/ui/SettingsScreen.kt")
+        assertTrue(viewModel.contains("if (result.settingsRestored)"))
+        assertTrue(viewModel.contains("setupActive.value = false"))
+        assertTrue(viewModel.contains("setupStepIndex.value = 2"))
+        assertTrue(settings.contains("Finish setup"))
+    }
+
+    @Test
     fun setupCanPreviewArchiveWithoutLeavingOnboarding() {
         val app = source("src/main/java/app/xylune/chat/ui/XyluneApp.kt")
         assertTrue(app.contains("IncomingArchiveDialog(viewModel, state)"))
