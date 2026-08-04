@@ -104,6 +104,12 @@ fun SandboxScreen(viewModel: ChatViewModel) {
     var showPythonPlan by remember { mutableStateOf(false) }
     var confirmLinuxRemoval by remember { mutableStateOf(false) }
     val ubuntuStatus by viewModel.ubuntuStatus.collectAsState()
+    val linuxSetupActive = ubuntuStatus.stage in setOf(
+        UbuntuStage.DOWNLOADING,
+        UbuntuStage.VERIFYING,
+        UbuntuStage.EXTRACTING,
+        UbuntuStage.CONFIGURING,
+    )
     var workspaceSection by remember {
         mutableStateOf(if (ubuntuStatus.installed) WorkspaceSection.PYTHON else WorkspaceSection.LINUX)
     }
@@ -142,8 +148,8 @@ fun SandboxScreen(viewModel: ChatViewModel) {
         ubuntuInstalling = false
     }
     LaunchedEffect(conversationId) { refreshEnvironment(); viewModel.refreshUbuntu() }
-    LaunchedEffect(running) {
-        while (running) {
+    LaunchedEffect(running, linuxSetupActive) {
+        while (running || linuxSetupActive) {
             clock = System.currentTimeMillis()
             delay(1_000)
         }
@@ -422,15 +428,39 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("${ubuntuStatus.distribution.displayName} • ${ubuntuStatus.stage.name.lowercase().replace('_', ' ')} • ${ubuntuStatus.architecture}", fontWeight = FontWeight.SemiBold)
                     Text(ubuntuStatus.detail, style = MaterialTheme.typography.bodySmall)
-                    if (ubuntuStatus.sizeBytes > 0) Text("Installed size: ${Formatter.formatShortFileSize(androidx.compose.ui.platform.LocalContext.current, ubuntuStatus.sizeBytes)}", style = MaterialTheme.typography.labelSmall)
-                    if (ubuntuStatus.stage in setOf(UbuntuStage.DOWNLOADING, UbuntuStage.VERIFYING, UbuntuStage.EXTRACTING, UbuntuStage.CONFIGURING)) {
-                        ubuntuStatus.progress?.let { progress -> LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth()) }
-                            ?: LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    if (ubuntuStatus.sizeBytes > 0) {
+                        Text(
+                            "Linux data on disk: ${Formatter.formatShortFileSize(androidx.compose.ui.platform.LocalContext.current, ubuntuStatus.sizeBytes)}",
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                    if (linuxSetupActive) {
+                        ubuntuStatus.progress?.let { progress ->
+                            LinearProgressIndicator(
+                                progress = { progress.coerceIn(0f, 1f) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        } ?: LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            val step = ubuntuStatus.currentStep.coerceAtLeast(1)
+                            val total = ubuntuStatus.totalSteps.coerceAtLeast(step)
+                            Text("Step $step of $total", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                            ubuntuStatus.progress?.let {
+                                Text("${(it.coerceIn(0f, 1f) * 100).toInt()}%", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                        if (ubuntuStatus.startedAtMs > 0L) {
+                            Text(
+                                "Elapsed: ${(clock - ubuntuStatus.startedAtMs).coerceAtLeast(0L) / 1_000}s • keep Xylune open until setup finishes",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (!ubuntuStatus.installed) Button(
                             onClick = { scope.launch { viewModel.installUbuntu() } },
-                            enabled = ubuntuStatus.stage !in setOf(UbuntuStage.DOWNLOADING, UbuntuStage.VERIFYING, UbuntuStage.EXTRACTING, UbuntuStage.CONFIGURING),
+                            enabled = !linuxSetupActive,
                         ) { Text(if (ubuntuStatus.stage == UbuntuStage.ERROR) "Retry setup" else "Install ${ubuntuStatus.distribution.displayName}") }
                         else OutlinedButton(onClick = { scope.launch { viewModel.refreshUbuntu() } }) { Icon(Icons.Outlined.Refresh, null); Text("Refresh", Modifier.padding(start = 6.dp)) }
                         if (ubuntuStatus.installed) OutlinedButton(onClick = { confirmLinuxRemoval = true }) { Icon(Icons.Outlined.Delete, null); Text("Remove", Modifier.padding(start = 6.dp)) }

@@ -124,10 +124,19 @@ class OnboardingFlowTest {
         assertTrue(settings.contains("Manage tool workspace"))
         assertTrue(workspace.contains("Before the first install"))
         assertTrue(workspace.contains("Install \${ubuntuStatus.distribution.displayName}"))
+        assertTrue(workspace.contains("Step \$step of \$total"))
+        assertTrue(workspace.contains("Elapsed:"))
+        assertTrue(workspace.contains("Linux data on disk:"))
         assertTrue(workspace.contains("Remove Linux workspace"))
         assertFalse(terminal.contains("selectLinuxDistribution"))
         assertFalse(terminal.contains("installUbuntu"))
         assertFalse(terminal.contains("removeUbuntu"))
+        val runtime = java.io.File("src/main/java/app/xylune/chat/sandbox/UbuntuRuntime.kt").readText()
+        assertTrue(runtime.contains("val currentStep: Int = 0"))
+        assertTrue(runtime.contains("val totalSteps: Int = 0"))
+        assertTrue(runtime.contains("Os.lstat(file.absolutePath)"))
+        assertTrue(runtime.contains("countedInodes.add"))
+        assertFalse(runtime.contains("root.walkTopDown().filter(File::isFile).sumOf(File::length)"))
     }
 
     @Test
