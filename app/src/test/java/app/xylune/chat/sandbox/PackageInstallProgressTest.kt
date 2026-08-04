@@ -44,6 +44,19 @@ class PackageInstallProgressTest {
     }
 
     @Test
+    fun parsesApkPackageCounterIntoProgress() {
+        val progress = packageInstallProgressFromOutput(
+            ExecutionProgress(stdoutTail = "(6/12) Installing python3 (3.12.11-r0)"),
+            fallbackPhase = "Installing Python tools",
+            rangeStart = 0.74f,
+            rangeEnd = 0.98f,
+        )
+
+        assertEquals(0.86f, progress.percent ?: -1f, 0.001f)
+        assertTrue(progress.detail.contains("Installing python3"))
+    }
+
+    @Test
     fun fallsBackToHumanReadableAptOutput() {
         val progress = packageInstallProgressFromApt(
             ExecutionProgress(stdoutTail = "Reading package lists... Done\nBuilding dependency tree... Done"),

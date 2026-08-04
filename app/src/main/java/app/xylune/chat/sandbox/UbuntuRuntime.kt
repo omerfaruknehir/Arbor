@@ -4,11 +4,14 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.os.Build
 import android.os.StatFs
+import android.system.Os
+import android.system.OsConstants
 import androidx.core.content.edit
 import java.io.File
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.security.MessageDigest
+import java.util.ArrayDeque
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -55,6 +58,9 @@ data class UbuntuRuntimeStatus(
     val progress: Float? = null,
     val sizeBytes: Long = 0,
     val detail: String = "",
+    val currentStep: Int = 0,
+    val totalSteps: Int = 0,
+    val startedAtMs: Long = 0L,
 ) {
     val installed: Boolean get() = stage == UbuntuStage.READY
 }
@@ -149,10 +155,15 @@ internal fun packageInstallProgressFromOutput(
     val combined = listOf(progress.stdoutTail, progress.stderrTail).filter(String::isNotBlank).joinToString("\n")
     val rawPercent = Regex("""(?<!\d)(100|[0-9]{1,2})%""").findAll(combined).lastOrNull()
         ?.groupValues?.getOrNull(1)?.toFloatOrNull()?.div(100f)
+    val counterPercent = Regex("""\((\d+)/(\d+)\)""").findAll(combined).lastOrNull()?.let { match ->
+        val current = match.groupValues.getOrNull(1)?.toFloatOrNull() ?: return@let null
+        val total = match.groupValues.getOrNull(2)?.toFloatOrNull()?.takeIf { it > 0f } ?: return@let null
+        (current / total).coerceIn(0f, 1f)
+    }
     val latest = combined.lineSequence().map(String::trim).lastOrNull(String::isNotBlank).orEmpty()
     return PackageInstallProgress(
         phase = inferPackagePhase(latest, fallbackPhase),
-        percent = rawPercent?.let { rangeStart + it.coerceIn(0f, 1f) * (rangeEnd - rangeStart) },
+        percent = (rawPercent ?: counterPercent)?.let { rangeStart + it.coerceIn(0f, 1f) * (rangeEnd - rangeStart) },
         detail = latest.take(500),
         stdoutTail = progress.stdoutTail.takeLast(LIVE_PACKAGE_OUTPUT_TAIL_CHARS),
         stderrTail = progress.stderrTail.takeLast(LIVE_PACKAGE_OUTPUT_TAIL_CHARS),
@@ -238,11 +249,35 @@ class UbuntuRuntime(
         check(available >= MIN_FREE_BYTES) { "Linux setup needs at least 300 MiB of free app storage" }
         val archive = File(context.cacheDir, "${spec.fileName}.part")
         val staging = File(runtimeDir(), "rootfs-installing")
+        val startedAt = System.currentTimeMillis()
         archive.delete()
         staging.deleteRecursively()
         staging.mkdirs()
+
+        fun publish(stage: UbuntuStage, progress: Float?, step: Int, detail: String) {
+            _status.value = UbuntuRuntimeStatus(
+                stage = stage,
+                distribution = distro,
+                architecture = spec.arch,
+                progress = progress?.coerceIn(0f, 1f),
+                detail = detail.take(500),
+                currentStep = step,
+                totalSteps = INSTALL_STEP_COUNT,
+                startedAtMs = startedAt,
+            )
+        }
+
+        fun latestLine(progress: ExecutionProgress, fallback: String): String =
+            sequenceOf(progress.stdoutTail, progress.stderrTail)
+                .flatMap { it.lineSequence() }
+                .map(String::trim)
+                .filter { it.isNotBlank() && !AptStatusLine.matches(it) }
+                .lastOrNull()
+                ?.take(320)
+                ?: fallback
+
         try {
-            _status.value = UbuntuRuntimeStatus(UbuntuStage.DOWNLOADING, distro, architecture = spec.arch, progress = 0f, detail = "${distro.displayName} ${distro.release}")
+            publish(UbuntuStage.DOWNLOADING, 0f, 1, "Starting ${distro.displayName} ${distro.release} download")
             val request = Request.Builder().url(spec.url).header("User-Agent", "Xylune/$APP_RUNTIME_VERSION Android").build()
             client.newCall(request).execute().use { response ->
                 check(response.isSuccessful) { "${distro.displayName} download failed with HTTP ${response.code}" }
@@ -257,39 +292,74 @@ class UbuntuRuntime(
                             if (count < 0) break
                             output.write(buffer, 0, count)
                             copied += count
-                            _status.value = _status.value.copy(
-                                progress = if (total > 0) copied.toFloat() / total else null,
-                                detail = "Downloaded ${copied / 1_048_576} MiB",
-                            )
+                            val fraction = if (total > 0L) copied.toFloat() / total else null
+                            val detail = if (total > 0L) {
+                                "Downloaded ${copied / 1_048_576} of ${total / 1_048_576} MiB"
+                            } else {
+                                "Downloaded ${copied / 1_048_576} MiB"
+                            }
+                            publish(UbuntuStage.DOWNLOADING, fraction?.times(0.30f), 1, detail)
                         }
                     }
                 }
             }
-            _status.value = UbuntuRuntimeStatus(UbuntuStage.VERIFYING, distro, architecture = spec.arch, detail = "Verifying the publisher's pinned SHA-256")
+
+            publish(UbuntuStage.VERIFYING, 0.30f, 2, "Verifying the publisher's pinned SHA-256")
             check(sha256(archive).equals(spec.sha256, ignoreCase = true)) { "${distro.displayName} archive checksum did not match" }
-            _status.value = UbuntuRuntimeStatus(UbuntuStage.EXTRACTING, distro, architecture = spec.arch, detail = "Unpacking the Linux tool layer")
-            python.extractRootfs(archive, staging, spec.stripComponents)
+
+            publish(UbuntuStage.EXTRACTING, 0.35f, 3, "Unpacking the Linux root filesystem")
+            val extraction = python.extractRootfs(archive, staging, spec.stripComponents)
             check(spec.essential.all { File(staging, it).exists() }) { "${distro.displayName} archive is incomplete" }
-            _status.value = UbuntuRuntimeStatus(UbuntuStage.CONFIGURING, distro, architecture = spec.arch, detail = "Configuring DNS and ${distro.packageManager.command}")
+            publish(UbuntuStage.EXTRACTING, 0.52f, 3, "Unpacked ${extraction.extracted} archive entries")
+
+            publish(UbuntuStage.CONFIGURING, 0.54f, 4, "Writing DNS, hosts, and ${distro.packageManager.command} configuration")
             configure(staging, distro)
             rootfs().deleteRecursively()
             check(staging.renameTo(rootfs())) { "Could not activate the ${distro.displayName} root filesystem" }
+
+            publish(UbuntuStage.CONFIGURING, 0.58f, 5, "Running the Linux launcher self-test")
             val smoke = executeInternal(
                 "set -e; probe=/tmp/.xylune-write-test; rm -f \"\$probe\" \"\$probe-link\"; printf x > \"\$probe\"; ln \"\$probe\" \"\$probe-link\"; rm -f \"\$probe\" \"\$probe-link\"; printf 'xylune-linux-ok\\n'; command -v sh ${distro.packageManager.command} >/dev/null",
                 sharedWorkspace(), 60, allowBeforeMarker = true,
-            )
+            ) { progress ->
+                publish(UbuntuStage.CONFIGURING, 0.61f, 5, latestLine(progress, "Validating the rootless launcher"))
+            }
             check(smoke.exitCode == 0 && "xylune-linux-ok" in smoke.stdout) {
                 "${distro.displayName} launcher self-test failed: ${smoke.stderr.ifBlank { smoke.stdout }.takeLast(500)}"
             }
-            val updateCommand = if (distro.packageManager == LinuxPackageManager.APT) "apt-get update" else "apk update"
-            val update = executeInternal(updateCommand, sharedWorkspace(), 300, allowBeforeMarker = true)
-            val pythonPackages = if (distro.packageManager == LinuxPackageManager.APT) {
-                "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3 python3-pip python3-venv ca-certificates"
+
+            publish(UbuntuStage.CONFIGURING, 0.64f, 6, "Refreshing ${distro.packageManager.command} package indexes")
+            val updateCommand = if (distro.packageManager == LinuxPackageManager.APT) {
+                "DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Use-Pty=0 update"
             } else {
-                "apk add --no-progress python3 py3-pip py3-virtualenv ca-certificates"
+                "apk update"
             }
-            val pythonSetup = executeInternal(pythonPackages, sharedWorkspace(), 900, allowBeforeMarker = true)
-            check(pythonSetup.exitCode == 0) { "Python setup failed inside ${distro.displayName}: ${pythonSetup.stderr.ifBlank { pythonSetup.stdout }.takeLast(600)}" }
+            val update = executeInternal(updateCommand, sharedWorkspace(), 300, allowBeforeMarker = true) { progress ->
+                publish(UbuntuStage.CONFIGURING, 0.68f, 6, latestLine(progress, "Refreshing package indexes"))
+            }
+
+            publish(UbuntuStage.CONFIGURING, 0.74f, 7, "Installing Python and certificate tools")
+            val aptProgressOptions = "-o APT::Status-Fd=1 -o Dpkg::Progress-Fancy=0 -o Dpkg::Use-Pty=0"
+            val pythonPackages = if (distro.packageManager == LinuxPackageManager.APT) {
+                "DEBIAN_FRONTEND=noninteractive apt-get $aptProgressOptions install -y --no-install-recommends python3 python3-pip python3-venv ca-certificates"
+            } else {
+                "apk add --progress python3 py3-pip py3-virtualenv ca-certificates"
+            }
+            val pythonSetup = executeInternal(pythonPackages, sharedWorkspace(), 900, allowBeforeMarker = true) { progress ->
+                val parsed = if (distro.packageManager == LinuxPackageManager.APT) {
+                    packageInstallProgressFromApt(progress, "Installing Python tools", 0.74f, 0.98f)
+                } else {
+                    packageInstallProgressFromOutput(progress, "Installing Python tools", 0.74f, 0.98f)
+                }
+                val detail = parsed.phase + parsed.currentPackage?.let { " • $it" }.orEmpty() +
+                    parsed.detail.takeIf(String::isNotBlank)?.let { " — $it" }.orEmpty()
+                publish(UbuntuStage.CONFIGURING, parsed.percent ?: 0.74f, 7, detail)
+            }
+            check(pythonSetup.exitCode == 0) {
+                "Python setup failed inside ${distro.displayName}: ${stripAptStatusLines(pythonSetup.stderr.ifBlank { pythonSetup.stdout }).takeLast(600)}"
+            }
+
+            publish(UbuntuStage.CONFIGURING, 0.99f, 8, "Finalizing the Linux workspace")
             rootfsMarker().writeText("distribution=${distro.id}\nrelease=${distro.release}\narchitecture=${spec.arch}\nsha256=${spec.sha256}\n")
             val detail = if (update.exitCode == 0) {
                 "${distro.displayName} ${distro.release} is ready; package indexes are current."
@@ -299,7 +369,17 @@ class UbuntuRuntime(
             refresh().copy(detail = detail).also { _status.value = it }
         } catch (error: Throwable) {
             staging.deleteRecursively()
-            UbuntuRuntimeStatus(UbuntuStage.ERROR, distro, architecture = spec.arch, detail = error.message ?: error::class.java.simpleName).also { _status.value = it }
+            val previous = _status.value
+            UbuntuRuntimeStatus(
+                stage = UbuntuStage.ERROR,
+                distribution = distro,
+                architecture = spec.arch,
+                progress = previous.progress,
+                detail = error.message ?: error::class.java.simpleName,
+                currentStep = previous.currentStep,
+                totalSteps = previous.totalSteps,
+                startedAtMs = previous.startedAtMs,
+            ).also { _status.value = it }
         } finally {
             archive.delete()
         }
@@ -834,9 +914,9 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
         val essential = spec.essential.all { File(rootfs(), it).exists() }
         val markerMatches = "distribution=${distro.id}" in marker && "release=${distro.release}" in marker && "architecture=${spec.arch}" in marker && "sha256=${spec.sha256}" in marker
         return if (markerMatches && essential) {
-            UbuntuRuntimeStatus(UbuntuStage.READY, distro, architecture = spec.arch, sizeBytes = directorySize(rootfs()), detail = "${distro.displayName} ${distro.release} tool layer")
+            UbuntuRuntimeStatus(UbuntuStage.READY, distro, architecture = spec.arch, sizeBytes = directorySize(runtimeDir()), detail = "${distro.displayName} ${distro.release} tool layer")
         } else if (rootfsMarker().exists() || rootfs().exists()) {
-            UbuntuRuntimeStatus(UbuntuStage.ERROR, distro, architecture = spec.arch, sizeBytes = directorySize(rootfs()), detail = "${distro.displayName} files are incomplete or from another runtime version. Retry setup to repair them.")
+            UbuntuRuntimeStatus(UbuntuStage.ERROR, distro, architecture = spec.arch, sizeBytes = directorySize(runtimeDir()), detail = "${distro.displayName} files are incomplete or from another runtime version. Retry setup to repair them.")
         } else UbuntuRuntimeStatus(UbuntuStage.NOT_INSTALLED, distro, architecture = spec.arch, detail = "Optional ${spec.downloadMiB} MiB download; stored only inside Xylune")
     }
 
@@ -915,7 +995,25 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
-    private fun directorySize(root: File): Long = root.walkTopDown().filter(File::isFile).sumOf(File::length)
+    private fun directorySize(root: File): Long {
+        if (!root.exists()) return 0L
+        val pending = ArrayDeque<File>().apply { addLast(root) }
+        val countedInodes = HashSet<String>()
+        var total = 0L
+        while (pending.isNotEmpty()) {
+            val file = pending.removeLast()
+            val stat = runCatching { Os.lstat(file.absolutePath) }.getOrNull() ?: continue
+            if (!countedInodes.add("${stat.st_dev}:${stat.st_ino}")) continue
+            total += when {
+                stat.st_blocks > 0L -> stat.st_blocks * FILE_SYSTEM_BLOCK_BYTES
+                OsConstants.S_ISREG(stat.st_mode) -> stat.st_size.coerceAtLeast(0L)
+                else -> 0L
+            }
+            if (OsConstants.S_ISDIR(stat.st_mode)) file.listFiles()?.forEach { pending.addLast(it) }
+        }
+        return total
+    }
+
     private fun fileState(root: File): Map<String, Pair<Long, Long>> = root.walkTopDown().filter(File::isFile).associate { it.relativeTo(root).path to (it.length() to it.lastModified()) }
     private fun startStreamPump(
         name: String,
@@ -981,6 +1079,8 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
         private const val KEY_DISTRIBUTION = "selected_distribution"
         private const val PROGRESS_POLL_MS = 250L
         private const val LIVE_OUTPUT_TAIL_CHARS = 16_000
+        private const val INSTALL_STEP_COUNT = 8
+        private const val FILE_SYSTEM_BLOCK_BYTES = 512L
     }
 }
 

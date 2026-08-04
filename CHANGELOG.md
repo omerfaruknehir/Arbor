@@ -1,3 +1,10 @@
+## 0.23.9 — 2026-08-04
+
+- Show continuous, monotonic Linux setup progress across download, verification, extraction, configuration, package-index refresh, Python installation, and finalization.
+- Add live step count, percentage where measurable, detailed package activity, and elapsed time instead of leaving setup apparently frozen.
+- Correct Linux storage reporting by counting allocated blocks for unique filesystem inodes, avoiding severe overcounting of hard-linked files.
+- Rename the UI metric to **Linux data on disk** so it is not confused with the APK size or total Android app data.
+
 ## 0.23.8 — 2026-08-04
 
 - Add a visible 16 dp gap between setup pager pages while preserving direct swipe navigation and opaque page surfaces.
