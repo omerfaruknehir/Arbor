@@ -1,1 +1,1 @@
-Retry the one-shot preparation workflow after fixing its merge identity.
+Retry the one-shot preparation workflow after normalizing generated Markdown.
