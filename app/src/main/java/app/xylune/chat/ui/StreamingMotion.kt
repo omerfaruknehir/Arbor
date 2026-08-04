@@ -110,16 +110,21 @@ internal fun nextStreamingTextFrame(
     target == rendered -> rendered
     target.startsWith(rendered) -> {
         val backlog = target.length - rendered.length
-        val normalStep = when {
-            backlog > 1_024 -> 48
-            backlog > 512 -> 36
-            backlog > 256 -> 28
-            backlog > 128 -> 20
-            backlog > 64 -> 14
+        val adaptiveStep = when {
+            backlog > 2_048 -> 48
+            backlog > 1_024 -> 40
+            backlog > 512 -> 32
+            backlog > 256 -> 24
+            backlog > 128 -> 16
+            backlog > 64 -> 12
             backlog > 24 -> 10
             else -> minOf(backlog, 6)
         }
-        val step = if (maxStepChars <= 48) normalStep else minOf(backlog, maxStepChars)
+        val step = if (maxStepChars == Int.MAX_VALUE) {
+            backlog
+        } else {
+            minOf(backlog, adaptiveStep, maxStepChars.coerceAtLeast(1))
+        }
         target.take(rendered.length + step.coerceAtLeast(1))
     }
     else -> target
@@ -127,8 +132,7 @@ internal fun nextStreamingTextFrame(
 
 /**
  * Frame-aligns streaming commits and smooths provider/database bursts before
- * expensive Markdown parsing. The renderer stays at 30 visible updates per
- * second, but reveals word/token-sized micro-batches instead of dumping tens or
+ * expensive Markdown parsing. The prose renderer can update at display cadence, but reveals word/token-sized micro-batches instead of dumping tens or
  * hundreds of characters at once. A bounded catch-up rate prevents an unusually
  * fast provider from leaving the UI permanently behind.
  *
@@ -140,7 +144,7 @@ internal fun nextStreamingTextFrame(
 internal fun rememberBatchedStreamingText(
     text: String,
     streaming: Boolean,
-    intervalNanos: Long = 33_000_000L,
+    intervalNanos: Long = 16_500_000L,
     maxStepChars: Int = 48,
 ): String {
     val latestText by rememberUpdatedState(text)

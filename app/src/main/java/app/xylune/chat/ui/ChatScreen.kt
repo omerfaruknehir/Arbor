@@ -157,6 +157,7 @@ import app.xylune.chat.agent.WebSearchResponse
 import app.xylune.chat.provider.ThinkingLevelOption
 import app.xylune.chat.provider.supportedThinkingLevels
 import app.xylune.chat.agent.MessageTimelineEvent
+import app.xylune.chat.generation.StreamingPreviewStore
 import app.xylune.chat.agent.materializeTimelineContent
 import app.xylune.chat.agent.groupOrderedTimeline
 import app.xylune.chat.sandbox.ExecutionResult
@@ -215,11 +216,10 @@ internal fun calculateAutoFollowStepPx(
 ): Float {
     if (distancePx <= 0f || frameSeconds <= 0f || maxSpeedPxPerSecond <= 0f) return 0f
 
-    // Distance-sensitive exponential response. Small corrections stay gentle,
-    // while a large streamed insertion receives a dramatically higher response
-    // rate instead of crawling at one constant velocity.
+    // Distance-sensitive response without the previous near-teleport rate.
+    // A separate per-frame cap below also protects against a delayed/janky frame.
     val distanceBoost = 1f - exp(-(distancePx / 180f).coerceAtLeast(0f))
-    val responseRatePerSecond = 14f + (110f * distanceBoost)
+    val responseRatePerSecond = 10f + (28f * distanceBoost)
     val response = 1f - exp(-responseRatePerSecond * frameSeconds)
     val easedStep = (distancePx * response).coerceAtLeast(min(1f, distancePx))
     return min(distancePx, min(easedStep, maxSpeedPxPerSecond * frameSeconds))
@@ -445,9 +445,11 @@ internal data class WorkingCardViewportController(
 internal fun calculateVisibleChatViewportEndPx(viewportEndPx: Int, obscuredBottomPx: Int): Int =
     (viewportEndPx - obscuredBottomPx.coerceAtLeast(0)).coerceAtLeast(0)
 
-private const val ChatFollowMaxSpeedPxPerSecond = 48_000f
-private const val ChatFollowSeekMinSpeedPxPerSecond = 6_000f
-private const val ChatFollowSeekMaxSpeedPxPerSecond = 72_000f
+private const val ChatFollowMaxSpeedPxPerSecond = 8_000f
+private const val ChatFollowSeekMinSpeedPxPerSecond = 1_800f
+private const val ChatFollowSeekMaxSpeedPxPerSecond = 12_000f
+private const val ChatFollowMaxFrameStepPx = 128f
+private const val ChatFollowSeekMaxFrameStepPx = 176f
 private const val STREAM_HAPTIC_CHARACTER_INTERVAL = 32
 
 private suspend fun snapChatToBottom(
@@ -495,6 +497,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val recoverable by viewModel.recoverable.collectAsStateWithLifecycle()
     val pending by viewModel.pending.collectAsStateWithLifecycle()
     val generating by viewModel.isGenerating.collectAsStateWithLifecycle()
+    val streamingPreviews by StreamingPreviewStore.previews.collectAsStateWithLifecycle()
     val revisionHistory by viewModel.revisionHistory.collectAsStateWithLifecycle()
     val contextSummary by viewModel.contextSummary.collectAsStateWithLifecycle()
     val revisionBranchGroups = remember(revisionHistory) { buildRevisionBranchGroups(revisionHistory) }
@@ -942,7 +945,10 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         minSpeedPxPerSecond = ChatFollowSeekMinSpeedPxPerSecond,
                         maxSpeedPxPerSecond = ChatFollowSeekMaxSpeedPxPerSecond,
                     )
-                    val step = seekSpeed * frameSeconds
+                    val step = min(
+                        seekSpeed * frameSeconds,
+                        ChatFollowSeekMaxFrameStepPx,
+                    )
                     if (step > 0f) messageListState.scrollBy(step)
                 }
                 continue
@@ -955,10 +961,13 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             )
             val overflow = (lastVisible.offset + lastVisible.size - visibleEnd).toFloat()
             if (overflow > 0.5f) {
-                val step = calculateAutoFollowStepPx(
-                    distancePx = overflow,
-                    frameSeconds = frameSeconds,
-                    maxSpeedPxPerSecond = ChatFollowMaxSpeedPxPerSecond,
+                val step = min(
+                    calculateAutoFollowStepPx(
+                        distancePx = overflow,
+                        frameSeconds = frameSeconds,
+                        maxSpeedPxPerSecond = ChatFollowMaxSpeedPxPerSecond,
+                    ),
+                    ChatFollowMaxFrameStepPx,
                 )
                 if (step > 0f) messageListState.scrollBy(step)
             }
@@ -1153,7 +1162,15 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         },
                     ) { uiIndex ->
                         val sourceIndex = chronologicalSourceIndex(uiIndex, paging.itemCount)
-                        paging[sourceIndex]?.let { message ->
+                        paging[sourceIndex]?.let { persistedMessage ->
+                            val message = if (persistedMessage.status == MessageStatus.STREAMING) {
+                                streamingPreviews[persistedMessage.nodeId]?.let { preview ->
+                                    persistedMessage.copy(
+                                        content = preview.content,
+                                        reasoning = preview.reasoning,
+                                    )
+                                } ?: persistedMessage
+                            } else persistedMessage
                             val branchOptions = remember(message.nodeId, revisionBranchGroups) {
                                 inlineBranchOptions(message, revisionBranchGroups)
                             }
@@ -1450,7 +1467,9 @@ private fun MessageCard(
                         viewModel = viewModel,
                         workingCardViewport = workingCardViewport,
                     )
-                    if (displayContent.isNotBlank()) RichMessage(
+                    // Keep the renderer alive from the empty first frame so a
+                    // provider's first large chunk is revealed progressively too.
+                    if (displayContent.isNotBlank() || animateStreaming) RichMessage(
                         operationScope = message.nodeId,
                         text = displayContent,
                         streaming = animateStreaming,
