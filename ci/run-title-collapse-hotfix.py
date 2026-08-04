@@ -15,7 +15,7 @@ if start < 0:
 start += 1
 
 replacement = r'''latest_pattern = re.compile(
-    r"(?m)^(?P<indent>[ \\t]*)listScope\\.launch \\{ snapChatToBottom\\(messageListState, paging\\.itemCount - 1, messageBottomInsetPx\\) \\}$"
+    r"(?m)^(?P<indent>[ \t]*)listScope\.launch \{ snapChatToBottom\(messageListState, paging\.itemCount - 1, messageBottomInsetPx\) \}$"
 )
 latest_matches = list(latest_pattern.finditer(chat))
 if len(latest_matches) != 1:
@@ -23,7 +23,7 @@ if len(latest_matches) != 1:
         f"latest boundary: expected exactly one snapChatToBottom call, found {len(latest_matches)}"
     )
 latest_indent = latest_matches[0].group("indent")
-latest_replacement = "\\n".join(
+latest_replacement = "\n".join(
     [
         f"{latest_indent}val limit = topAppBarState.heightOffsetLimit",
         f"{latest_indent}if (limit < 0f) {{",
@@ -40,3 +40,13 @@ exec(
     compile(source, str(patcher), "exec"),
     {"__name__": "__main__", "__file__": str(patcher), "re": re},
 )
+
+# Keep a brand-new empty conversation expanded. Only a non-empty chat at its
+# latest message should initialize with compact chrome.
+chat_path = Path("app/src/main/java/app/xylune/chat/ui/ChatScreen.kt")
+chat = chat_path.read_text()
+old = "if (snapshot == null || snapshot.atLatest) {"
+new = "if (paging.itemCount > 0 && (snapshot == null || snapshot.atLatest)) {"
+if chat.count(old) != 1:
+    raise RuntimeError(f"empty-chat guard: expected one match, found {chat.count(old)}")
+chat_path.write_text(chat.replace(old, new, 1))
