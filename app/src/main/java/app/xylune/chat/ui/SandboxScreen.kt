@@ -1,6 +1,8 @@
 package app.xylune.chat.ui
 
 import android.text.format.Formatter
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -8,8 +10,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -43,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontFamily
@@ -67,6 +72,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 private enum class WorkspaceSection { PYTHON, LINUX }
+
+private fun formatSetupDuration(milliseconds: Long): String {
+    val totalSeconds = (milliseconds.coerceAtLeast(0L) / 1_000L)
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return if (minutes > 0L) "${minutes}m ${seconds}s" else "${seconds}s"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -427,7 +439,9 @@ fun SandboxScreen(viewModel: ChatViewModel) {
             Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("${ubuntuStatus.distribution.displayName} • ${ubuntuStatus.stage.name.lowercase().replace('_', ' ')} • ${ubuntuStatus.architecture}", fontWeight = FontWeight.SemiBold)
-                    Text(ubuntuStatus.detail, style = MaterialTheme.typography.bodySmall)
+                    if (!linuxSetupActive) {
+                        Text(ubuntuStatus.detail, style = MaterialTheme.typography.bodySmall)
+                    }
                     if (ubuntuStatus.sizeBytes > 0) {
                         Text(
                             "Linux data on disk: ${Formatter.formatShortFileSize(androidx.compose.ui.platform.LocalContext.current, ubuntuStatus.sizeBytes)}",
@@ -435,26 +449,95 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                         )
                     }
                     if (linuxSetupActive) {
-                        ubuntuStatus.progress?.let { progress ->
-                            LinearProgressIndicator(
-                                progress = { progress.coerceIn(0f, 1f) },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        } ?: LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            val step = ubuntuStatus.currentStep.coerceAtLeast(1)
-                            val total = ubuntuStatus.totalSteps.coerceAtLeast(step)
-                            Text("Step $step of $total", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                            ubuntuStatus.progress?.let {
-                                Text("${(it.coerceIn(0f, 1f) * 100).toInt()}%", style = MaterialTheme.typography.labelMedium)
-                            }
+                        val measuredProgress = ubuntuStatus.progress?.coerceIn(0f, 1f)
+                        val animatedProgress by animateFloatAsState(
+                            targetValue = measuredProgress ?: 0f,
+                            animationSpec = tween(durationMillis = 450),
+                            label = "linux-setup-progress",
+                        )
+                        val step = ubuntuStatus.currentStep.coerceAtLeast(1)
+                        val total = ubuntuStatus.totalSteps.coerceAtLeast(step)
+                        val elapsedMs = if (ubuntuStatus.startedAtMs > 0L) {
+                            (clock - ubuntuStatus.startedAtMs).coerceAtLeast(0L)
+                        } else {
+                            0L
                         }
-                        if (ubuntuStatus.startedAtMs > 0L) {
-                            Text(
-                                "Elapsed: ${(clock - ubuntuStatus.startedAtMs).coerceAtLeast(0L) / 1_000}s • keep Xylune open until setup finishes",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = .78f),
+                            shape = RoundedCornerShape(18.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(
+                                Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(
+                                        "Step $step of $total",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Text(
+                                        measuredProgress?.let { "${(it * 100).toInt()}%" } ?: "Working…",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                                if (measuredProgress != null) {
+                                    LinearProgressIndicator(
+                                        progress = { animatedProgress },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(10.dp)
+                                            .clip(RoundedCornerShape(999.dp)),
+                                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    )
+                                } else {
+                                    LinearProgressIndicator(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(10.dp)
+                                            .clip(RoundedCornerShape(999.dp)),
+                                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    )
+                                }
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    repeat(total) { index ->
+                                        val segmentStep = index + 1
+                                        val segmentColor = when {
+                                            segmentStep < step -> MaterialTheme.colorScheme.primary
+                                            segmentStep == step -> MaterialTheme.colorScheme.primary.copy(alpha = .62f)
+                                            else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f)
+                                        }
+                                        Surface(
+                                            color = segmentColor,
+                                            shape = RoundedCornerShape(999.dp),
+                                            modifier = Modifier.weight(1f).height(4.dp),
+                                        ) {}
+                                    }
+                                }
+                                Text(
+                                    ubuntuStatus.detail,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(
+                                        "Elapsed ${formatSetupDuration(elapsedMs)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Text(
+                                        "Keep Xylune open",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

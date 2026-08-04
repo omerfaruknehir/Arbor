@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.Reader
 
 class PackageInstallProgressTest {
     @Test
@@ -54,6 +55,29 @@ class PackageInstallProgressTest {
 
         assertEquals(0.86f, progress.percent ?: -1f, 0.001f)
         assertTrue(progress.detail.contains("Installing python3"))
+    }
+
+    @Test
+    fun cappedOutputStillDrainsTheEntireChildPipe() {
+        val source = "x".repeat(32_768)
+        var consumed = 0
+        val reader = object : Reader() {
+            override fun read(buffer: CharArray, offset: Int, length: Int): Int {
+                if (consumed >= source.length) return -1
+                val count = minOf(length, source.length - consumed)
+                source.toCharArray(buffer, offset, consumed, consumed + count)
+                consumed += count
+                return count
+            }
+
+            override fun close() = Unit
+        }
+        val retained = StringBuilder()
+
+        drainCappedText(reader, retained, 256)
+
+        assertEquals(source.length, consumed)
+        assertEquals(256, retained.length)
     }
 
     @Test
