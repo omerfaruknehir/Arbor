@@ -37,7 +37,6 @@ import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 private val NavigationEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
-private const val CommitFadeStart = 0.62f
 
 internal fun appBackHandlerEnabled(ownerEnabled: Boolean, imeVisible: Boolean): Boolean =
     ownerEnabled && !imeVisible
@@ -47,11 +46,11 @@ internal fun predictiveBackCompletionDurationMillis(progress: Float): Int {
     return (80f + 70f * remaining).roundToInt().coerceIn(80, 150)
 }
 
-internal fun predictiveBackOutgoingAlpha(progress: Float): Float {
-    val fadeProgress = ((progress.coerceIn(0f, 1f) - CommitFadeStart) /
-        (1f - CommitFadeStart)).coerceIn(0f, 1f)
-    return 1f - NavigationEasing.transform(fadeProgress)
-}
+internal fun predictiveBackVisualProgress(progress: Float): Float =
+    NavigationEasing.transform(progress.coerceIn(0f, 1f))
+
+internal fun predictiveBackSourceScale(progress: Float): Float =
+    1f - 0.04f * predictiveBackVisualProgress(progress)
 
 internal enum class PredictiveCancellationResolution {
     ROLLBACK,
@@ -190,8 +189,13 @@ internal fun <T : Any> PredictiveNavigationHost(
             progress.snapTo(0f)
         } catch (cancelled: CancellationException) {
             withContext(NonCancellable) {
-                settleImmediatelyOn(latestTargetState)
-                progress.snapTo(0f)
+                // Animatable mutation by an incoming predictive gesture cancels
+                // the ordinary transition. Do not let that cancelled animation
+                // overwrite the gesture's source/destination slots.
+                if (mode != NavigationTransitionMode.PREDICTIVE) {
+                    settleImmediatelyOn(latestTargetState)
+                    progress.snapTo(0f)
+                }
             }
             throw cancelled
         }
@@ -199,10 +203,16 @@ internal fun <T : Any> PredictiveNavigationHost(
 
     PredictiveBackHandler(
         enabled = appBackHandlerEnabled(
-            ownerEnabled = backEnabled && backTarget != null && mode != NavigationTransitionMode.ORDINARY,
+            ownerEnabled = backEnabled && backTarget != null,
             imeVisible = imeVisible,
         ),
     ) { events ->
+        // A quick second Back swipe must not fall through merely because the
+        // previous button/page transition is still in its short settle phase.
+        if (mode == NavigationTransitionMode.ORDINARY) {
+            settleImmediatelyOn(latestTargetState)
+            progress.snapTo(0f)
+        }
         val destinationState = latestBackTarget ?: return@PredictiveBackHandler
         val source = currentSlot()
         if (source.state == destinationState) return@PredictiveBackHandler
@@ -291,14 +301,21 @@ internal fun <T : Any> PredictiveNavigationHost(
                             }
                             val p = progress.value.coerceIn(0f, 1f)
                             when (mode) {
-                                NavigationTransitionMode.PREDICTIVE -> when {
-                                    isSource -> {
-                                        translationX = predictiveDirection * widthPx * 0.26f * p
-                                        alpha = predictiveBackOutgoingAlpha(p)
-                                        compositingStrategy = CompositingStrategy.ModulateAlpha
-                                    }
-                                    isDestination -> {
-                                        translationX = -predictiveDirection * widthPx * 0.04f * (1f - p)
+                                NavigationTransitionMode.PREDICTIVE -> {
+                                    val visualProgress = predictiveBackVisualProgress(p)
+                                    when {
+                                        isSource -> {
+                                            // Keep the active page fully opaque. Fading a whole
+                                            // Compose tree exposed intermediate surfaces and made
+                                            // text/panels appear to blink on real devices.
+                                            translationX = predictiveDirection * widthPx * 0.10f * visualProgress
+                                            val sourceScale = predictiveBackSourceScale(p)
+                                            scaleX = sourceScale
+                                            scaleY = sourceScale
+                                        }
+                                        isDestination -> {
+                                            translationX = -predictiveDirection * widthPx * 0.04f * (1f - visualProgress)
+                                        }
                                     }
                                 }
                                 NavigationTransitionMode.ORDINARY -> {
