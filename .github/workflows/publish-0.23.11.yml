@@ -20,7 +20,6 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 75
-    environment: release
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,19 +41,7 @@ jobs:
           grep -F 'versionName = "0.23.11"' app/build.gradle.kts
           test -f docs/releases/RELEASE_NOTES_0.23.11.md
           ./ci/verify-third-party-licenses.sh
-      - name: Restore update-compatible signing key
-        env:
-          KEYSTORE_BASE64: ${{ secrets.XYLUNE_KEYSTORE_BASE64 }}
-        run: |
-          set -euo pipefail
-          test -n "$KEYSTORE_BASE64"
-          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/xylune-release.jks"
       - name: Test, lint, and build signed APK
-        env:
-          XYLUNE_KEYSTORE_FILE: ${{ runner.temp }}/xylune-release.jks
-          XYLUNE_KEYSTORE_PASSWORD: ${{ secrets.XYLUNE_KEYSTORE_PASSWORD }}
-          XYLUNE_KEY_ALIAS: ${{ secrets.XYLUNE_KEY_ALIAS }}
-          XYLUNE_KEY_PASSWORD: ${{ secrets.XYLUNE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest lintRelease assembleRelease
