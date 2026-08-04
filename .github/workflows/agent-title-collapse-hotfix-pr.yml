@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/agent-title-collapse-hotfix-pr.yml
       - ci/apply-title-collapse-hotfix.py
+      - ci/run-title-collapse-hotfix.py
 
 permissions:
   contents: write
@@ -38,7 +39,7 @@ jobs:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
       - name: Apply deterministic hotfix
-        run: python3 ci/apply-title-collapse-hotfix.py
+        run: python3 ci/run-title-collapse-hotfix.py
       - name: Validate source contract
         run: |
           set -euo pipefail
@@ -62,7 +63,8 @@ jobs:
           rm -f \
             .github/workflows/agent-title-collapse-hotfix.yml \
             .github/workflows/agent-title-collapse-hotfix-pr.yml \
-            ci/apply-title-collapse-hotfix.py
+            ci/apply-title-collapse-hotfix.py \
+            ci/run-title-collapse-hotfix.py
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -A
