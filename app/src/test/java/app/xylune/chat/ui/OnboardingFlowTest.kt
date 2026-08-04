@@ -47,6 +47,7 @@ class OnboardingFlowTest {
         assertTrue(source.contains("HorizontalPager("))
         assertTrue(source.contains("rememberPagerState("))
         assertTrue(source.contains("userScrollEnabled = true"))
+        assertTrue(source.contains("pageSpacing = 16.dp"))
         assertTrue(source.contains("BackHandler(enabled = visiblePage > 0)"))
         assertTrue(source.contains("background(MaterialTheme.colorScheme.background)"))
         assertTrue(source.contains("pagePosition = pagerState.currentPage + pagerState.currentPageOffsetFraction"))
@@ -103,8 +104,14 @@ class OnboardingFlowTest {
     @Test
     fun `chat exposes provider and Linux setup states`() {
         val chat = java.io.File("src/main/java/app/xylune/chat/ui/ChatScreen.kt").readText()
+        val viewModel = java.io.File("src/main/java/app/xylune/chat/ui/ChatViewModel.kt").readText()
         assertTrue(chat.contains("Connect a model provider"))
         assertTrue(chat.contains("Set up a provider to start"))
+        assertTrue(chat.contains("onSetUpProvider = viewModel::openProviderSetup"))
+        assertTrue(chat.contains("modifier = Modifier.zIndex(1f).padding("))
+        assertTrue(viewModel.contains("fun openProviderSetup()"))
+        assertTrue(viewModel.contains("openSettingsRoute(SettingsRoute.PROVIDERS)"))
+        assertTrue(viewModel.contains("screen.value = Screen.SETTINGS"))
         assertTrue(chat.contains("Linux workspace not installed"))
         assertTrue(chat.contains("Manage Linux workspace"))
     }

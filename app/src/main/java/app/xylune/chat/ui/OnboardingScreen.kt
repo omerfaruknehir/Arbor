@@ -212,6 +212,7 @@ internal fun OnboardingScreen(
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
+                pageSpacing = 16.dp,
                 beyondViewportPageCount = 0,
                 userScrollEnabled = true,
                 key = { steps[it] },
