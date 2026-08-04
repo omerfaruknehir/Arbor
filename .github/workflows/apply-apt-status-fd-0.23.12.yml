@@ -35,7 +35,10 @@ jobs:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
       - name: Apply repair
-        run: python3 .github/scripts/apply-apt-status-fd-0.23.12.py
+        run: |
+          sed -i '/Generated Kotlin lost escaped newline separators/d' .github/scripts/apply-apt-status-fd-0.23.12.py
+          sed -i '/if .*joinToString.*not in text:/d' .github/scripts/apply-apt-status-fd-0.23.12.py
+          python3 .github/scripts/apply-apt-status-fd-0.23.12.py
       - name: Remove one-shot repair files
         run: |
           rm -f \
