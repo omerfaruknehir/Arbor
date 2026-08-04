@@ -1,1 +1,1 @@
-Trigger the one-shot preparation workflow after its definition exists.
+Retry the one-shot preparation workflow after fixing its merge identity.
