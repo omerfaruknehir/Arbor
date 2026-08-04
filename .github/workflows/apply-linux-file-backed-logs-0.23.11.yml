@@ -1,0 +1,59 @@
+name: Apply Linux file-backed log repair
+
+on:
+  push:
+    branches:
+      - fix/linux-file-backed-logs-0.23.11
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-linux-file-backed-logs-0.23.11
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/linux-file-backed-logs-0.23.11
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Apply repair
+        run: |
+          sed -i 's/coerceAtMost(LOG_CAPTURE_LIMIT_BYTES.toLong())/coerceAtMost(1_000_000L)/' .github/scripts/apply-linux-file-backed-logs-0.23.11.py
+          sed -i 's/kotlin.io.path.createTempFile("xylune-log", ".txt").toFile()/java.io.File.createTempFile("xylune-log", ".txt")/' .github/scripts/apply-linux-file-backed-logs-0.23.11.py
+          python3 .github/scripts/apply-linux-file-backed-logs-0.23.11.py
+      - name: Remove one-shot repair files
+        run: |
+          rm -f \
+            .github/scripts/apply-linux-file-backed-logs-0.23.11.py \
+            .github/workflows/apply-linux-file-backed-logs-0.23.11.yml
+      - name: Verify repair
+        run: |
+          set -euo pipefail
+          git diff --check
+          ./ci/verify-third-party-licenses.sh
+          ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest lintRelease assembleRelease
+      - name: Commit repaired tree
+        run: |
+          set -euo pipefail
+          git status --short
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Use file-backed Linux process logs"
+          git pull --rebase origin fix/linux-file-backed-logs-0.23.11
+          git push origin HEAD:fix/linux-file-backed-logs-0.23.11
