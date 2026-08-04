@@ -81,6 +81,20 @@ class PackageInstallProgressTest {
     }
 
     @Test
+    fun fileBackedCaptureKeepsAReadableTailWithoutPipes() {
+        val log = java.io.File.createTempFile("xylune-log", ".txt")
+        try {
+            val body = "prefix-" + "x".repeat(32_000) + "-final-status"
+            log.writeText(body)
+
+            assertEquals(body.take(512), readCappedLogFile(log, 512))
+            assertEquals(body.takeLast(256), readLogTail(log, 256))
+        } finally {
+            log.delete()
+        }
+    }
+
+    @Test
     fun fallsBackToHumanReadableAptOutput() {
         val progress = packageInstallProgressFromApt(
             ExecutionProgress(stdoutTail = "Reading package lists... Done\nBuilding dependency tree... Done"),

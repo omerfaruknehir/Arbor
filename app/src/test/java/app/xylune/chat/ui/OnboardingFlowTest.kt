@@ -138,6 +138,9 @@ class OnboardingFlowTest {
         assertTrue(runtime.contains("val totalSteps: Int = 0"))
         assertTrue(runtime.contains("Os.lstat(file.absolutePath)"))
         assertTrue(runtime.contains("countedInodes.add"))
+        assertTrue(runtime.contains("builder.redirectOutput(stdoutLog)"))
+        assertTrue(runtime.contains("builder.redirectError(stderrLog)"))
+        assertTrue(runtime.contains("readLogTail(stdoutLog"))
         assertFalse(runtime.contains("root.walkTopDown().filter(File::isFile).sumOf(File::length)"))
     }
 
