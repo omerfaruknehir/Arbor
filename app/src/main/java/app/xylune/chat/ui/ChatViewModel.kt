@@ -1147,7 +1147,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         _credentialRevision.value++
         runCatching { container.openAiOAuth.usage(providerId, forceRefresh = true) }
         notices.emit("Connected ${provider.displayName} • ${discovered.size} models available")
-        if (setupTemporarilyAway.value) returnToSetup()
+        if (setupTemporarilyAway.value) screen.value = Screen.CHAT
     }
 
     fun cancelChatGptSignIn(providerId: String) {
@@ -1230,7 +1230,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         initialModels.distinctBy { it.modelId }.forEach { container.repository.saveModel(ModelRequestPolicy.normalize(provider, it)) }
         _credentialRevision.value++
         notices.emit("Added ${provider.displayName}")
-        if (setupTemporarilyAway.value) returnToSetup()
+        if (setupTemporarilyAway.value) screen.value = Screen.CHAT
     }
 
     suspend fun saveDiscoveredModels(providerId: String, discovered: List<app.xylune.chat.provider.DiscoveredModel>) {

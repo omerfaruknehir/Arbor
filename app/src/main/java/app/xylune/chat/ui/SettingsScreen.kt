@@ -196,15 +196,16 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
 
     PredictiveNavigationHost(
         targetState = route,
-        backTarget = when (route) {
+        backTarget = if (setupTemporarilyAway && route == SettingsRoute.PROVIDERS) {
+            // The app-level host owns this Back so it can slide the complete
+            // Settings page back to the preserved setup page.
+            null
+        } else when (route) {
             SettingsRoute.HOME -> null
             SettingsRoute.DEVELOPER, SettingsRoute.LICENSES -> SettingsRoute.ABOUT
             else -> SettingsRoute.HOME
         },
-        onBack = { target ->
-            if (setupTemporarilyAway && route == SettingsRoute.PROVIDERS) viewModel.returnToSetup()
-            else viewModel.settingsRoute.value = target
-        },
+        onBack = { target -> viewModel.settingsRoute.value = target },
         depth = {
             when (it) {
                 SettingsRoute.HOME -> 0
@@ -234,7 +235,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         IconButton(onClick = {
                             haptics.selection()
                             if (setupTemporarilyAway && currentRoute == SettingsRoute.PROVIDERS) {
-                                viewModel.returnToSetup()
+                                viewModel.screen.value = Screen.CHAT
                             } else if (currentRoute == SettingsRoute.DEVELOPER || currentRoute == SettingsRoute.LICENSES) {
                                 viewModel.settingsRoute.value = SettingsRoute.ABOUT
                             } else if (currentRoute != SettingsRoute.HOME) {

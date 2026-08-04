@@ -43,14 +43,14 @@ internal fun appBackHandlerEnabled(ownerEnabled: Boolean, imeVisible: Boolean): 
 
 internal fun predictiveBackCompletionDurationMillis(progress: Float): Int {
     val remaining = 1f - progress.coerceIn(0f, 1f)
-    return (80f + 70f * remaining).roundToInt().coerceIn(80, 150)
+    return (160f + 200f * remaining).roundToInt().coerceIn(160, 360)
 }
 
 internal fun predictiveBackVisualProgress(progress: Float): Float =
     NavigationEasing.transform(progress.coerceIn(0f, 1f))
 
-internal fun predictiveBackSourceScale(progress: Float): Float =
-    1f - 0.04f * predictiveBackVisualProgress(progress)
+internal fun pageSlideOffset(widthPx: Float, progress: Float): Float =
+    widthPx.coerceAtLeast(0f) * progress.coerceIn(0f, 1f)
 
 internal enum class PredictiveCancellationResolution {
     ROLLBACK,
@@ -92,6 +92,7 @@ internal fun <T : Any> PredictiveNavigationHost(
     backTarget: T?,
     onBack: (T) -> Unit,
     depth: (T) -> Int,
+    onSettled: (T) -> Unit = {},
     modifier: Modifier = Modifier,
     backEnabled: Boolean = backTarget != null,
     keepAlive: (T) -> Boolean = { false },
@@ -121,6 +122,7 @@ internal fun <T : Any> PredictiveNavigationHost(
     val latestTargetState by rememberUpdatedState(targetState)
     val latestBackTarget by rememberUpdatedState(backTarget)
     val latestOnBack by rememberUpdatedState(onBack)
+    val latestOnSettled by rememberUpdatedState(onSettled)
     val latestKeepAlive by rememberUpdatedState(keepAlive)
     val latestContent by rememberUpdatedState(content)
     val stateHolder = rememberSaveableStateHolder()
@@ -184,9 +186,10 @@ internal fun <T : Any> PredictiveNavigationHost(
                 mode = NavigationTransitionMode.ORDINARY
             }
             progress.snapTo(0f)
-            progress.animateTo(1f, tween(120, easing = NavigationEasing))
+            progress.animateTo(1f, tween(280, easing = NavigationEasing))
             settleOn(destination)
             progress.snapTo(0f)
+            latestOnSettled(destination.state)
         } catch (cancelled: CancellationException) {
             withContext(NonCancellable) {
                 // Animatable mutation by an incoming predictive gesture cancels
@@ -248,6 +251,7 @@ internal fun <T : Any> PredictiveNavigationHost(
             backDispatched = true
             settleOn(destination)
             progress.snapTo(0f)
+            latestOnSettled(destination.state)
         } catch (cancelled: CancellationException) {
             withContext(NonCancellable) {
                 when (predictiveCancellationResolution(commitStarted)) {
@@ -256,9 +260,10 @@ internal fun <T : Any> PredictiveNavigationHost(
                         if (!backDispatched) latestOnBack(destinationState)
                         settleOn(destination)
                         progress.snapTo(0f)
+                        latestOnSettled(destination.state)
                     }
                     PredictiveCancellationResolution.ROLLBACK -> {
-                        progress.animateTo(0f, tween(160, easing = NavigationEasing))
+                        progress.animateTo(0f, tween(220, easing = NavigationEasing))
                         removeDestinationAndRestoreSource()
                         progress.snapTo(0f)
                     }
@@ -303,31 +308,31 @@ internal fun <T : Any> PredictiveNavigationHost(
                             when (mode) {
                                 NavigationTransitionMode.PREDICTIVE -> {
                                     val visualProgress = predictiveBackVisualProgress(p)
+                                    val slide = pageSlideOffset(widthPx, visualProgress)
                                     when {
                                         isSource -> {
-                                            // Keep the active page fully opaque. Fading a whole
-                                            // Compose tree exposed intermediate surfaces and made
-                                            // text/panels appear to blink on real devices.
-                                            translationX = predictiveDirection * widthPx * 0.10f * visualProgress
-                                            val sourceScale = predictiveBackSourceScale(p)
-                                            scaleX = sourceScale
-                                            scaleY = sourceScale
+                                            // Keep the two opaque pages edge-to-edge throughout the
+                                            // gesture. At commit the source reaches a complete
+                                            // off-screen position instead of disappearing after a
+                                            // short preview translation.
+                                            translationX = predictiveDirection * slide
                                         }
                                         isDestination -> {
-                                            translationX = -predictiveDirection * widthPx * 0.04f * (1f - visualProgress)
+                                            translationX = -predictiveDirection * (widthPx - slide)
                                         }
                                     }
                                 }
                                 NavigationTransitionMode.ORDINARY -> {
+                                    val slide = pageSlideOffset(widthPx, p)
                                     if (transitionForward) {
                                         when {
-                                            isSource -> translationX = -widthPx / 18f * p
-                                            isDestination -> translationX = widthPx / 8f * (1f - p)
+                                            isSource -> translationX = -slide
+                                            isDestination -> translationX = widthPx - slide
                                         }
                                     } else {
                                         when {
-                                            isSource -> translationX = widthPx / 8f * p
-                                            isDestination -> translationX = -widthPx / 18f * (1f - p)
+                                            isSource -> translationX = slide
+                                            isDestination -> translationX = -(widthPx - slide)
                                         }
                                     }
                                 }

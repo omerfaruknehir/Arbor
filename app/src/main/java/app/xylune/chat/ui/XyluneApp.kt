@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -104,7 +105,7 @@ fun XyluneApp(viewModel: ChatViewModel, activity: Activity) {
             viewModel.startSetup()
         }
     }
-    if (onboardingCatalogUsable && setupActive && !setupTemporarilyAway) {
+    val latestSetupContent = rememberUpdatedState<@Composable () -> Unit> {
         Box(Modifier.fillMaxSize()) {
             OnboardingScreen(
                 viewModel = viewModel,
@@ -140,6 +141,10 @@ fun XyluneApp(viewModel: ChatViewModel, activity: Activity) {
             incomingArchive?.let { state -> IncomingArchiveDialog(viewModel, state) }
             SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
         }
+    }
+    val latestSetupTemporarilyAway = rememberUpdatedState(setupTemporarilyAway)
+    if (onboardingCatalogUsable && setupActive && !setupTemporarilyAway) {
+        latestSetupContent.value()
         return
     }
 
@@ -224,7 +229,11 @@ fun XyluneApp(viewModel: ChatViewModel, activity: Activity) {
         val screenContent: @Composable (Screen) -> Unit = remember(viewModel, compactOpenDrawer) {
             { destination ->
                 when (destination) {
-                    Screen.CHAT -> ChatScreen(viewModel, compactOpenDrawer)
+                    Screen.CHAT -> if (latestSetupTemporarilyAway.value) {
+                        latestSetupContent.value()
+                    } else {
+                        ChatScreen(viewModel, compactOpenDrawer)
+                    }
                     Screen.SEARCH -> SearchScreen(viewModel, compactOpenDrawer)
                     Screen.SETTINGS -> Box(Modifier.fillMaxSize()) {
                         SettingsScreen(viewModel, compactOpenDrawer)
@@ -238,12 +247,17 @@ fun XyluneApp(viewModel: ChatViewModel, activity: Activity) {
         val content: @Composable () -> Unit = {
             PredictiveNavigationHost(
                 targetState = screen,
-                backTarget = if (setupTemporarilyAway && screen == Screen.SANDBOX) Screen.CHAT else backDestination(screen),
-                onBack = { target ->
-                    if (setupTemporarilyAway && screen == Screen.SANDBOX) viewModel.returnToSetup()
-                    else viewModel.screen.value = target
-                },
+                backTarget = if (
+                    latestSetupTemporarilyAway.value &&
+                    (screen == Screen.SANDBOX || screen == Screen.SETTINGS)
+                ) Screen.CHAT else backDestination(screen),
+                onBack = { target -> viewModel.screen.value = target },
                 depth = ::screenDepth,
+                onSettled = { settled ->
+                    if (latestSetupTemporarilyAway.value && settled == Screen.CHAT) {
+                        viewModel.returnToSetup()
+                    }
+                },
                 // Once a closing drawer is no longer visible, page Back must immediately
                 // take ownership. Waiting for its spring job to finish creates a gap where
                 // Android can fall through to Activity exit.
