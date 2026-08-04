@@ -185,6 +185,23 @@ private fun stripAptStatusLines(value: String): String = value.lineSequence()
     .filterNot { AptStatusLine.matches(it.trim()) }
     .joinToString("\n")
 
+internal fun drainCappedText(
+    reader: java.io.Reader,
+    output: StringBuilder,
+    limit: Int,
+) {
+    require(limit >= 0) { "Output limit must not be negative" }
+    val buffer = CharArray(8_192)
+    while (true) {
+        val count = reader.read(buffer)
+        if (count < 0) break
+        synchronized(output) {
+            val appendCount = minOf(count, (limit - output.length).coerceAtLeast(0))
+            if (appendCount > 0) output.append(buffer, 0, appendCount)
+        }
+    }
+}
+
 data class UbuntuPackageInstallResult(
     val success: Boolean,
     val stdout: String = "",
@@ -1046,14 +1063,9 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
     ) {
         try {
             input.bufferedReader().use { reader ->
-                val buffer = CharArray(8_192)
-                while (true) {
-                    val remaining = synchronized(output) { limit - output.length }
-                    if (remaining <= 0) break
-                    val count = reader.read(buffer, 0, minOf(buffer.size, remaining))
-                    if (count < 0) break
-                    synchronized(output) { output.append(buffer, 0, count) }
-                }
+                // Keep draining the child pipe after the retained log reaches its cap.
+                // Closing stdout/stderr early makes package maintainer scripts fail with EIO.
+                drainCappedText(reader, output, limit)
             }
         } catch (error: Throwable) {
             if (!isExpectedStreamShutdown(error, closing.get())) {

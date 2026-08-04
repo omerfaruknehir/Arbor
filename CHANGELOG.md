@@ -1,3 +1,9 @@
+## 0.23.10 — 2026-08-04
+
+- Redesign Linux setup progress as a thicker rounded, animated indicator with visible stage segments, current step, percentage, current activity, and readable elapsed time.
+- Keep draining Linux process stdout and stderr after the retained log reaches its memory cap, preventing package maintainer scripts such as `update-ca-certificates` from failing with `I/O error`.
+- Add a regression test proving capped output capture consumes the complete child-process stream.
+
 ## 0.23.9 — 2026-08-04
 
 - Show continuous, monotonic Linux setup progress across download, verification, extraction, configuration, package-index refresh, Python installation, and finalization.
