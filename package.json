@@ -1,0 +1,10 @@
+{
+  "name": "xylune-pages-preview",
+  "private": true,
+  "scripts": {
+    "dev": "vite --config docs/vite.config.js"
+  },
+  "devDependencies": {
+    "vite": "^7.1.1"
+  }
+}

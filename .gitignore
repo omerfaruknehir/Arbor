@@ -12,3 +12,4 @@ app/build/
 !ci/xylune-debug.keystore
 
 .kotlin/
+node_modules/

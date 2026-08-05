@@ -1,5 +1,7 @@
 package app.xylune.chat.ui
 
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.ui.graphics.Color
 import app.xylune.chat.data.ModelEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -15,6 +17,32 @@ class ModelPickerAndReasoningTest {
 
         assertEquals(2, picker.size)
         assertTrue(picker.any { it.modelId == "gpt-image-1" && it.supportsImageGeneration })
+    }
+
+    @Test
+    fun imageModelsAreNotFreeWhenOnlyTextTokenPricesAreZero() {
+        val image = model("image", "Image", true).copy(pricingConfigured = true)
+        val chat = model("chat", "Chat", false).copy(pricingConfigured = true)
+
+        assertFalse(image.isActuallyFree)
+        assertTrue(chat.isActuallyFree)
+    }
+
+    @Test
+    fun websiteLinksCarryTheResolvedAppColorScheme() {
+        val url = xyluneWebsiteUrl(
+            "privacy/",
+            darkColorScheme(
+                primary = Color(0xFF99D5B1),
+                background = Color(0xFF101411),
+                onSurface = Color(0xFFDFE4DF),
+            ),
+        )
+
+        assertTrue(url.startsWith("https://omerfaruknehir.github.io/Xylune/privacy/?theme=app&dark=1"))
+        assertTrue(url.contains("primary=99d5b1"))
+        assertTrue(url.contains("background=101411"))
+        assertTrue(url.contains("onSurface=dfe4df"))
     }
 
     @Test

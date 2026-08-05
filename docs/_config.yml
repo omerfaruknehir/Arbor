@@ -1,4 +1,7 @@
 title: Xylune
 description: Native Android. Private by design.
-theme: jekyll-theme-minimal
-show_downloads: false
+url: https://omerfaruknehir.github.io
+baseurl: /Xylune
+repository: omerfaruknehir/Xylune
+exclude:
+  - README.md

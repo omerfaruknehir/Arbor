@@ -306,7 +306,11 @@ class OpenAiCompatibleProvider(
         put("model", JsonPrimitive(modelId))
         put("prompt", JsonPrimitive(prompt))
         put("n", JsonPrimitive(1))
-        if (modelId.lowercase().startsWith("dall-e-")) {
+        if (ModelRequestPolicy.isOpenRouter(request.provider)) {
+            // OpenRouter validates image parameters against each model's catalog.
+            // A generic size="auto" is not a valid Images API size and caused
+            // otherwise-supported models to fail. Provider defaults are portable.
+        } else if (modelId.lowercase().startsWith("dall-e-")) {
             put("response_format", JsonPrimitive("b64_json"))
             put("size", JsonPrimitive("1024x1024"))
         } else {
