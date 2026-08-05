@@ -4,18 +4,22 @@ on:
   push:
     branches:
       - agent/settings-response-style
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
   apply-and-verify:
-    if: github.actor != 'github-actions[bot]'
+    if: github.actor != 'github-actions[bot]' && (github.event_name != 'pull_request' || github.head_ref == 'agent/settings-response-style')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: agent/settings-response-style
           fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
