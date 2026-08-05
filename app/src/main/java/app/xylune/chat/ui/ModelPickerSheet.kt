@@ -7,10 +7,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -20,7 +22,6 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -28,7 +29,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -42,6 +42,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import app.xylune.chat.data.ModelEntity
 import app.xylune.chat.data.ProviderEntity
 import app.xylune.chat.settings.modelPreferenceKey
@@ -69,7 +71,7 @@ internal fun filteredModelChoices(
     models: List<ModelEntity>,
     query: String,
     providerId: String?,
-    filter: ModelPickerFilter,
+    filters: Set<ModelPickerFilter>,
     favoriteKeys: Set<String>,
     recentKeys: List<String>,
     selectedKey: String? = null,
@@ -77,22 +79,25 @@ internal fun filteredModelChoices(
     val providersById = providers.associateBy(ProviderEntity::id)
     val terms = query.trim().lowercase(Locale.ROOT).split(Regex("\\s+")).filter(String::isNotBlank)
     val recentRanks = recentKeys.withIndex().associate { it.value to it.index }
+    val activeFilters = filters - ModelPickerFilter.ALL
     return models.asSequence()
         .mapNotNull { model -> providersById[model.providerId]?.let { ModelPickerChoice(it, model) } }
         .filter { choice -> providerId == null || choice.provider.id == providerId }
         .filter { choice ->
             val key = modelPreferenceKey(choice.provider.id, choice.model.modelId)
-            when (filter) {
-                ModelPickerFilter.ALL -> true
-                ModelPickerFilter.FAVORITES -> key in favoriteKeys
-                ModelPickerFilter.RECENT -> key in recentRanks
-                ModelPickerFilter.THINKING -> choice.model.supportsThinking
-                ModelPickerFilter.TOOLS -> choice.model.supportsTools
-                ModelPickerFilter.VISION -> choice.model.supportsVision
-                ModelPickerFilter.FILES -> choice.model.supportsFiles
-                ModelPickerFilter.IMAGE -> choice.model.supportsImageGeneration
-                ModelPickerFilter.FREE -> choice.model.pricingConfigured &&
-                    choice.model.inputCacheMissUsdPerMillion == 0.0 && choice.model.outputUsdPerMillion == 0.0
+            activeFilters.all { filter ->
+                when (filter) {
+                    ModelPickerFilter.ALL -> true
+                    ModelPickerFilter.FAVORITES -> key in favoriteKeys
+                    ModelPickerFilter.RECENT -> key in recentRanks
+                    ModelPickerFilter.THINKING -> choice.model.supportsThinking
+                    ModelPickerFilter.TOOLS -> choice.model.supportsTools
+                    ModelPickerFilter.VISION -> choice.model.supportsVision
+                    ModelPickerFilter.FILES -> choice.model.supportsFiles
+                    ModelPickerFilter.IMAGE -> choice.model.supportsImageGeneration
+                    ModelPickerFilter.FREE -> choice.model.pricingConfigured &&
+                        choice.model.inputCacheMissUsdPerMillion == 0.0 && choice.model.outputUsdPerMillion == 0.0
+                }
             }
         }
         .filter { choice ->
@@ -119,7 +124,6 @@ internal fun filteredModelChoices(
         .toList()
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ModelPickerSheet(
     providers: List<ProviderEntity>,
@@ -134,30 +138,42 @@ internal fun ModelPickerSheet(
 ) {
     var query by remember { mutableStateOf("") }
     var providerId by remember { mutableStateOf<String?>(null) }
-    var filter by remember { mutableStateOf(ModelPickerFilter.ALL) }
+    var filters by remember { mutableStateOf(emptySet<ModelPickerFilter>()) }
     val providerIds = remember(providers) { providers.mapTo(hashSetOf()) { it.id } }
     val availableModelCount = remember(models, providerIds) { models.count { it.providerId in providerIds } }
     val selectedKey = selectedProviderId?.let { provider ->
         selectedModelId?.let { model -> modelPreferenceKey(provider, model) }
     }
-    val choices = remember(providers, models, query, providerId, filter, favoriteKeys, recentKeys, selectedKey) {
+    val choices = remember(providers, models, query, providerId, filters, favoriteKeys, recentKeys, selectedKey) {
         filteredModelChoices(
             providers = providers,
             models = models,
             query = query,
             providerId = providerId,
-            filter = filter,
+            filters = filters,
             favoriteKeys = favoriteKeys,
             recentKeys = recentKeys,
             selectedKey = selectedKey,
         )
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            Modifier.fillMaxWidth().fillMaxHeight(.92f).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxSize()) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Choose a model", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
@@ -194,19 +210,36 @@ internal fun ModelPickerSheet(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                ModelPickerFilter.entries.forEach { option ->
-                    FilterChip(selected = filter == option, onClick = { filter = option }, label = { Text(option.label) })
+                FilterChip(
+                    selected = filters.isEmpty(),
+                    onClick = { filters = emptySet() },
+                    label = { Text(if (filters.isEmpty()) "All" else "Clear") },
+                )
+                ModelPickerFilter.entries.filterNot { it == ModelPickerFilter.ALL }.forEach { option ->
+                    FilterChip(
+                        selected = option in filters,
+                        onClick = {
+                            filters = if (option in filters) filters - option else filters + option
+                        },
+                        label = { Text(option.label) },
+                    )
                 }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "${choices.size} result${if (choices.size == 1) "" else "s"}",
+                    buildString {
+                        append(choices.size).append(" result").append(if (choices.size == 1) "" else "s")
+                        if (filters.isNotEmpty()) append(" · ").append(filters.size).append(" filters")
+                    },
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Spacer(Modifier.weight(1f))
-                if (favoriteKeys.isNotEmpty() && filter != ModelPickerFilter.FAVORITES) {
-                    AssistChip(onClick = { filter = ModelPickerFilter.FAVORITES }, label = { Text("${favoriteKeys.size} starred") })
+                if (favoriteKeys.isNotEmpty() && ModelPickerFilter.FAVORITES !in filters) {
+                    AssistChip(
+                        onClick = { filters = filters + ModelPickerFilter.FAVORITES },
+                        label = { Text("${favoriteKeys.size} starred") },
+                    )
                 }
             }
             HorizontalDivider()
@@ -285,7 +318,7 @@ internal fun ModelPickerSheet(
                     }
                 }
             }
-            Spacer(Modifier.size(18.dp))
+            }
         }
     }
 }

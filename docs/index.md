@@ -10,7 +10,7 @@ title: Xylune
 Xylune is a local-first Android application for user-configured AI providers, tools, programmable widgets, and portable backups.
 
 - [Privacy Policy / Gizlilik ve KVKK Aydınlatma Metni](https://omerfaruknehir.github.io/Xylune/privacy/)
-- [Terms of Service / Kullanım Koşulları](https://omerfaruknehir.github.io/Xylune/terms/)
+- [Terms and Disclaimer / Koşullar ve Sorumluluk Reddi](https://omerfaruknehir.github.io/Xylune/terms/)
 - [Data Deletion / Veri Silme](https://omerfaruknehir.github.io/Xylune/data-deletion/)
 - [Source code and releases](https://github.com/omerfaruknehir/Xylune)
 - [Support and issues](https://github.com/omerfaruknehir/Xylune/issues)

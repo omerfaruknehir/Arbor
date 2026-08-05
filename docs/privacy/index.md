@@ -9,118 +9,52 @@ title: Privacy Policy / Gizlilik Politikası
 
 [Türkçe metin aşağıdadır.](#xylune-gizlilik-politikası-ve-kvkk-aydınlatma-metni)
 
-Xylune is a local-first Android client maintained by **Ömer Faruk Nehir in Türkiye**. The official app has no Xylune account, advertising system, analytics service, or central chat backend. Ordinary AI requests and backups travel directly from the device to services chosen by the user.
+This is a factual privacy notice, not a contract or a request for consent.
 
-This policy covers the official Xylune build, its official documentation site, and the limited information the maintainer actually receives. A fork, modified build, app store, AI provider, storage provider, or other connected service has its own operator and privacy terms.
+Xylune is downloadable open-source software maintained by **Ömer Faruk Nehir in Türkiye**. Xylune is not a hosted service. The official app has no Xylune account, advertising, analytics, telemetry, or developer-operated backend. Through the app, the maintainer does not receive, collect, store, or have technical access to users' conversations, API keys, files, backups, or connected-account data.
 
-## 1. The short version
+## 1. Data on the device
 
-| Situation | Where the data goes | What the Xylune maintainer receives |
-| --- | --- | --- |
-| Chats, settings, memories, workspaces, and local tools | The Android device | Nothing, unless the user deliberately sends a copy |
-| AI, search, URL, or local-server request | Directly to the service or endpoint selected by the user | No relayed copy |
-| Cloud backup or restore | Directly between the device and the selected storage provider | No backup copy |
-| GitHub issue, security report, or private privacy/support message | The channel deliberately used by the user | The submitted content and related account/contact metadata |
-| Official documentation site visit | GitHub Pages infrastructure | No Xylune analytics profile; GitHub may process ordinary request and security logs |
+Depending on the features used, Xylune stores chats, settings, attachments, workspaces, provider configuration, and credentials in app-private storage on the user's device. Credentials use encrypted app-private storage backed by Android Keystore where supported. Credentials and OAuth sessions are excluded from portable Xylune archives. An archive is encrypted only when the user gives it a password.
 
-Xylune does not sell personal data, share it for behavioural advertising, or use chats or Google user data to train AI models.
+The official app does not automatically send the maintainer crash reports, diagnostics, or usage events. A user may delete device data in Xylune, clear Xylune's Android app data, or uninstall the app. The maintainer cannot remotely access, recover, export, or delete device-only data.
 
-## 2. Data kept on the device
+## 2. User-selected third parties
 
-Depending on the features used, Xylune may keep the following in app-private storage:
+When a user selects an AI provider, search service, website, local server, cloud-storage provider, or other endpoint, Xylune communicates directly from the device with that endpoint. The selected provider may receive the prompts, conversation context, files, tool inputs, account information, and network data needed for the requested action.
 
-- chats, prompts, model responses, drafts, attachments, memories, and settings;
-- provider and model configuration, account labels, usage information returned by a provider, and recent-model preferences;
-- tool results, generated files, code workspaces, and optional Linux-environment files;
-- backup history and the destination configuration chosen by the user; and
-- API keys, OAuth sessions, WebDAV credentials, and S3-compatible credentials.
+The provider independently determines its processing, security, retention, model-training practices, international transfers, billing, and deletion controls under its own terms and privacy policy. The Xylune maintainer does not receive a relayed copy, does not control a provider's copy, and cannot access, retrieve, correct, or delete it for the user.
 
-Credentials are stored in encrypted app-private storage backed by Android Keystore where supported. Credentials and OAuth sessions are excluded from portable Xylune archives. An archive is encrypted only when the user protects it with a password; a passwordless archive is not encrypted by Xylune.
+## 3. Backups, OAuth, and Google API data
 
-The official build does not automatically send the maintainer advertising identifiers, analytics events, chats, tool transcripts, or crash reports. A diagnostic export leaves the device only when the user deliberately shares it.
+When enabled by the user, backup and restore traffic goes directly between the device and the selected Google Drive, Microsoft OneDrive, Dropbox, WebDAV/Nextcloud, S3-compatible, or Android document-storage destination. A backup may contain the content selected in Xylune. Account labels and authorization sessions remain on the device. Disconnecting an account removes local authorization but may not delete an existing provider backup.
 
-The maintainer cannot remotely access, recover, correct, export, or delete device-only data. The user can remove it in Xylune, clear Xylune's Android app data, or uninstall the app.
+Xylune uses Google Drive's restricted app-data area only for backup operations requested by the user. Its use and transfer of Google user data follows the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including Limited Use. Xylune does not use Google user data for advertising, profiling, credit decisions, or AI-model training.
 
-## 3. Direct connections selected by the user
+## 4. GitHub and deliberate submissions
 
-Xylune sends data only when needed to perform an action initiated or enabled by the user. Depending on that action, a selected AI provider, search service, website, local server, OAuth provider, or storage endpoint may receive:
+[GitHub](https://docs.github.com/site-policy/privacy-policies/github-privacy-statement)—not the Xylune maintainer—operates the public repository, Issues, pull requests, accounts, hosting, cookies, and platform logs. A public GitHub post and its public profile information can be seen by the maintainer and by anyone else. GitHub is not a private support or privacy-request channel. Do not post credentials, confidential material, or personal data in an issue.
 
-- prompts, relevant conversation context, model and generation settings;
-- attachments, images, extracted text, local OCR fallback, or generated content;
-- search queries, URLs, web requests, tool inputs, and network metadata;
-- account identifiers and OAuth authorization data; or
-- approximate or precise location only after the relevant Android permission and feature are enabled.
+The only personal data the maintainer may receive is information a person deliberately publishes or sends, plus limited administration or security information an OAuth provider may make available to an application owner. Such information may be used only to respond to the submission, maintain or secure the project, administer OAuth, comply with law, or establish, exercise, or defend legal claims. It is not sold, used for advertising, or used to train AI models.
 
-These transfers are device-to-provider; they are not relayed through a Xylune server. Each provider independently controls its logs, retention, model-training choices, security, international transfers, account decisions, and deletion tools. The user should review the selected provider's terms and privacy policy before sending sensitive or third-party data.
+Where applicable, the legal basis is the requested action, legitimate interests in maintaining and defending the project, compliance with law, or consent when specifically requested. Information may be disclosed to necessary project collaborators, professional advisers, authorities when legally required, or a disclosed project successor. A chosen communication service or GitHub may process it outside Türkiye under that service's safeguards. It is retained only as long as reasonably necessary for those purposes or legal claims.
 
-## 4. Cloud backup and OAuth scopes
+## 5. Deletion, rights, and contact
 
-A user-selected backup may contain chats, attachments, settings, memories, and optional Linux files. It is transferred directly to the selected destination:
+Rights and deletion requests must be directed to the party that actually controls the information:
 
-- **Google Drive:** the hidden `appDataFolder` using `https://www.googleapis.com/auth/drive.appdata`;
-- **Microsoft OneDrive:** the application's folder using `Files.ReadWrite.AppFolder`;
-- **Dropbox:** Xylune's scoped App folder;
-- **WebDAV / Nextcloud:** the HTTPS endpoint and folder configured by the user;
-- **S3-compatible storage:** the HTTPS endpoint, bucket, and prefix configured by the user; or
-- **Android document providers:** only a target granted through Android's system picker.
+- for device data, use Xylune or Android controls;
+- for AI, cloud, or other provider data, use that provider's controls;
+- for GitHub account or platform data, use GitHub's controls; and
+- for information deliberately sent privately to the maintainer, use the private contact method shown on the relevant OAuth consent screen.
 
-Google, Microsoft, and Dropbox may return an account label, name, or email address so Xylune can show the connected account. The label and OAuth session remain on the device. Disconnecting removes the local session or credentials; it does not automatically delete backups already held by the provider.
+The maintainer cannot act on information never received or controlled. For a deliberate private submission the maintainer actually controls, applicable KVKK, GDPR, or other mandatory rights remain available. Reasonable identity and scope verification may be required. Do not use a public GitHub issue for a privacy request. Practical deletion steps are described on the [Xylune data deletion page](https://omerfaruknehir.github.io/Xylune/data-deletion/).
 
-Xylune's use and transfer of information received from Google APIs complies with the **Google API Services User Data Policy, including the Limited Use requirements**. Google user data is used only for user-requested backup listing, creation, restore, and deletion. It is not used by Xylune for advertising, profiling, credit decisions, or AI-model training, and is not transferred except as necessary to provide those user-requested functions, for security, or when legally required.
+## 6. Security, children, and changes
 
-## 5. Information the maintainer may receive
+Xylune uses Android app isolation, scoped provider permissions, and encrypted credential storage where supported, but no system is completely secure. Users remain responsible for device security, provider permissions, archive passwords, and independent copies of important data.
 
-The data controller for information actually received through official Xylune channels is **Ömer Faruk Nehir, Türkiye**. The maintainer may receive:
-
-- public GitHub issues, discussions, pull requests, comments, and profile information shown by GitHub;
-- private support, privacy, or security correspondence and its contact details;
-- diagnostic files, screenshots, logs, or chat excerpts deliberately submitted by a user; and
-- limited OAuth application administration and security information supplied by an identity provider.
-
-This information is used to answer requests, maintain and secure the project, prevent abuse, administer OAuth integrations, establish or defend legal claims, and comply with law. Depending on the processing and applicable law, the legal basis is the user's requested pre-contractual or service action, compliance with a legal obligation, establishment or defence of rights, the maintainer's legitimate interest in supporting and securing the project, or consent where consent is specifically requested. Consent may be withdrawn for future processing without affecting earlier lawful processing.
-
-The maintainer does not become controller of a device-only chat or a provider's independent copy merely because the official app connected the user to that provider. The maintainer cannot act on a copy never received or not reasonably identifiable.
-
-## 6. Sharing, sale, training, and automated decisions
-
-The maintainer does not sell personal data, rent contact lists, share data for cross-context behavioural advertising, or use received support content to train AI models. Information received by the maintainer may be disclosed only to infrastructure or communication providers used for the relevant channel, project collaborators who need it to resolve the request, professional advisers, authorities when legally required, or another project operator as part of a disclosed transfer of the official project.
-
-The maintainer does not use received information for automated decision-making or profiling that produces legal or similarly significant effects. Connected providers may have different practices under their own policies.
-
-## 7. International processing
-
-The device, GitHub, an AI provider, a storage provider, and a user-configured endpoint may be in different countries. Direct provider processing is caused by the user's provider and endpoint choices and is governed by that provider's safeguards. Information deliberately sent to the maintainer may be processed through GitHub, an OAuth provider, or another communication service outside Türkiye. Where cross-border transfer law applies, an available lawful transfer mechanism or exception must be used.
-
-Do not upload personal, confidential, institutional, or third-party information unless you have authority and a lawful basis to do so. This notice does not waive any mandatory obligation of the maintainer or a provider.
-
-## 8. Retention and deletion
-
-- **Device data:** retained until deleted in Xylune, cleared through Android settings, or removed by uninstalling.
-- **Provider data and backups:** retained under the selected provider's controls until deleted there or through Xylune. Revoking access stops future access but may not delete existing files.
-- **Private requests and security reports:** retained only as long as reasonably needed to resolve the request, protect the project, meet legal duties, or establish and defend claims.
-- **Public project activity:** normally remains in the public project history under GitHub's controls, although content may be edited or removed where appropriate and technically available.
-
-Detailed steps are on the [Xylune data deletion page](https://omerfaruknehir.github.io/Xylune/data-deletion/).
-
-## 9. Privacy rights and contact
-
-Rights apply only to processing for which the maintainer is legally responsible. Depending on the law that applies, a person may have rights to learn whether data is processed; obtain access and information; correct inaccurate data; request deletion, destruction, restriction, or objection; receive portable data; learn recipients; object to certain automated results; withdraw consent; seek compensation; and complain to the Turkish Personal Data Protection Authority or another competent supervisory authority.
-
-Under Türkiye's Law No. 6698, the rights in Article 11 remain available where applicable. Where the GDPR applies, requests are handled without undue delay and normally within one month, subject to lawful extensions and identity verification. Other mandatory deadlines remain unaffected.
-
-- Non-confidential bugs or requests: [Xylune issue tracker](https://github.com/omerfaruknehir/Xylune/issues)
-- Controller/project contact: [Ömer Faruk Nehir on GitHub](https://github.com/omerfaruknehir)
-- Confidential OAuth-related requests: use the private contact method shown on the relevant OAuth consent screen
-
-GitHub issues are public. Never post passwords, API keys, tokens, identity documents, private chat logs, or other secrets there. A request should describe the official channel and information concerned; reasonable identity verification may be required. Ordinary open-source support has no promised response time, but that does not change a mandatory privacy deadline.
-
-## 10. Security, children, and changes
-
-Xylune uses Android app isolation, scoped provider permissions, and encrypted credential storage where supported. No storage or transmission method is completely secure. Users are responsible for device security, archive passwords, provider permissions, and additional backups of important data.
-
-Xylune is not directed to children. A child may use it only with any consent or supervision required by local law and by each connected provider. The official app does not knowingly operate a separate child-profile database.
-
-This policy may change when Xylune's features, operators, or legal duties change. The effective date and public repository history identify the current version.
+Xylune is not directed to children. Any required guardian consent and provider age rules still apply. This notice may be updated if the app's data paths, operator, or legal duties change; the effective date and public repository history show the current version.
 
 ---
 
@@ -128,115 +62,49 @@ This policy may change when Xylune's features, operators, or legal duties change
 
 **Yürürlük tarihi: 5 Ağustos 2026**
 
-Xylune, **Ömer Faruk Nehir tarafından Türkiye'de** sürdürülen yerel öncelikli bir Android istemcisidir. Resmî uygulamada Xylune hesabı, reklam sistemi, analitik servisi veya merkezi sohbet sunucusu yoktur. Olağan yapay zekâ istekleri ve yedekler, cihazdan doğrudan kullanıcının seçtiği hizmete gider.
+Bu metin, sözleşme veya rıza talebi değil, verilerin işlenmesine ilişkin olgusal bir aydınlatma metnidir.
 
-Bu politika; resmî Xylune derlemesini, resmî belge sitesini ve geliştiricinin fiilen aldığı sınırlı bilgileri kapsar. Fork, değiştirilmiş derleme, uygulama mağazası, yapay zekâ sağlayıcısı, depolama sağlayıcısı veya diğer bağlı hizmet kendi işletmecisine ve gizlilik koşullarına sahiptir.
+Xylune, **Ömer Faruk Nehir tarafından Türkiye'de** sürdürülen, indirilebilir açık kaynaklı yazılımdır. Xylune barındırılan bir hizmet değildir. Resmî uygulamada Xylune hesabı, reklam, analitik, telemetri veya geliştiricinin işlettiği merkezi sunucu yoktur. Geliştirici; uygulama üzerinden kullanıcıların sohbetlerini, API anahtarlarını, dosyalarını, yedeklerini veya bağlı hesap verilerini almaz, toplamaz, saklamaz ve bunlara teknik olarak erişemez.
 
-## 1. Kısa özet
+## 1. Cihazdaki veriler
 
-| Durum | Veri nereye gider? | Xylune geliştiricisi ne alır? |
-| --- | --- | --- |
-| Sohbet, ayar, anı, çalışma alanı ve yerel araçlar | Android cihaz | Kullanıcı bilerek kopya göndermedikçe hiçbir şey |
-| Yapay zekâ, arama, URL veya yerel sunucu isteği | Doğrudan kullanıcının seçtiği hizmet ya da uç nokta | Aracı sunucu kopyası yok |
-| Bulut yedekleme veya geri yükleme | Doğrudan cihaz ile seçilen depolama sağlayıcısı arasında | Yedek kopyası yok |
-| GitHub issue, güvenlik bildirimi veya özel gizlilik/destek mesajı | Kullanıcının bilerek seçtiği kanal | Gönderilen içerik ve ilgili hesap/iletişim bilgisi |
-| Resmî belge sitesi ziyareti | GitHub Pages altyapısı | Xylune analitik profili yok; GitHub olağan istek ve güvenlik kayıtlarını işleyebilir |
+Kullanılan özelliklere göre Xylune; sohbetleri, ayarları, ekleri, çalışma alanlarını, sağlayıcı yapılandırmasını ve kimlik bilgilerini kullanıcının cihazındaki uygulamaya özel alanda saklar. Kimlik bilgileri, desteklenen cihazlarda Android Keystore destekli şifrelenmiş uygulama alanını kullanır. Kimlik bilgileri ve OAuth oturumları taşınabilir Xylune arşivlerine dahil edilmez. Arşiv yalnızca kullanıcı parola belirlerse şifrelenir.
 
-Xylune kişisel veri satmaz, davranışsal reklam amacıyla paylaşmaz; sohbetleri veya Google kullanıcı verilerini yapay zekâ modeli eğitmek için kullanmaz.
+Resmî uygulama geliştiriciye otomatik olarak çökme raporu, tanılama veya kullanım olayı göndermez. Kullanıcı cihaz verisini Xylune'dan silebilir, Xylune'un Android uygulama verisini temizleyebilir veya uygulamayı kaldırabilir. Geliştirici yalnızca cihazda bulunan veriye uzaktan erişemez; bu veriyi kurtaramaz, dışa aktaramaz veya silemez.
 
-## 2. Cihazda tutulan veriler
+## 2. Kullanıcının seçtiği üçüncü taraflar
 
-Kullanılan özelliklere göre Xylune aşağıdakileri uygulamaya özel alanda tutabilir:
+Kullanıcı bir yapay zekâ sağlayıcısı, arama hizmeti, internet sitesi, yerel sunucu, bulut depolama sağlayıcısı veya başka bir uç nokta seçtiğinde Xylune cihazdan doğrudan bu uç noktayla iletişim kurar. Seçilen sağlayıcı; istenen işlem için gereken istemleri, sohbet bağlamını, dosyaları, araç girdilerini, hesap bilgilerini ve ağ verilerini alabilir.
 
-- sohbet, istem, model yanıtı, taslak, ek, anı ve ayarlar;
-- sağlayıcı ve model yapılandırması, hesap etiketi, sağlayıcının döndürdüğü kullanım bilgisi ve son model tercihleri;
-- araç sonuçları, oluşturulan dosyalar, kod çalışma alanları ve isteğe bağlı Linux ortamı dosyaları;
-- yedek geçmişi ve kullanıcının seçtiği hedef yapılandırması; ve
-- API anahtarı, OAuth oturumu, WebDAV ve S3 uyumlu kimlik bilgileri.
+Sağlayıcı; işleme, güvenlik, saklama, model eğitimi, yurt dışı aktarım, ücretlendirme ve silme araçlarını kendi koşulları ve gizlilik politikası kapsamında bağımsız olarak belirler. Xylune geliştiricisi aracı bir kopya almaz, sağlayıcıdaki kopyayı kontrol etmez ve kullanıcı adına bu kopyaya erişemez; kopyayı geri getiremez, düzeltemez veya silemez.
 
-Kimlik bilgileri, desteklenen cihazlarda Android Keystore destekli şifrelenmiş uygulama alanında saklanır. Kimlik bilgileri ve OAuth oturumları taşınabilir Xylune arşivlerine dahil edilmez. Arşiv yalnızca kullanıcı parola belirlediğinde şifrelenir; parolasız arşiv Xylune tarafından şifrelenmez.
+## 3. Yedekler, OAuth ve Google API verileri
 
-Resmî derleme; reklam kimliği, analitik olayı, sohbet, araç kaydı veya çökme raporunu geliştiriciye otomatik göndermez. Tanılama dışa aktarımı ancak kullanıcı bilerek paylaşırsa cihazdan çıkar.
+Kullanıcı etkinleştirdiğinde yedekleme ve geri yükleme trafiği cihaz ile seçilen Google Drive, Microsoft OneDrive, Dropbox, WebDAV/Nextcloud, S3 uyumlu veya Android belge depolama hedefi arasında doğrudan gerçekleşir. Yedek, Xylune'da seçilen içeriği barındırabilir. Hesap etiketleri ve yetkilendirme oturumları cihazda kalır. Hesabın bağlantısını kesmek yerel yetkiyi kaldırır, ancak sağlayıcıdaki mevcut yedeği silmeyebilir.
 
-Geliştirici yalnızca cihazda bulunan veriye uzaktan erişemez; bu veriyi kurtaramaz, düzeltemez, dışa aktaramaz veya silemez. Kullanıcı veriyi Xylune'dan silebilir, Android uygulama verisini temizleyebilir veya uygulamayı kaldırabilir.
+Xylune, Google Drive'ın kısıtlı uygulama-verisi alanını yalnızca kullanıcının istediği yedekleme işlemleri için kullanır. Google kullanıcı verisinin kullanımı ve aktarımı, Sınırlı Kullanım dahil [Google API Hizmetleri Kullanıcı Verileri Politikası'na](https://developers.google.com/terms/api-services-user-data-policy) uyar. Xylune, Google kullanıcı verisini reklam, profilleme, kredi kararı veya yapay zekâ modeli eğitimi için kullanmaz.
 
-## 3. Kullanıcının seçtiği doğrudan bağlantılar
+## 4. GitHub ve bilerek gönderilen bilgiler
 
-Xylune yalnızca kullanıcının başlattığı veya etkinleştirdiği işlemi yapmak için gerekli veriyi gönderir. İşleme göre seçilen yapay zekâ sağlayıcısı, arama hizmeti, internet sitesi, yerel sunucu, OAuth sağlayıcısı veya depolama ucu şunları alabilir:
+Herkese açık depoyu, Issues'ı, pull request'leri, hesapları, barındırmayı, çerezleri ve platform kayıtlarını Xylune geliştiricisi değil [GitHub](https://docs.github.com/site-policy/privacy-policies/github-privacy-statement) işletir. Herkese açık bir GitHub gönderisi ve herkese açık profil bilgileri geliştirici ve diğer herkes tarafından görülebilir. GitHub özel destek veya gizlilik başvurusu kanalı değildir. Issue içine kimlik bilgisi, gizli malzeme veya kişisel veri koymayın.
 
-- istem, ilgili sohbet bağlamı, model ve üretim ayarları;
-- ek, görsel, çıkarılmış metin, yerel OCR uyumluluk çıktısı veya oluşturulan içerik;
-- arama sorgusu, URL, web isteği, araç girdisi ve ağ üst verisi;
-- hesap tanımlayıcısı ve OAuth yetkilendirme verisi; veya
-- yalnızca ilgili Android izni ve özellik etkinleştirildikten sonra yaklaşık ya da kesin konum.
+Geliştiricinin alabileceği tek kişisel veri, kişinin bilerek yayımladığı veya gönderdiği bilgi ile OAuth sağlayıcısının uygulama sahibine gösterebileceği sınırlı yönetim ya da güvenlik bilgisidir. Bu bilgi yalnızca gönderiye yanıt vermek, projeyi sürdürmek veya güvene almak, OAuth'ı yönetmek, hukuka uymak ya da bir hukuki hakkı tesis, kullanma veya korumak için kullanılabilir. Bilgi satılmaz, reklam için kullanılmaz ve yapay zekâ modeli eğitiminde kullanılmaz.
 
-Bu aktarımlar cihazdan sağlayıcıya yapılır; Xylune sunucusundan geçirilmez. Her sağlayıcı kayıt, saklama, model eğitimi, güvenlik, yurt dışı aktarım, hesap kararı ve silme araçlarını kendi koşulları kapsamında bağımsız belirler. Kullanıcı hassas veya üçüncü kişiye ait veri göndermeden önce seçtiği sağlayıcının metinlerini incelemelidir.
+Uygulanabilir olduğu ölçüde hukuki sebep; talep edilen işlemin yapılması, projenin sürdürülmesi ve korunmasındaki meşru menfaat, hukuki yükümlülük veya özellikle istendiğinde rızadır. Bilgi; yalnızca ihtiyaç duyan proje katkıcılarıyla, mesleki danışmanlarla, hukuken gerektiğinde yetkili mercilerle veya açıklanmış proje halefiyle paylaşılabilir. Seçilen iletişim hizmeti veya GitHub, bilgiyi kendi güvenceleri kapsamında Türkiye dışında işleyebilir. Bilgi yalnızca bu amaçlar veya hukuki talepler için makul olarak gerekli olduğu sürece saklanır.
 
-## 4. Bulut yedekleme ve OAuth kapsamları
+## 5. Silme, haklar ve iletişim
 
-Kullanıcının seçtiği yedek; sohbet, ek, ayar, anı ve isteğe bağlı Linux dosyalarını içerebilir. Yedek doğrudan şu hedeflerden birine aktarılır:
+Hak ve silme talepleri, bilgiyi fiilen kontrol eden tarafa yöneltilmelidir:
 
-- **Google Drive:** `https://www.googleapis.com/auth/drive.appdata` kapsamıyla gizli `appDataFolder`;
-- **Microsoft OneDrive:** `Files.ReadWrite.AppFolder` kapsamıyla uygulama klasörü;
-- **Dropbox:** Xylune'un kapsamı sınırlandırılmış App klasörü;
-- **WebDAV / Nextcloud:** kullanıcının yapılandırdığı HTTPS uç noktası ve klasör;
-- **S3 uyumlu depolama:** kullanıcının yapılandırdığı HTTPS uç noktası, bucket ve prefix; veya
-- **Android belge sağlayıcıları:** yalnızca Android sistem seçicisinde izin verilen hedef.
+- cihaz verisi için Xylune veya Android araçlarını kullanın;
+- yapay zekâ, bulut veya başka sağlayıcı verisi için sağlayıcının araçlarını kullanın;
+- GitHub hesap veya platform verisi için GitHub'ın araçlarını kullanın; ve
+- geliştiriciye bilerek özel olarak gönderilen bilgi için ilgili OAuth onay ekranındaki özel iletişim yöntemini kullanın.
 
-Google, Microsoft ve Dropbox bağlı hesabı göstermek için hesap etiketi, ad veya e-posta döndürebilir. Bu etiket ve OAuth oturumu cihazda kalır. Bağlantıyı kesmek yerel oturumu veya kimlik bilgisini kaldırır; sağlayıcıdaki mevcut yedeği kendiliğinden silmez.
+Geliştirici hiç almadığı veya kontrol etmediği bilgi hakkında işlem yapamaz. Geliştiricinin fiilen kontrol ettiği özel bir gönderi için uygulanabilir KVKK, GDPR veya diğer emredici haklar saklıdır. Makul kimlik ve kapsam doğrulaması istenebilir. Gizlilik talebi için herkese açık GitHub issue'su kullanmayın. Uygulanabilir silme adımları [Xylune veri silme sayfasında](https://omerfaruknehir.github.io/Xylune/data-deletion/) açıklanır.
 
-Xylune'un Google API'lerinden alınan bilgileri kullanması ve aktarması, **Sınırlı Kullanım gereklilikleri dahil Google API Hizmetleri Kullanıcı Verileri Politikası** ile uyumludur. Google kullanıcı verisi yalnızca kullanıcının istediği yedekleri listeleme, oluşturma, geri yükleme ve silme işlevlerinde kullanılır. Xylune bu veriyi reklam, profilleme, kredi kararı veya yapay zekâ modeli eğitimi için kullanmaz; veriyi yalnızca bu kullanıcı işlevini sağlamak, güvenliği korumak veya hukuki zorunluluğa uymak için gerektiğinde aktarır.
+## 6. Güvenlik, çocuklar ve değişiklikler
 
-## 5. Geliştiricinin alabileceği bilgiler
+Xylune; Android uygulama yalıtımı, kapsamı sınırlandırılmış sağlayıcı izinleri ve desteklenen cihazlarda şifrelenmiş kimlik bilgisi saklama yöntemini kullanır; ancak hiçbir sistem tamamen güvenli değildir. Cihaz güvenliği, sağlayıcı izinleri, arşiv parolaları ve önemli verinin bağımsız kopyaları kullanıcının sorumluluğundadır.
 
-Resmî Xylune kanallarından fiilen alınan bilgiler bakımından veri sorumlusu **Ömer Faruk Nehir, Türkiye**'dir. Geliştirici şunları alabilir:
-
-- herkese açık GitHub issue, discussion, pull request, yorum ve GitHub'ın gösterdiği profil bilgileri;
-- özel destek, gizlilik veya güvenlik yazışması ve iletişim bilgisi;
-- kullanıcının bilerek gönderdiği tanılama dosyası, ekran görüntüsü, kayıt veya sohbet kesiti; ve
-- kimlik sağlayıcısının sunduğu sınırlı OAuth uygulama yönetimi ve güvenlik bilgisi.
-
-Bu bilgiler; talebi cevaplamak, projeyi sürdürmek ve güvenliğini sağlamak, kötüye kullanımı önlemek, OAuth bağlantılarını yönetmek, bir hakkı tesis/kullanmak/savunmak ve hukuka uymak için kullanılır. Somut işleme ve uygulanabilir hukuka göre hukuki sebep; kullanıcının talep ettiği sözleşme öncesi veya hizmet işlemi, hukuki yükümlülük, bir hakkın tesisi/kullanılması/korunması, projeyi destekleme ve güvenli tutmaya yönelik meşru menfaat ya da rızanın özellikle istendiği durumda rızadır. Rıza, önceki hukuka uygun işlemenin geçerliliğini etkilemeden gelecek için geri çekilebilir.
-
-Resmî uygulamanın kullanıcıyı sağlayıcıya bağlaması, geliştiriciyi yalnızca cihazda bulunan sohbetin veya sağlayıcının bağımsız kopyasının veri sorumlusu yapmaz. Geliştirici hiç almadığı veya makul biçimde ilişkilendiremediği bir kopya üzerinde işlem yapamaz.
-
-## 6. Paylaşım, satış, eğitim ve otomatik karar
-
-Geliştirici kişisel veri satmaz, iletişim listesi kiralamaz, farklı bağlamlar arası davranışsal reklam amacıyla veri paylaşmaz ve aldığı destek içeriğini yapay zekâ modeli eğitmek için kullanmaz. Geliştiricinin aldığı bilgi yalnızca ilgili kanalın altyapı/iletişim sağlayıcısına, talebi çözmesi gereken proje katkıcısına, mesleki danışmana, hukuken zorunluysa yetkili makama veya resmî projenin açıklanmış devri kapsamında yeni işletmeciye aktarılabilir.
-
-Geliştirici, aldığı bilgi üzerinde hukuki veya benzer derecede önemli sonuç doğuran otomatik karar ya da profilleme yapmaz. Bağlı sağlayıcıların kendi politikaları farklı olabilir.
-
-## 7. Yurt dışı işleme
-
-Cihaz, GitHub, yapay zekâ sağlayıcısı, depolama sağlayıcısı ve kullanıcının yapılandırdığı uç nokta farklı ülkelerde olabilir. Doğrudan sağlayıcı işlemesi kullanıcının sağlayıcı/uç nokta seçimiyle başlar ve ilgili sağlayıcının güvencelerine tabidir. Geliştiriciye bilerek gönderilen bilgiler GitHub, OAuth sağlayıcısı veya başka bir iletişim hizmeti üzerinden Türkiye dışında işlenebilir. Yurt dışı aktarım mevzuatı uygulandığında kullanılabilir hukuka uygun aktarım mekanizması veya istisna kullanılmalıdır.
-
-Kişisel, gizli, kurumsal veya üçüncü kişiye ait veriyi yalnızca gerekli yetki ve hukuki sebebe sahipseniz yükleyin. Bu açıklama geliştiricinin veya sağlayıcının emredici yükümlülüklerinden feragat ettirmez.
-
-## 8. Saklama ve silme
-
-- **Cihaz verisi:** Xylune içinde silinene, Android ayarlarından temizlenene veya uygulama kaldırılana kadar tutulur.
-- **Sağlayıcı verisi ve yedek:** ilgili sağlayıcının kontrollerine göre, Xylune veya sağlayıcı üzerinden silinene kadar tutulur. Erişimi iptal etmek gelecekteki erişimi durdurur; mevcut dosyayı silmeyebilir.
-- **Özel başvuru ve güvenlik bildirimi:** talebi çözmek, projeyi korumak, hukuki yükümlülüğü yerine getirmek veya bir hakkı tesis/savunmak için makul ölçüde gerekli süre tutulur.
-- **Herkese açık proje faaliyeti:** uygun ve teknik olarak mümkün olduğunda içerik düzenlenebilse veya kaldırılabilse de, normalde GitHub kontrolleri altında herkese açık proje geçmişinde kalır.
-
-Ayrıntılı adımlar [Xylune veri silme sayfasındadır](https://omerfaruknehir.github.io/Xylune/data-deletion/).
-
-## 9. İlgili kişi hakları ve iletişim
-
-Haklar yalnızca geliştiricinin hukuken sorumlu olduğu işlemeye uygulanır. Uygulanabilir hukuka göre ilgili kişi; veri işlenip işlenmediğini öğrenme, erişim ve bilgi alma, yanlış veriyi düzeltme, silme/yok etme/kısıtlama/itiraz isteme, taşınabilir veri alma, alıcıları öğrenme, belirli otomatik sonuçlara itiraz etme, rızayı geri çekme, zararın giderilmesini isteme ve Kişisel Verileri Koruma Kurumu'na veya başka bir yetkili denetim makamına şikâyet etme haklarına sahip olabilir.
-
-6698 sayılı Kanun uygulanıyorsa 11. maddedeki haklar saklıdır. GDPR uygulandığında başvurular, hukuka uygun uzatma ve kimlik doğrulama halleri saklı olmak üzere, gecikmeksizin ve normalde bir ay içinde sonuçlandırılır. Diğer emredici süreler değişmez.
-
-- Gizli olmayan hata ve talepler: [Xylune issue sayfası](https://github.com/omerfaruknehir/Xylune/issues)
-- Veri sorumlusu/proje iletişimi: [GitHub'da Ömer Faruk Nehir](https://github.com/omerfaruknehir)
-- Gizli OAuth talepleri: ilgili OAuth onay ekranında gösterilen özel iletişim yöntemini kullanın
-
-GitHub issue'ları herkese açıktır. Parola, API anahtarı, token, kimlik belgesi, özel sohbet veya başka bir sır paylaşmayın. Başvuru ilgili resmî kanalı ve bilgiyi açıklamalıdır; makul kimlik doğrulaması istenebilir. Olağan açık kaynak desteği için yanıt süresi taahhüt edilmez; bu durum emredici kişisel veri başvuru süresini değiştirmez.
-
-## 10. Güvenlik, çocuklar ve değişiklikler
-
-Xylune; Android uygulama izolasyonu, kapsamı sınırlandırılmış sağlayıcı izinleri ve desteklenen cihazlarda şifreli kimlik bilgisi depolaması kullanır. Hiçbir saklama veya aktarım yöntemi tamamen güvenli değildir. Cihaz güvenliği, arşiv parolası, sağlayıcı izinleri ve önemli verilerin ek yedekleri kullanıcı tarafından korunmalıdır.
-
-Xylune çocuklara yönelik değildir. Bir çocuk yalnızca yerel hukukun ve bağlı her sağlayıcının gerektirdiği izin veya gözetimle kullanabilir. Resmî uygulama bilerek ayrı bir çocuk profili veritabanı işletmez.
-
-Xylune'un özellikleri, işletmecileri veya hukuki yükümlülükleri değiştiğinde bu politika güncellenebilir. Yürürlük tarihi ve herkese açık depo geçmişi güncel sürümü gösterir.
+Xylune çocuklara yönelik değildir. Gerekli veli onayı ve sağlayıcı yaş kuralları geçerliliğini korur. Uygulamanın veri akışı, işletmecisi veya hukuki yükümlülükleri değişirse bu metin güncellenebilir; yürürlük tarihi ve herkese açık depo geçmişi güncel sürümü gösterir.

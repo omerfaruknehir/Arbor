@@ -13,5 +13,7 @@ class ChatHeaderLayoutTest {
         assertTrue(source.contains(".padding(start = 72.dp, end = titleEndPadding)"))
         assertTrue(source.contains("modifier = Modifier.zIndex(4f)"))
         assertTrue(source.contains(".zIndex(5f)"))
+        assertTrue(source.contains(".matchParentSize()"))
+        assertTrue(source.contains("zIndex is scoped to siblings"))
     }
 }
