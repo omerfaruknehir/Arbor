@@ -1281,6 +1281,16 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
 internal fun normalModelPickerModels(models: List<ModelEntity>): List<ModelEntity> =
     models.sortedBy { it.displayName.lowercase() }
 
+internal fun shouldShowOcrCompatibility(isImage: Boolean, modelSupportsVision: Boolean): Boolean =
+    isImage && !modelSupportsVision
+
+internal fun unsupportedToolCallingNotice(
+    modelSupportsTools: Boolean?,
+    toolCallingRequested: Boolean,
+): String? = if (modelSupportsTools == false && toolCallingRequested) {
+    "This model doesn't support tool calling. Web, Python, and Linux tools won't run."
+} else null
+
 @Composable
 private fun EmptyConversation(
     providerConfigured: Boolean,
@@ -1402,8 +1412,8 @@ private fun MessageCard(
                             AttachmentCard(
                                 attachment = attachment,
                                 modelUsesFallback = fallback,
-                                allowOcr = user,
-                                onEnableOcr = if (user) ({ viewModel.enableOcr(attachment) }) else null,
+                                allowOcr = fallback,
+                                onEnableOcr = if (fallback) ({ viewModel.enableOcr(attachment) }) else null,
                             )
                         }
                     }
@@ -2622,6 +2632,37 @@ private fun Composer(
                 }
             }
             if (providerConfigured && !generating) conversation?.let { current ->
+                unsupportedToolCallingNotice(
+                    modelSupportsTools = model?.supportsTools,
+                    toolCallingRequested = current.webSearchEnabled ||
+                        current.deepResearchEnabled ||
+                        current.agentPythonEnabled ||
+                        current.agentUbuntuEnabled,
+                )?.let { notice ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = .72f),
+                        shape = MaterialTheme.shapes.large,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp),
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Outlined.WarningAmber,
+                                null,
+                                Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                            Text(
+                                notice,
+                                Modifier.padding(start = 8.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                        }
+                    }
+                }
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2884,7 +2925,7 @@ private fun StagedAttachmentPreview(
                     )
                 }
             }
-            if (attachment.ocrJson != null || (isImage && !modelSupportsVision)) {
+            if (shouldShowOcrCompatibility(isImage, modelSupportsVision)) {
                 Surface(
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .94f),
                     shape = CircleShape,

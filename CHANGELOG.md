@@ -1,3 +1,10 @@
+## 0.24.1 — 2026-08-05
+
+- Keep the model selector tappable while the chat title is expanded by placing its interactive surface above the transparent large-app-bar hit region.
+- Show OCR compatibility only when the selected model cannot read images, and warn about tool calling only when tool-dependent modes are enabled for a model that lacks function calling.
+- Replace the bilingual privacy policy, KVKK disclosure, and terms with clearer role-based data flows, provider boundaries, mandatory-rights protections, and proportionate warranty and liability terms.
+- Stop asking the GitHub Actions token to bootstrap Pages; repository Pages enablement remains a one-time owner setting before the legal site can deploy.
+
 ## 0.24.0 — 2026-08-05
 
 - Replace the unmanageable provider dropdowns with a searchable, filterable model catalog supporting favorites, recents, providers, and capability filters across hundreds of models.

@@ -12,5 +12,6 @@ class ChatHeaderLayoutTest {
         assertTrue(source.contains("val titleEndPadding = 72.dp + (48.dp * travel)"))
         assertTrue(source.contains(".padding(start = 72.dp, end = titleEndPadding)"))
         assertTrue(source.contains("modifier = Modifier.zIndex(4f)"))
+        assertTrue(source.contains(".zIndex(5f)"))
     }
 }
