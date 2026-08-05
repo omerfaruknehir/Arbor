@@ -155,6 +155,8 @@ import app.xylune.chat.agent.ToolTraceEvent
 import app.xylune.chat.agent.WebFetchResponse
 import app.xylune.chat.agent.WebSearchResponse
 import app.xylune.chat.provider.ThinkingLevelOption
+import app.xylune.chat.provider.defaultThinkingEffort
+import app.xylune.chat.provider.effectiveThinkingEnabled
 import app.xylune.chat.provider.supportedThinkingLevels
 import app.xylune.chat.agent.MessageTimelineEvent
 import app.xylune.chat.generation.StreamingPreviewStore
@@ -490,7 +492,10 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsStateWithLifecycle()
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsStateWithLifecycle()
     val models by viewModel.models.collectAsStateWithLifecycle()
+    val allModels by viewModel.allModels.collectAsStateWithLifecycle()
     val allProviders by viewModel.providers.collectAsStateWithLifecycle()
+    val favoriteModels by viewModel.favoriteModels.collectAsStateWithLifecycle()
+    val recentModels by viewModel.recentModels.collectAsStateWithLifecycle()
     val credentialRevision by viewModel.credentialRevision.collectAsStateWithLifecycle()
     val usableProviders = remember(allProviders, credentialRevision) { viewModel.configuredProviders(allProviders) }
     val linuxStatus by viewModel.ubuntuStatus.collectAsStateWithLifecycle()
@@ -503,7 +508,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val revisionBranchGroups = remember(revisionHistory) { buildRevisionBranchGroups(revisionHistory) }
     val paging = viewModel.messages.collectAsLazyPagingItems()
     val focusedMessageNodeId by viewModel.focusedMessageNodeId.collectAsState()
-    var modelMenu by remember { mutableStateOf(false) }
+    var showModelPicker by remember { mutableStateOf(false) }
     var chatMenu by remember { mutableStateOf(false) }
     var showChatConfiguration by remember { mutableStateOf(false) }
     val messageListState = rememberLazyListState()
@@ -738,7 +743,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     }
 
     LaunchedEffect(conversation?.id) {
-        modelMenu = false
+        showModelPicker = false
         chatMenu = false
         followMode = ChatFollowMode.FOLLOWING
         manualFollowHold = false
@@ -1042,42 +1047,31 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     }
                 },
                 modelSelector = {
-                    Box {
-                        Surface(
-                            onClick = {
-                                if (usableProviders.isEmpty()) viewModel.openProviderSetup()
-                                else modelMenu = true
-                            },
-                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .78f),
-                            shape = CircleShape,
-                        ) {
-                            Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Outlined.Psychology, null, Modifier.size(14.dp))
-                                Text(
-                                    buildString {
-                                        if (usableProviders.isEmpty()) {
-                                            append("Set up provider")
-                                            return@buildString
-                                        }
-                                        val provider = usableProviders.firstOrNull { it.id == conversation?.selectedProviderId }
-                                        if (provider != null && usableProviders.size > 1) append(provider.displayName).append(" · ")
-                                        append(models.firstOrNull { it.modelId == conversation?.selectedModelId }?.displayName ?: conversation?.selectedModelId ?: "Choose model")
-                                    },
-                                    Modifier.padding(start = 4.dp),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        }
-                        XyluneDropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
-                            usableProviders.forEach { provider ->
-                                ProviderModelMenuRows(provider, viewModel, conversation?.selectedProviderId, conversation?.selectedModelId) { providerId, modelId ->
-                                    viewModel.selectModel(providerId, modelId)
-                                    modelMenu = false
-                                }
-                            }
-                            if (usableProviders.isEmpty()) DropdownMenuItem(text = { Text("Open the left menu → Settings to add a provider") }, onClick = { modelMenu = false })
+                    Surface(
+                        onClick = {
+                            if (usableProviders.isEmpty()) viewModel.openProviderSetup()
+                            else showModelPicker = true
+                        },
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .78f),
+                        shape = CircleShape,
+                    ) {
+                        Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.Psychology, null, Modifier.size(14.dp))
+                            Text(
+                                buildString {
+                                    if (usableProviders.isEmpty()) {
+                                        append("Set up provider")
+                                        return@buildString
+                                    }
+                                    val provider = usableProviders.firstOrNull { it.id == conversation?.selectedProviderId }
+                                    if (provider != null && usableProviders.size > 1) append(provider.displayName).append(" · ")
+                                    append(models.firstOrNull { it.modelId == conversation?.selectedModelId }?.displayName ?: conversation?.selectedModelId ?: "Choose model")
+                                },
+                                Modifier.padding(start = 4.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     }
                 },
@@ -1268,36 +1262,17 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             ChatConfigurationSheet(current, contextSummary, viewModel) { showChatConfiguration = false }
         } ?: run { showChatConfiguration = false }
     }
-}
-
-@Composable
-private fun ProviderModelMenuRows(
-    provider: ProviderEntity,
-    viewModel: ChatViewModel,
-    selectedProviderId: String?,
-    selectedModelId: String?,
-    onSelect: (String, String) -> Unit,
-) {
-    val models by viewModel.modelsFor(provider.id).collectAsStateWithLifecycle(initialValue = emptyList())
-    Text(
-        provider.displayName.uppercase(),
-        Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.primary,
-        fontWeight = FontWeight.SemiBold,
-    )
-    normalModelPickerModels(models).forEach { model ->
-        DropdownMenuItem(
-            text = {
-                Column {
-                    Text(if (provider.id == selectedProviderId && model.modelId == selectedModelId) "✓ ${model.displayName}" else model.displayName)
-                    Text(
-                        if (model.supportsImageGeneration) "Image generation" else "${model.contextWindow / 1_000}K context",
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
-            },
-            onClick = { onSelect(provider.id, model.modelId) },
+    if (showModelPicker) {
+        ModelPickerSheet(
+            providers = usableProviders,
+            models = allModels,
+            selectedProviderId = conversation?.selectedProviderId,
+            selectedModelId = conversation?.selectedModelId,
+            favoriteKeys = favoriteModels,
+            recentKeys = recentModels,
+            onToggleFavorite = viewModel::toggleFavoriteModel,
+            onSelect = viewModel::selectModel,
+            onDismiss = { showModelPicker = false },
         )
     }
 }
@@ -2945,12 +2920,22 @@ private fun ThinkingComposerChip(
 ) {
     var menu by remember { mutableStateOf(false) }
     val haptics = rememberXyluneHaptics()
-    val options = remember(provider?.id, provider?.kind, model?.modelId, model?.supportsThinking) {
+    val options = remember(
+        provider?.id,
+        provider?.kind,
+        model?.modelId,
+        model?.supportsThinking,
+        model?.reasoningMetadataAvailable,
+        model?.reasoningEffortsCsv,
+        model?.reasoningMandatory,
+    ) {
         supportedThinkingLevels(provider, model)
     }
-    val selectedIndex = remember(options, enabled, effort) {
+    val effectiveEnabled = effectiveThinkingEnabled(model, enabled)
+    val effectiveEffort = defaultThinkingEffort(model, effort)
+    val selectedIndex = remember(options, effectiveEnabled, effectiveEffort) {
         options.indexOfFirst { option ->
-            if (!enabled) !option.enabled else option.enabled && option.effort == effort
+            if (!effectiveEnabled) !option.enabled else option.enabled && option.effort == effectiveEffort
         }.takeIf { it >= 0 } ?: options.indexOfFirst { it.enabled }.coerceAtLeast(0)
     }
     val selected = options.getOrNull(selectedIndex)
@@ -2989,9 +2974,9 @@ private fun ThinkingComposerChip(
                 }
             },
             enabled = options.isNotEmpty(),
-            color = if (enabled && options.isNotEmpty()) MaterialTheme.colorScheme.secondaryContainer
+            color = if (effectiveEnabled && options.isNotEmpty()) MaterialTheme.colorScheme.secondaryContainer
             else MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = if (enabled && options.isNotEmpty()) MaterialTheme.colorScheme.onSecondaryContainer
+            contentColor = if (effectiveEnabled && options.isNotEmpty()) MaterialTheme.colorScheme.onSecondaryContainer
             else MaterialTheme.colorScheme.onSurfaceVariant,
             shape = CircleShape,
         ) {
@@ -3003,7 +2988,7 @@ private fun ThinkingComposerChip(
                 Icon(Icons.Outlined.Psychology, null, Modifier.size(17.dp))
                 Text(
                     if (options.isEmpty()) "Thinking unavailable"
-                    else "Think · ${selected?.label ?: if (enabled) effort.composerName else "Off"}",
+                    else "Think · ${selected?.label ?: if (effectiveEnabled) effort.composerName else "Off"}",
                     style = MaterialTheme.typography.labelLarge,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

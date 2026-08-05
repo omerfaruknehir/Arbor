@@ -53,16 +53,10 @@ fun XyluneApp(viewModel: ChatViewModel, activity: Activity) {
     val showArchived by viewModel.showArchived.collectAsState()
     val pythonRun by viewModel.pythonRun.collectAsState()
     val linuxRun by viewModel.linuxRun.collectAsState()
-    val ubuntuStatus by viewModel.ubuntuStatus.collectAsState()
     val developerSettings by viewModel.developerSettings.collectAsState()
     val providers by viewModel.providers.collectAsState()
     val credentialRevision by viewModel.credentialRevision.collectAsState()
     val providerCatalogReady by viewModel.providerCatalogReady.collectAsState()
-    val themeMode by viewModel.themeMode.collectAsState()
-    val palette by viewModel.palette.collectAsState()
-    val matchLauncherIconToPalette by viewModel.matchLauncherIconToPalette.collectAsState()
-    val amoled by viewModel.amoled.collectAsState()
-    val newChatDefaults by viewModel.newChatDefaults.collectAsState()
     val configuredProviders = remember(providers, credentialRevision) {
         viewModel.configuredProviders(providers)
     }
@@ -109,32 +103,14 @@ fun XyluneApp(viewModel: ChatViewModel, activity: Activity) {
         Box(Modifier.fillMaxSize()) {
             OnboardingScreen(
                 viewModel = viewModel,
-                currentThemeMode = themeMode,
-                currentPalette = palette,
-                matchLauncherIconToPalette = matchLauncherIconToPalette,
-                amoled = amoled,
                 providerCatalogDelayed = !providerCatalogReady,
                 configuredProviderCount = configuredProviders.size,
-                pythonEnabled = newChatDefaults.agentPythonEnabled,
                 stepIndex = setupStepIndex,
                 stepOffsetFraction = setupPageOffsetFraction,
                 scrollOffsetForStep = viewModel::setupScrollOffset,
                 onPagerPositionChanged = viewModel::updateSetupPagerPosition,
                 onStepScrollChanged = viewModel::saveSetupScrollOffset,
-                linuxEnabled = newChatDefaults.agentUbuntuEnabled,
-                linuxStatus = ubuntuStatus,
-                onThemeModeChanged = viewModel::setThemeMode,
-                onPaletteChanged = viewModel::setPalette,
-                onMatchLauncherIconToPaletteChanged = viewModel::setMatchLauncherIconToPalette,
-                onAmoledChanged = viewModel::setAmoled,
-                onPythonEnabledChanged = { enabled ->
-                    viewModel.updateNewChatDefaults { it.copy(agentPythonEnabled = enabled) }
-                },
-                onLinuxEnabledChanged = { enabled ->
-                    viewModel.updateNewChatDefaults { it.copy(agentUbuntuEnabled = enabled) }
-                },
                 onOpenProviderSetup = viewModel::openProviderSetupFromSetup,
-                onOpenLinuxSetup = viewModel::openLinuxSetupFromSetup,
                 onSkipForNow = viewModel::skipSetup,
                 onFinish = viewModel::finishSetup,
             )

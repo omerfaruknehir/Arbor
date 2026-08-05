@@ -248,6 +248,9 @@ class ChatRepository(private val database: XyluneDatabase) {
 
     suspend fun saveProvider(value: app.xylune.chat.data.ProviderEntity) = database.catalogDao().upsertProvider(value)
     suspend fun saveModel(value: app.xylune.chat.data.ModelEntity) = database.catalogDao().upsertModel(value)
+    suspend fun mergeModels(values: List<app.xylune.chat.data.ModelEntity>) =
+        database.catalogDao().mergeModels(values)
+    fun observeAllModels() = database.catalogDao().observeAllModels()
 
     suspend fun saveConversation(value: ConversationEntity) = database.conversationDao().update(value)
 

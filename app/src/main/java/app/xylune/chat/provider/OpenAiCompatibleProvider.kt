@@ -327,12 +327,14 @@ class OpenAiCompatibleProvider(
         val values = root["data"] as? JsonArray ?: JsonArray(listOf(root))
         return values.mapIndexedNotNull { index, element ->
             val item = element as? JsonObject ?: return@mapIndexedNotNull null
+            val declaredMime = item["media_type"]?.jsonPrimitive?.contentOrNull
             val format = item["output_format"]?.jsonPrimitive?.contentOrNull
                 ?: root["output_format"]?.jsonPrimitive?.contentOrNull
                 ?: "png"
-            val mime = when (format.lowercase()) {
+            val mime = declaredMime?.takeIf { it.startsWith("image/") } ?: when (format.lowercase()) {
                 "jpeg", "jpg" -> "image/jpeg"
                 "webp" -> "image/webp"
+                "svg" -> "image/svg+xml"
                 else -> "image/png"
             }
             val bytes = item["b64_json"]?.jsonPrimitive?.contentOrNull
@@ -343,6 +345,7 @@ class OpenAiCompatibleProvider(
             val extension = when (mime) {
                 "image/jpeg" -> "jpg"
                 "image/webp" -> "webp"
+                "image/svg+xml" -> "svg"
                 else -> "png"
             }
             GeneratedImageOutput(
@@ -375,11 +378,12 @@ class OpenAiCompatibleProvider(
 
     internal fun buildRequestBody(request: ChatRequest): JsonObject {
         val isDeepSeek = request.provider.id == "deepseek"
+        val isOpenRouter = ModelRequestPolicy.isOpenRouter(request.provider)
         return buildJsonObject {
             put("model", JsonPrimitive(request.model.modelId))
             put("stream", JsonPrimitive(true))
             put("max_tokens", JsonPrimitive(request.maxOutputTokens))
-            if (request.provider.id in setOf("openai", "deepseek", "openrouter", "xai")) {
+            if (request.provider.id in setOf("openai", "deepseek", "openrouter", "xai") || isOpenRouter) {
                 put("stream_options", buildJsonObject { put("include_usage", JsonPrimitive(true)) })
             }
             if (request.tools.isNotEmpty() && request.model.supportsTools) {
@@ -399,10 +403,17 @@ class OpenAiCompatibleProvider(
                 put("parallel_tool_calls", JsonPrimitive(false))
             }
             if (request.model.supportsThinking) {
-                if (isDeepSeek) {
-                    put("thinking", buildJsonObject { put("type", JsonPrimitive(if (request.thinkingEnabled) "enabled" else "disabled")) })
+                val enabled = effectiveThinkingEnabled(request.model, request.thinkingEnabled)
+                val effort = defaultThinkingEffort(request.model, request.thinkingEffort)
+                when {
+                    isOpenRouter -> put("reasoning", buildJsonObject {
+                        put("effort", JsonPrimitive(if (enabled) effort.apiValue else "none"))
+                    })
+                    isDeepSeek -> put("thinking", buildJsonObject {
+                        put("type", JsonPrimitive(if (enabled) "enabled" else "disabled"))
+                    })
+                    enabled -> put("reasoning_effort", JsonPrimitive(effort.apiValue))
                 }
-                if (request.thinkingEnabled) put("reasoning_effort", JsonPrimitive(request.thinkingEffort.apiValue))
             }
             put("messages", buildJsonArray {
                 request.messages.forEachIndexed { index, message ->

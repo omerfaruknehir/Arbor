@@ -329,6 +329,9 @@ interface CatalogDao {
     @Query("SELECT * FROM models ORDER BY providerId, displayName")
     suspend fun allModels(): List<ModelEntity>
 
+    @Query("SELECT * FROM models ORDER BY providerId, displayName")
+    fun observeAllModels(): Flow<List<ModelEntity>>
+
     @Query("SELECT * FROM providers WHERE id = :id")
     suspend fun provider(id: String): ProviderEntity?
 
@@ -358,6 +361,11 @@ interface CatalogDao {
 
     @Query("DELETE FROM models WHERE providerId = :providerId")
     suspend fun deleteModels(providerId: String)
+
+    @Transaction
+    suspend fun mergeModels(values: List<ModelEntity>) {
+        upsertModels(values)
+    }
 }
 
 @Dao

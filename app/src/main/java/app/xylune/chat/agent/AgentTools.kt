@@ -226,7 +226,7 @@ class AgentTools(
             val timeout = (request.timeoutSeconds ?: DEFAULT_PYTHON_SECONDS).coerceIn(1, 600)
             var metadata = runRecords.create(
                 conversation.id, ScriptRuntime.PYTHON, code, "python", emptyList(), timeout,
-                mapOf("distribution" to ubuntu.distribution.value.displayName, "python" to ".xylune-venv", "executionMode" to "PRoot root"),
+                mapOf("python" to "bundled 3.12", "packages" to ".packages", "executionMode" to "embedded app process"),
             )
             metadata = runRecords.markStarted(metadata, timeout, emptyList())
             val result = executeStored(metadata, emptyList(), timeout, onProgress)
@@ -373,11 +373,31 @@ class AgentTools(
         val started = System.currentTimeMillis()
         return try {
             val raw = if (metadata.runtime == ScriptRuntime.PYTHON) {
-                ubuntu.executePythonFile(metadata.conversationId, metadata.scriptPath, args, timeout, onProgress)
+                python.executeFile(metadata.conversationId, metadata.scriptPath, args, timeout).let { result ->
+                    onProgress(ExecutionProgress(result.stdout.takeLast(12_000), result.stderr.takeLast(12_000), result.elapsedMs))
+                    StoredExecution(
+                        stdout = result.stdout,
+                        stderr = result.stderr,
+                        exitCode = result.exitCode,
+                        files = result.files,
+                        elapsedMs = result.elapsedMs,
+                        timedOut = result.timedOut,
+                        cancelled = result.cancelled,
+                    )
+                }
             } else {
-                ubuntu.executeShellFile(metadata.conversationId, metadata.scriptPath, args, timeout, onProgress)
+                ubuntu.executeShellFile(metadata.conversationId, metadata.scriptPath, args, timeout, onProgress).let { result ->
+                    StoredExecution(
+                        stdout = result.stdout,
+                        stderr = result.stderr,
+                        exitCode = result.exitCode,
+                        files = result.files,
+                        elapsedMs = result.elapsedMs,
+                        timedOut = result.timedOut,
+                    )
+                }
             }
-            runRecords.finish(metadata, raw.stdout, raw.stderr, raw.exitCode, raw.timedOut, false, raw.elapsedMs, raw.files)
+            runRecords.finish(metadata, raw.stdout, raw.stderr, raw.exitCode, raw.timedOut, raw.cancelled, raw.elapsedMs, raw.files)
         } catch (cancelled: CancellationException) {
             runRecords.finish(
                 metadata = metadata,
@@ -392,6 +412,16 @@ class AgentTools(
             throw cancelled
         }
     }
+
+    private data class StoredExecution(
+        val stdout: String,
+        val stderr: String,
+        val exitCode: Int,
+        val files: List<String>,
+        val elapsedMs: Long,
+        val timedOut: Boolean,
+        val cancelled: Boolean = false,
+    )
 
     private suspend fun search(rawQuery: String): String = withContext(Dispatchers.IO) {
         val query = rawQuery.trim().take(500)

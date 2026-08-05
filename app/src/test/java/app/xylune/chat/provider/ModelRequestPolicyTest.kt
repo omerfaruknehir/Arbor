@@ -34,6 +34,23 @@ class ModelRequestPolicyTest {
     }
 
     @Test
+    fun openRouterPresetAndCanonicalUrlUseAutomaticMetadataPolicy() {
+        val renamed = ProviderEntity(
+            id = "my-router",
+            displayName = "My OpenRouter",
+            kind = ProviderKind.OPENAI_COMPATIBLE,
+            baseUrl = "https://openrouter.ai/api/v1/",
+        )
+
+        assertTrue(ModelRequestPolicy.isOpenRouter(renamed))
+        assertFalse(ModelRequestPolicy.usesManualRequestType(renamed))
+        assertEquals(
+            "https://openrouter.ai/api/v1/images",
+            ModelRequestPolicy.endpoint(renamed, model("vendor/image-model", image = true, providerId = renamed.id)),
+        )
+    }
+
+    @Test
     fun officialImageAndChatModelsChooseCorrectEndpoints() {
         val image = model("gpt-image-1", image = false)
         val chat = model("gpt-4.1", image = true)

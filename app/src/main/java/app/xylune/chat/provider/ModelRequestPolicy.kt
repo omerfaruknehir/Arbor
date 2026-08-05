@@ -24,6 +24,17 @@ object ModelRequestPolicy {
             (uri.path.isNullOrBlank() || uri.path.trimEnd('/') == "/v1")
     }
 
+    fun isOpenRouterBaseUrl(rawBaseUrl: String): Boolean {
+        val uri = runCatching { URI(rawBaseUrl.trim()) }.getOrNull() ?: return false
+        return uri.scheme.equals("https", ignoreCase = true) &&
+            uri.host.equals("openrouter.ai", ignoreCase = true) &&
+            (uri.path.isNullOrBlank() || uri.path.trimEnd('/') == "/api/v1")
+    }
+
+    fun isOpenRouter(provider: ProviderEntity): Boolean =
+        provider.kind == ProviderKind.OPENAI_COMPATIBLE &&
+            (provider.id == "openrouter" || isOpenRouterBaseUrl(provider.baseUrl))
+
     fun isOfficialOpenAi(provider: ProviderEntity): Boolean =
         provider.kind == ProviderKind.OPENAI_COMPATIBLE &&
             (provider.id == "openai" || isOfficialOpenAiBaseUrl(provider.baseUrl))
@@ -31,6 +42,7 @@ object ModelRequestPolicy {
     fun usesManualRequestType(provider: ProviderEntity): Boolean =
         provider.kind == ProviderKind.OPENAI_COMPATIBLE &&
             !isOfficialOpenAi(provider) &&
+            !isOpenRouter(provider) &&
             provider.id !in automaticOpenAiCompatiblePresetIds
 
     fun requestType(provider: ProviderEntity, model: ModelEntity): ModelRequestType = when {
@@ -72,7 +84,7 @@ object ModelRequestPolicy {
     fun endpoint(provider: ProviderEntity, model: ModelEntity, continuation: Boolean = false): String {
         val root = provider.baseUrl.trimEnd('/')
         return when (requestType(provider, model)) {
-            ModelRequestType.IMAGE_GENERATION -> "$root/images/generations"
+            ModelRequestType.IMAGE_GENERATION -> if (isOpenRouter(provider)) "$root/images" else "$root/images/generations"
             ModelRequestType.CHAT -> if (provider.id == "deepseek" && continuation) {
                 "$root/beta/chat/completions"
             } else "$root/chat/completions"

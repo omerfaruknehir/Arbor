@@ -73,7 +73,7 @@ class SetupRestoreSettingsFeatureTest {
         val settings = source("src/main/java/app/xylune/chat/ui/SettingsScreen.kt")
         assertTrue(viewModel.contains("if (result.settingsRestored)"))
         assertTrue(viewModel.contains("setupActive.value = false"))
-        assertTrue(viewModel.contains("setupStepIndex.value = 2"))
+        assertTrue(viewModel.contains("setupStepIndex.value = 1"))
         assertTrue(settings.contains("Finish setup"))
     }
 

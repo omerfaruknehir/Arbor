@@ -28,7 +28,7 @@
 
 Xylune is a bring-your-own-provider AI client. It connects your phone directly to the services you choose—without a WebView, hosted Xylune account, application backend, telemetry, or advertising. API keys are protected with Android Keystore-backed encryption, chats live in a local SQLCipher database, and imported files remain in app-private storage.
 
-Current version: **0.23.5**
+Current version: **0.24.0**
 
 ## Development disclosure and disclaimer
 
@@ -62,11 +62,11 @@ Xylune is provided **“AS IS”**, without warranties of any kind. Use, modify,
 
 ## Install
 
-1. Download `Xylune-0.23.5-release.apk` from the [latest GitHub Release](https://github.com/omerfaruknehir/Xylune/releases/latest).
+1. Download `Xylune-0.24.0-release.apk` from the [latest GitHub Release](https://github.com/omerfaruknehir/Xylune/releases/latest).
 2. Allow installation from your browser or file manager when Android asks.
 3. Open Xylune and follow the welcome flow.
 4. Connect a ChatGPT account, API provider, or local model server.
-5. Start a chat. Optional Python and Linux tools can be prepared later from **Settings → Local tools**.
+5. Start a chat. Optional Python and Linux tools can be prepared later from **Settings → Local execution**.
 
 The public APK is an R8-minified, resource-shrunk **release build**. It intentionally keeps package ID `app.xylune.chat` and Xylune's public reproducible signer so it can update the earlier GitHub debug builds without deleting chats or settings. The Android build is not debuggable, but Xylune's in-app **Developer settings** remain available. Protected production signing switches to the production package ID `app.xylune.chat`.
 
@@ -123,7 +123,7 @@ For dependency sources, bundled native component notices, hashes, and build reci
 Xylune is created by [@omerfaruknehir](https://github.com/omerfaruknehir).
 
 - [Changelog](CHANGELOG.md)
-- [Latest release notes](docs/releases/RELEASE_NOTES_0.20.15.md)
+- [Latest release notes](docs/releases/RELEASE_NOTES_0.24.0.md)
 - [Source repository](https://github.com/omerfaruknehir/Xylune)
 - [Issue tracker](https://github.com/omerfaruknehir/Xylune/issues)
 

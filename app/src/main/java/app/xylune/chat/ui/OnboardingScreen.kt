@@ -1,10 +1,8 @@
 package app.xylune.chat.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,26 +27,18 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Code
-import androidx.compose.material.icons.outlined.DarkMode
-import androidx.compose.material.icons.outlined.Download
-import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.SettingsBrightness
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -63,19 +53,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import app.xylune.chat.sandbox.UbuntuRuntimeStatus
-import app.xylune.chat.sandbox.UbuntuStage
-import app.xylune.chat.settings.ColorPalette
-import app.xylune.chat.settings.ThemeMode
-import app.xylune.chat.ui.theme.palettePreviewColors
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 private enum class OnboardingStep(val setupTitle: String) {
     WELCOME("Welcome"),
-    APPEARANCE("Appearance"),
     PROVIDER("Model access"),
-    TOOLS("Local tools"),
     READY("Finish"),
 }
 
@@ -110,28 +93,14 @@ internal fun XyluneStartupScreen() {
 @Composable
 internal fun OnboardingScreen(
     viewModel: ChatViewModel,
-    currentThemeMode: ThemeMode,
-    currentPalette: ColorPalette,
-    matchLauncherIconToPalette: Boolean,
-    amoled: Boolean,
     providerCatalogDelayed: Boolean,
     configuredProviderCount: Int,
-    pythonEnabled: Boolean,
-    linuxEnabled: Boolean,
-    linuxStatus: UbuntuRuntimeStatus,
     stepIndex: Int,
     stepOffsetFraction: Float,
     scrollOffsetForStep: (Int) -> Int,
     onPagerPositionChanged: (Int, Float) -> Unit,
     onStepScrollChanged: (Int, Int) -> Unit,
-    onThemeModeChanged: (ThemeMode) -> Unit,
-    onPaletteChanged: (ColorPalette) -> Unit,
-    onMatchLauncherIconToPaletteChanged: (Boolean) -> Unit,
-    onAmoledChanged: (Boolean) -> Unit,
-    onPythonEnabledChanged: (Boolean) -> Unit,
-    onLinuxEnabledChanged: (Boolean) -> Unit,
     onOpenProviderSetup: () -> Unit,
-    onOpenLinuxSetup: () -> Unit,
     onSkipForNow: () -> Unit,
     onFinish: () -> Unit,
 ) {
@@ -141,8 +110,6 @@ internal fun OnboardingScreen(
         rememberScrollState(initial = scrollOffsetForStep(0)),
         rememberScrollState(initial = scrollOffsetForStep(1)),
         rememberScrollState(initial = scrollOffsetForStep(2)),
-        rememberScrollState(initial = scrollOffsetForStep(3)),
-        rememberScrollState(initial = scrollOffsetForStep(4)),
     )
     val haptics = rememberXyluneHaptics()
     val coroutineScope = rememberCoroutineScope()
@@ -234,42 +201,11 @@ internal fun OnboardingScreen(
                     ) {
                         when (destination) {
                             OnboardingStep.WELCOME -> WelcomeStep(viewModel)
-                            OnboardingStep.APPEARANCE -> AppearanceStep(
-                                currentThemeMode = currentThemeMode,
-                                currentPalette = currentPalette,
-                                matchLauncherIconToPalette = matchLauncherIconToPalette,
-                                amoled = amoled,
-                                onThemeModeChanged = {
-                                    haptics.selection()
-                                    onThemeModeChanged(it)
-                                },
-                                onPaletteChanged = {
-                                    haptics.selection()
-                                    onPaletteChanged(it)
-                                },
-                                onMatchLauncherIconToPaletteChanged = onMatchLauncherIconToPaletteChanged,
-                                onAmoledChanged = onAmoledChanged,
-                            )
                             OnboardingStep.PROVIDER -> ProviderStep(
                                 providerCatalogDelayed = providerCatalogDelayed,
                                 configuredProviderCount = configuredProviderCount,
                             )
-                            OnboardingStep.TOOLS -> ToolsStep(
-                                pythonEnabled = pythonEnabled,
-                                linuxEnabled = linuxEnabled,
-                                linuxStatus = linuxStatus,
-                                onPythonEnabledChanged = onPythonEnabledChanged,
-                                onLinuxEnabledChanged = onLinuxEnabledChanged,
-                            )
-                            OnboardingStep.READY -> ReadyStep(
-                                themeMode = currentThemeMode,
-                                palette = currentPalette,
-                                matchLauncherIconToPalette = matchLauncherIconToPalette,
-                                configuredProviderCount = configuredProviderCount,
-                                pythonEnabled = pythonEnabled,
-                                linuxEnabled = linuxEnabled,
-                                linuxStatus = linuxStatus,
-                            )
+                            OnboardingStep.READY -> ReadyStep(configuredProviderCount)
                         }
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -277,11 +213,8 @@ internal fun OnboardingScreen(
                     OnboardingStepActions(
                         step = destination,
                         configuredProviderCount = configuredProviderCount,
-                        linuxEnabled = linuxEnabled,
-                        linuxStatus = linuxStatus,
                         onContinue = { moveTo(page + 1) },
                         onOpenProviderSetup = onOpenProviderSetup,
-                        onOpenLinuxSetup = onOpenLinuxSetup,
                         onFinish = onFinish,
                     )
                 }
@@ -294,28 +227,18 @@ internal fun OnboardingScreen(
 private fun OnboardingStepActions(
     step: OnboardingStep,
     configuredProviderCount: Int,
-    linuxEnabled: Boolean,
-    linuxStatus: UbuntuRuntimeStatus,
     onContinue: () -> Unit,
     onOpenProviderSetup: () -> Unit,
-    onOpenLinuxSetup: () -> Unit,
     onFinish: () -> Unit,
 ) {
     val haptics = rememberXyluneHaptics()
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when (step) {
-            OnboardingStep.WELCOME -> PrimaryNextButton("Continue", onContinue)
-            OnboardingStep.APPEARANCE -> PrimaryNextButton("Use this appearance", onContinue)
+            OnboardingStep.WELCOME -> PrimaryNextButton("Start setup", onContinue)
             OnboardingStep.PROVIDER -> ProviderStepActions(
                 configuredProviderCount = configuredProviderCount,
                 onContinue = onContinue,
                 onOpenProviderSetup = onOpenProviderSetup,
-            )
-            OnboardingStep.TOOLS -> ToolsStepActions(
-                linuxEnabled = linuxEnabled,
-                linuxStatus = linuxStatus,
-                onContinue = onContinue,
-                onOpenLinuxSetup = onOpenLinuxSetup,
             )
             OnboardingStep.READY -> {
                 Button(
@@ -325,14 +248,6 @@ private fun OnboardingStepActions(
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Enter Xylune") }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onOpenProviderSetup, modifier = Modifier.weight(1f)) {
-                        Text("Providers")
-                    }
-                    OutlinedButton(onClick = onOpenLinuxSetup, modifier = Modifier.weight(1f)) {
-                        Text("Linux")
-                    }
-                }
             }
         }
     }
@@ -375,50 +290,6 @@ private fun ProviderStepActions(
             },
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Continue without one") }
-    }
-}
-
-@Composable
-private fun ToolsStepActions(
-    linuxEnabled: Boolean,
-    linuxStatus: UbuntuRuntimeStatus,
-    onContinue: () -> Unit,
-    onOpenLinuxSetup: () -> Unit,
-) {
-    val haptics = rememberXyluneHaptics()
-    val installationRequired = linuxEnabled && !linuxStatus.installed
-    if (installationRequired) {
-        Button(
-            onClick = {
-                haptics.confirm()
-                onOpenLinuxSetup()
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text(linuxSetupActionLabel(linuxStatus)) }
-        OutlinedButton(
-            onClick = {
-                haptics.selection()
-                onContinue()
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("Continue without Linux") }
-    } else {
-        PrimaryNextButton("Continue", onContinue)
-        OutlinedButton(
-            onClick = {
-                haptics.selection()
-                onOpenLinuxSetup()
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(
-                when {
-                    linuxStatus.installed -> "Manage ${linuxStatus.distribution.displayName}"
-                    linuxStatus.stage.isInstalling -> "View Linux installation progress"
-                    else -> "Choose a Linux distribution"
-                },
-            )
-        }
     }
 }
 
@@ -522,7 +393,7 @@ private fun WelcomeStep(viewModel: ChatViewModel) {
         textAlign = TextAlign.Center,
     )
     Text(
-        "Choose an appearance, connect a model provider, and optionally enable local tools. You can change every choice later.",
+        "Restore a backup if you have one, then connect the model provider you actually want to use. Everything optional stays out of your way.",
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
@@ -536,7 +407,7 @@ private fun WelcomeStep(viewModel: ChatViewModel) {
         Column {
             OnboardingValueRow(Icons.Outlined.Lock, "Private by design", "Chats, credentials, and tool workspaces stay on this device.")
             OnboardingValueRow(Icons.Outlined.Cloud, "Bring your own models", "Use a ChatGPT account, API provider, or local server.")
-            OnboardingValueRow(Icons.Outlined.Code, "Optional local tools", "Python is bundled; Linux is installed separately only when you choose it.")
+            OnboardingValueRow(Icons.Outlined.Code, "Optional tools stay optional", "Python and Linux are managed later from Settings → Local execution.")
         }
     }
     SetupRestoreActions(viewModel)
@@ -547,173 +418,6 @@ private fun WelcomeStep(viewModel: ChatViewModel) {
         textAlign = TextAlign.Center,
         modifier = Modifier.fillMaxWidth(),
     )
-}
-
-@Composable
-private fun AppearanceStep(
-    currentThemeMode: ThemeMode,
-    currentPalette: ColorPalette,
-    matchLauncherIconToPalette: Boolean,
-    amoled: Boolean,
-    onThemeModeChanged: (ThemeMode) -> Unit,
-    onPaletteChanged: (ColorPalette) -> Unit,
-    onMatchLauncherIconToPaletteChanged: (Boolean) -> Unit,
-    onAmoledChanged: (Boolean) -> Unit,
-) {
-    SetupHeading("Choose an appearance", "Changes preview immediately and remain editable in Settings.")
-    Text("Brightness", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth())
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        ThemeModeChoice(
-            icon = Icons.Outlined.SettingsBrightness,
-            title = "Follow device",
-            subtitle = "Switch with Android automatically",
-            selected = currentThemeMode == ThemeMode.SYSTEM,
-            onClick = { onThemeModeChanged(ThemeMode.SYSTEM) },
-        )
-        ThemeModeChoice(
-            icon = Icons.Outlined.LightMode,
-            title = "Light",
-            subtitle = "Keep Xylune light",
-            selected = currentThemeMode == ThemeMode.LIGHT,
-            onClick = { onThemeModeChanged(ThemeMode.LIGHT) },
-        )
-        ThemeModeChoice(
-            icon = Icons.Outlined.DarkMode,
-            title = "Dark",
-            subtitle = "Keep Xylune dark",
-            selected = currentThemeMode == ThemeMode.DARK,
-            onClick = { onThemeModeChanged(ThemeMode.DARK) },
-        )
-    }
-    Text("Color palette", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth())
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        ColorPalette.entries.forEach { palette ->
-            PaletteChoice(
-                palette = palette,
-                preview = palettePreviewColors(palette, currentThemeMode),
-                selected = currentPalette == palette,
-                onClick = { onPaletteChanged(palette) },
-            )
-        }
-    }
-    Surface(
-        color = if (matchLauncherIconToPalette) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-        contentColor = if (matchLauncherIconToPalette) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
-        shape = MaterialTheme.shapes.extraLarge,
-        modifier = Modifier.fillMaxWidth().clickable {
-            onMatchLauncherIconToPaletteChanged(!matchLauncherIconToPalette)
-        },
-    ) {
-        Row(
-            Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            LauncherIconPreview(if (matchLauncherIconToPalette) currentPalette else ColorPalette.XYLUNE)
-            Column(Modifier.weight(1f)) {
-                Text("Match launcher icon", fontWeight = FontWeight.SemiBold)
-                Text(
-                    if (matchLauncherIconToPalette) "Use the ${currentPalette.setupName} launcher icon" else "Keep the classic Xylune green icon",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Switch(
-                checked = matchLauncherIconToPalette,
-                onCheckedChange = onMatchLauncherIconToPaletteChanged,
-            )
-        }
-    }
-    Text(
-        "Changing launcher aliases briefly restarts Xylune after saving the current setup step, drafts, files, and scroll position.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.fillMaxWidth(),
-    )
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        shape = MaterialTheme.shapes.large,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("AMOLED black", fontWeight = FontWeight.SemiBold)
-                Text(
-                    if (currentThemeMode == ThemeMode.LIGHT) "Available in dark mode" else "Use true black for the darkest surfaces",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Switch(
-                checked = amoled,
-                onCheckedChange = onAmoledChanged,
-                enabled = currentThemeMode != ThemeMode.LIGHT,
-            )
-        }
-    }
-}
-
-@Composable
-private fun ThemeModeChoice(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-        contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
-        shape = MaterialTheme.shapes.large,
-        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Row(
-            Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(icon, null, Modifier.size(24.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, fontWeight = FontWeight.SemiBold)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            RadioButton(selected = selected, onClick = onClick)
-        }
-    }
-}
-
-@Composable
-private fun PaletteChoice(
-    palette: ColorPalette,
-    preview: app.xylune.chat.ui.theme.PalettePreviewColors,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-        shape = MaterialTheme.shapes.large,
-        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Row(
-            Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            PaletteSwatch(preview, Modifier.size(width = 58.dp, height = 24.dp))
-            Column(Modifier.weight(1f)) {
-                Text(palette.setupName, fontWeight = FontWeight.SemiBold)
-                Text(palette.setupDescription, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            RadioButton(selected = selected, onClick = onClick)
-        }
-    }
 }
 
 @Composable
@@ -792,155 +496,10 @@ private fun ProviderStep(
 }
 
 @Composable
-private fun ToolsStep(
-    pythonEnabled: Boolean,
-    linuxEnabled: Boolean,
-    linuxStatus: UbuntuRuntimeStatus,
-    onPythonEnabledChanged: (Boolean) -> Unit,
-    onLinuxEnabledChanged: (Boolean) -> Unit,
-) {
-    SetupHeading(
-        "Choose local tools",
-        "These are defaults for new chats. Enabling Linux here does not download anything; installation is a separate, explicit step.",
-    )
-    SetupToggleCard(
-        icon = Icons.Outlined.Code,
-        title = "Local Python",
-        subtitle = "Bundled and ready immediately. Each chat gets a persistent isolated environment.",
-        checked = pythonEnabled,
-        onCheckedChange = onPythonEnabledChanged,
-    )
-    SetupToggleCard(
-        icon = Icons.Outlined.Storage,
-        title = "Enable Linux for new chats",
-        subtitle = when {
-            linuxStatus.installed -> "${linuxStatus.distribution.displayName} ${linuxStatus.release} is installed and ready."
-            linuxEnabled -> "Enabled as a default, but a distribution still needs to be chosen and installed."
-            else -> "Optional. Choose Ubuntu, Debian, or Alpine and install it before Linux tools can run."
-        },
-        checked = linuxEnabled,
-        onCheckedChange = onLinuxEnabledChanged,
-    )
-    LinuxInstallationStatusCard(linuxStatus)
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        shape = MaterialTheme.shapes.extraLarge,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Linux installation", fontWeight = FontWeight.SemiBold)
-            Text("1. Open the Linux manager and choose Ubuntu, Debian, or Alpine.", style = MaterialTheme.typography.bodySmall)
-            Text("2. Review the download, then explicitly start installation.", style = MaterialTheme.typography.bodySmall)
-            Text("3. Xylune verifies and extracts it into app-private storage.", style = MaterialTheme.typography.bodySmall)
-            Text("4. Packages and terminal access are managed from the same workspace screen.", style = MaterialTheme.typography.bodySmall)
-            Text("Chat files remain in /workspace even if the Linux distribution is removed.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun LinuxInstallationStatusCard(status: UbuntuRuntimeStatus) {
-    val installed = status.installed
-    val installing = status.stage.isInstalling
-    val failed = status.stage == UbuntuStage.ERROR || status.stage == UbuntuStage.UNSUPPORTED
-    val containerColor = when {
-        installed -> MaterialTheme.colorScheme.primaryContainer
-        failed -> MaterialTheme.colorScheme.errorContainer
-        installing -> MaterialTheme.colorScheme.tertiaryContainer
-        else -> MaterialTheme.colorScheme.surfaceContainer
-    }
-    val contentColor = when {
-        installed -> MaterialTheme.colorScheme.onPrimaryContainer
-        failed -> MaterialTheme.colorScheme.onErrorContainer
-        installing -> MaterialTheme.colorScheme.onTertiaryContainer
-        else -> MaterialTheme.colorScheme.onSurface
-    }
-    Surface(
-        color = containerColor,
-        contentColor = contentColor,
-        shape = MaterialTheme.shapes.extraLarge,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Icon(
-                    when {
-                        installed -> Icons.Outlined.CheckCircle
-                        failed -> Icons.Outlined.ErrorOutline
-                        installing -> Icons.Outlined.Download
-                        else -> Icons.Outlined.Storage
-                    },
-                    null,
-                    Modifier.size(28.dp),
-                )
-                Column(Modifier.weight(1f)) {
-                    Text(linuxStatusTitle(status), fontWeight = FontWeight.SemiBold)
-                    Text(linuxStatusDetail(status), style = MaterialTheme.typography.bodySmall)
-                }
-            }
-            if (installing) {
-                val progress = status.progress
-                if (progress != null) {
-                    LinearProgressIndicator(
-                        progress = { progress.coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                } else {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SetupToggleCard(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Surface(
-        color = if (checked) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-        contentColor = if (checked) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
-        shape = MaterialTheme.shapes.extraLarge,
-        modifier = Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) },
-    ) {
-        Row(
-            Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(icon, null, Modifier.size(26.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, fontWeight = FontWeight.SemiBold)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Switch(checked = checked, onCheckedChange = onCheckedChange)
-        }
-    }
-}
-
-@Composable
-private fun ReadyStep(
-    themeMode: ThemeMode,
-    palette: ColorPalette,
-    matchLauncherIconToPalette: Boolean,
-    configuredProviderCount: Int,
-    pythonEnabled: Boolean,
-    linuxEnabled: Boolean,
-    linuxStatus: UbuntuRuntimeStatus,
-) {
+private fun ReadyStep(configuredProviderCount: Int) {
     SetupHeading(
         "Xylune is ready",
-        "Review the current state. Missing optional pieces do not block entry and remain available in Settings.",
+        "You can start chatting now. Appearance, local execution, backups, memory, and other optional features remain in clearly grouped Settings.",
     )
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -948,23 +507,17 @@ private fun ReadyStep(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column {
-            OnboardingValueRow(Icons.Outlined.CheckCircle, "Appearance", "${themeMode.setupName} · ${palette.setupName}${if (themeMode != ThemeMode.LIGHT) " · dark surfaces available" else ""}")
-            OnboardingValueRow(Icons.Outlined.CheckCircle, "Launcher icon", if (matchLauncherIconToPalette) "Matches ${palette.setupName}" else "Classic Xylune green")
             OnboardingValueRow(
                 if (configuredProviderCount > 0) Icons.Outlined.CheckCircle else Icons.Outlined.Cloud,
                 "Model provider",
                 if (configuredProviderCount > 0) "${providerCountLabel(configuredProviderCount)} connected" else "Not connected yet",
             )
-            OnboardingValueRow(Icons.Outlined.CheckCircle, "Local Python", if (pythonEnabled) "Enabled for new chats" else "Off by default")
-            OnboardingValueRow(
-                if (linuxStatus.installed) Icons.Outlined.CheckCircle else Icons.Outlined.Storage,
-                "Linux tools",
-                linuxReadySummary(linuxEnabled, linuxStatus),
-            )
+            OnboardingValueRow(Icons.Outlined.CheckCircle, "Focused defaults", "Local execution starts off; enable Python or Linux only when a chat needs it.")
+            OnboardingValueRow(Icons.Outlined.CheckCircle, "Settings stay optional", "Appearance, backups, memory, and advanced behavior are grouped for later.")
         }
     }
     Text(
-        "Use the buttons below to enter Xylune or make a last provider/Linux change.",
+        "Enter Xylune now. You can return to Providers & models from Settings at any time.",
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
     )
@@ -1003,66 +556,3 @@ private fun OnboardingValueRow(icon: ImageVector, title: String, subtitle: Strin
 
 private fun providerCountLabel(count: Int): String =
     if (count == 1) "1 configured provider" else "$count configured providers"
-
-private val UbuntuStage.isInstalling: Boolean
-    get() = this == UbuntuStage.DOWNLOADING ||
-        this == UbuntuStage.VERIFYING ||
-        this == UbuntuStage.EXTRACTING ||
-        this == UbuntuStage.CONFIGURING
-
-private fun linuxSetupActionLabel(status: UbuntuRuntimeStatus): String = when {
-    status.stage.isInstalling -> "View Linux installation progress"
-    status.stage == UbuntuStage.ERROR -> "Fix Linux installation"
-    status.stage == UbuntuStage.UNSUPPORTED -> "Review Linux compatibility"
-    else -> "Choose and install a distribution"
-}
-
-private fun linuxStatusTitle(status: UbuntuRuntimeStatus): String = when {
-    status.installed -> "${status.distribution.displayName} ${status.release} installed"
-    status.stage.isInstalling -> "Installing ${status.distribution.displayName}"
-    status.stage == UbuntuStage.ERROR -> "Linux installation failed"
-    status.stage == UbuntuStage.UNSUPPORTED -> "Linux is not supported on this device"
-    else -> "No Linux distribution installed"
-}
-
-private fun linuxStatusDetail(status: UbuntuRuntimeStatus): String = when {
-    status.installed -> status.detail.ifBlank { "The distribution is ready for terminals, packages, and native tools." }
-    status.stage.isInstalling -> status.detail.ifBlank { "Keep the Linux manager open to review progress." }
-    status.stage == UbuntuStage.ERROR -> status.detail.ifBlank { "Open the Linux manager to retry or choose another distribution." }
-    status.stage == UbuntuStage.UNSUPPORTED -> status.detail.ifBlank { "Open the Linux manager for architecture details." }
-    else -> "Choose Ubuntu, Debian, or Alpine, review the download, and explicitly install it."
-}
-
-private fun linuxReadySummary(enabled: Boolean, status: UbuntuRuntimeStatus): String = when {
-    status.installed && enabled -> "${status.distribution.displayName} ${status.release} installed · enabled for new chats"
-    status.installed -> "${status.distribution.displayName} ${status.release} installed · off by default"
-    enabled -> "Enabled for new chats, but no distribution is installed"
-    else -> "Not installed · optional and off by default"
-}
-
-private val ThemeMode.setupName: String
-    get() = when (this) {
-        ThemeMode.SYSTEM -> "Follow device"
-        ThemeMode.LIGHT -> "Light"
-        ThemeMode.DARK -> "Dark"
-    }
-
-private val ColorPalette.setupName: String
-    get() = when (this) {
-        ColorPalette.XYLUNE -> "Xylune"
-        ColorPalette.SYSTEM -> "Android dynamic"
-        ColorPalette.GRAPHITE -> "Graphite"
-        ColorPalette.OCEAN -> "Ocean"
-        ColorPalette.VIOLET -> "Violet"
-        ColorPalette.SUNSET -> "Sunset"
-    }
-
-private val ColorPalette.setupDescription: String
-    get() = when (this) {
-        ColorPalette.XYLUNE -> "Natural Xylune green"
-        ColorPalette.SYSTEM -> "Generated from your wallpaper on Android 12+"
-        ColorPalette.GRAPHITE -> "Restrained blue-gray"
-        ColorPalette.OCEAN -> "Cool teal and cyan"
-        ColorPalette.VIOLET -> "Deep purple accents"
-        ColorPalette.SUNSET -> "Warm orange and rose"
-    }
