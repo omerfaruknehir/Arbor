@@ -13,9 +13,11 @@
   ·
   <a href="https://github.com/omerfaruknehir/Xylune/issues">Report an issue</a>
   ·
-  <a href="PRIVACY.md">Privacy</a>
+  <a href="https://omerfaruknehir.github.io/Xylune/privacy/">Privacy</a>
   ·
-  <a href="TERMS.md">Terms</a>
+  <a href="https://omerfaruknehir.github.io/Xylune/terms/">Terms</a>
+  ·
+  <a href="https://omerfaruknehir.github.io/Xylune/data-deletion/">Data deletion</a>
 </p>
 
 <p align="center">
@@ -34,9 +36,9 @@ Current version: **0.24.2**
 
 Xylune was made with **full vibe coding**: features and changes were primarily directed in natural language and implemented with AI-assisted coding tools, with human review and testing. That process does not guarantee correctness, security, availability, or fitness for any purpose, and the app may contain serious defects.
 
-Xylune is provided **“AS IS”**, without warranties of any kind. Use, modify, and distribute it at your own risk. Xylune is a client rather than an AI-model host: the maintainer does not create, train, host, pre-review, or endorse individual third-party model outputs. Review the source and output, keep backups, and do not rely on Xylune for safety-critical or irreplaceable work. See the [Terms and Disclaimer](TERMS.md); the Apache License 2.0 remains the primary software warranty and liability document.
+Xylune is provided **“AS IS”**, without warranties of any kind. Use, modify, and distribute it at your own risk. Xylune is a client rather than an AI-model host: the maintainer does not create, train, host, pre-review, or endorse individual third-party model outputs. Review the source and output, keep backups, and do not rely on Xylune for safety-critical or irreplaceable work. See the [Terms and Disclaimer](https://omerfaruknehir.github.io/Xylune/terms/); the Apache License 2.0 remains the primary software warranty and liability document.
 
-Xylune is software, not a hosted service or support platform. The maintainer has no technical access to local chats, keys, backups, provider traffic, or provider accounts. GitHub operates the public repository and Issues; posting there is voluntary and public and does not create a private support channel, response promise, or duty to monitor or resolve the post. See the [Privacy Policy](PRIVACY.md) for the exact data boundaries.
+Xylune is software, not a hosted service or support platform. The maintainer has no technical access to local chats, keys, backups, provider traffic, or provider accounts. GitHub operates the public repository and Issues; posting there is voluntary and public and does not create a private support channel, response promise, or duty to monitor or resolve the post. See the [Privacy Policy](https://omerfaruknehir.github.io/Xylune/privacy/) for the exact data boundaries.
 
 ## What makes Xylune different
 

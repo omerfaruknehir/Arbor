@@ -290,7 +290,12 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             chromeOverlayOpacity = chromeOverlayOpacity,
                             viewModel = viewModel,
                         )
-                        SettingsRoute.PRIVACY -> PrivacySettingsPage(renderSafeMode, generatedRepairMaxAttempts, viewModel)
+                        SettingsRoute.PRIVACY -> PrivacySettingsPage(
+                            renderSafeMode = renderSafeMode,
+                            generatedRepairMaxAttempts = generatedRepairMaxAttempts,
+                            matchLauncherIconToPalette = matchLauncherIconToPalette,
+                            viewModel = viewModel,
+                        )
                         SettingsRoute.BACKUP -> BackupSettingsPage(viewModel)
                         SettingsRoute.LOCAL_EXECUTION -> LocalCodeExecutionSettingsPage(defaults, automation, configuredProviders, viewModel)
                         SettingsRoute.DEVELOPER -> DeveloperSettingsPage(developerSettings, viewModel)
@@ -306,6 +311,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         SettingsRoute.ABOUT -> AboutSettingsPage(
                             viewModel = viewModel,
                             developerEnabled = developerSettings.enabled,
+                            matchLauncherIconToPalette = matchLauncherIconToPalette,
                             onOpenDeveloper = { viewModel.openSettingsRoute(SettingsRoute.DEVELOPER) },
                             onOpenLicenses = { viewModel.openSettingsRoute(SettingsRoute.LICENSES) },
                         )
@@ -1083,13 +1089,20 @@ private fun AppearanceSettingsPage(
 private fun PrivacySettingsPage(
     renderSafeMode: Boolean,
     generatedRepairMaxAttempts: Int,
+    matchLauncherIconToPalette: Boolean,
     viewModel: ChatViewModel,
 ) = SettingsPage {
     val uriHandler = LocalUriHandler.current
     val siteColors = MaterialTheme.colorScheme
-    val privacyUrl = remember(siteColors) { xyluneWebsiteUrl("privacy/", siteColors) }
-    val termsUrl = remember(siteColors) { xyluneWebsiteUrl("terms/", siteColors) }
-    val deletionUrl = remember(siteColors) { xyluneWebsiteUrl("data-deletion/", siteColors) }
+    val privacyUrl = remember(siteColors, matchLauncherIconToPalette) {
+        xyluneWebsiteUrl("privacy/", siteColors, dynamicLogo = matchLauncherIconToPalette)
+    }
+    val termsUrl = remember(siteColors, matchLauncherIconToPalette) {
+        xyluneWebsiteUrl("terms/", siteColors, dynamicLogo = matchLauncherIconToPalette)
+    }
+    val deletionUrl = remember(siteColors, matchLauncherIconToPalette) {
+        xyluneWebsiteUrl("data-deletion/", siteColors, dynamicLogo = matchLauncherIconToPalette)
+    }
     SectionTitle("Generated content", "Controls how Xylune handles AI-generated interactive UI.")
     SettingsSwitch("Safe generated rendering", renderSafeMode, viewModel::setRenderSafeMode)
     Text(
@@ -1503,6 +1516,7 @@ private val PerformanceOverlayPosition.displayName: String
 private fun AboutSettingsPage(
     viewModel: ChatViewModel,
     developerEnabled: Boolean,
+    matchLauncherIconToPalette: Boolean,
     onOpenDeveloper: () -> Unit,
     onOpenLicenses: () -> Unit,
 ) = SettingsPage {
@@ -1512,6 +1526,16 @@ private fun AboutSettingsPage(
     val updateState by viewModel.repositoryUpdateState.collectAsState()
     val sourceRepository = BuildConfig.SOURCE_REPOSITORY.takeIf(String::isNotBlank)
     val sourceUrl = sourceRepository?.let { "https://github.com/$it" }
+    val siteColors = MaterialTheme.colorScheme
+    val privacyUrl = remember(siteColors, matchLauncherIconToPalette) {
+        xyluneWebsiteUrl("privacy/", siteColors, dynamicLogo = matchLauncherIconToPalette)
+    }
+    val termsUrl = remember(siteColors, matchLauncherIconToPalette) {
+        xyluneWebsiteUrl("terms/", siteColors, dynamicLogo = matchLauncherIconToPalette)
+    }
+    val deletionUrl = remember(siteColors, matchLauncherIconToPalette) {
+        xyluneWebsiteUrl("data-deletion/", siteColors, dynamicLogo = matchLauncherIconToPalette)
+    }
     SectionTitle("$appName ${BuildConfig.VERSION_NAME}", "Native Android BYOK model workspace.")
 
     SettingsGroup("Project") {
@@ -1550,6 +1574,29 @@ private fun AboutSettingsPage(
             title = "Report an issue",
             subtitle = "Bugs, regressions, and feature requests",
             onClick = { uriHandler.openUri("https://github.com/omerfaruknehir/Xylune/issues") },
+        )
+    }
+
+    SettingsGroup("Legal") {
+        SettingsDestination(
+            icon = Icons.Outlined.PrivacyTip,
+            title = "Privacy policy",
+            subtitle = "Privacy, local data, providers, and KVKK/GDPR boundaries",
+            onClick = { uriHandler.openUri(privacyUrl) },
+        )
+        HorizontalDivider()
+        SettingsDestination(
+            icon = Icons.Outlined.Security,
+            title = "Terms & disclaimer",
+            subtitle = "Use terms, third-party AI limits, warranty, and liability",
+            onClick = { uriHandler.openUri(termsUrl) },
+        )
+        HorizontalDivider()
+        SettingsDestination(
+            icon = Icons.Outlined.DeleteOutline,
+            title = "Data deletion",
+            subtitle = "Delete local data and provider-held copies",
+            onClick = { uriHandler.openUri(deletionUrl) },
         )
     }
 
@@ -1707,7 +1754,11 @@ private val ThemeMode.displayName: String
         ThemeMode.DARK -> "Dark"
     }
 
-internal fun xyluneWebsiteUrl(path: String, colors: ColorScheme): String {
+internal fun xyluneWebsiteUrl(
+    path: String,
+    colors: ColorScheme,
+    dynamicLogo: Boolean = false,
+): String {
     fun Color.webHex(): String = "%06x".format(toArgb() and 0x00ffffff)
     val normalizedPath = path.trim('/').takeIf(String::isNotBlank)?.plus('/').orEmpty()
     val parameters = linkedMapOf(
@@ -1717,6 +1768,14 @@ internal fun xyluneWebsiteUrl(path: String, colors: ColorScheme): String {
         "onPrimary" to colors.onPrimary.webHex(),
         "primaryContainer" to colors.primaryContainer.webHex(),
         "onPrimaryContainer" to colors.onPrimaryContainer.webHex(),
+        "secondary" to colors.secondary.webHex(),
+        "onSecondary" to colors.onSecondary.webHex(),
+        "secondaryContainer" to colors.secondaryContainer.webHex(),
+        "onSecondaryContainer" to colors.onSecondaryContainer.webHex(),
+        "tertiary" to colors.tertiary.webHex(),
+        "onTertiary" to colors.onTertiary.webHex(),
+        "tertiaryContainer" to colors.tertiaryContainer.webHex(),
+        "onTertiaryContainer" to colors.onTertiaryContainer.webHex(),
         "background" to colors.background.webHex(),
         "surface" to colors.surface.webHex(),
         "surfaceLow" to colors.surfaceContainerLow.webHex(),
@@ -1726,6 +1785,7 @@ internal fun xyluneWebsiteUrl(path: String, colors: ColorScheme): String {
         "outline" to colors.outline.webHex(),
         "outlineVariant" to colors.outlineVariant.webHex(),
         "rail" to colors.surfaceContainerLowest.webHex(),
+        "dynamicLogo" to if (dynamicLogo) "1" else "0",
     )
     return "https://omerfaruknehir.github.io/Xylune/$normalizedPath?" +
         parameters.entries.joinToString("&") { (name, value) -> "$name=$value" }
