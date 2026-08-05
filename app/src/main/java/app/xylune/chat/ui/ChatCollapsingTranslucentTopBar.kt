@@ -115,7 +115,10 @@ fun ChatCollapsingTranslucentTopBar(
                     .align(Alignment.TopCenter)
                     .offset(y = 37.dp)
                     .graphicsLayer { translationY = modelTranslationY }
-                    .zIndex(3f),
+                    // The large app bar spans the expanded title area even though its
+                    // center is visually transparent. Keep the interactive pill above
+                    // that hit target so both expanded and collapsed states are tappable.
+                    .zIndex(5f),
             ) {
                 modelSelector()
             }

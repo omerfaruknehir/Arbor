@@ -18,6 +18,17 @@ class ModelPickerAndReasoningTest {
     }
 
     @Test
+    fun capabilityNoticesOnlyAppearForUnsupportedRequestedFeatures() {
+        assertFalse(shouldShowOcrCompatibility(isImage = true, modelSupportsVision = true))
+        assertFalse(shouldShowOcrCompatibility(isImage = false, modelSupportsVision = false))
+        assertTrue(shouldShowOcrCompatibility(isImage = true, modelSupportsVision = false))
+
+        assertEquals(null, unsupportedToolCallingNotice(modelSupportsTools = true, toolCallingRequested = true))
+        assertEquals(null, unsupportedToolCallingNotice(modelSupportsTools = false, toolCallingRequested = false))
+        assertTrue(unsupportedToolCallingNotice(modelSupportsTools = false, toolCallingRequested = true) != null)
+    }
+
+    @Test
     fun reasoningMarkdownKeepsStructuredMarkdownAndFences() {
         val markdown = """# Heading
 

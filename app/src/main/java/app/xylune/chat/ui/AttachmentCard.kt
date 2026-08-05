@@ -162,14 +162,14 @@ fun AttachmentCard(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Outlined.WarningAmber, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
                             Text(
-                                if (attachment.ocrJson == null) "Image compatibility" else "OCR fallback enabled",
+                                if (attachment.ocrJson == null) "Attachment compatibility" else "OCR fallback enabled",
                                 Modifier.padding(start = 8.dp),
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
                             )
                         }
                         Text(
-                            if (attachment.ocrJson == null) "This model cannot see the original. OCR fallback will be prepared before sending."
+                            if (attachment.ocrJson == null) "This model cannot read the original attachment. OCR fallback will be prepared before sending."
                             else "This model receives OCR text and coordinates; you still see the untouched original.",
                             Modifier.fillMaxWidth().padding(top = 5.dp),
                             style = MaterialTheme.typography.bodySmall,
@@ -223,7 +223,7 @@ private fun AttachmentPreview(attachment: AttachmentEntity, allowOcr: Boolean, m
                         Text(
                             when {
                                 modelUsesFallback && attachment.ocrJson != null -> "Model receives OCR fallback • original preview is unchanged"
-                                modelUsesFallback -> "Selected model cannot see the original image"
+                                modelUsesFallback -> "Selected model cannot read the original attachment"
                                 else -> attachment.mimeType
                             },
                             style = MaterialTheme.typography.labelSmall,

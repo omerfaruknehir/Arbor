@@ -28,7 +28,7 @@
 
 Xylune is a bring-your-own-provider AI client. It connects your phone directly to the services you choose—without a WebView, hosted Xylune account, application backend, telemetry, or advertising. API keys are protected with Android Keystore-backed encryption, chats live in a local SQLCipher database, and imported files remain in app-private storage.
 
-Current version: **0.24.0**
+Current version: **0.24.1**
 
 ## Development disclosure and disclaimer
 
@@ -62,7 +62,7 @@ Xylune is provided **“AS IS”**, without warranties of any kind. Use, modify,
 
 ## Install
 
-1. Download `Xylune-0.24.0-release.apk` from the [latest GitHub Release](https://github.com/omerfaruknehir/Xylune/releases/latest).
+1. Download `Xylune-0.24.1-release.apk` from the [latest GitHub Release](https://github.com/omerfaruknehir/Xylune/releases/latest).
 2. Allow installation from your browser or file manager when Android asks.
 3. Open Xylune and follow the welcome flow.
 4. Connect a ChatGPT account, API provider, or local model server.
@@ -123,7 +123,7 @@ For dependency sources, bundled native component notices, hashes, and build reci
 Xylune is created by [@omerfaruknehir](https://github.com/omerfaruknehir).
 
 - [Changelog](CHANGELOG.md)
-- [Latest release notes](docs/releases/RELEASE_NOTES_0.24.0.md)
+- [Latest release notes](docs/releases/RELEASE_NOTES_0.24.1.md)
 - [Source repository](https://github.com/omerfaruknehir/Xylune)
 - [Issue tracker](https://github.com/omerfaruknehir/Xylune/issues)
 
