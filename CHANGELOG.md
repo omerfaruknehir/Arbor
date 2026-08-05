@@ -1,3 +1,9 @@
+## 0.23.19 — 2026-08-05
+
+- Add a global **Less emoji** response-style preference, enabled by default and applied to existing and new chats on their next response.
+- Avoid decorative emoji without banning meaningful or explicitly requested emoji, and persist the preference through portable settings backup and restore.
+- Reorganize Settings into **AI & chat**, **Capabilities**, **App & data**, and **About**, with a dedicated **Response style** page.
+
 ## 0.23.17 — 2026-08-05
 
 - Feed in-process provider chunks directly to the visible response instead of waiting for Room/Paging invalidation.
