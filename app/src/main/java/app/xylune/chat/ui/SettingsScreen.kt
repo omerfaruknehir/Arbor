@@ -3,6 +3,7 @@ package app.xylune.chat.ui
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Info
@@ -125,6 +127,8 @@ import app.xylune.chat.provider.OpenAiOAuthUsageSnapshot
 import app.xylune.chat.provider.OpenAiOAuthUsageState
 import app.xylune.chat.provider.OpenAiOAuthUsageWindow
 import app.xylune.chat.provider.supportedThinkingLevels
+import app.xylune.chat.provider.defaultThinkingEffort
+import app.xylune.chat.provider.effectiveThinkingEnabled
 import app.xylune.chat.settings.CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT
 import app.xylune.chat.settings.CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT
 import app.xylune.chat.settings.ColorPalette
@@ -264,7 +268,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     when (currentRoute) {
                         SettingsRoute.HOME -> SettingsHome(
                             providerCount = registeredProviders.size,
-                            setupDeferred = setupDismissed && setupStepIndex < 4,
+                            setupDeferred = setupDismissed && setupStepIndex < 2,
                             setupStepIndex = setupStepIndex,
                             onFinishSetup = { viewModel.startSetup(setupStepIndex) },
                             onOpen = viewModel::openSettingsRoute,
@@ -323,18 +327,26 @@ private fun SettingsHome(
             SettingsDestination(
                 icon = Icons.Outlined.CheckCircle,
                 title = "Finish setup",
-                subtitle = "Continue from step ${setupStepIndex + 1} of 5",
+                subtitle = "Continue from step ${setupStepIndex + 1} of 3",
                 onClick = onFinishSetup,
             )
         }
     }
-    SettingsGroup("AI & chat") {
+    SettingsGroup("Setup & connections") {
         SettingsDestination(
             icon = Icons.Outlined.Cloud,
             title = "Providers & models",
             subtitle = if (providerCount == 0) "Add your first API provider" else "$providerCount provider${if (providerCount == 1) "" else "s"} configured",
             onClick = { onOpen(SettingsRoute.PROVIDERS) },
         )
+        SettingsDestination(
+            icon = Icons.Outlined.Cloud,
+            title = "Backup & transfer",
+            subtitle = "Cloud backups, local archives, and restore",
+            onClick = { onOpen(SettingsRoute.BACKUP) },
+        )
+    }
+    SettingsGroup("Chat behavior") {
         SettingsDestination(
             icon = Icons.Outlined.SmartToy,
             title = "New chat defaults",
@@ -354,7 +366,7 @@ private fun SettingsHome(
             onClick = { onOpen(SettingsRoute.SYSTEM_PROMPTS) },
         )
     }
-    SettingsGroup("Capabilities") {
+    SettingsGroup("Intelligence") {
         SettingsDestination(
             icon = Icons.Outlined.Psychology,
             title = "Memory",
@@ -363,23 +375,17 @@ private fun SettingsHome(
         )
         SettingsDestination(
             icon = Icons.Outlined.AutoAwesome,
-            title = "Automation",
-            subtitle = "Naming, compression, and package approval",
+            title = "Background tasks",
+            subtitle = "Chat naming and context compression models",
             onClick = { onOpen(SettingsRoute.AUTOMATION) },
         )
+    }
+    SettingsGroup("Tools & safety") {
         SettingsDestination(
             icon = Icons.Outlined.Code,
-            title = "Local tools",
-            subtitle = "Python, Linux workspace, and package approvals",
+            title = "Local execution",
+            subtitle = "Python, Linux, packages, and approval policy",
             onClick = { onOpen(SettingsRoute.LOCAL_EXECUTION) },
-        )
-    }
-    SettingsGroup("App & data") {
-        SettingsDestination(
-            icon = Icons.Outlined.Palette,
-            title = "Appearance",
-            subtitle = "Theme mode, palettes, launcher icon, and AMOLED black",
-            onClick = { onOpen(SettingsRoute.APPEARANCE) },
         )
         SettingsDestination(
             icon = Icons.Outlined.PrivacyTip,
@@ -387,11 +393,13 @@ private fun SettingsHome(
             subtitle = "Generated UI safety and local-data behavior",
             onClick = { onOpen(SettingsRoute.PRIVACY) },
         )
+    }
+    SettingsGroup("Personalization") {
         SettingsDestination(
-            icon = Icons.Outlined.Cloud,
-            title = "Backup & transfer",
-            subtitle = "Cloud/file backups and portable chat archives",
-            onClick = { onOpen(SettingsRoute.BACKUP) },
+            icon = Icons.Outlined.Palette,
+            title = "Appearance",
+            subtitle = "Theme, palette, launcher icon, and AMOLED black",
+            onClick = { onOpen(SettingsRoute.APPEARANCE) },
         )
     }
     SettingsGroup("About") {
@@ -508,7 +516,7 @@ private fun NewChatDefaultsSettings(
         maxOutputTokens = defaults.maxOutputTokens,
         reasoningVisibility = defaults.reasoningVisibility,
         viewModel = viewModel,
-        onModel = { providerId, modelId -> viewModel.updateNewChatDefaults { it.copy(selectedProviderId = providerId, selectedModelId = modelId) } },
+        onModel = viewModel::selectDefaultModel,
         onThinkingEnabled = { enabled -> viewModel.updateNewChatDefaults { it.copy(thinkingEnabled = enabled) } },
         onThinkingEffort = { effort -> viewModel.updateNewChatDefaults { it.copy(thinkingEffort = effort) } },
         onWeb = { enabled -> viewModel.updateNewChatDefaults { it.copy(webSearchEnabled = enabled, deepResearchEnabled = it.deepResearchEnabled && enabled) } },
@@ -564,7 +572,7 @@ private fun AutomationSettingsPage(
     providers: List<ProviderEntity>,
     viewModel: ChatViewModel,
 ) = SettingsPage {
-    SectionTitle("Automation models", "Global services used for naming, context compression, and package review.")
+    SectionTitle("Background task models", "Choose how Xylune names chats and compresses older context.")
     if (providers.isEmpty()) {
         Text("Configure a usable provider to enable model-based automation.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
@@ -592,9 +600,6 @@ private fun AutomationSettingsPage(
             viewModel.updateAutomationSettings { it.copy(compressionMode = mode, compressionProviderId = providerId, compressionModelId = modelId) }
         },
     )
-    HorizontalDivider()
-    SectionTitle("Package approval", "Global policy for pip, apt, and apk package requests.")
-    PackageApprovalEditor(automation, providers, viewModel)
     Spacer(Modifier.padding(bottom = 24.dp))
 }
 
@@ -1223,38 +1228,64 @@ private fun LocalCodeExecutionSettingsPage(
     automation: AutomationSettingsEntity,
     providers: List<ProviderEntity>,
     viewModel: ChatViewModel,
-) = SettingsPage {
-    SectionTitle(
-        "New-chat tool defaults",
-        "Set the starting tool state once here. Existing chats keep their own per-chat choices.",
-    )
-    SettingsSwitch(
-        "Enable Local Code Execution for new chats",
-        defaults.agentPythonEnabled,
-        { enabled -> viewModel.updateNewChatDefaults { it.copy(agentPythonEnabled = enabled) } },
-    )
-    SettingsSwitch(
-        "Enable Linux tooling for new chats",
-        defaults.agentUbuntuEnabled,
-        { enabled -> viewModel.updateNewChatDefaults { it.copy(agentUbuntuEnabled = enabled) } },
-    )
-    Text(
-        "Local Python is bundled. Linux is optional, downloaded only on request, and managed from one screen with staged progress, retry, packages, terminal, and removal.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Button(
-        onClick = { viewModel.screen.value = Screen.SANDBOX },
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Icon(Icons.Outlined.Code, null)
-        Text("Manage tool workspace", Modifier.padding(start = 8.dp))
+) {
+    val linuxStatus by viewModel.ubuntuStatus.collectAsStateWithLifecycle()
+    SettingsPage {
+        SectionTitle(
+            "Availability in new chats",
+            "Local execution is opt-in for fresh installs. Existing chats keep their own tool choices.",
+        )
+        SettingsGroup("Tool defaults") {
+            ListItem(
+                headlineContent = { Text("Python", fontWeight = FontWeight.SemiBold) },
+                supportingContent = { Text("Bundled Python 3.12 · no Linux download required") },
+                leadingContent = { Icon(Icons.Outlined.Code, null, tint = MaterialTheme.colorScheme.primary) },
+                trailingContent = {
+                    Switch(
+                        checked = defaults.agentPythonEnabled,
+                        onCheckedChange = { enabled ->
+                            viewModel.updateNewChatDefaults { it.copy(agentPythonEnabled = enabled) }
+                        },
+                    )
+                },
+                colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+            )
+            ListItem(
+                headlineContent = { Text("Linux commands", fontWeight = FontWeight.SemiBold) },
+                supportingContent = {
+                    Text(if (linuxStatus.installed) "${linuxStatus.distribution.displayName} ${linuxStatus.release} installed" else "Requires a separate distribution download")
+                },
+                leadingContent = { Icon(Icons.Outlined.Terminal, null, tint = MaterialTheme.colorScheme.primary) },
+                trailingContent = {
+                    Switch(
+                        checked = defaults.agentUbuntuEnabled,
+                        onCheckedChange = { enabled ->
+                            viewModel.updateNewChatDefaults { it.copy(agentUbuntuEnabled = enabled) }
+                        },
+                        enabled = linuxStatus.installed || defaults.agentUbuntuEnabled,
+                    )
+                },
+                colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+            )
+        }
+        SectionTitle(
+            "Runtime manager",
+            "Inspect environments, install packages, run a test, or add/remove the optional Linux distribution.",
+        )
+        Button(
+            onClick = { viewModel.screen.value = Screen.SANDBOX },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Outlined.Code, null)
+            Text("Open runtime manager", Modifier.padding(start = 8.dp))
+        }
+        SectionTitle(
+            "Package approval",
+            "Choose when Xylune may install Python or Linux packages and which sources are trusted.",
+        )
+        PackageApprovalEditor(automation, providers, viewModel)
+        Spacer(Modifier.padding(bottom = 24.dp))
     }
-    SectionTitle(
-        "Package installation",
-        "Choose when Xylune may install Python or Linux packages and which sources are trusted.",
-    )
-    PackageApprovalEditor(automation, providers, viewModel)
 }
 
 @Composable
@@ -1815,23 +1846,33 @@ private fun ThinkingDefaultsControl(
     onEffort: (ThinkingEffort) -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
-    val options = remember(provider?.id, provider?.kind, model?.modelId, model?.supportsThinking) {
+    val options = remember(
+        provider?.id,
+        provider?.kind,
+        model?.modelId,
+        model?.supportsThinking,
+        model?.reasoningMetadataAvailable,
+        model?.reasoningEffortsCsv,
+        model?.reasoningMandatory,
+    ) {
         supportedThinkingLevels(provider, model)
     }
     val supported = options.isNotEmpty()
+    val effectiveEnabled = effectiveThinkingEnabled(model, enabled)
+    val effectiveEffort = defaultThinkingEffort(model, effort)
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.SmartToy, null, tint = MaterialTheme.colorScheme.primary)
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                 Text("Thinking", fontWeight = FontWeight.SemiBold)
                 Text(
-                    if (!supported) "Not supported by this model" else if (enabled) "${effort.displayName} effort" else "Off",
+                    if (!supported) "Not supported by this model" else if (effectiveEnabled) "${effectiveEffort.displayName} effort" else "Off",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Switch(
-                checked = enabled && supported,
+                checked = effectiveEnabled && supported,
                 onCheckedChange = onEnabled,
                 enabled = supported && options.any { !it.enabled },
             )
@@ -1841,7 +1882,7 @@ private fun ThinkingDefaultsControl(
                     options.filter { it.enabled }.forEach { option ->
                         DropdownMenuItem(
                             text = { Text(option.label) },
-                            leadingIcon = if (enabled && effort == option.effort) ({ Icon(Icons.Outlined.CheckCircle, null) }) else null,
+                            leadingIcon = if (effectiveEnabled && effectiveEffort == option.effort) ({ Icon(Icons.Outlined.CheckCircle, null) }) else null,
                             onClick = {
                                 option.effort?.let(onEffort)
                                 if (!enabled) onEnabled(true)
@@ -1865,44 +1906,41 @@ private fun ProviderModelSelector(
     viewModel: ChatViewModel,
     onSelect: (String, String) -> Unit,
 ) {
-    var providerMenu by remember { mutableStateOf(false) }
-    var modelMenu by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    var showPicker by remember { mutableStateOf(false) }
+    val allModels by viewModel.allModels.collectAsStateWithLifecycle()
+    val favoriteModels by viewModel.favoriteModels.collectAsStateWithLifecycle()
+    val recentModels by viewModel.recentModels.collectAsStateWithLifecycle()
     val provider = providers.firstOrNull { it.id == providerId }
-    SectionTitle("Model", "Provider and model selection for this settings profile.")
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(Modifier.weight(1f)) {
-            OutlinedButton(onClick = { providerMenu = true }, modifier = Modifier.fillMaxWidth()) {
-                Text(provider?.displayName ?: "Choose provider", maxLines = 1)
-            }
-            XyluneDropdownMenu(expanded = providerMenu, onDismissRequest = { providerMenu = false }) {
-                providers.forEach { candidate ->
-                    DropdownMenuItem(
-                        text = { Text(candidate.displayName) },
-                        onClick = {
-                            providerMenu = false
-                            scope.launch {
-                                val first = viewModel.modelsFor(candidate.id).first().firstOrNull()
-                                if (first != null) onSelect(candidate.id, first.modelId)
-                            }
-                        },
-                    )
-                }
-            }
+    val selectedModel = models.firstOrNull { it.modelId == modelId }
+        ?: allModels.firstOrNull { it.providerId == providerId && it.modelId == modelId }
+    SectionTitle("Model", "One searchable catalog is used everywhere in Xylune.")
+    OutlinedButton(
+        onClick = { showPicker = true },
+        enabled = providers.isNotEmpty(),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+            Text(selectedModel?.displayName ?: modelId.ifBlank { "Choose a model" }, maxLines = 1)
+            Text(
+                provider?.displayName ?: "No provider selected",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
-        Box(Modifier.weight(1f)) {
-            OutlinedButton(onClick = { modelMenu = true }, enabled = models.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
-                Text(models.firstOrNull { it.modelId == modelId }?.displayName ?: modelId.ifBlank { "Choose model" }, maxLines = 1)
-            }
-            XyluneDropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
-                models.forEach { model ->
-                    DropdownMenuItem(
-                        text = { Text(model.displayName) },
-                        onClick = { onSelect(providerId, model.modelId); modelMenu = false },
-                    )
-                }
-            }
-        }
+        Icon(Icons.Outlined.ChevronRight, null)
+    }
+    if (showPicker) {
+        ModelPickerSheet(
+            providers = providers,
+            models = allModels,
+            selectedProviderId = providerId,
+            selectedModelId = modelId,
+            favoriteKeys = favoriteModels,
+            recentKeys = recentModels,
+            onToggleFavorite = viewModel::toggleFavoriteModel,
+            onSelect = onSelect,
+            onDismiss = { showPicker = false },
+        )
     }
     if (providers.isEmpty()) Text("Add a usable provider in the Providers tab.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
 }
@@ -1975,7 +2013,12 @@ private fun ProviderSettings(
     val scope = rememberCoroutineScope()
     var syncingModels by remember { mutableStateOf(false) }
     var modelSyncStatus by remember { mutableStateOf<String?>(null) }
+    var automaticMetadataAttemptedFor by remember { mutableStateOf<String?>(null) }
     val selected = registeredProviders.firstOrNull { it.id == selectedId } ?: registeredProviders.firstOrNull()
+    val selectedModelFlow = remember(selected?.id) {
+        selected?.id?.let(viewModel::modelsFor) ?: flowOf<List<ModelEntity>>(emptyList())
+    }
+    val selectedModels by selectedModelFlow.collectAsStateWithLifecycle(initialValue = emptyList())
 
     LaunchedEffect(selected?.id) {
         selected?.let {
@@ -1994,6 +2037,25 @@ private fun ProviderSettings(
     LaunchedEffect(selected?.id, selectedOAuthState) {
         val provider = selected?.takeIf { it.kind == ProviderKind.OPENAI_OAUTH } ?: return@LaunchedEffect
         if (selectedOAuthState is OpenAiOAuthState.SignedIn) viewModel.ensureChatGptUsage(provider.id)
+    }
+    LaunchedEffect(selected?.id, selectedModels, apiKey, headers, baseUrl) {
+        val provider = selected ?: return@LaunchedEffect
+        if (!ModelRequestPolicy.isOpenRouter(provider) || provider.kind == ProviderKind.OPENAI_OAUTH) return@LaunchedEffect
+        val newestMetadata = selectedModels.maxOfOrNull(ModelEntity::metadataUpdatedAt) ?: 0L
+        val metadataFresh = selectedModels.any { it.metadataSource == "OpenRouter" } &&
+            System.currentTimeMillis() - newestMetadata < OPENROUTER_METADATA_REFRESH_INTERVAL_MS
+        if (metadataFresh) return@LaunchedEffect
+        if (automaticMetadataAttemptedFor == provider.id || (provider.apiKeyRequired && apiKey.isBlank())) return@LaunchedEffect
+        automaticMetadataAttemptedFor = provider.id
+        syncingModels = true
+        modelSyncStatus = "Fetching OpenRouter capabilities, reasoning modes, limits, and pricing…"
+        runCatching { viewModel.discoverModels(provider.kind, baseUrl, apiKey, headers) }
+            .onSuccess { discovered ->
+                viewModel.saveDiscoveredModels(provider.id, discovered)
+                modelSyncStatus = "Automatically updated metadata for ${discovered.size} models"
+            }
+            .onFailure { modelSyncStatus = "Automatic metadata refresh failed: ${it.message?.take(600).orEmpty()}" }
+        syncingModels = false
     }
 
     SettingsPage {
@@ -2218,16 +2280,37 @@ private fun ProviderSettings(
                 apiKeyRequired = draft.apiKeyRequired,
             )
             val models = draft.selectedModels.map { candidate ->
-                val model = DefaultCatalog.models.firstOrNull { it.providerId == id && it.modelId == candidate.id } ?: ModelEntity(
+                val bundled = DefaultCatalog.models.firstOrNull { it.providerId == id && it.modelId == candidate.id }
+                val base = bundled ?: ModelEntity(
                     providerId = id, modelId = candidate.id, displayName = candidate.displayName,
-                    contextWindow = candidate.contextWindow ?: 128_000,
-                    maxOutputTokens = candidate.maxOutputTokens ?: 16_384,
-                    inputCacheHitUsdPerMillion = 0.0, inputCacheMissUsdPerMillion = 0.0, outputUsdPerMillion = 0.0,
-                    supportsThinking = candidate.supportsThinking ?: false,
-                    supportsVision = candidate.supportsVision ?: false,
-                    supportsFiles = candidate.supportsFiles ?: false,
-                    supportsTools = candidate.supportsTools ?: false,
-                    supportsImageGeneration = candidate.supportsImageGeneration ?: false,
+                    contextWindow = 128_000, maxOutputTokens = 16_384,
+                    inputCacheHitUsdPerMillion = 0.0, inputCacheMissUsdPerMillion = 0.0,
+                    outputUsdPerMillion = 0.0,
+                )
+                val model = base.copy(
+                    displayName = candidate.displayName,
+                    contextWindow = candidate.contextWindow ?: base.contextWindow,
+                    maxOutputTokens = candidate.maxOutputTokens ?: base.maxOutputTokens,
+                    inputCacheHitUsdPerMillion = candidate.inputCacheHitUsdPerMillion
+                        ?: candidate.inputCacheMissUsdPerMillion ?: base.inputCacheHitUsdPerMillion,
+                    inputCacheMissUsdPerMillion = candidate.inputCacheMissUsdPerMillion ?: base.inputCacheMissUsdPerMillion,
+                    outputUsdPerMillion = candidate.outputUsdPerMillion ?: base.outputUsdPerMillion,
+                    pricingConfigured = candidate.inputCacheMissUsdPerMillion != null && candidate.outputUsdPerMillion != null || base.pricingConfigured,
+                    supportsThinking = candidate.supportsThinking ?: base.supportsThinking,
+                    supportsVision = candidate.supportsVision ?: base.supportsVision,
+                    supportsFiles = candidate.supportsFiles ?: base.supportsFiles,
+                    supportsTools = candidate.supportsTools ?: base.supportsTools,
+                    supportsImageGeneration = candidate.supportsImageGeneration ?: base.supportsImageGeneration,
+                    description = candidate.description,
+                    createdAtEpochSeconds = candidate.createdAtEpochSeconds,
+                    reasoningMetadataAvailable = candidate.reasoningMetadataAvailable,
+                    reasoningEffortsCsv = candidate.reasoningEfforts.joinToString(",") { it.name },
+                    reasoningDefaultEffort = candidate.reasoningDefaultEffort?.name.orEmpty(),
+                    reasoningDefaultEnabled = candidate.reasoningDefaultEnabled,
+                    reasoningMandatory = candidate.reasoningMandatory,
+                    reasoningSupportsMaxTokens = candidate.reasoningSupportsMaxTokens,
+                    metadataSource = candidate.metadataSource,
+                    metadataUpdatedAt = if (candidate.metadataSource.isNotBlank()) System.currentTimeMillis() else 0L,
                 )
                 ModelRequestPolicy.normalize(provider, model)
             }
@@ -2790,8 +2873,15 @@ private fun AddProviderDialog(
                             TextButton(onClick = { selectedModelIds = emptySet() }) { Text("Clear") }
                         }
                     }
+                    if (visibleModels.size > MODEL_MANAGER_RENDER_LIMIT) {
+                        Text(
+                            "Showing the first $MODEL_MANAGER_RENDER_LIMIT matches. Search to find a specific model; all selected models will still be saved.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Column(Modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
-                        visibleModels.forEach { model ->
+                        visibleModels.take(MODEL_MANAGER_RENDER_LIMIT).forEach { model ->
                             val checked = model.id in selectedModelIds
                             val toggle = {
                                 selectedModelIds = if (checked) selectedModelIds - model.id else selectedModelIds + model.id
@@ -2804,6 +2894,16 @@ private fun AddProviderDialog(
                                 Column(Modifier.weight(1f)) {
                                     Text(model.displayName, fontWeight = FontWeight.Medium)
                                     Text(model.id, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(
+                                        buildList {
+                                            model.contextWindow?.let { add("${it / 1_000}K context") }
+                                            if (model.supportsThinking == true) add("Thinking")
+                                            if (model.supportsTools == true) add("Tools")
+                                            if (model.supportsVision == true) add("Vision")
+                                        }.joinToString(" · "),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
                                 }
                             }
                         }
@@ -2932,14 +3032,10 @@ private fun AutomationPolicyEditor(
     viewModel: ChatViewModel,
     onChange: (AuxiliaryMode, String, String) -> Unit,
 ) {
-    var providerMenu by remember { mutableStateOf(false) }
-    var modelMenu by remember { mutableStateOf(false) }
+    val allModels by viewModel.allModels.collectAsStateWithLifecycle()
     val effectiveProvider = providers.firstOrNull { it.id == providerId } ?: providers.firstOrNull()
-    val modelFlow = remember(effectiveProvider?.id) {
-        effectiveProvider?.id?.let(viewModel::modelsFor) ?: flowOf<List<ModelEntity>>(emptyList())
-    }
-    val models by modelFlow.collectAsStateWithLifecycle(initialValue = emptyList())
-    val effectiveModel = models.firstOrNull { it.modelId == modelId } ?: models.firstOrNull()
+    val providerModels = allModels.filter { it.providerId == effectiveProvider?.id }
+    val effectiveModel = providerModels.firstOrNull { it.modelId == modelId } ?: providerModels.firstOrNull()
 
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -2966,43 +3062,52 @@ private fun AutomationPolicyEditor(
                 }
             }
             if (mode == AuxiliaryMode.MODEL) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box {
-                        AssistChip(onClick = { providerMenu = true }, label = { Text(effectiveProvider?.displayName ?: "Choose provider") })
-                        XyluneDropdownMenu(expanded = providerMenu, onDismissRequest = { providerMenu = false }) {
-                            providers.forEach { provider ->
-                                DropdownMenuItem(
-                                    text = { Text(provider.displayName) },
-                                    onClick = {
-                                        onChange(mode, provider.id, "")
-                                        providerMenu = false
-                                    },
-                                )
-                            }
-                        }
-                    }
-                    Box(Modifier.weight(1f)) {
-                        AssistChip(
-                            onClick = { modelMenu = true },
-                            label = { Text(effectiveModel?.displayName ?: "Choose model", maxLines = 1) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        XyluneDropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
-                            models.forEach { model ->
-                                DropdownMenuItem(
-                                    text = { Text(model.displayName) },
-                                    onClick = {
-                                        onChange(mode, effectiveProvider?.id.orEmpty(), model.modelId)
-                                        modelMenu = false
-                                    },
-                                )
-                            }
-                        }
-                    }
-                }
+                SettingsModelPickerButton(
+                    providers = providers,
+                    providerId = effectiveProvider?.id.orEmpty(),
+                    modelId = effectiveModel?.modelId.orEmpty(),
+                    viewModel = viewModel,
+                    emptyLabel = "Choose automation model",
+                    onSelect = { selectedProvider, selectedModel -> onChange(mode, selectedProvider, selectedModel) },
+                )
             }
         }
     }
+}
+
+@Composable
+private fun SettingsModelPickerButton(
+    providers: List<ProviderEntity>,
+    providerId: String,
+    modelId: String,
+    viewModel: ChatViewModel,
+    emptyLabel: String,
+    onSelect: (String, String) -> Unit,
+) {
+    var showPicker by remember { mutableStateOf(false) }
+    val allModels by viewModel.allModels.collectAsStateWithLifecycle()
+    val favoriteModels by viewModel.favoriteModels.collectAsStateWithLifecycle()
+    val recentModels by viewModel.recentModels.collectAsStateWithLifecycle()
+    val provider = providers.firstOrNull { it.id == providerId }
+    val model = allModels.firstOrNull { it.providerId == providerId && it.modelId == modelId }
+    OutlinedButton(onClick = { showPicker = true }, enabled = providers.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+            Text(model?.displayName ?: emptyLabel, maxLines = 1)
+            provider?.let { Text(it.displayName, style = MaterialTheme.typography.labelSmall) }
+        }
+        Icon(Icons.Outlined.ChevronRight, null)
+    }
+    if (showPicker) ModelPickerSheet(
+        providers = providers,
+        models = allModels,
+        selectedProviderId = providerId,
+        selectedModelId = modelId,
+        favoriteKeys = favoriteModels,
+        recentKeys = recentModels,
+        onToggleFavorite = viewModel::toggleFavoriteModel,
+        onSelect = onSelect,
+        onDismiss = { showPicker = false },
+    )
 }
 
 @Composable
@@ -3011,14 +3116,10 @@ private fun PackageApprovalEditor(
     providers: List<ProviderEntity>,
     viewModel: ChatViewModel,
 ) {
-    var providerMenu by remember { mutableStateOf(false) }
-    var modelMenu by remember { mutableStateOf(false) }
+    val allModels by viewModel.allModels.collectAsStateWithLifecycle()
     val effectiveProvider = providers.firstOrNull { it.id == settings.approvalProviderId } ?: providers.firstOrNull()
-    val modelFlow = remember(effectiveProvider?.id) {
-        effectiveProvider?.id?.let(viewModel::modelsFor) ?: flowOf<List<ModelEntity>>(emptyList())
-    }
-    val models by modelFlow.collectAsStateWithLifecycle(initialValue = emptyList())
-    val effectiveModel = models.firstOrNull { it.modelId == settings.approvalModelId } ?: models.firstOrNull()
+    val providerModels = allModels.filter { it.providerId == effectiveProvider?.id }
+    val effectiveModel = providerModels.firstOrNull { it.modelId == settings.approvalModelId } ?: providerModels.firstOrNull()
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(
@@ -3051,36 +3152,18 @@ private fun PackageApprovalEditor(
                 }
             }
             if (settings.packageApprovalMode == PackageApprovalMode.MODEL_REVIEW) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box {
-                        AssistChip(onClick = { providerMenu = true }, label = { Text(effectiveProvider?.displayName ?: "Choose provider") })
-                        XyluneDropdownMenu(expanded = providerMenu, onDismissRequest = { providerMenu = false }) {
-                            providers.forEach { provider ->
-                                DropdownMenuItem(
-                                    text = { Text(provider.displayName) },
-                                    onClick = {
-                                        viewModel.updateAutomationSettings { it.copy(approvalProviderId = provider.id, approvalModelId = "") }
-                                        providerMenu = false
-                                    },
-                                )
-                            }
+                SettingsModelPickerButton(
+                    providers = providers,
+                    providerId = effectiveProvider?.id.orEmpty(),
+                    modelId = effectiveModel?.modelId.orEmpty(),
+                    viewModel = viewModel,
+                    emptyLabel = "Choose approval model",
+                    onSelect = { providerId, modelId ->
+                        viewModel.updateAutomationSettings {
+                            it.copy(approvalProviderId = providerId, approvalModelId = modelId)
                         }
-                    }
-                    Box(Modifier.weight(1f)) {
-                        AssistChip(onClick = { modelMenu = true }, label = { Text(effectiveModel?.displayName ?: "Choose model", maxLines = 1) }, modifier = Modifier.fillMaxWidth())
-                        XyluneDropdownMenu(expanded = modelMenu, onDismissRequest = { modelMenu = false }) {
-                            models.forEach { model ->
-                                DropdownMenuItem(
-                                    text = { Text(model.displayName) },
-                                    onClick = {
-                                        viewModel.updateAutomationSettings { it.copy(approvalProviderId = effectiveProvider?.id.orEmpty(), approvalModelId = model.modelId) }
-                                        modelMenu = false
-                                    },
-                                )
-                            }
-                        }
-                    }
-                }
+                    },
+                )
             }
             if (settings.packageApprovalMode == PackageApprovalMode.TRUSTED_ONLY) {
                 OutlinedTextField(
@@ -3132,18 +3215,32 @@ private fun ModelCatalogEditor(provider: ProviderEntity, viewModel: ChatViewMode
     var editing by remember { mutableStateOf<ModelEntity?>(null) }
     var creating by remember { mutableStateOf(false) }
     var search by remember { mutableStateOf("") }
+    var capabilityFilter by remember { mutableStateOf(ModelPickerFilter.ALL) }
     val visibleModels = remember(models, search) {
         val query = search.trim()
         if (query.isBlank()) models else models.filter {
-            it.displayName.contains(query, ignoreCase = true) || it.modelId.contains(query, ignoreCase = true)
+            it.displayName.contains(query, ignoreCase = true) || it.modelId.contains(query, ignoreCase = true) ||
+                it.description.contains(query, ignoreCase = true)
+        }
+    }.filter { model ->
+        when (capabilityFilter) {
+            ModelPickerFilter.ALL -> true
+            ModelPickerFilter.THINKING -> model.supportsThinking
+            ModelPickerFilter.TOOLS -> model.supportsTools
+            ModelPickerFilter.VISION -> model.supportsVision
+            ModelPickerFilter.FILES -> model.supportsFiles
+            ModelPickerFilter.IMAGE -> model.supportsImageGeneration
+            ModelPickerFilter.FREE -> model.pricingConfigured && model.inputCacheMissUsdPerMillion == 0.0 && model.outputUsdPerMillion == 0.0
+            ModelPickerFilter.FAVORITES, ModelPickerFilter.RECENT -> true
         }
     }
+    val displayedModels = visibleModels.take(MODEL_MANAGER_RENDER_LIMIT)
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Models", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                Text("${models.size} available for ${provider.displayName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${models.size} available for ${provider.displayName} · metadata refreshes with the catalog", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             FilledTonalButton(onClick = { creating = true }) {
                 Icon(Icons.Outlined.Add, null)
@@ -3160,9 +3257,32 @@ private fun ModelCatalogEditor(provider: ProviderEntity, viewModel: ChatViewMode
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf(
+                ModelPickerFilter.ALL,
+                ModelPickerFilter.THINKING,
+                ModelPickerFilter.TOOLS,
+                ModelPickerFilter.VISION,
+                ModelPickerFilter.FILES,
+                ModelPickerFilter.IMAGE,
+                ModelPickerFilter.FREE,
+            ).forEach { option ->
+                FilterChip(selected = capabilityFilter == option, onClick = { capabilityFilter = option }, label = { Text(option.label) })
+            }
+        }
+        if (visibleModels.size > displayedModels.size) {
+            Text(
+                "Showing ${displayedModels.size} of ${visibleModels.size}. Search or filter to narrow the catalog.",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
         Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
             Column {
-                visibleModels.forEachIndexed { index, model ->
+                displayedModels.forEachIndexed { index, model ->
                     ListItem(
                         headlineContent = { Text(model.displayName, fontWeight = FontWeight.SemiBold) },
                         supportingContent = {
@@ -3175,9 +3295,9 @@ private fun ModelCatalogEditor(provider: ProviderEntity, viewModel: ChatViewMode
                         modifier = Modifier.clickable { editing = model },
                         colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
                     )
-                    if (index != visibleModels.lastIndex) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                    if (index != displayedModels.lastIndex) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                 }
-                if (visibleModels.isEmpty()) Text("No matching models.", Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (displayedModels.isEmpty()) Text("No matching models.", Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -3206,12 +3326,16 @@ private val ModelEntity.compactSummary: String
     get() = buildList {
         add("${contextWindow / 1_000}K context")
         add("${maxOutputTokens / 1_000}K output")
-        if (supportsThinking) add("Thinking")
+        if (supportsThinking) add(if (reasoningMandatory) "Thinking always on" else "Thinking")
         if (supportsVision) add("Vision")
         if (supportsTools) add("Tools")
         if (supportsImageGeneration) add("Image generation")
         if (!pricingConfigured) add("Cost unavailable")
+        if (metadataSource.isNotBlank()) add("$metadataSource metadata")
     }.joinToString(" · ")
+
+private const val MODEL_MANAGER_RENDER_LIMIT = 60
+private const val OPENROUTER_METADATA_REFRESH_INTERVAL_MS = 24L * 60 * 60 * 1_000
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

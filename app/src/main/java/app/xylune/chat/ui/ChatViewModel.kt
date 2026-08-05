@@ -31,6 +31,8 @@ import app.xylune.chat.data.PackageTransactionEntity
 import app.xylune.chat.provider.ProviderCredentialPolicy
 import app.xylune.chat.provider.ProviderEndpointPolicy
 import app.xylune.chat.provider.ModelRequestPolicy
+import app.xylune.chat.provider.defaultThinkingEffort
+import app.xylune.chat.provider.effectiveThinkingEnabled
 import app.xylune.chat.provider.OpenAiOAuthManager
 import app.xylune.chat.provider.OpenAiOAuthState
 import app.xylune.chat.provider.OpenAiOAuthUsageState
@@ -129,6 +131,8 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val memories = container.repository.memories
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val allModels = container.repository.observeAllModels()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val automationSettings = container.repository.automationSettings
         .map { it ?: AutomationSettingsEntity() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AutomationSettingsEntity())
@@ -203,6 +207,8 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     val themeMode = container.appPreferences.themeMode
     val matchLauncherIconToPalette = container.appPreferences.matchLauncherIconToPalette
     val newChatDefaults: StateFlow<NewChatDefaults> = container.appPreferences.newChatDefaults
+    val favoriteModels: StateFlow<Set<String>> = container.appPreferences.favoriteModels
+    val recentModels: StateFlow<List<String>> = container.appPreferences.recentModels
     val renderSafeMode = container.crashReporter.renderSafeMode
     val notices = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val repositoryUpdateState: StateFlow<RepositoryUpdateState> = container.repositoryUpdates.state
@@ -470,7 +476,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
                         screen.value = Screen.CHAT
                         if (result.settingsRestored) {
                             setupActive.value = false
-                            setupStepIndex.value = 2
+                            setupStepIndex.value = 1
                             setupDismissed.value = true
                             notices.tryEmit("Backup restored. Setup was paused; finish provider access later from Settings.")
                         } else {
@@ -570,7 +576,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         } ?: container.persistentUiState.setupScroll(stepIndex)
 
     fun saveSetupScrollOffset(stepIndex: Int, offset: Int) {
-        val normalizedStep = stepIndex.coerceIn(0, 4)
+        val normalizedStep = stepIndex.coerceIn(0, 2)
         val normalizedOffset = offset.coerceAtLeast(0)
         synchronized(latestSetupScrollOffsets) {
             latestSetupScrollOffsets[normalizedStep] = normalizedOffset
@@ -579,7 +585,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     }
 
     fun updateSetupPagerPosition(stepIndex: Int, offsetFraction: Float) {
-        setupStepIndex.value = stepIndex.coerceIn(0, 4)
+        setupStepIndex.value = stepIndex.coerceIn(0, 2)
         setupPageOffsetFraction.value = offsetFraction.coerceIn(-0.499f, 0.499f)
     }
 
@@ -615,7 +621,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     }
 
     fun startSetup(stepIndex: Int = 0) {
-        setupStepIndex.value = stepIndex.coerceIn(0, 4)
+        setupStepIndex.value = stepIndex.coerceIn(0, 2)
         setupPageOffsetFraction.value = 0f
         setupActive.value = true
         setupDismissed.value = false
@@ -635,7 +641,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
 
     fun finishSetup() {
         setupActive.value = false
-        setupStepIndex.value = 4
+        setupStepIndex.value = 2
         setupPageOffsetFraction.value = 0f
         setupDismissed.value = true
         setupTemporarilyAway.value = false
@@ -645,20 +651,12 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
 
     fun openProviderSetupFromSetup() {
         setupActive.value = true
-        setupStepIndex.value = 2
+        setupStepIndex.value = 1
         setupPageOffsetFraction.value = 0f
         setupTemporarilyAway.value = true
         settingsRoute.value = SettingsRoute.PROVIDERS
         providerSetupRequested.value = true
         screen.value = Screen.SETTINGS
-    }
-
-    fun openLinuxSetupFromSetup() {
-        setupActive.value = true
-        setupStepIndex.value = 3
-        setupPageOffsetFraction.value = 0f
-        setupTemporarilyAway.value = true
-        screen.value = Screen.SANDBOX
     }
 
     fun returnToSetup() {
@@ -675,9 +673,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         _pythonRun.value = PythonRunState(started, code, timeoutSeconds)
         pythonRunJob = viewModelScope.launch {
             try {
-                val result = container.ubuntuRuntime.executePython(conversationId, code, timeoutSeconds) { progress ->
-                    _pythonRun.value = _pythonRun.value?.copy(progress = progress)
-                }
+                val result = container.pythonSandbox.execute(conversationId, code, timeoutSeconds)
                 _pythonRun.value = _pythonRun.value?.copy(running = false, result = result)
             } catch (cancelled: CancellationException) {
                 _pythonRun.value = _pythonRun.value?.copy(running = false, error = "Stopped by user")
@@ -688,12 +684,17 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     }
 
     fun stopPythonRun() {
+        val conversationId = selectedConversationId.value ?: draftConversation.value?.id
+        conversationId?.let(container.pythonSandbox::requestCancel)
         pythonRunJob?.cancel()
     }
 
     fun clearPythonRun() {
         if (_pythonRun.value?.running != true) _pythonRun.value = null
     }
+
+    private fun localWorkspaceConversationId(): String =
+        selectedConversationId.value ?: draftConversation.value?.id ?: error("No chat workspace is available")
 
     fun startLinuxRun(command: String, timeoutSeconds: Int) {
         if (_linuxRun.value?.running == true || command.isBlank()) return
@@ -1049,9 +1050,46 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         return container.auxiliaryModels.reviewWidgetSecurity(id, source)
     }
 
-    fun selectModel(providerId: String, modelId: String) = updateConversation {
-        it.copy(selectedProviderId = providerId, selectedModelId = modelId)
+    fun selectModel(providerId: String, modelId: String) {
+        container.appPreferences.recordRecentModel(providerId, modelId)
+        viewModelScope.launch {
+            val model = container.repository.model(providerId, modelId)
+            updateConversation { current ->
+                current.copy(
+                    selectedProviderId = providerId,
+                    selectedModelId = modelId,
+                    thinkingEnabled = model?.let {
+                        if (it.reasoningMetadataAvailable) effectiveThinkingEnabled(it, it.reasoningDefaultEnabled)
+                        else if (!it.supportsThinking) false else current.thinkingEnabled
+                    } ?: current.thinkingEnabled,
+                    thinkingEffort = model?.takeIf { it.reasoningMetadataAvailable }
+                        ?.let { defaultThinkingEffort(it, current.thinkingEffort) } ?: current.thinkingEffort,
+                )
+            }
+        }
     }
+
+    fun selectDefaultModel(providerId: String, modelId: String) {
+        container.appPreferences.recordRecentModel(providerId, modelId)
+        viewModelScope.launch {
+            val model = container.repository.model(providerId, modelId)
+            updateNewChatDefaults { current ->
+                current.copy(
+                    selectedProviderId = providerId,
+                    selectedModelId = modelId,
+                    thinkingEnabled = model?.let {
+                        if (it.reasoningMetadataAvailable) effectiveThinkingEnabled(it, it.reasoningDefaultEnabled)
+                        else if (!it.supportsThinking) false else current.thinkingEnabled
+                    } ?: current.thinkingEnabled,
+                    thinkingEffort = model?.takeIf { it.reasoningMetadataAvailable }
+                        ?.let { defaultThinkingEffort(it, current.thinkingEffort) } ?: current.thinkingEffort,
+                )
+            }
+        }
+    }
+
+    fun toggleFavoriteModel(providerId: String, modelId: String) =
+        container.appPreferences.toggleFavoriteModel(providerId, modelId)
 
     fun updateConversation(transform: (ConversationEntity) -> ConversationEntity) {
         val id = selectedConversationId.value
@@ -1237,10 +1275,12 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
 
     suspend fun saveDiscoveredModels(providerId: String, discovered: List<app.xylune.chat.provider.DiscoveredModel>) {
         require(discovered.isNotEmpty()) { "The provider returned no models" }
-        discovered.forEach { candidate ->
+        val provider = requireNotNull(container.repository.provider(providerId)) { "Provider is missing" }
+        val metadataUpdatedAt = System.currentTimeMillis()
+        val models = discovered.map { candidate ->
             val bundled = DefaultCatalog.models.firstOrNull { it.providerId == providerId && it.modelId == candidate.id }
             val existing = container.repository.model(providerId, candidate.id)
-            val base = bundled ?: existing ?: ModelEntity(
+            val base = existing ?: bundled ?: ModelEntity(
                 providerId = providerId,
                 modelId = candidate.id,
                 displayName = candidate.displayName,
@@ -1251,18 +1291,35 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
                 outputUsdPerMillion = 0.0,
                 pricingConfigured = false,
             )
-            val provider = requireNotNull(container.repository.provider(providerId)) { "Provider is missing" }
-            container.repository.saveModel(ModelRequestPolicy.normalize(provider, base.copy(
+            ModelRequestPolicy.normalize(provider, base.copy(
                 displayName = candidate.displayName,
                 contextWindow = candidate.contextWindow ?: base.contextWindow,
                 maxOutputTokens = candidate.maxOutputTokens ?: base.maxOutputTokens,
+                inputCacheHitUsdPerMillion = candidate.inputCacheHitUsdPerMillion
+                    ?: candidate.inputCacheMissUsdPerMillion ?: base.inputCacheHitUsdPerMillion,
+                inputCacheMissUsdPerMillion = candidate.inputCacheMissUsdPerMillion ?: base.inputCacheMissUsdPerMillion,
+                outputUsdPerMillion = candidate.outputUsdPerMillion ?: base.outputUsdPerMillion,
+                pricingConfigured = candidate.inputCacheMissUsdPerMillion != null && candidate.outputUsdPerMillion != null || base.pricingConfigured,
                 supportsThinking = candidate.supportsThinking ?: base.supportsThinking,
                 supportsVision = candidate.supportsVision ?: base.supportsVision,
                 supportsFiles = candidate.supportsFiles ?: base.supportsFiles,
                 supportsTools = candidate.supportsTools ?: base.supportsTools,
                 supportsImageGeneration = candidate.supportsImageGeneration ?: base.supportsImageGeneration,
-            )))
+                description = candidate.description.ifBlank { base.description },
+                createdAtEpochSeconds = candidate.createdAtEpochSeconds.takeIf { it > 0 } ?: base.createdAtEpochSeconds,
+                reasoningMetadataAvailable = candidate.reasoningMetadataAvailable || base.reasoningMetadataAvailable,
+                reasoningEffortsCsv = if (candidate.reasoningMetadataAvailable) {
+                    candidate.reasoningEfforts.joinToString(",") { it.name }
+                } else base.reasoningEffortsCsv,
+                reasoningDefaultEffort = candidate.reasoningDefaultEffort?.name ?: base.reasoningDefaultEffort,
+                reasoningDefaultEnabled = if (candidate.reasoningMetadataAvailable) candidate.reasoningDefaultEnabled else base.reasoningDefaultEnabled,
+                reasoningMandatory = if (candidate.reasoningMetadataAvailable) candidate.reasoningMandatory else base.reasoningMandatory,
+                reasoningSupportsMaxTokens = if (candidate.reasoningMetadataAvailable) candidate.reasoningSupportsMaxTokens else base.reasoningSupportsMaxTokens,
+                metadataSource = candidate.metadataSource.ifBlank { base.metadataSource },
+                metadataUpdatedAt = if (candidate.metadataSource.isNotBlank()) metadataUpdatedAt else base.metadataUpdatedAt,
+            ))
         }
+        container.repository.mergeModels(models.distinctBy { it.modelId })
     }
 
     fun saveModel(model: ModelEntity) = launchAction {
@@ -1381,19 +1438,21 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     suspend fun executePython(code: String): ExecutionResult = executePython(code, 90)
 
     suspend fun executePython(code: String, timeoutSeconds: Int): ExecutionResult {
-        val id = selectedConversationId.value ?: error("No conversation")
-        return container.ubuntuRuntime.executePython(id, code, timeoutSeconds)
+        val id = localWorkspaceConversationId()
+        return container.pythonSandbox.execute(id, code, timeoutSeconds)
     }
 
     suspend fun executePython(code: String, onProgress: suspend (ExecutionProgress) -> Unit): ExecutionResult {
-        val id = selectedConversationId.value ?: error("No conversation")
-        return container.ubuntuRuntime.executePython(id, code, 90, onProgress)
+        val id = localWorkspaceConversationId()
+        val result = container.pythonSandbox.execute(id, code, 90)
+        onProgress(ExecutionProgress(result.stdout.takeLast(12_000), result.stderr.takeLast(12_000), result.elapsedMs))
+        return result
     }
 
     suspend fun installPythonPackages(requirements: String, approvedPlan: PackagePlan? = null): PackageInstallResult {
-        val id = selectedConversationId.value ?: error("No conversation")
+        val id = localWorkspaceConversationId()
         val restrictions = container.repository.automationSettingsNow().packageRestrictionsEnabled
-        val result = container.ubuntuRuntime.installPythonPackages(id, requirements, restrictions, approvedPlan)
+        val result = container.pythonSandbox.install(id, requirements, restrictions, approvedPlan)
         if (result.success) {
             val imports = result.importNames.entries.joinToString("; ") { (distribution, names) ->
                 "$distribution imports as ${names.joinToString().ifBlank { "(no top-level module reported)" }}"
@@ -1408,7 +1467,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     }
 
     suspend fun installPythonPackagesAndContinue(operationKey: String, requirements: String, approvedPlan: PackagePlan): PackageInstallResult {
-        val id = selectedConversationId.value ?: error("No conversation")
+        val id = localWorkspaceConversationId()
         val previous = container.repository.packageTransaction(operationKey)
         if (previous?.status == PACKAGE_SUCCEEDED && previous.requirements == requirements) {
             return PackageInstallResult(success = true, packages = approvedPlan.items.map { it.name })
@@ -1430,15 +1489,15 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     }
 
     suspend fun reviewPythonPackages(requirements: String): PackageReview {
-        val id = selectedConversationId.value ?: error("No conversation")
+        val id = localWorkspaceConversationId()
         val restrictions = container.repository.automationSettingsNow().packageRestrictionsEnabled
-        return container.packageApprovals.review(id, container.ubuntuRuntime.preflightPythonPackages(id, requirements, restrictions))
+        return container.packageApprovals.review(id, container.pythonSandbox.preflight(id, requirements, restrictions))
     }
 
     suspend fun reviewPythonPackages(operationKey: String, requirements: String): PackageReview {
-        val id = selectedConversationId.value ?: error("No conversation")
+        val id = localWorkspaceConversationId()
         val restrictions = container.repository.automationSettingsNow().packageRestrictionsEnabled
-        val plan = container.ubuntuRuntime.preflightPythonPackages(id, requirements, restrictions)
+        val plan = container.pythonSandbox.preflight(id, requirements, restrictions)
         return reviewDurablePackage(operationKey, id, requirements, plan)
     }
 
@@ -1451,12 +1510,12 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     suspend fun removeUbuntu(): UbuntuRuntimeStatus = container.ubuntuRuntime.remove()
 
     suspend fun executeUbuntu(command: String, timeoutSeconds: Int = 180): UbuntuExecutionResult {
-        val id = selectedConversationId.value ?: error("No conversation")
+        val id = localWorkspaceConversationId()
         return container.ubuntuRuntime.execute(id, command, timeoutSeconds)
     }
 
     suspend fun executeUbuntu(command: String, onProgress: suspend (ExecutionProgress) -> Unit): UbuntuExecutionResult {
-        val id = selectedConversationId.value ?: error("No conversation")
+        val id = localWorkspaceConversationId()
         return container.ubuntuRuntime.execute(id, command, 180, onProgress)
     }
 
@@ -1487,23 +1546,23 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         container.generatedBlockRepairs.acceptManualEdit(state, source)
 
     suspend fun rerunRecordedScript(runId: String, timeoutSeconds: Int? = null): ScriptRunResult {
-        val conversationId = selectedConversationId.value ?: error("No conversation")
+        val conversationId = localWorkspaceConversationId()
         val outcome = container.agentTools.execute(conversationId, AgentToolRequest("rerun_script", runId = runId, timeoutSeconds = timeoutSeconds))
         return toolResultJson.decodeFromString(outcome.output)
     }
 
     suspend fun scriptRunMetadata(runId: String): ScriptRunMetadata {
-        val conversationId = selectedConversationId.value ?: error("No conversation")
+        val conversationId = localWorkspaceConversationId()
         return withContext(Dispatchers.IO) { container.runRecords.load(conversationId, runId) }
     }
 
     suspend fun readScriptSource(path: String): WorkspaceReadResult {
-        val conversationId = selectedConversationId.value ?: error("No conversation")
+        val conversationId = localWorkspaceConversationId()
         return withContext(Dispatchers.IO) { container.runRecords.readWorkspace(conversationId, path, 1, 500, 64_000) }
     }
 
     suspend fun reviewUbuntuPackages(packages: String): PackageReview {
-        val id = selectedConversationId.value ?: error("No conversation")
+        val id = localWorkspaceConversationId()
         val restrictions = container.repository.automationSettingsNow().packageRestrictionsEnabled
         return container.packageApprovals.review(id, container.ubuntuRuntime.preflightPackages(id, packages, restrictions))
     }
@@ -1513,7 +1572,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         approvedPlan: PackagePlan? = null,
         onProgress: suspend (PackageInstallProgress) -> Unit = {},
     ): UbuntuPackageInstallResult {
-        val id = selectedConversationId.value ?: error("No conversation")
+        val id = localWorkspaceConversationId()
         val restrictions = container.repository.automationSettingsNow().packageRestrictionsEnabled
         val result = container.ubuntuRuntime.installPackages(id, packages, restrictions, approvedPlan, onProgress)
         if (result.success) container.repository.recordSystemEvent(
@@ -1529,7 +1588,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         approvedPlan: PackagePlan,
         onProgress: suspend (PackageInstallProgress) -> Unit,
     ): UbuntuPackageInstallResult {
-        val id = selectedConversationId.value ?: error("No conversation")
+        val id = localWorkspaceConversationId()
         val previous = container.repository.packageTransaction(operationKey)
         if (previous?.status == PACKAGE_SUCCEEDED && previous.requirements == packages) {
             return UbuntuPackageInstallResult(true, packages = approvedPlan.items.map { it.name })
@@ -1551,7 +1610,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     }
 
     suspend fun reviewUbuntuPackages(operationKey: String, packages: String): PackageReview {
-        val id = selectedConversationId.value ?: error("No conversation")
+        val id = localWorkspaceConversationId()
         val restrictions = container.repository.automationSettingsNow().packageRestrictionsEnabled
         val plan = container.ubuntuRuntime.preflightPackages(id, packages, restrictions)
         return reviewDurablePackage(operationKey, id, packages, plan)
@@ -1613,25 +1672,25 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
         container.ubuntuRuntime.searchPythonPackages(query)
 
     suspend fun pythonEnvironment(): PythonEnvironmentInfo {
-        val id = selectedConversationId.value ?: error("No conversation")
-        return container.ubuntuRuntime.pythonEnvironment(id)
+        val id = localWorkspaceConversationId()
+        return container.pythonSandbox.environment(id)
     }
 
     suspend fun removePythonPackages(names: List<String>): PythonEnvironmentInfo {
-        val id = selectedConversationId.value ?: error("No conversation")
-        val result = container.ubuntuRuntime.removePythonPackages(id, names)
+        val id = localWorkspaceConversationId()
+        val result = container.pythonSandbox.remove(id, names)
         container.repository.recordSystemEvent(id, "The user removed these Python packages from this conversation environment: ${names.joinToString()}.")
         return result
     }
 
     suspend fun repairPythonEnvironment(): PythonEnvironmentInfo {
-        val id = selectedConversationId.value ?: error("No conversation")
-        return container.ubuntuRuntime.repairPythonEnvironment(id)
+        val id = localWorkspaceConversationId()
+        return container.pythonSandbox.repair(id)
     }
 
     suspend fun resetPythonSession() {
-        val id = selectedConversationId.value ?: error("No conversation")
-        // Distro Python starts a fresh interpreter for each run; files and installed packages remain persistent.
+        val id = localWorkspaceConversationId()
+        container.pythonSandbox.resetSession(id)
     }
 
     fun openConversationFromIntent(id: String?) = launchAction { ensureInitialized(id) }

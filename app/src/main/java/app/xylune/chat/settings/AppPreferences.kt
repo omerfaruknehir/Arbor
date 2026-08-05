@@ -81,7 +81,7 @@ data class DeveloperSettings(
     )
 }
 
-const val XYLUNE_CORE_PROMPT_REVISION = "0.18.0"
+const val XYLUNE_CORE_PROMPT_REVISION = "0.24.0"
 
 val DEFAULT_XYLUNE_SYSTEM_PROMPT = """
 You are Xylune, a capable assistant running inside a native Android BYOK workspace.
@@ -109,7 +109,7 @@ data class NewChatDefaults(
     val thinkingEnabled: Boolean = true,
     val thinkingEffort: ThinkingEffort = ThinkingEffort.MEDIUM,
     val webSearchEnabled: Boolean = true,
-    val agentPythonEnabled: Boolean = true,
+    val agentPythonEnabled: Boolean = false,
     val agentUbuntuEnabled: Boolean = false,
     val deepResearchEnabled: Boolean = false,
     val hybridTokenCountingEnabled: Boolean = false,
@@ -173,6 +173,13 @@ class AppPreferences(context: Context) {
     private val _newChatDefaults = MutableStateFlow(readNewChatDefaults())
     private val _generatedRepairMaxAttempts = MutableStateFlow(preferences.getInt(KEY_GENERATED_REPAIR_ATTEMPTS, 3).coerceIn(1, 5))
     private val _developerSettings = MutableStateFlow(readDeveloperSettings())
+    private val _favoriteModels = MutableStateFlow(
+        preferences.getStringSet(KEY_FAVORITE_MODELS, emptySet()).orEmpty().toSet(),
+    )
+    private val _recentModels = MutableStateFlow(
+        preferences.getString(KEY_RECENT_MODELS, "").orEmpty().lineSequence()
+            .map(String::trim).filter(String::isNotBlank).distinct().take(MAX_RECENT_MODELS).toList(),
+    )
 
     val amoled: StateFlow<Boolean> = _amoled.asStateFlow()
     val palette: StateFlow<ColorPalette> = _palette.asStateFlow()
@@ -185,6 +192,8 @@ class AppPreferences(context: Context) {
     val newChatDefaults: StateFlow<NewChatDefaults> = _newChatDefaults.asStateFlow()
     val generatedRepairMaxAttempts: StateFlow<Int> = _generatedRepairMaxAttempts.asStateFlow()
     val developerSettings: StateFlow<DeveloperSettings> = _developerSettings.asStateFlow()
+    val favoriteModels: StateFlow<Set<String>> = _favoriteModels.asStateFlow()
+    val recentModels: StateFlow<List<String>> = _recentModels.asStateFlow()
     val hasNewChatDefaults: Boolean get() = preferences.getBoolean(KEY_DEFAULTS_INITIALIZED, false)
 
     private fun readChromeBlurStrength():  Float {
@@ -284,6 +293,22 @@ class AppPreferences(context: Context) {
         preferences.edit { putInt(KEY_GENERATED_REPAIR_ATTEMPTS, normalized) }
     }
 
+    fun toggleFavoriteModel(providerId: String, modelId: String) {
+        val key = modelPreferenceKey(providerId, modelId)
+        val updated = _favoriteModels.value.toMutableSet().apply {
+            if (!add(key)) remove(key)
+        }.toSet()
+        _favoriteModels.value = updated
+        preferences.edit { putStringSet(KEY_FAVORITE_MODELS, updated) }
+    }
+
+    fun recordRecentModel(providerId: String, modelId: String) {
+        val key = modelPreferenceKey(providerId, modelId)
+        val updated = (listOf(key) + _recentModels.value.filterNot { it == key }).take(MAX_RECENT_MODELS)
+        _recentModels.value = updated
+        preferences.edit { putString(KEY_RECENT_MODELS, updated.joinToString("\n")) }
+    }
+
     fun setDeveloperSettings(value: DeveloperSettings) {
         val normalized = value.normalized()
         _developerSettings.value = normalized
@@ -369,7 +394,7 @@ class AppPreferences(context: Context) {
         thinkingEnabled = preferences.getBoolean(KEY_DEFAULT_THINKING_ENABLED, true),
         thinkingEffort = enumValue(KEY_DEFAULT_THINKING_EFFORT, ThinkingEffort.MEDIUM),
         webSearchEnabled = preferences.getBoolean(KEY_DEFAULT_WEB, true),
-        agentPythonEnabled = preferences.getBoolean(KEY_DEFAULT_PYTHON, true),
+        agentPythonEnabled = preferences.getBoolean(KEY_DEFAULT_PYTHON, false),
         agentUbuntuEnabled = preferences.getBoolean(KEY_DEFAULT_LINUX, false),
         deepResearchEnabled = preferences.getBoolean(KEY_DEFAULT_DEEP_RESEARCH, false),
         hybridTokenCountingEnabled = preferences.getBoolean(KEY_DEFAULT_HYBRID_COUNTING, false),
@@ -422,5 +447,10 @@ class AppPreferences(context: Context) {
         const val KEY_PERFORMANCE_OVERLAY_SCALE = "performance_overlay_scale"
         const val KEY_BLUR_BOUNDARY_DEBUG_ENABLED = "blur_boundary_debug_enabled"
         const val KEY_BLUR_BOUNDARY_DEBUG_THICKNESS_DP = "blur_boundary_debug_thickness_dp"
+        const val KEY_FAVORITE_MODELS = "favorite_models"
+        const val KEY_RECENT_MODELS = "recent_models"
+        const val MAX_RECENT_MODELS = 12
     }
 }
+
+fun modelPreferenceKey(providerId: String, modelId: String): String = "$providerId::$modelId"

@@ -22,6 +22,9 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -71,7 +74,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private enum class WorkspaceSection { PYTHON, LINUX }
+private enum class WorkspaceSection { OVERVIEW, PYTHON, LINUX }
 
 private fun formatSetupDuration(milliseconds: Long): String {
     val totalSeconds = (milliseconds.coerceAtLeast(0L) / 1_000L)
@@ -90,7 +93,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
     var code by remember {
         mutableStateOf(
             "from pathlib import Path\n\n" +
-                "print('Hello from $appName distro Python')\n" +
+                "print('Hello from $appName bundled Python')\n" +
                 "print('Workspace:', Path.cwd())\n",
         )
     }
@@ -122,9 +125,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
         UbuntuStage.EXTRACTING,
         UbuntuStage.CONFIGURING,
     )
-    var workspaceSection by remember {
-        mutableStateOf(if (ubuntuStatus.installed) WorkspaceSection.PYTHON else WorkspaceSection.LINUX)
-    }
+    var workspaceSection by remember { mutableStateOf(WorkspaceSection.OVERVIEW) }
     val pythonRun by viewModel.pythonRun.collectAsState()
     val running = pythonRun?.running == true
     val result = pythonRun?.result ?: pythonRun?.error?.let { ExecutionResult(stderr = it) }
@@ -183,7 +184,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
         contentWindowInsets = WindowInsets(0),
         topBar = {
             CollapsingTranslucentTopBar(
-                title = "Tool workspace",
+                title = "Runtime manager",
                 scrollBehavior = scrollBehavior,
                 blurState = blurState,
                 blurStrength = chromeBlurStrength,
@@ -217,12 +218,18 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                 ),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("Manage local tools", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text("Runtime manager", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text(
-                "Python and Linux share this chat's private /workspace. Choose one area below; install and removal controls live only here.",
+                "Python and Linux share this chat's private /workspace. Runtime setup, packages, health, tests, and removal have one owner here.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = workspaceSection == WorkspaceSection.OVERVIEW,
+                    onClick = { workspaceSection = WorkspaceSection.OVERVIEW },
+                    label = { Text("Overview") },
+                    modifier = Modifier.weight(1f),
+                )
                 FilterChip(
                     selected = workspaceSection == WorkspaceSection.PYTHON,
                     onClick = { workspaceSection = WorkspaceSection.PYTHON },
@@ -236,9 +243,68 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                     modifier = Modifier.weight(1f),
                 )
             }
-            if (workspaceSection == WorkspaceSection.PYTHON) {
+            if (workspaceSection == WorkspaceSection.OVERVIEW) {
+                Text("Runtimes", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Python is built in. Linux is an optional compatibility layer with a separate download. Pick a runtime only when you need to inspect or change it.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    shape = MaterialTheme.shapes.extraLarge,
+                    modifier = Modifier.fillMaxWidth().clickable { workspaceSection = WorkspaceSection.PYTHON },
+                ) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Code, null)
+                        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                            Text("Python · Ready", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                environment?.let { "Python ${it.pythonVersion} · ${it.packages.size} packages · ${Formatter.formatShortFileSize(androidx.compose.ui.platform.LocalContext.current, it.sizeBytes)}" }
+                                    ?: "Bundled runtime · loading this chat's environment…",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        Icon(Icons.Outlined.CheckCircle, null)
+                    }
+                }
+                Surface(
+                    color = if (ubuntuStatus.installed) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                    contentColor = if (ubuntuStatus.installed) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                    shape = MaterialTheme.shapes.extraLarge,
+                    modifier = Modifier.fillMaxWidth().clickable { workspaceSection = WorkspaceSection.LINUX },
+                ) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Storage, null)
+                        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                            Text(
+                                if (ubuntuStatus.installed) "${ubuntuStatus.distribution.displayName} ${ubuntuStatus.release} · Ready" else "Linux · Not installed",
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                if (ubuntuStatus.installed) "Terminal, native CLI tools, and Linux packages"
+                                else "Optional download for tools that cannot run in bundled Python",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        if (ubuntuStatus.installed) Icon(Icons.Outlined.CheckCircle, null)
+                    }
+                }
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text("What this screen manages", fontWeight = FontWeight.SemiBold)
+                        Text("• Runtime health and per-chat Python packages", style = MaterialTheme.typography.bodySmall)
+                        Text("• Linux installation, packages, terminal, and removal", style = MaterialTheme.typography.bodySmall)
+                        Text("• Test runs only; chat tool permissions are controlled per chat", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            } else if (workspaceSection == WorkspaceSection.PYTHON) {
             Text("Python workspace", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Text("Each chat has a persistent environment and isolated .xylune-venv. Android still confines Xylune outside the selected PRoot distribution.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Each chat has a persistent bundled-Python session and isolated .packages directory. It works without installing Linux and remains confined by Android's app sandbox.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             environment?.let { info ->
                 Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -271,7 +337,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
             Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Install packages", fontWeight = FontWeight.SemiBold)
-                    Text("One package requirement per line. Search PyPI, then Xylune preflights the distro-backed virtual environment before applying your approval policy.", style = MaterialTheme.typography.bodySmall)
+                    Text("One package requirement per line. Xylune resolves Android-compatible Python 3.12 wheels before applying your approval policy.", style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(
                         value = packageQuery,
                         onValueChange = { packageQuery = it.take(100) },
@@ -386,7 +452,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                 textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                 visualTransformation = rememberCodeVisualTransformation("python"),
                 minLines = 12,
-                label = { Text("Distro Python (root)") },
+                label = { Text("Python script") },
                 modifier = Modifier.fillMaxWidth(),
             )
             Button(
@@ -696,7 +762,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
         XyluneAlertDialog(
             onDismissRequest = { removePackage = null },
             title = { Text("Remove $name?") },
-            text = { Text("$appName will remove this distribution from the current chat environment. Shared dependencies are kept unless you remove them separately.") },
+            text = { Text("$appName will remove this Python package from the current chat environment. Other packages and the optional Linux runtime are kept.") },
             dismissButton = { OutlinedButton(onClick = { removePackage = null }) { Text("Cancel") } },
             confirmButton = {
                 Button(onClick = {
@@ -711,7 +777,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
             onDismissRequest = { confirmLinuxRemoval = false },
             title = { Text("Remove ${ubuntuStatus.distribution.displayName}?") },
             text = {
-                Text("This removes the selected Linux root filesystem and its installed packages. Chat files in /workspace are kept.")
+                Text("This removes the selected Linux root filesystem and its installed packages for all chats. Chat files in /workspace and bundled Python packages are kept.")
             },
             dismissButton = {
                 OutlinedButton(onClick = { confirmLinuxRemoval = false }) { Text("Cancel") }
@@ -720,7 +786,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                 Button(onClick = {
                     confirmLinuxRemoval = false
                     scope.launch { viewModel.removeUbuntu() }
-                }) { Text("Remove Linux workspace") }
+                }) { Text("Remove Linux runtime") }
             },
         )
     }

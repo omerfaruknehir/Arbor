@@ -102,7 +102,7 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel) {
                 blurArea = STANDARD_TOP_PANEL_HEIGHT_DP.dp,
                 navigationIcon = {
                     IconButton(onClick = { viewModel.screen.value = Screen.SANDBOX }) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to Tool workspace")
+                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to runtime manager")
                     }
                 },
                 actions = {

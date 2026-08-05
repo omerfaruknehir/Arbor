@@ -1,3 +1,11 @@
+## 0.24.0 — 2026-08-05
+
+- Replace the unmanageable provider dropdowns with a searchable, filterable model catalog supporting favorites, recents, providers, and capability filters across hundreds of models.
+- Fetch and persist OpenRouter model metadata—including modalities, limits, pricing, supported parameters, and reasoning capabilities—and use the provider's unified reasoning controls automatically.
+- Reorganize Settings around setup, chat behavior, intelligence, tools, personalization, and app information, while reducing first-run setup to a focused three-step flow.
+- Separate bundled Python from the optional Linux runtime, clarify ownership and safety boundaries, and make execution, package, workspace, stop, repair, and reset controls consistent.
+- Preserve the expanded model catalog and reasoning metadata across queued work, database migrations, and portable settings backup and restore.
+
 ## 0.23.19 — 2026-08-05
 
 - Add a global **Less emoji** response-style preference, enabled by default and applied to existing and new chats on their next response.

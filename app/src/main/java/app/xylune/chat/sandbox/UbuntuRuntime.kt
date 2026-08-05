@@ -23,7 +23,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
@@ -466,56 +465,10 @@ class UbuntuRuntime(
         onProgress: suspend (ExecutionProgress) -> Unit = {},
     ): UbuntuExecutionResult = processMutex.withLock {
             val distro = distribution.value
-            check(status.value.installed || rootfsMarker().isFile) { "Install ${distro.displayName} from Tool workspaces first." }
+            check(status.value.installed || rootfsMarker().isFile) { "Install ${distro.displayName} from the runtime manager first." }
             require(command.isNotBlank()) { "Command is empty" }
             executeInternal(command, python.workspace(conversationId), timeoutSeconds.coerceIn(1, 3_600), onProgress = onProgress)
         }
-
-    suspend fun executePython(
-        conversationId: String,
-        code: String,
-        timeoutSeconds: Int = 90,
-        onProgress: suspend (ExecutionProgress) -> Unit = {},
-    ): ExecutionResult {
-        require(code.isNotBlank()) { "Python code is empty" }
-        ensurePythonEnvironment(conversationId)
-        val workspace = python.workspace(conversationId)
-        val script = File(workspace, ".xylune-python-run.py")
-        script.writeText(code)
-        val result = execute(
-            conversationId,
-            "/workspace/.xylune-venv/bin/python -u /workspace/.xylune-python-run.py",
-            timeoutSeconds.coerceIn(1, 600),
-            onProgress,
-        )
-        return ExecutionResult(
-            stdout = result.stdout,
-            stderr = result.stderr,
-            files = result.files.filterNot { it == script.name },
-            elapsedMs = result.elapsedMs,
-            timedOut = result.timedOut,
-            environmentId = "${distribution.value.id}-root-${conversationId.take(8)}",
-        )
-    }
-
-    /** Execute an already-persisted workspace script without copying its source. */
-    suspend fun executePythonFile(
-        conversationId: String,
-        relativePath: String,
-        args: List<String> = emptyList(),
-        timeoutSeconds: Int = 90,
-        onProgress: suspend (ExecutionProgress) -> Unit = {},
-    ): UbuntuExecutionResult {
-        ensurePythonEnvironment(conversationId)
-        require(relativePath.matches(Regex("[A-Za-z0-9_./-]+")) && ".." !in relativePath.split('/')) { "Invalid Python script path" }
-        val argumentString = args.take(64).joinToString(" ") { shellQuote(it.take(1_000)) }
-        return execute(
-            conversationId,
-            "/workspace/.xylune-venv/bin/python -u ${shellQuote("/workspace/$relativePath")}" + if (argumentString.isBlank()) "" else " $argumentString",
-            timeoutSeconds.coerceIn(1, 600),
-            onProgress,
-        )
-    }
 
     /** Execute an already-persisted POSIX shell body without duplicating it. */
     suspend fun executeShellFile(
@@ -533,77 +486,6 @@ class UbuntuRuntime(
             timeoutSeconds.coerceIn(1, 900),
             onProgress,
         )
-    }
-
-    suspend fun pythonEnvironment(conversationId: String): PythonEnvironmentInfo {
-        ensurePythonEnvironment(conversationId)
-        val code = """import json, sys, os, importlib.metadata as m
-packages=sorted(({"name":d.metadata.get("Name", d.name),"version":d.version} for d in m.distributions()), key=lambda x:x["name"].lower())
-print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"""
-        val result = executePython(conversationId, code, 60)
-        if (result.stderr.isNotBlank() && result.stdout.isBlank()) error(result.stderr.takeLast(1_000))
-        val parsed = Json.parseToJsonElement(result.stdout.lineSequence().last(String::isNotBlank)).jsonObject
-        val packages = parsed["packages"]?.jsonArray.orEmpty().map { row ->
-            val obj = row.jsonObject
-            InstalledPackage(obj["name"]?.jsonPrimitive?.content.orEmpty(), obj["version"]?.jsonPrimitive?.content.orEmpty())
-        }
-        val workspace = python.workspace(conversationId)
-        return PythonEnvironmentInfo(
-            pythonVersion = parsed["pythonVersion"]?.jsonPrimitive?.content.orEmpty(),
-            environmentId = "${distribution.value.id}-root-${conversationId.take(8)}",
-            packages = packages,
-            sizeBytes = workspace.walkTopDown().filter(File::isFile).sumOf(File::length),
-        )
-    }
-
-    suspend fun preflightPythonPackages(conversationId: String, raw: String, restrictionsEnabled: Boolean): PackagePlan {
-        ensurePythonEnvironment(conversationId)
-        val requests = parsePythonRequirements(raw, restrictionsEnabled)
-        val installed = pythonEnvironment(conversationId).packages.associate { normalizePythonName(it.name) to it.version }
-        val items = requests.map { request ->
-            val name = request.substringBefore('[').substringBefore('=').substringBefore('<').substringBefore('>').substringBefore('!').substringBefore('~')
-            val installedVersion = installed[normalizePythonName(name)]
-            PackagePlanItem(
-                request = request,
-                name = name,
-                installedVersion = installedVersion,
-                candidateVersion = null,
-                action = if (installedVersion == null) PackageAction.INSTALL else if (request == name) PackageAction.ALREADY_INSTALLED else PackageAction.UPDATE,
-                detail = "Resolved by pip inside ${distribution.value.displayName} at install time",
-            )
-        }
-        return PackagePlan(PackageEcosystem.PIP, items, rawPreview = "Python and pip run as root inside ${distribution.value.displayName}; packages are isolated in /workspace/.xylune-venv.")
-    }
-
-    suspend fun installPythonPackages(conversationId: String, raw: String, restrictionsEnabled: Boolean, approvedPlan: PackagePlan? = null): PackageInstallResult {
-        val plan = preflightPythonPackages(conversationId, raw, restrictionsEnabled)
-        require(plan.isValid) { plan.error ?: "Invalid package request" }
-        requireApprovedPlan(approvedPlan, plan)
-        val changes = plan.items.filter { it.action == PackageAction.INSTALL || it.action == PackageAction.UPDATE }
-        if (changes.isEmpty()) return PackageInstallResult(success = true, packages = plan.items.map { it.name })
-        val command = "/workspace/.xylune-venv/bin/python -m pip install --disable-pip-version-check --no-input " + changes.joinToString(" ") { shellQuote(it.request) }
-        val result = execute(conversationId, command, 900)
-        return PackageInstallResult(
-            success = result.exitCode == 0,
-            stdout = result.stdout,
-            stderr = result.stderr,
-            packages = changes.map { it.name },
-            elapsedMs = result.elapsedMs,
-        )
-    }
-
-    suspend fun removePythonPackages(conversationId: String, names: List<String>): PythonEnvironmentInfo {
-        ensurePythonEnvironment(conversationId)
-        val safe = names.map(String::trim).filter { it.matches(Regex("^[A-Za-z0-9][A-Za-z0-9._-]*$")) }.distinct()
-        require(safe.isNotEmpty()) { "Choose at least one package" }
-        val result = execute(conversationId, "/workspace/.xylune-venv/bin/python -m pip uninstall -y ${safe.joinToString(" ") { shellQuote(it) }}", 600)
-        check(result.exitCode == 0) { result.stderr.ifBlank { result.stdout }.takeLast(1_000) }
-        return pythonEnvironment(conversationId)
-    }
-
-    suspend fun repairPythonEnvironment(conversationId: String): PythonEnvironmentInfo {
-        ensurePythonEnvironment(conversationId, forceRepair = true)
-        return pythonEnvironment(conversationId)
     }
 
     suspend fun searchPythonPackages(query: String): List<PythonPackageSearchResult> = withContext(Dispatchers.IO) {
@@ -626,32 +508,6 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
             }.toList()
         }
     }
-
-    private suspend fun ensurePythonEnvironment(conversationId: String, forceRepair: Boolean = false) {
-        check(status.value.installed || rootfsMarker().isFile) { "Install a Linux distribution before using Local Code Execution." }
-        val reset = if (forceRepair) "rm -rf /workspace/.xylune-venv; " else ""
-        val bootstrap = if (distribution.value.packageManager == LinuxPackageManager.APT) {
-            "if ! command -v python3 >/dev/null 2>&1 || ! python3 -m venv --help >/dev/null 2>&1; then apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3 python3-pip python3-venv ca-certificates; fi; "
-        } else {
-            "if ! command -v python3 >/dev/null 2>&1; then apk add --no-progress python3 py3-pip py3-virtualenv ca-certificates; fi; "
-        }
-        val command = reset + bootstrap + "if [ ! -x /workspace/.xylune-venv/bin/python ]; then python3 -m venv /workspace/.xylune-venv; /workspace/.xylune-venv/bin/python -m pip install --disable-pip-version-check --upgrade pip setuptools wheel; fi"
-        val result = execute(conversationId, command, 900)
-        check(result.exitCode == 0) { "Could not prepare distro Python: ${result.stderr.ifBlank { result.stdout }.takeLast(1_000)}" }
-    }
-
-    private fun parsePythonRequirements(raw: String, restrictionsEnabled: Boolean): List<String> {
-        val values = raw.lineSequence().map(String::trim).filter(String::isNotBlank).distinct().take(20).toList()
-        require(values.isNotEmpty()) { "Enter at least one package" }
-        require(values.all { it.length <= 500 && '\u0000' !in it && !it.startsWith('-') }) { "Package options and oversized requirements are blocked" }
-        if (restrictionsEnabled) {
-            val safe = Regex("^[A-Za-z0-9][A-Za-z0-9._-]*(?:\\[[A-Za-z0-9_,.-]+])?(?:(?:==|>=|<=|~=|!=|>|<)[A-Za-z0-9.*+_-]+(?:,(?:==|>=|<=|~=|!=|>|<)[A-Za-z0-9.*+_-]+)*)?$")
-            require(values.all(safe::matches)) { "Strict mode accepts package names and version constraints only" }
-        }
-        return values
-    }
-
-    private fun normalizePythonName(value: String) = value.lowercase().replace(Regex("[-_.]+"), "-")
 
     suspend fun preflightPackages(conversationId: String, raw: String, restrictionsEnabled: Boolean): PackagePlan =
         if (distribution.value.packageManager == LinuxPackageManager.APK) preflightApk(conversationId, raw, restrictionsEnabled)
@@ -852,7 +708,7 @@ print(json.dumps({"pythonVersion":sys.version.split()[0],"packages":packages}))"
         onProgress: suspend (ExecutionProgress) -> Unit = {},
     ): UbuntuExecutionResult = processMutex.withLock {
         val distro = distribution.value
-        check(status.value.installed || rootfsMarker().isFile) { "Install ${distro.displayName} from Tool workspaces first." }
+        check(status.value.installed || rootfsMarker().isFile) { "Install ${distro.displayName} from the runtime manager first." }
         executeAptInternal(
             arguments = arguments,
             workspace = python.workspace(conversationId),

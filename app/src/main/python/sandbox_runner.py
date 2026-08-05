@@ -36,13 +36,15 @@ class CappedWriter(io.StringIO):
         return super().write(clipped)
 
 
-def run_code(code, workspace, output_limit=1_000_000, timeout_seconds=90):
+def run_code(code, workspace, output_limit=1_000_000, timeout_seconds=90, args_json="[]"):
     started = time.monotonic()
     old_cwd = os.getcwd()
     stdout = CappedWriter(output_limit)
     stderr = CappedWriter(output_limit)
     result = None
     timed_out = False
+    cancelled = False
+    exit_code = 0
     os.makedirs(workspace, exist_ok=True)
     environment_id = _environment_id(workspace)
     before = _file_state(workspace)
@@ -61,7 +63,13 @@ def run_code(code, workspace, output_limit=1_000_000, timeout_seconds=90):
         except FileNotFoundError:
             pass
         previous_trace = sys.gettrace()
-        cancelled = False
+        old_argv = sys.argv
+        try:
+            requested_args = json.loads(args_json)
+            if not isinstance(requested_args, list) or not all(isinstance(value, str) for value in requested_args):
+                raise ValueError("Python script arguments must be strings")
+        except BaseException:
+            requested_args = []
 
         def deadline_trace(frame, event, arg):
             if os.path.exists(cancel_path):
@@ -72,6 +80,7 @@ def run_code(code, workspace, output_limit=1_000_000, timeout_seconds=90):
 
         try:
             os.chdir(workspace)
+            sys.argv = ["<xylune-script>"] + requested_args
             sys.settrace(deadline_trace)
             with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
                 compiled = compile(code, "<xylune-cell>", "exec")
@@ -80,14 +89,18 @@ def run_code(code, workspace, output_limit=1_000_000, timeout_seconds=90):
                     result = repr(namespace["_"])
         except TimeoutError:
             timed_out = True
+            exit_code = 124
             traceback.print_exc(file=stderr)
         except InterruptedError:
             cancelled = True
+            exit_code = 130
             traceback.print_exc(file=stderr)
         except BaseException:
+            exit_code = 1
             traceback.print_exc(file=stderr)
         finally:
             sys.settrace(previous_trace)
+            sys.argv = old_argv
             os.chdir(old_cwd)
             try:
                 os.unlink(cancel_path)
@@ -103,6 +116,7 @@ def run_code(code, workspace, output_limit=1_000_000, timeout_seconds=90):
         "elapsedMs": int((time.monotonic() - started) * 1000),
         "timedOut": timed_out,
         "cancelled": cancelled,
+        "exitCode": exit_code,
         "environmentId": environment_id,
     })
 

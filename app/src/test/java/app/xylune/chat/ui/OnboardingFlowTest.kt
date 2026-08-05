@@ -26,22 +26,17 @@ class OnboardingFlowTest {
     }
 
     @Test
-    fun `onboarding covers appearance providers tools and safe exits`() {
+    fun `onboarding is a focused three step provider flow with safe exits`() {
         val source = java.io.File("src/main/java/app/xylune/chat/ui/OnboardingScreen.kt").readText()
         assertTrue(source.contains("contentColor = MaterialTheme.colorScheme.onBackground"))
-        assertTrue(source.contains("OnboardingStep.APPEARANCE"))
         assertTrue(source.contains("OnboardingStep.PROVIDER"))
-        assertTrue(source.contains("OnboardingStep.TOOLS"))
         assertTrue(source.contains("OnboardingStep.READY"))
-        assertTrue(source.contains("ColorPalette.OCEAN"))
-        assertTrue(source.contains("ColorPalette.VIOLET"))
-        assertTrue(source.contains("ColorPalette.SUNSET"))
-        assertTrue(source.contains("Match launcher icon"))
-        assertTrue(source.contains("palettePreviewColors(palette, currentThemeMode)"))
-        assertFalse(source.contains("ColorPalette.SYSTEM -> MaterialTheme.colorScheme.tertiary"))
-        assertTrue(source.contains("Choose a Linux distribution"))
-        assertTrue(source.contains("Choose and install a distribution"))
-        assertTrue(source.contains("does not download anything"))
+        assertFalse(source.contains("OnboardingStep.APPEARANCE"))
+        assertFalse(source.contains("OnboardingStep.TOOLS"))
+        assertFalse(source.contains("private fun AppearanceStep"))
+        assertFalse(source.contains("private fun ToolsStep"))
+        assertTrue(source.contains("Focused defaults"))
+        assertTrue(source.contains("Local execution starts off"))
         assertTrue(source.contains("TextButton(onClick = onSkipForNow)"))
         assertTrue(source.contains("Skip for now"))
         assertTrue(source.contains("HorizontalPager("))
@@ -71,15 +66,14 @@ class OnboardingFlowTest {
     }
 
     @Test
-    fun `Linux setup distinguishes enablement from installation`() {
+    fun `optional runtimes stay out of first run setup`() {
         val source = java.io.File("src/main/java/app/xylune/chat/ui/OnboardingScreen.kt").readText()
         val app = java.io.File("src/main/java/app/xylune/chat/ui/XyluneApp.kt").readText()
-        assertTrue(source.contains("No Linux distribution installed"))
-        assertTrue(source.contains("review the download, and explicitly install it"))
-        assertTrue(source.contains("Continue without Linux"))
-        assertTrue(source.contains("linuxStatus.installed"))
-        assertTrue(app.contains("val ubuntuStatus by viewModel.ubuntuStatus.collectAsState()"))
-        assertTrue(app.contains("linuxStatus = ubuntuStatus"))
+        assertTrue(source.contains("Python and Linux are managed later from Settings → Local execution"))
+        assertFalse(source.contains("Choose local tools"))
+        assertFalse(source.contains("onOpenLinuxSetup"))
+        assertFalse(app.contains("viewModel.ubuntuStatus.collectAsState()"))
+        assertFalse(app.contains("linuxStatus = ubuntuStatus"))
     }
 
     @Test
@@ -121,7 +115,8 @@ class OnboardingFlowTest {
         val settings = java.io.File("src/main/java/app/xylune/chat/ui/SettingsScreen.kt").readText()
         val workspace = java.io.File("src/main/java/app/xylune/chat/ui/SandboxScreen.kt").readText()
         val terminal = java.io.File("src/main/java/app/xylune/chat/ui/LinuxTerminalScreen.kt").readText()
-        assertTrue(settings.contains("Manage tool workspace"))
+        assertTrue(settings.contains("Open runtime manager"))
+        assertTrue(workspace.contains("WorkspaceSection.OVERVIEW"))
         assertTrue(workspace.contains("Before the first install"))
         assertTrue(workspace.contains("Install \${ubuntuStatus.distribution.displayName}"))
         assertTrue(workspace.contains("Step \$step of \$total"))
@@ -129,7 +124,7 @@ class OnboardingFlowTest {
         assertTrue(workspace.contains(".height(10.dp)"))
         assertTrue(workspace.contains("repeat(total)"))
         assertTrue(workspace.contains("Linux data on disk:"))
-        assertTrue(workspace.contains("Remove Linux workspace"))
+        assertTrue(workspace.contains("Remove Linux runtime"))
         assertFalse(terminal.contains("selectLinuxDistribution"))
         assertFalse(terminal.contains("installUbuntu"))
         assertFalse(terminal.contains("removeUbuntu"))
@@ -161,6 +156,6 @@ class OnboardingFlowTest {
         assertTrue(viewModel.contains("fun skipSetup()"))
         assertTrue(viewModel.contains("Setup was paused"))
         assertTrue(viewModel.contains("openProviderSetupFromSetup"))
-        assertTrue(viewModel.contains("setupStepIndex.value = 2"))
+        assertTrue(viewModel.contains("setupStepIndex.value = 1"))
     }
 }

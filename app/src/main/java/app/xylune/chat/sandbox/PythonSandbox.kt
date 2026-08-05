@@ -25,6 +25,7 @@ data class ExecutionResult(
     val elapsedMs: Long = 0,
     val timedOut: Boolean = false,
     val cancelled: Boolean = false,
+    val exitCode: Int = 0,
     val environmentId: String = "",
 )
 
@@ -72,11 +73,41 @@ class PythonSandbox(private val context: Context) {
     private val mutex = Mutex()
 
     suspend fun execute(conversationId: String, code: String, timeoutSeconds: Int = 90): ExecutionResult =
+        executeInternal(conversationId, code, timeoutSeconds, emptyList())
+
+    suspend fun executeFile(
+        conversationId: String,
+        relativePath: String,
+        args: List<String>,
+        timeoutSeconds: Int = 90,
+    ): ExecutionResult {
+        val root = workspace(conversationId).canonicalFile
+        val source = File(root, relativePath.removePrefix("/workspace/")).canonicalFile
+        require(source.isFile && source.path.startsWith(root.path + File.separator)) {
+            "Python script must be a file inside this conversation's workspace"
+        }
+        require(source.length() <= MAX_SCRIPT_BYTES) { "Python scripts are limited to 1 MB" }
+        return executeInternal(conversationId, source.readText(), timeoutSeconds, args)
+    }
+
+    private suspend fun executeInternal(
+        conversationId: String,
+        code: String,
+        timeoutSeconds: Int,
+        args: List<String>,
+    ): ExecutionResult =
         withContext(Dispatchers.IO) { mutex.withLock {
             val workspace = workspace(conversationId)
             startPython()
             val raw = Python.getInstance().getModule("sandbox_runner")
-                .callAttr("run_code", code, workspace.absolutePath, 1_000_000, timeoutSeconds.coerceIn(1, 600))
+                .callAttr(
+                    "run_code",
+                    code,
+                    workspace.absolutePath,
+                    1_000_000,
+                    timeoutSeconds.coerceIn(1, 600),
+                    json.encodeToString(args.take(MAX_SCRIPT_ARGS)),
+                )
                 .toString()
             json.decodeFromString<ExecutionResult>(raw)
         } }
@@ -209,5 +240,10 @@ class PythonSandbox(private val context: Context) {
             }
         }
         return values
+    }
+
+    private companion object {
+        const val MAX_SCRIPT_BYTES = 1L * 1024 * 1024
+        const val MAX_SCRIPT_ARGS = 100
     }
 }

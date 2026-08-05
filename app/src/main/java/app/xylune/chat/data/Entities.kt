@@ -299,6 +299,16 @@ data class ModelEntity(
     val supportsThinking: Boolean = false,
     val supportsTools: Boolean = false,
     @ColumnInfo(defaultValue = "0") val supportsImageGeneration: Boolean = false,
+    @ColumnInfo(defaultValue = "''") val description: String = "",
+    @ColumnInfo(defaultValue = "0") val createdAtEpochSeconds: Long = 0,
+    @ColumnInfo(defaultValue = "0") val reasoningMetadataAvailable: Boolean = false,
+    @ColumnInfo(defaultValue = "''") val reasoningEffortsCsv: String = "",
+    @ColumnInfo(defaultValue = "''") val reasoningDefaultEffort: String = "",
+    @ColumnInfo(defaultValue = "0") val reasoningDefaultEnabled: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val reasoningMandatory: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val reasoningSupportsMaxTokens: Boolean = false,
+    @ColumnInfo(defaultValue = "''") val metadataSource: String = "",
+    @ColumnInfo(defaultValue = "0") val metadataUpdatedAt: Long = 0,
 )
 
 @Entity(

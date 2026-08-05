@@ -37,6 +37,12 @@ class GenerationRequestSnapshotTest {
             outputUsdPerMillion = 0.0,
             supportsThinking = true,
             supportsImageGeneration = true,
+            reasoningMetadataAvailable = true,
+            reasoningEffortsCsv = "LOW,HIGH",
+            reasoningDefaultEffort = "HIGH",
+            reasoningDefaultEnabled = true,
+            reasoningMandatory = true,
+            reasoningSupportsMaxTokens = true,
         )
 
         val snapshot = GenerationRequestSnapshot.capture(conversation, provider, model)
@@ -53,5 +59,11 @@ class GenerationRequestSnapshotTest {
         assertEquals(true, restored.hybridTokenCountingEnabled)
         assertEquals(true, snapshot.supportsImageGeneration)
         assertEquals(true, snapshot.model().supportsImageGeneration)
+        assertEquals(true, snapshot.model().reasoningMetadataAvailable)
+        assertEquals("LOW,HIGH", snapshot.model().reasoningEffortsCsv)
+        assertEquals("HIGH", snapshot.model().reasoningDefaultEffort)
+        assertEquals(true, snapshot.model().reasoningDefaultEnabled)
+        assertEquals(true, snapshot.model().reasoningMandatory)
+        assertEquals(true, snapshot.model().reasoningSupportsMaxTokens)
     }
 }

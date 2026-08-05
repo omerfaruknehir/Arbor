@@ -118,6 +118,16 @@ data class PortableModelSettings(
     val supportsThinking: Boolean,
     val supportsTools: Boolean,
     val supportsImageGeneration: Boolean,
+    val description: String = "",
+    val createdAtEpochSeconds: Long = 0,
+    val reasoningMetadataAvailable: Boolean = false,
+    val reasoningEffortsCsv: String = "",
+    val reasoningDefaultEffort: String = "",
+    val reasoningDefaultEnabled: Boolean = false,
+    val reasoningMandatory: Boolean = false,
+    val reasoningSupportsMaxTokens: Boolean = false,
+    val metadataSource: String = "",
+    val metadataUpdatedAt: Long = 0,
 )
 
 @Serializable
@@ -259,6 +269,16 @@ class AppSettingsArchiveStore(
                     supportsThinking = model.supportsThinking,
                     supportsTools = model.supportsTools,
                     supportsImageGeneration = model.supportsImageGeneration,
+                    description = model.description,
+                    createdAtEpochSeconds = model.createdAtEpochSeconds,
+                    reasoningMetadataAvailable = model.reasoningMetadataAvailable,
+                    reasoningEffortsCsv = model.reasoningEffortsCsv,
+                    reasoningDefaultEffort = model.reasoningDefaultEffort,
+                    reasoningDefaultEnabled = model.reasoningDefaultEnabled,
+                    reasoningMandatory = model.reasoningMandatory,
+                    reasoningSupportsMaxTokens = model.reasoningSupportsMaxTokens,
+                    metadataSource = model.metadataSource,
+                    metadataUpdatedAt = model.metadataUpdatedAt,
                 )
             },
             projects = database.projectDao().all().map { project ->
@@ -371,6 +391,16 @@ class AppSettingsArchiveStore(
                     supportsThinking = portable.supportsThinking,
                     supportsTools = portable.supportsTools,
                     supportsImageGeneration = portable.supportsImageGeneration,
+                    description = portable.description.take(2_000),
+                    createdAtEpochSeconds = portable.createdAtEpochSeconds.coerceAtLeast(0),
+                    reasoningMetadataAvailable = portable.reasoningMetadataAvailable,
+                    reasoningEffortsCsv = portable.reasoningEffortsCsv.take(120),
+                    reasoningDefaultEffort = portable.reasoningDefaultEffort.take(24),
+                    reasoningDefaultEnabled = portable.reasoningDefaultEnabled,
+                    reasoningMandatory = portable.reasoningMandatory,
+                    reasoningSupportsMaxTokens = portable.reasoningSupportsMaxTokens,
+                    metadataSource = portable.metadataSource.take(120),
+                    metadataUpdatedAt = portable.metadataUpdatedAt.coerceAtLeast(0),
                 )
             }
             if (models.isNotEmpty()) {
