@@ -32,6 +32,7 @@ class LegalWebsiteIntegrationTest {
         assertTrue(boot.contains("queryKeys: ['theme', 'scheme'"))
         assertTrue(site.contains("id=\"theme-section-title\">Theme"))
         assertTrue(site.contains("id=\"scheme-section-title\">Color scheme"))
+        assertTrue(site.contains("class=\"theme-selector rail-theme-selector\""))
         assertTrue(site.contains("class=\"theme-selector dialog-theme-selector\""))
         assertTrue(site.contains("themeSegmentButton('system', 'brightness_auto', 'Auto')"))
         assertTrue(site.contains("themeSegmentButton('light', 'light_mode', 'Light')"))
@@ -40,12 +41,13 @@ class LegalWebsiteIntegrationTest {
         assertTrue(site.contains("schemeButton('ocean', 'Ocean'"))
         assertTrue(site.contains("schemeButton('violet', 'Violet'"))
         assertTrue(site.contains("schemeButton('sunset', 'Sunset'"))
+        assertTrue(appearance.contains(".rail-theme-selector"))
         assertTrue(appearance.contains(".dialog-theme-selector"))
         assertTrue(appearance.contains(".dialog-scheme-grid"))
     }
 
     @Test
-    fun `appearance dialog has dynamic icon switch and real gradients`() {
+    fun `website icon uses the exact Android launcher variants`() {
         val boot = repositoryFile("docs/assets/js/theme-boot.js").readText()
         val site = repositoryFile("docs/assets/js/site.js").readText()
         val appearance = repositoryFile("docs/assets/css/appearance.css").readText()
@@ -54,13 +56,36 @@ class LegalWebsiteIntegrationTest {
 
         assertTrue(boot.contains("dynamicLogo: params.get('dynamicLogo') === '1'"))
         assertTrue(site.contains("localStorage.getItem('xylune-dynamic-icon')"))
-        assertTrue(site.contains("function dynamicLogoDataUrl(colors)"))
-        assertTrue(site.contains("if (!dynamicIconEnabled) return null"))
-        assertTrue(site.contains("<linearGradient id=\"bg\""))
-        assertTrue(site.contains("<stop offset=\"0.52\""))
-        assertTrue(site.contains("<linearGradient id=\"mark\""))
-        assertTrue(site.contains("<stop offset=\"0.55\""))
-        assertTrue(site.contains("<linearGradient id=\"leaf\""))
+        assertTrue(site.contains("const appIconPalettes ="))
+        assertTrue(site.contains("function dynamicLogoDataUrl(schemePreference)"))
+        assertTrue(site.contains("function iconPaletteFor(schemePreference)"))
+        assertTrue(site.contains("return appPrimaryToIconPalette.get(appPrimary) || 'system'"))
+
+        // Xylune launcher vector.
+        assertTrue(site.contains("backgroundStart: '#083a2c'"))
+        assertTrue(site.contains("backgroundEnd: '#0c684f'"))
+        assertTrue(site.contains("markStart: '#86dfb8'"))
+        assertTrue(site.contains("markEnd: '#ddfbea'"))
+        assertTrue(site.contains("leaf: '#f4c761'"))
+        assertTrue(site.contains("secondStroke: '#f1fff7'"))
+
+        // Android Dynamic/System launcher vector.
+        assertTrue(site.contains("backgroundStart: '#293b52'"))
+        assertTrue(site.contains("backgroundEnd: '#67507e'"))
+        assertTrue(site.contains("markStart: '#a9d4ff'"))
+        assertTrue(site.contains("markEnd: '#e8ddff'"))
+        assertTrue(site.contains("leaf: '#ffb4a9'"))
+
+        // Built-in palette launcher vectors.
+        assertTrue(site.contains("backgroundStart: '#162234'"))
+        assertTrue(site.contains("backgroundStart: '#00363f'"))
+        assertTrue(site.contains("backgroundStart: '#2e1d4f'"))
+        assertTrue(site.contains("backgroundStart: '#5c1a07'"))
+        assertTrue(site.contains("<stop offset=\"1\" stop-color=\"${'$'}{palette.backgroundEnd}\"/>"))
+        assertTrue(site.contains("fill=\"${'$'}{palette.leaf}\""))
+        assertTrue(!site.contains("<linearGradient id=\"leaf\""))
+        assertTrue(!site.contains("function mixHex("))
+
         assertTrue(site.contains("data-dynamic-icon-toggle"))
         assertTrue(site.contains("role=\"switch\""))
         assertTrue(site.contains("url.searchParams.set('dynamicLogo', dynamicIconEnabled ? '1' : '0')"))
@@ -93,12 +118,13 @@ class LegalWebsiteIntegrationTest {
     }
 
     @Test
-    fun `sidebar has one palette launcher and dialog uses material accent circles`() {
+    fun `menu shows theme switch palette launcher and external link indicator`() {
         val site = repositoryFile("docs/assets/js/site.js").readText()
         val appearance = repositoryFile("docs/assets/css/appearance.css").readText()
+        val layout = repositoryFile("docs/_layouts/default.html").readText()
 
-        assertTrue(site.contains("class=\"appearance-launcher\""))
-        assertTrue(site.contains("class=\"appearance-launcher__label\">Appearance"))
+        assertTrue(site.contains("class=\"appearance-launcher__label\">Theme"))
+        assertTrue(site.contains("class=\"theme-selector rail-theme-selector\""))
         assertTrue(site.contains(">palette</span>"))
         assertTrue(!site.contains(">tune</span>"))
         assertTrue(appearance.contains(".appearance-launcher"))
@@ -107,10 +133,15 @@ class LegalWebsiteIntegrationTest {
         assertTrue(appearance.contains("var(--preview-primary) 0deg 180deg"))
         assertTrue(appearance.contains("var(--preview-secondary) 180deg 270deg"))
         assertTrue(appearance.contains("var(--preview-tertiary) 270deg 360deg"))
+        assertTrue(appearance.contains(".palette-choice__swatches {"))
+        assertTrue(appearance.contains("border: 0"))
+        assertTrue(!appearance.contains(".palette-choice.is-selected .palette-choice__swatches"))
+        assertTrue(layout.contains("nav-item__external"))
+        assertTrue(layout.contains(">open_in_new</span>"))
     }
 
     @Test
-    fun `release page orders versions numerically`() {
+    fun `release page orders versions without exposing implementation notes`() {
         val releases = repositoryFile("docs/assets/js/releases.js").readText()
         val page = repositoryFile("docs/releases/index.html").readText()
         val home = repositoryFile("docs/index.html").readText()
@@ -118,6 +149,9 @@ class LegalWebsiteIntegrationTest {
         assertTrue(releases.contains("right.numbers[index] - left.numbers[index]"))
         assertTrue(releases.contains(".sort(compareSemanticVersionsDescending)"))
         assertTrue(page.contains("data-release-list"))
+        assertTrue(!page.contains("sorted numerically"))
+        assertTrue(!page.contains("regardless of GitHub publication timestamps"))
+        assertTrue(!page.contains("release-intro"))
         assertTrue(home.contains("href=\"releases/\""))
     }
 }

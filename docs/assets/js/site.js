@@ -18,73 +18,114 @@
       ? storedDynamicIcon === '1'
       : Boolean(themeState.appTheme?.dynamicLogo);
 
+  const appIconPalettes = {
+    xylune: {
+      backgroundStart: '#083a2c',
+      backgroundEnd: '#0c684f',
+      markStart: '#86dfb8',
+      markEnd: '#ddfbea',
+      leaf: '#f4c761',
+      secondStroke: '#f1fff7',
+    },
+    system: {
+      backgroundStart: '#293b52',
+      backgroundEnd: '#67507e',
+      markStart: '#a9d4ff',
+      markEnd: '#e8ddff',
+      leaf: '#ffb4a9',
+      secondStroke: '#fff8ff',
+    },
+    graphite: {
+      backgroundStart: '#162234',
+      backgroundEnd: '#425f86',
+      markStart: '#a9c7f8',
+      markEnd: '#e7f0ff',
+      leaf: '#e5bfa6',
+      secondStroke: '#f7f9ff',
+    },
+    ocean: {
+      backgroundStart: '#00363f',
+      backgroundEnd: '#00677a',
+      markStart: '#54d6f2',
+      markEnd: '#d5f7ff',
+      leaf: '#bec6ea',
+      secondStroke: '#f2fdff',
+    },
+    violet: {
+      backgroundStart: '#2e1d4f',
+      backgroundEnd: '#67508f',
+      markStart: '#d1bcff',
+      markEnd: '#f0e8ff',
+      leaf: '#efb8c8',
+      secondStroke: '#fff8ff',
+    },
+    sunset: {
+      backgroundStart: '#5c1a07',
+      backgroundEnd: '#9b4425',
+      markStart: '#ffb59c',
+      markEnd: '#ffede7',
+      leaf: '#d7c58d',
+      secondStroke: '#fff8f6',
+    },
+  };
+
+  const appPrimaryToIconPalette = new Map([
+    ['#286448', 'xylune'],
+    ['#99d5b1', 'xylune'],
+    ['#425f86', 'graphite'],
+    ['#a9c7f8', 'graphite'],
+    ['#00677a', 'ocean'],
+    ['#54d6f2', 'ocean'],
+    ['#67508f', 'violet'],
+    ['#d1bcff', 'violet'],
+    ['#9b4425', 'sunset'],
+    ['#ffb59c', 'sunset'],
+  ]);
+
   function activeColor(variable, fallback) {
     return getComputedStyle(root).getPropertyValue(variable).trim() || fallback || '';
   }
 
-  function normalizeHex(value, fallback) {
+  function normalizeHex(value, fallback = '') {
     const match = String(value || '').trim().match(/^#?([0-9a-f]{6})$/i);
     return match ? `#${match[1].toLowerCase()}` : fallback;
   }
 
-  function mixHex(left, right, rightWeight) {
-    const first = normalizeHex(left, '#000000').slice(1);
-    const second = normalizeHex(right, '#000000').slice(1);
-    const weight = Math.min(1, Math.max(0, Number(rightWeight) || 0));
-    const channel = (offset) => Math.round(
-      parseInt(first.slice(offset, offset + 2), 16) * (1 - weight)
-      + parseInt(second.slice(offset, offset + 2), 16) * weight,
-    ).toString(16).padStart(2, '0');
-    return `#${channel(0)}${channel(2)}${channel(4)}`;
+  function iconPaletteFor(schemePreference) {
+    if (schemePreference !== 'app') {
+      return appIconPalettes[schemePreference] ? schemePreference : 'xylune';
+    }
+    const appPrimary = normalizeHex(themeState.appTheme?.colors?.['--primary']);
+    return appPrimaryToIconPalette.get(appPrimary) || 'system';
   }
 
-  function dynamicLogoDataUrl(colors) {
+  function dynamicLogoDataUrl(schemePreference) {
     if (!dynamicIconEnabled) return null;
 
-    const primary = normalizeHex(colors['--primary'], activeColor('--primary', '#0c684f'));
-    const secondary = normalizeHex(colors['--secondary'], activeColor('--secondary', primary));
-    const tertiary = normalizeHex(colors['--tertiary'], activeColor('--tertiary', '#f4c761'));
-
-    // Match the Android vector artwork with deliberately separated stops. The
-    // previous generated icon mixed similar tones and often looked flat.
-    const backgroundStart = mixHex(primary, '#000000', 0.72);
-    const backgroundMiddle = mixHex(primary, secondary, 0.18);
-    const backgroundEnd = mixHex(primary, '#ffffff', 0.08);
-    const markStart = mixHex(primary, '#ffffff', 0.34);
-    const markMiddle = mixHex(primary, '#ffffff', 0.66);
-    const markEnd = mixHex(primary, '#ffffff', 0.94);
-    const secondStroke = mixHex(primary, '#ffffff', 0.97);
-    const leafStart = tertiary;
-    const leafEnd = mixHex(tertiary, '#ffffff', 0.24);
-
+    const paletteName = iconPaletteFor(schemePreference);
+    const palette = appIconPalettes[paletteName];
     const svg = `<svg width="512" height="512" viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bg" x1="15" y1="8" x2="96" y2="101" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="${backgroundStart}"/>
-      <stop offset="0.52" stop-color="${backgroundMiddle}"/>
-      <stop offset="1" stop-color="${backgroundEnd}"/>
+      <stop stop-color="${palette.backgroundStart}"/>
+      <stop offset="1" stop-color="${palette.backgroundEnd}"/>
     </linearGradient>
     <linearGradient id="mark" x1="31.9912" y1="82.6202" x2="76.4301" y2="30.3824" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="${markStart}"/>
-      <stop offset="0.55" stop-color="${markMiddle}"/>
-      <stop offset="1" stop-color="${markEnd}"/>
-    </linearGradient>
-    <linearGradient id="leaf" x1="39" y1="34" x2="60" y2="20" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="${leafStart}"/>
-      <stop offset="1" stop-color="${leafEnd}"/>
+      <stop stop-color="${palette.markStart}"/>
+      <stop offset="1" stop-color="${palette.markEnd}"/>
     </linearGradient>
   </defs>
   <rect width="108" height="108" rx="24" fill="url(#bg)"/>
   <path d="M33.549193 80.863216C45.542258 64.507039 58.821502 47.408289 73.585895 32.881898" fill="none" stroke="url(#mark)" stroke-width="11.5517" stroke-linecap="round"/>
-  <path d="M39.107895 30.166046C43.79571 20.768808 52.715523 17.003434 60.890902 20.847009C59.491039 30.710867 51.981892 36.353531 40.896179 34.109428Z" fill="url(#leaf)"/>
-  <path d="M33.99223 32.881898C48.756623 47.408289 62.035867 64.507039 74.028932 80.863216" fill="none" stroke="${secondStroke}" stroke-width="11.5517" stroke-linecap="round"/>
+  <path d="M39.107895 30.166046C43.79571 20.768808 52.715523 17.003434 60.890902 20.847009C59.491039 30.710867 51.981892 36.353531 40.896179 34.109428Z" fill="${palette.leaf}"/>
+  <path d="M33.99223 32.881898C48.756623 47.408289 62.035867 64.507039 74.028932 80.863216" fill="none" stroke="${palette.secondStroke}" stroke-width="11.5517" stroke-linecap="round"/>
 </svg>`;
     return `data:image/svg+xml,${encodeURIComponent(svg)}`;
   }
 
-  function syncBrandLogo(colors) {
-    const dynamicSource = dynamicLogoDataUrl(colors);
-    root.dataset.brandLogo = dynamicSource ? 'dynamic' : 'static';
+  function syncBrandLogo(schemePreference) {
+    const dynamicSource = dynamicLogoDataUrl(schemePreference);
+    root.dataset.brandLogo = dynamicSource ? iconPaletteFor(schemePreference) : 'static';
     document.querySelectorAll('[data-xylune-logo]').forEach((image) => {
       image.dataset.staticSrc ||= image.getAttribute('src') || '';
       image.setAttribute('src', dynamicSource || image.dataset.staticSrc);
@@ -182,7 +223,7 @@
     root.dataset.themePreference = themePreference;
     root.dataset.schemePreference = schemePreference;
     root.style.colorScheme = resolved;
-    syncBrandLogo(colors);
+    syncBrandLogo(schemePreference);
     syncDynamicIconControls();
 
     document.querySelector('meta[name="theme-color"]')?.setAttribute(
@@ -231,7 +272,7 @@
     localStorage.setItem('xylune-dynamic-icon', dynamicIconEnabled ? '1' : '0');
     const themePreference = currentThemePreference();
     const schemePreference = currentSchemePreference();
-    syncBrandLogo(colorsFor(themePreference, schemePreference));
+    syncBrandLogo(schemePreference);
     syncDynamicIconControls();
     updateAppearanceUrl(themePreference, schemePreference);
     syncAppearanceLinks();
@@ -240,17 +281,23 @@
   function renderAppearanceControls() {
     const rail = `
       <div class="appearance-launcher">
-        <span class="appearance-launcher__label">Appearance</span>
-        <button class="icon-button" type="button" data-theme-settings aria-label="Open appearance settings">
+        <span class="appearance-launcher__label">Theme</span>
+        <button class="icon-button" type="button" data-theme-settings aria-label="Open color scheme settings">
           <span class="material-symbols-rounded" aria-hidden="true">palette</span>
         </button>
+      </div>
+      <div class="theme-selector rail-theme-selector" role="radiogroup" aria-label="Theme">
+        ${themeSegmentButton('app', 'phone_android', 'App', true)}
+        ${themeSegmentButton('system', 'brightness_auto', 'Auto')}
+        ${themeSegmentButton('light', 'light_mode', 'Light')}
+        ${themeSegmentButton('dark', 'dark_mode', 'Dark')}
       </div>`;
 
     const dialog = `
       <div class="dialog-heading">
         <div>
           <h2 id="appearance-title">Appearance</h2>
-          <p>Theme controls brightness. Color scheme controls the palette.</p>
+          <p>Customize this site.</p>
         </div>
         <button class="icon-button" type="button" data-theme-close aria-label="Close appearance settings">
           <span class="material-symbols-rounded" aria-hidden="true">close</span>
@@ -282,7 +329,7 @@
           <span class="material-symbols-rounded appearance-switch-row__icon" aria-hidden="true">gradient</span>
           <span class="appearance-switch-row__copy">
             <strong>Dynamic icon</strong>
-            <small>Match the page logo and favicon to the selected color scheme.</small>
+            <small>Use the same icon variant as Xylune for the selected color scheme.</small>
           </span>
           <button class="material-switch" type="button" role="switch" data-dynamic-icon-toggle aria-label="Use dynamic Xylune icon" aria-checked="false">
             <span class="material-switch__handle"></span>

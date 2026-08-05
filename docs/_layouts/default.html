@@ -33,21 +33,21 @@
         <a class="nav-item{% if page.url contains '/terms/' %} is-active{% endif %}" href="{{ '/terms/' | relative_url }}"><span class="material-symbols-rounded" aria-hidden="true">description</span><span>Terms</span></a>
         <a class="nav-item{% if page.url contains '/data-deletion/' %} is-active{% endif %}" href="{{ '/data-deletion/' | relative_url }}"><span class="material-symbols-rounded" aria-hidden="true">person_remove</span><span>Data deletion</span></a>
         <a class="nav-item{% if page.url == '/releases/' %} is-active{% endif %}" href="{{ '/releases/' | relative_url }}"><span class="material-symbols-rounded" aria-hidden="true">sell</span><span>Releases</span></a>
-        <a class="nav-item" href="https://github.com/omerfaruknehir/Xylune"><span class="material-symbols-rounded" aria-hidden="true">code</span><span>GitHub</span></a>
+        <a class="nav-item" href="https://github.com/omerfaruknehir/Xylune" aria-label="Xylune on GitHub, external link"><span class="material-symbols-rounded" aria-hidden="true">code</span><span>GitHub</span><span class="material-symbols-rounded nav-item__external" aria-hidden="true">open_in_new</span></a>
       </nav>
       <div class="rail-spacer"></div>
       <div class="rail-appearance">
         <div class="rail-appearance__heading">
-          <span>Color scheme</span>
-          <button class="icon-button" type="button" data-theme-settings aria-label="Open appearance settings">
+          <span>Theme</span>
+          <button class="icon-button" type="button" data-theme-settings aria-label="Open color scheme settings">
             <span class="material-symbols-rounded" aria-hidden="true">palette</span>
           </button>
         </div>
-        <div class="scheme-selector" role="radiogroup" aria-label="Page color scheme">
-          <button class="scheme-selector__choice" type="button" data-theme-choice="app" role="radio" title="App theme" aria-label="Use colors passed by Xylune" hidden><span class="material-symbols-rounded" aria-hidden="true">phone_android</span><span class="scheme-selector__label">App</span></button>
-          <button class="scheme-selector__choice" type="button" data-theme-choice="dark" role="radio" title="Dark" aria-label="Use dark scheme"><span class="material-symbols-rounded" aria-hidden="true">dark_mode</span><span class="scheme-selector__label">Dark</span></button>
-          <button class="scheme-selector__choice" type="button" data-theme-choice="light" role="radio" title="Light" aria-label="Use light scheme"><span class="material-symbols-rounded" aria-hidden="true">light_mode</span><span class="scheme-selector__label">Light</span></button>
-          <button class="scheme-selector__choice" type="button" data-theme-choice="system" role="radio" title="System" aria-label="Follow system scheme"><span class="material-symbols-rounded" aria-hidden="true">brightness_auto</span><span class="scheme-selector__label">Auto</span></button>
+        <div class="scheme-selector" role="radiogroup" aria-label="Theme">
+          <button class="scheme-selector__choice" type="button" data-theme-choice="app" role="radio" title="App theme" aria-label="Use the theme passed by Xylune" hidden><span class="material-symbols-rounded" aria-hidden="true">phone_android</span><span class="scheme-selector__label">App</span></button>
+          <button class="scheme-selector__choice" type="button" data-theme-choice="system" role="radio" title="Auto" aria-label="Follow system theme"><span class="material-symbols-rounded" aria-hidden="true">brightness_auto</span><span class="scheme-selector__label">Auto</span></button>
+          <button class="scheme-selector__choice" type="button" data-theme-choice="light" role="radio" title="Light" aria-label="Use light theme"><span class="material-symbols-rounded" aria-hidden="true">light_mode</span><span class="scheme-selector__label">Light</span></button>
+          <button class="scheme-selector__choice" type="button" data-theme-choice="dark" role="radio" title="Dark" aria-label="Use dark theme"><span class="material-symbols-rounded" aria-hidden="true">dark_mode</span><span class="scheme-selector__label">Dark</span></button>
         </div>
       </div>
     </aside>
@@ -77,39 +77,7 @@
       </div>
     </main>
 
-    <dialog class="appearance-dialog" data-theme-dialog aria-labelledby="appearance-title">
-      <div class="dialog-heading">
-        <div>
-          <h2 id="appearance-title">Appearance</h2>
-          <p>Choose how this page is colored.</p>
-        </div>
-        <button class="icon-button" type="button" data-theme-close aria-label="Close appearance settings">
-          <span class="material-symbols-rounded" aria-hidden="true">close</span>
-        </button>
-      </div>
-      <div class="appearance-options" role="radiogroup" aria-label="Color theme">
-        <button class="appearance-option" type="button" data-theme-choice="app" role="radio" hidden>
-          <span class="material-symbols-rounded" aria-hidden="true">phone_android</span>
-          <span><strong>App theme</strong><small>Colors passed by Xylune</small></span>
-          <span class="material-symbols-rounded option-check" aria-hidden="true">check</span>
-        </button>
-        <button class="appearance-option" type="button" data-theme-choice="dark" role="radio">
-          <span class="material-symbols-rounded" aria-hidden="true">dark_mode</span>
-          <span><strong>Dark</strong><small>Xylune’s dark green palette</small></span>
-          <span class="material-symbols-rounded option-check" aria-hidden="true">check</span>
-        </button>
-        <button class="appearance-option" type="button" data-theme-choice="light" role="radio">
-          <span class="material-symbols-rounded" aria-hidden="true">light_mode</span>
-          <span><strong>Light</strong><small>Xylune’s light green palette</small></span>
-          <span class="material-symbols-rounded option-check" aria-hidden="true">check</span>
-        </button>
-        <button class="appearance-option" type="button" data-theme-choice="system" role="radio">
-          <span class="material-symbols-rounded" aria-hidden="true">brightness_auto</span>
-          <span><strong>System</strong><small>Follow this device</small></span>
-          <span class="material-symbols-rounded option-check" aria-hidden="true">check</span>
-        </button>
-      </div>
-    </dialog>
+    <dialog class="appearance-dialog" data-theme-dialog aria-labelledby="appearance-title"></dialog>
     <script src="{{ '/assets/js/site.js' | relative_url }}" defer></script>
   </body>
 </html>
