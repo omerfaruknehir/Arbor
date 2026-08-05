@@ -1,20 +1,58 @@
 html body .page-with-app-bar {
-  scroll-snap-type: none;
+  /* The document is never a snap container. Ordinary reading and scrollbar
+     movement must remain completely free. Only site.js may settle the first
+     88 px when a title gesture actually ends between its two states. */
+  scroll-behavior: auto !important;
+  scroll-snap-type: none !important;
+  overscroll-behavior-y: auto;
 }
 
 html body .document-app-bar {
-  scroll-snap-align: none;
-  scroll-snap-stop: normal;
+  scroll-snap-align: none !important;
+  scroll-snap-stop: normal !important;
 }
 
 html body .document-title-collapse-snap {
-  display: none;
-  scroll-snap-align: none;
-  scroll-snap-stop: normal;
+  display: none !important;
+  scroll-snap-align: none !important;
+  scroll-snap-stop: normal !important;
 }
 
 body .rail-appearance {
-  gap: 16px;
+  gap: 0;
+}
+
+/* Keep appearance choices behind the original compact palette button. The
+   sidebar itself must not become a settings form. */
+.rail-appearance .scheme-selector,
+.rail-appearance .theme-selector,
+.rail-appearance .appearance-control:nth-child(n + 2) {
+  display: none !important;
+}
+
+.rail-appearance .appearance-control:first-child {
+  display: block;
+}
+
+.rail-appearance .appearance-control:first-child .appearance-control__heading > span {
+  display: none;
+}
+
+.rail-appearance .appearance-control:first-child .appearance-control__heading::before {
+  content: "Appearance";
+}
+
+.rail-appearance .appearance-control:first-child [data-theme-settings] .material-symbols-rounded {
+  font-size: 0;
+}
+
+.rail-appearance .appearance-control:first-child [data-theme-settings] .material-symbols-rounded::before {
+  content: "palette";
+  font-family: "Material Symbols Rounded";
+  font-size: 22px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1;
 }
 
 .appearance-control {
@@ -114,9 +152,9 @@ body .rail-appearance {
   display: grid;
   min-width: 0;
   min-height: 52px;
-  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-columns: 38px minmax(0, 1fr);
   align-items: center;
-  gap: 7px;
+  gap: 9px;
   padding: 7px 8px;
   border: 1px solid var(--outline-variant);
   border-radius: 10px;
@@ -156,42 +194,30 @@ body .rail-appearance {
   --preview-tertiary: #d7c58d;
 }
 
+/* Material-style color accent: primary occupies the top half; secondary and
+   tertiary occupy the two lower quarters. */
 .palette-choice__swatches {
-  position: relative;
   display: block;
-  width: 31px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
+  border: 1px solid color-mix(in srgb, var(--outline) 72%, transparent);
+  border-radius: 50%;
+  background: conic-gradient(
+    from 270deg,
+    var(--preview-primary) 0deg 180deg,
+    var(--preview-secondary) 180deg 270deg,
+    var(--preview-tertiary) 270deg 360deg
+  );
+  box-shadow: 0 1px 4px rgb(0 0 0 / 20%);
 }
 
 .palette-choice__swatches span {
-  position: absolute;
-  width: 18px;
-  height: 18px;
-  border: 2px solid var(--surface-low);
-  border-radius: 50%;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
+  display: none;
 }
 
-.palette-choice.is-selected .palette-choice__swatches span {
-  border-color: var(--primary-container);
-}
-
-.palette-choice__swatches span:nth-child(1) {
-  top: 0;
-  left: 0;
-  background: var(--preview-primary);
-}
-
-.palette-choice__swatches span:nth-child(2) {
-  top: 8px;
-  left: 7px;
-  background: var(--preview-secondary);
-}
-
-.palette-choice__swatches span:nth-child(3) {
-  top: 2px;
-  left: 14px;
-  background: var(--preview-tertiary);
+.palette-choice.is-selected .palette-choice__swatches {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 .palette-choice__label {
@@ -242,7 +268,7 @@ html .appearance-dialog {
 
 .dialog-scheme-grid .palette-choice {
   min-height: 64px;
-  grid-template-columns: 38px minmax(0, 1fr) 24px;
+  grid-template-columns: 42px minmax(0, 1fr) 24px;
   padding: 8px 10px;
 }
 
