@@ -60,7 +60,7 @@ class LegalWebsiteIntegrationTest {
     }
 
     @Test
-    fun `title settling only runs inside the collapse range`() {
+    fun `ordinary document scrolling never snaps and only partial title state settles`() {
         val css = repositoryFile("docs/assets/css/app-bar.css").readText()
         val appearance = repositoryFile("docs/assets/css/appearance.css").readText()
         val site = repositoryFile("docs/assets/js/site.js").readText()
@@ -70,14 +70,29 @@ class LegalWebsiteIntegrationTest {
         assertTrue(css.contains("animation-timeline: --xylune-page-scroll"))
         assertTrue(css.contains("transform: translate(-40px, 58px) scale(1.18)"))
         assertTrue(css.contains("transform: translateY(88px)"))
-        assertTrue(appearance.contains("html body .page-with-app-bar"))
-        assertTrue(appearance.contains("scroll-snap-type: none"))
-        assertTrue(appearance.contains("html body .document-title-collapse-snap"))
-        assertTrue(appearance.contains("display: none"))
+        assertTrue(appearance.contains("scroll-snap-type: none !important"))
+        assertTrue(appearance.contains("scroll-behavior: auto !important"))
+        assertTrue(appearance.contains("scroll-snap-align: none !important"))
+        assertTrue(appearance.contains("display: none !important"))
         assertTrue(site.contains("function setupTitleSettle()"))
         assertTrue(site.contains("position <= 1 || position >= collapseDistance - 1"))
         assertTrue(site.contains("position < collapseDistance / 2 ? 0 : collapseDistance"))
-        assertTrue(site.contains("addEventListener('scrollend', settle)"))
+        assertTrue(site.contains("behavior: reducedMotion.matches ? 'auto' : 'smooth'"))
+    }
+
+    @Test
+    fun `sidebar keeps only palette launcher and dialog uses material accent circles`() {
+        val appearance = repositoryFile("docs/assets/css/appearance.css").readText()
+
+        assertTrue(appearance.contains(".rail-appearance .scheme-selector"))
+        assertTrue(appearance.contains(".rail-appearance .theme-selector"))
+        assertTrue(appearance.contains(".rail-appearance .appearance-control:nth-child(n + 2)"))
+        assertTrue(appearance.contains("content: \"palette\""))
+        assertTrue(appearance.contains("conic-gradient("))
+        assertTrue(appearance.contains("from 270deg"))
+        assertTrue(appearance.contains("var(--preview-primary) 0deg 180deg"))
+        assertTrue(appearance.contains("var(--preview-secondary) 180deg 270deg"))
+        assertTrue(appearance.contains("var(--preview-tertiary) 270deg 360deg"))
     }
 
     @Test
