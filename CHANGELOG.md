@@ -1,3 +1,10 @@
+## 0.24.2 — 2026-08-05
+
+- Make the expanded chat model pill reliably tappable by keeping the translated control inside a full-size pointer-input ancestor and raising that ancestor above the large app bar.
+- Replace the draggable model bottom sheet with a stable full-screen catalog so scrolling hundreds of models cannot drag the picker itself downward.
+- Allow capability, price, favorites, and recency filters to be toggled together, with combined filters matching models that satisfy every selected condition.
+- Replace the oversized legal documents with a concise factual privacy notice and short Terms and Disclaimer: no maintainer access to app data, direct user-selected provider connections, GitHub as an independent public platform, no support duty, and the Apache License 2.0 as the primary software warranty and liability document.
+
 ## 0.24.1 — 2026-08-05
 
 - Keep the model selector tappable while the chat title is expanded by placing its interactive surface above the transparent large-app-bar hit region.

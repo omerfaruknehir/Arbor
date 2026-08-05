@@ -31,7 +31,7 @@ class ModelCatalogOverhaulTest {
             models = models,
             query = "needle vision",
             providerId = null,
-            filter = ModelPickerFilter.ALL,
+            filters = emptySet(),
             favoriteKeys = emptySet(),
             recentKeys = emptyList(),
         )
@@ -40,7 +40,7 @@ class ModelCatalogOverhaulTest {
             models = models,
             query = "",
             providerId = null,
-            filter = ModelPickerFilter.VISION,
+            filters = setOf(ModelPickerFilter.VISION),
             favoriteKeys = emptySet(),
             recentKeys = emptyList(),
         )
@@ -59,7 +59,7 @@ class ModelCatalogOverhaulTest {
             models = listOf(first, favorite, selected),
             query = "",
             providerId = null,
-            filter = ModelPickerFilter.ALL,
+            filters = emptySet(),
             favoriteKeys = setOf(modelPreferenceKey(openRouter.id, favorite.modelId)),
             recentKeys = listOf(modelPreferenceKey(openRouter.id, first.modelId)),
             selectedKey = modelPreferenceKey(openRouter.id, selected.modelId),
@@ -70,7 +70,41 @@ class ModelCatalogOverhaulTest {
         assertTrue(choices.size == 3)
     }
 
-    private fun model(id: String, name: String, vision: Boolean = false) = ModelEntity(
+    @Test
+    fun `multiple capability filters are combined`() {
+        val visionOnly = model("vision", "Vision", vision = true)
+        val toolsOnly = model("tools", "Tools", tools = true)
+        val both = model("both", "Both", vision = true, tools = true)
+
+        val choices = filteredModelChoices(
+            providers = listOf(openRouter),
+            models = listOf(visionOnly, toolsOnly, both),
+            query = "",
+            providerId = null,
+            filters = setOf(ModelPickerFilter.VISION, ModelPickerFilter.TOOLS),
+            favoriteKeys = emptySet(),
+            recentKeys = emptyList(),
+        )
+
+        assertEquals(listOf("both"), choices.map { it.model.modelId })
+    }
+
+    @Test
+    fun `large model catalog uses a stable full screen surface`() {
+        val source = java.io.File("src/main/java/app/xylune/chat/ui/ModelPickerSheet.kt").readText()
+
+        assertTrue(source.contains("Dialog("))
+        assertTrue(source.contains("Modifier.fillMaxSize()"))
+        assertTrue(source.contains("decorFitsSystemWindows = false"))
+        assertTrue(!source.contains("ModalBottomSheet"))
+    }
+
+    private fun model(
+        id: String,
+        name: String,
+        vision: Boolean = false,
+        tools: Boolean = false,
+    ) = ModelEntity(
         providerId = openRouter.id,
         modelId = id,
         displayName = name,
@@ -80,5 +114,6 @@ class ModelCatalogOverhaulTest {
         inputCacheMissUsdPerMillion = 0.0,
         outputUsdPerMillion = 0.0,
         supportsVision = vision,
+        supportsTools = tools,
     )
 }

@@ -19,7 +19,13 @@ Open **Xylune → Settings → Backup & transfer**, select the connected destina
 
 Disconnecting a provider removes the local session or credentials but does **not** automatically delete backups already stored there. Revoking Xylune in the Google, Microsoft, or Dropbox account security page stops future access but likewise does not necessarily delete stored files.
 
-For a non-confidential support or privacy request, use the [Xylune issue tracker](https://github.com/omerfaruknehir/Xylune/issues). GitHub issues are public, so do not post secrets or identity documents. For a confidential OAuth-related request, use the private contact method shown on the relevant OAuth consent screen. The maintainer can act only on information actually received and controlled through an official Xylune channel.
+## What the maintainer can and cannot delete
+
+The maintainer has no Xylune account database or remote administration access and cannot delete data held only on a device, in a backup destination, by an AI provider, or in a provider account. Use the controls described above or contact the relevant provider.
+
+GitHub operates repository accounts, hosting, logs, and public Issues. Use GitHub's account, content, and [privacy controls](https://docs.github.com/site-policy/privacy-policies/github-privacy-statement) for data controlled by GitHub. **Do not put a privacy request, personal data, credentials, private chats, or identity documents in a public Xylune issue.**
+
+If a request concerns specific information deliberately sent through a private OAuth channel and actually retained by the maintainer, use the private contact method shown on that OAuth consent screen. The maintainer can act only on that identified submission, not on data the maintainer never received.
 
 ---
 
@@ -33,4 +39,10 @@ Xylune merkezi bir kullanıcı hesabı işletmez. Verilerin çoğu Android cihaz
 - Sağlayıcı bağlantısını kesmek yalnızca cihazdaki oturumu veya kimlik bilgisini siler; sağlayıcıdaki mevcut yedekleri otomatik silmez.
 - Google, Microsoft veya Dropbox hesap güvenliği sayfasından Xylune erişimini iptal etmek gelecekteki erişimi durdurur; mevcut dosyaları ayrıca silmek gerekebilir.
 
-Gizli olmayan destek veya gizlilik başvurusu için [Xylune issue sayfasını](https://github.com/omerfaruknehir/Xylune/issues) kullanın. GitHub issue'ları herkese açıktır; sır veya kimlik belgesi paylaşmayın. Gizli OAuth başvurusu için ilgili OAuth onay ekranındaki özel iletişim yöntemini kullanın. Geliştirici yalnızca resmî Xylune kanalı üzerinden fiilen aldığı ve kontrol ettiği bilgi üzerinde işlem yapabilir.
+## Geliştiricinin silebildiği ve silemediği bilgiler
+
+Geliştiricinin Xylune hesap veritabanı veya uzaktan yönetim erişimi yoktur; yalnızca cihazda, yedek hedefinde, yapay zekâ sağlayıcısında veya sağlayıcı hesabında tutulan veriyi silemez. Yukarıdaki kontrolleri kullanın veya ilgili sağlayıcıya başvurun.
+
+Depo hesabını, barındırmayı, kayıtları ve herkese açık Issues'ı GitHub işletir. GitHub'ın kontrol ettiği veri için GitHub hesap/içerik ve [gizlilik kontrollerini](https://docs.github.com/site-policy/privacy-policies/github-privacy-statement) kullanın. **Herkese açık Xylune issue'suna gizlilik başvurusu, kişisel veri, kimlik bilgisi, özel sohbet veya kimlik belgesi yazmayın.**
+
+Başvuru, özel bir OAuth kanalından bilerek gönderilmiş ve geliştirici tarafından fiilen tutulmuş belirli bilgiye ilişkinse ilgili OAuth onay ekranındaki özel iletişim yöntemini kullanın. Geliştirici yalnızca tanımlanan gönderi üzerinde işlem yapabilir; hiç almadığı veri üzerinde işlem yapamaz.

@@ -3,7 +3,6 @@ package app.xylune.chat.ui
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -77,9 +76,14 @@ fun ChatCollapsingTranslucentTopBar(
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .fillMaxWidth()
+                // Match the already-measured LargeTopAppBar without increasing the
+                // Scaffold inset. Expanded translated children then remain inside a
+                // real pointer-input ancestor instead of a 64 dp compact-only row.
+                .matchParentSize()
                 .statusBarsPadding()
-                .height(64.dp),
+                // zIndex is scoped to siblings. Raising only the nested pill cannot put
+                // it above the sibling LargeTopAppBar, so raise the complete overlay.
+                .zIndex(5f),
         ) {
             val titleTranslationY = with(density) { (61.dp * (1f - travel)).toPx() }
             val titleScale = 1f + 0.20f * (1f - travel)
