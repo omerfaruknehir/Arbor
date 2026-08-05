@@ -21,32 +21,43 @@ class LegalWebsiteIntegrationTest {
     }
 
     @Test
-    fun `website exposes dynamic logo favicon and scheme controls`() {
+    fun `website exposes app-only dynamic logo favicon and visible scheme controls`() {
         val boot = repositoryFile("docs/assets/js/theme-boot.js").readText()
         val site = repositoryFile("docs/assets/js/site.js").readText()
+        val css = repositoryFile("docs/assets/css/app-bar.css").readText()
         val home = repositoryFile("docs/index.html").readText()
         val layout = repositoryFile("docs/_layouts/default.html").readText()
         assertTrue(boot.contains("dynamicLogo: params.get('dynamicLogo') === '1'"))
         assertTrue(site.contains("function syncBrandLogo(preference)"))
         assertTrue(site.contains("function dynamicLogoDataUrl(preference)"))
+        assertTrue(site.contains("if (preference !== 'app' || !themeState.appTheme?.dynamicLogo) return null"))
+        assertTrue(site.contains("root.dataset.brandLogo = dynamicSource ? 'app' : 'static'"))
         assertTrue(site.contains("document.querySelectorAll('link[data-xylune-favicon]')"))
         assertTrue(home.contains("rel=\"apple-touch-icon\""))
         assertTrue(layout.contains("data-xylune-logo"))
         assertTrue(layout.contains("class=\"scheme-selector\""))
-        assertTrue(layout.contains("data-theme-choice=\"system\""))
+        assertTrue(layout.contains("class=\"scheme-selector__label\">Dark"))
+        assertTrue(layout.contains("class=\"scheme-selector__label\">Auto"))
+        assertTrue(css.contains(".scheme-selector {\n  display: flex"))
+        assertTrue(!css.contains("grid-template-columns: repeat(4"))
     }
 
     @Test
-    fun `page titles are sticky and mapped directly to scroll`() {
+    fun `page title motion mirrors the Android bar and snapping is local`() {
         val css = repositoryFile("docs/assets/css/app-bar.css").readText()
         val site = repositoryFile("docs/assets/js/site.js").readText()
         val layout = repositoryFile("docs/_layouts/default.html").readText()
         assertTrue(css.contains("position: sticky"))
-        assertTrue(css.contains("animation-timeline: scroll(root block)"))
+        assertTrue(css.contains("scroll-timeline-name: --xylune-page-scroll"))
+        assertTrue(css.contains("animation-timeline: --xylune-page-scroll"))
+        assertTrue(css.contains("transform: translate(-40px, 58px) scale(1.18)"))
+        assertTrue(css.contains("transform: translateY(88px)"))
+        assertTrue(css.contains(".page-with-app-bar,"))
         assertTrue(css.contains("scroll-snap-type: y proximity"))
         assertTrue(css.contains("scroll-snap-stop: always"))
-        assertTrue(layout.contains("document-app-bar__title"))
-        assertTrue(layout.contains("document-title-collapse-snap"))
+        assertTrue(!Regex("html\\.collapsing-title-page\\s*\\{[^}]*scroll-snap-type", RegexOption.DOT_MATCHES_ALL).containsMatchIn(css))
+        assertTrue(layout.contains("document-app-bar__row"))
+        assertTrue(layout.indexOf("</header>") < layout.indexOf("document-title-collapse-snap"))
         assertTrue(!site.contains("addEventListener('scroll'"))
         assertTrue(!site.contains("onscroll"))
     }
