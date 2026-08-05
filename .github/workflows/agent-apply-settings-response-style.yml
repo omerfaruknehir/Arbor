@@ -32,8 +32,8 @@ jobs:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
       - name: Apply requested changes
         run: |
-          git apply --check .github/agent-patches/settings-response-style.patch
-          git apply .github/agent-patches/settings-response-style.patch
+          python3 .github/agent-patches/settings-response-style.patch
+          git diff --check
       - name: Run release unit tests
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
       - name: Commit verified implementation
