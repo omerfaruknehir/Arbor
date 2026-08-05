@@ -1,7 +1,4 @@
 html body .page-with-app-bar {
-  /* The document is never a snap container. Ordinary reading and scrollbar
-     movement must remain completely free. Only site.js may settle the first
-     88 px when a title gesture actually ends between its two states. */
   scroll-behavior: auto !important;
   scroll-snap-type: none !important;
   overscroll-behavior-y: auto;
@@ -19,13 +16,14 @@ html body .document-title-collapse-snap {
 }
 
 body .rail-appearance {
-  display: block;
+  display: grid;
+  gap: 7px;
   padding: 0 8px 4px;
 }
 
 .appearance-launcher {
   display: flex;
-  min-height: 48px;
+  min-height: 40px;
   align-items: center;
   justify-content: space-between;
   padding-inline: 10px 4px;
@@ -46,12 +44,12 @@ body .rail-appearance {
 }
 
 .appearance-launcher .icon-button {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
 }
 
 .appearance-launcher .material-symbols-rounded {
-  font-size: 23px;
+  font-size: 22px;
 }
 
 .theme-selector {
@@ -61,6 +59,10 @@ body .rail-appearance {
   border: 1px solid var(--outline-variant);
   border-radius: 14px;
   background: var(--surface-low);
+}
+
+.rail-theme-selector {
+  width: 100%;
 }
 
 .theme-selector__choice {
@@ -171,13 +173,11 @@ body .rail-appearance {
   --preview-tertiary: #d7c58d;
 }
 
-/* Material color accent: primary fills the top half; secondary and tertiary
-   fill the two lower quarters. */
 .palette-choice__swatches {
   display: block;
   width: 34px;
   height: 34px;
-  border: 1px solid color-mix(in srgb, var(--outline) 72%, transparent);
+  border: 0;
   border-radius: 50%;
   background: conic-gradient(
     from 270deg,
@@ -190,11 +190,6 @@ body .rail-appearance {
 
 .palette-choice__swatches span {
   display: none;
-}
-
-.palette-choice.is-selected .palette-choice__swatches {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
 }
 
 .palette-choice__label {
@@ -340,6 +335,11 @@ html .appearance-dialog {
 .material-switch:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--primary) 42%, transparent);
   outline-offset: 3px;
+}
+
+.nav-item__external {
+  margin-left: auto;
+  font-size: 18px;
 }
 
 @media (max-width: 420px) {
