@@ -8,8 +8,15 @@
     fixedColors: () => ({}),
     supportedThemes: ['app', 'dark', 'light', 'system'],
     supportedSchemes: ['app', 'xylune'],
-    queryKeys: ['theme', 'scheme'],
+    queryKeys: ['theme', 'scheme', 'dynamicLogo'],
   };
+  const initialParams = new URLSearchParams(location.search);
+  const storedDynamicIcon = localStorage.getItem('xylune-dynamic-icon');
+  let dynamicIconEnabled = initialParams.has('dynamicLogo')
+    ? initialParams.get('dynamicLogo') === '1'
+    : storedDynamicIcon !== null
+      ? storedDynamicIcon === '1'
+      : Boolean(themeState.appTheme?.dynamicLogo);
 
   function activeColor(variable, fallback) {
     return getComputedStyle(root).getPropertyValue(variable).trim() || fallback || '';
@@ -31,38 +38,53 @@
     return `#${channel(0)}${channel(2)}${channel(4)}`;
   }
 
-  function appColor(variable, fallback) {
-    return normalizeHex(themeState.appTheme?.colors?.[variable], fallback);
-  }
+  function dynamicLogoDataUrl(colors) {
+    if (!dynamicIconEnabled) return null;
 
-  function dynamicLogoDataUrl(schemePreference) {
-    if (schemePreference !== 'app' || !themeState.appTheme?.dynamicLogo) return null;
+    const primary = normalizeHex(colors['--primary'], activeColor('--primary', '#0c684f'));
+    const secondary = normalizeHex(colors['--secondary'], activeColor('--secondary', primary));
+    const tertiary = normalizeHex(colors['--tertiary'], activeColor('--tertiary', '#f4c761'));
 
-    const primary = appColor('--primary', '#0c684f');
-    const secondary = appColor('--secondary', primary);
-    const tertiary = appColor('--tertiary', '#f4c761');
-    const backgroundStart = mixHex(primary, '#000000', 0.42);
-    const backgroundEnd = mixHex(secondary, '#000000', 0.24);
-    const firstStroke = mixHex(primary, '#ffffff', 0.68);
-    const secondStroke = mixHex(primary, '#ffffff', 0.9);
-    const leaf = mixHex(tertiary, '#ffffff', 0.08);
+    // Match the Android vector artwork with deliberately separated stops. The
+    // previous generated icon mixed similar tones and often looked flat.
+    const backgroundStart = mixHex(primary, '#000000', 0.72);
+    const backgroundMiddle = mixHex(primary, secondary, 0.18);
+    const backgroundEnd = mixHex(primary, '#ffffff', 0.08);
+    const markStart = mixHex(primary, '#ffffff', 0.34);
+    const markMiddle = mixHex(primary, '#ffffff', 0.66);
+    const markEnd = mixHex(primary, '#ffffff', 0.94);
+    const secondStroke = mixHex(primary, '#ffffff', 0.97);
+    const leafStart = tertiary;
+    const leafEnd = mixHex(tertiary, '#ffffff', 0.24);
 
     const svg = `<svg width="512" height="512" viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="15" y1="8" x2="96" y2="101" gradientUnits="userSpaceOnUse"><stop stop-color="${backgroundStart}"/><stop offset="1" stop-color="${backgroundEnd}"/></linearGradient>
-    <linearGradient id="mark" x1="27" y1="84" x2="55" y2="25" gradientUnits="userSpaceOnUse" gradientTransform="matrix(1.014377,0.27180148,-0.27180148,1.014377,27.43436,-9.9261354)"><stop stop-color="${firstStroke}"/><stop offset="1" stop-color="${secondStroke}"/></linearGradient>
+    <linearGradient id="bg" x1="15" y1="8" x2="96" y2="101" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="${backgroundStart}"/>
+      <stop offset="0.52" stop-color="${backgroundMiddle}"/>
+      <stop offset="1" stop-color="${backgroundEnd}"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="31.9912" y1="82.6202" x2="76.4301" y2="30.3824" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="${markStart}"/>
+      <stop offset="0.55" stop-color="${markMiddle}"/>
+      <stop offset="1" stop-color="${markEnd}"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="39" y1="34" x2="60" y2="20" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="${leafStart}"/>
+      <stop offset="1" stop-color="${leafEnd}"/>
+    </linearGradient>
   </defs>
   <rect width="108" height="108" rx="24" fill="url(#bg)"/>
-  <path d="M 33.549193,80.863216 C 45.542258,64.507039 58.821502,47.408289 73.585895,32.881898" fill="none" stroke="url(#mark)" stroke-width="11.5517" stroke-linecap="round"/>
-  <path d="M 39.107895,30.166046 C 43.79571,20.768808 52.715523,17.003434 60.890902,20.847009 59.491039,30.710867 51.981892,36.353531 40.896179,34.109428 Z" fill="${leaf}"/>
-  <path d="M 33.99223,32.881898 C 48.756623,47.408289 62.035867,64.507039 74.028932,80.863216" fill="none" stroke="${secondStroke}" stroke-width="11.5517" stroke-linecap="round"/>
+  <path d="M33.549193 80.863216C45.542258 64.507039 58.821502 47.408289 73.585895 32.881898" fill="none" stroke="url(#mark)" stroke-width="11.5517" stroke-linecap="round"/>
+  <path d="M39.107895 30.166046C43.79571 20.768808 52.715523 17.003434 60.890902 20.847009C59.491039 30.710867 51.981892 36.353531 40.896179 34.109428Z" fill="url(#leaf)"/>
+  <path d="M33.99223 32.881898C48.756623 47.408289 62.035867 64.507039 74.028932 80.863216" fill="none" stroke="${secondStroke}" stroke-width="11.5517" stroke-linecap="round"/>
 </svg>`;
     return `data:image/svg+xml,${encodeURIComponent(svg)}`;
   }
 
-  function syncBrandLogo(schemePreference) {
-    const dynamicSource = dynamicLogoDataUrl(schemePreference);
-    root.dataset.brandLogo = dynamicSource ? 'app' : 'static';
+  function syncBrandLogo(colors) {
+    const dynamicSource = dynamicLogoDataUrl(colors);
+    root.dataset.brandLogo = dynamicSource ? 'dynamic' : 'static';
     document.querySelectorAll('[data-xylune-logo]').forEach((image) => {
       image.dataset.staticSrc ||= image.getAttribute('src') || '';
       image.setAttribute('src', dynamicSource || image.dataset.staticSrc);
@@ -75,6 +97,14 @@
       replacement.setAttribute('href', desired);
       if (dynamicSource) replacement.setAttribute('type', 'image/svg+xml');
       icon.replaceWith(replacement);
+    });
+  }
+
+  function syncDynamicIconControls() {
+    root.dataset.dynamicIcon = dynamicIconEnabled ? 'on' : 'off';
+    document.querySelectorAll('[data-dynamic-icon-toggle]').forEach((control) => {
+      control.setAttribute('aria-checked', String(dynamicIconEnabled));
+      control.classList.toggle('is-checked', dynamicIconEnabled);
     });
   }
 
@@ -130,6 +160,14 @@
     return themeState.supportedSchemes.includes(value) ? value : 'xylune';
   }
 
+  function updateAppearanceUrl(themePreference, schemePreference) {
+    const url = new URL(location.href);
+    url.searchParams.set('theme', themePreference);
+    url.searchParams.set('scheme', schemePreference);
+    url.searchParams.set('dynamicLogo', dynamicIconEnabled ? '1' : '0');
+    history.replaceState(null, '', url);
+  }
+
   function applyAppearance(themePreference, schemePreference, persist = true) {
     if (themePreference === 'app' && !themeState.appTheme) themePreference = 'dark';
     if (schemePreference === 'app' && !themeState.appTheme) schemePreference = storedFixedScheme();
@@ -144,7 +182,8 @@
     root.dataset.themePreference = themePreference;
     root.dataset.schemePreference = schemePreference;
     root.style.colorScheme = resolved;
-    syncBrandLogo(schemePreference);
+    syncBrandLogo(colors);
+    syncDynamicIconControls();
 
     document.querySelector('meta[name="theme-color"]')?.setAttribute(
       'content',
@@ -168,10 +207,7 @@
       localStorage.setItem('xylune-scheme', schemePreference);
     }
 
-    const url = new URL(location.href);
-    url.searchParams.set('theme', themePreference);
-    url.searchParams.set('scheme', schemePreference);
-    history.replaceState(null, '', url);
+    updateAppearanceUrl(themePreference, schemePreference);
     syncAppearanceLinks();
   }
 
@@ -190,32 +226,24 @@
     applyAppearance(themePreference, schemePreference);
   }
 
+  function setDynamicIcon(enabled) {
+    dynamicIconEnabled = Boolean(enabled);
+    localStorage.setItem('xylune-dynamic-icon', dynamicIconEnabled ? '1' : '0');
+    const themePreference = currentThemePreference();
+    const schemePreference = currentSchemePreference();
+    syncBrandLogo(colorsFor(themePreference, schemePreference));
+    syncDynamicIconControls();
+    updateAppearanceUrl(themePreference, schemePreference);
+    syncAppearanceLinks();
+  }
+
   function renderAppearanceControls() {
     const rail = `
-      <div class="appearance-control">
-        <div class="appearance-control__heading">
-          <span>Theme</span>
-          <button class="icon-button" type="button" data-theme-settings aria-label="Open appearance settings">
-            <span class="material-symbols-rounded" aria-hidden="true">tune</span>
-          </button>
-        </div>
-        <div class="theme-selector" role="radiogroup" aria-label="Theme">
-          <button class="theme-selector__choice" type="button" data-theme-choice="app" role="radio" title="Use app theme" aria-label="Use the theme passed by Xylune" hidden><span class="material-symbols-rounded" aria-hidden="true">phone_android</span><span class="theme-selector__label">App</span></button>
-          <button class="theme-selector__choice" type="button" data-theme-choice="system" role="radio" title="Auto" aria-label="Follow system theme"><span class="material-symbols-rounded" aria-hidden="true">brightness_auto</span><span class="theme-selector__label">Auto</span></button>
-          <button class="theme-selector__choice" type="button" data-theme-choice="light" role="radio" title="Light" aria-label="Use light theme"><span class="material-symbols-rounded" aria-hidden="true">light_mode</span><span class="theme-selector__label">Light</span></button>
-          <button class="theme-selector__choice" type="button" data-theme-choice="dark" role="radio" title="Dark" aria-label="Use dark theme"><span class="material-symbols-rounded" aria-hidden="true">dark_mode</span><span class="theme-selector__label">Dark</span></button>
-        </div>
-      </div>
-      <div class="appearance-control">
-        <div class="appearance-control__heading"><span>Color scheme</span></div>
-        <div class="color-scheme-selector" role="radiogroup" aria-label="Color scheme">
-          ${schemeButton('app', 'App', true)}
-          ${schemeButton('xylune', 'Xylune')}
-          ${schemeButton('graphite', 'Graphite')}
-          ${schemeButton('ocean', 'Ocean')}
-          ${schemeButton('violet', 'Violet')}
-          ${schemeButton('sunset', 'Sunset')}
-        </div>
+      <div class="appearance-launcher">
+        <span class="appearance-launcher__label">Appearance</span>
+        <button class="icon-button" type="button" data-theme-settings aria-label="Open appearance settings">
+          <span class="material-symbols-rounded" aria-hidden="true">palette</span>
+        </button>
       </div>`;
 
     const dialog = `
@@ -230,11 +258,11 @@
       </div>
       <section class="appearance-dialog__section" aria-labelledby="theme-section-title">
         <h3 class="appearance-dialog__section-title" id="theme-section-title">Theme</h3>
-        <div class="appearance-options" role="radiogroup" aria-label="Theme">
-          ${themeDialogButton('app', 'phone_android', 'App', 'Use the brightness passed by Xylune', true)}
-          ${themeDialogButton('system', 'brightness_auto', 'Auto', 'Follow this device')}
-          ${themeDialogButton('light', 'light_mode', 'Light', 'Always use light surfaces')}
-          ${themeDialogButton('dark', 'dark_mode', 'Dark', 'Always use dark surfaces')}
+        <div class="theme-selector dialog-theme-selector" role="radiogroup" aria-label="Theme">
+          ${themeSegmentButton('app', 'phone_android', 'App', true)}
+          ${themeSegmentButton('system', 'brightness_auto', 'Auto')}
+          ${themeSegmentButton('light', 'light_mode', 'Light')}
+          ${themeSegmentButton('dark', 'dark_mode', 'Dark')}
         </div>
       </section>
       <section class="appearance-dialog__section" aria-labelledby="scheme-section-title">
@@ -247,6 +275,19 @@
           ${schemeButton('violet', 'Violet', false, true)}
           ${schemeButton('sunset', 'Sunset', false, true)}
         </div>
+      </section>
+      <section class="appearance-dialog__section appearance-dialog__switch-section" aria-labelledby="icon-section-title">
+        <h3 class="appearance-dialog__section-title" id="icon-section-title">Brand icon</h3>
+        <div class="appearance-switch-row">
+          <span class="material-symbols-rounded appearance-switch-row__icon" aria-hidden="true">gradient</span>
+          <span class="appearance-switch-row__copy">
+            <strong>Dynamic icon</strong>
+            <small>Match the page logo and favicon to the selected color scheme.</small>
+          </span>
+          <button class="material-switch" type="button" role="switch" data-dynamic-icon-toggle aria-label="Use dynamic Xylune icon" aria-checked="false">
+            <span class="material-switch__handle"></span>
+          </button>
+        </div>
       </section>`;
 
     document.querySelectorAll('.rail-appearance').forEach((container) => {
@@ -257,19 +298,18 @@
     });
   }
 
+  function themeSegmentButton(value, icon, label, hidden = false) {
+    return `<button class="theme-selector__choice" type="button" data-theme-choice="${value}" role="radio"${hidden ? ' hidden' : ''}>
+      <span class="material-symbols-rounded" aria-hidden="true">${icon}</span>
+      <span class="theme-selector__label">${label}</span>
+    </button>`;
+  }
+
   function schemeButton(value, label, hidden = false, dialog = false) {
     return `<button class="palette-choice${dialog ? ' palette-choice--dialog' : ''}" type="button" data-scheme-choice="${value}" role="radio"${hidden ? ' hidden' : ''}>
       <span class="palette-choice__swatches" aria-hidden="true"><span></span><span></span><span></span></span>
       <span class="palette-choice__label">${label}</span>
       ${dialog ? '<span class="material-symbols-rounded palette-choice__check" aria-hidden="true">check</span>' : ''}
-    </button>`;
-  }
-
-  function themeDialogButton(value, icon, label, description, hidden = false) {
-    return `<button class="appearance-option" type="button" data-theme-choice="${value}" role="radio"${hidden ? ' hidden' : ''}>
-      <span class="material-symbols-rounded" aria-hidden="true">${icon}</span>
-      <span><strong>${label}</strong><small>${description}</small></span>
-      <span class="material-symbols-rounded option-check" aria-hidden="true">check</span>
     </button>`;
   }
 
@@ -309,6 +349,9 @@
   document.querySelectorAll('[data-scheme-choice]').forEach((button) => {
     if (button.dataset.schemeChoice === 'app') button.hidden = !themeState.appTheme;
     button.addEventListener('click', () => setScheme(button.dataset.schemeChoice));
+  });
+  document.querySelectorAll('[data-dynamic-icon-toggle]').forEach((control) => {
+    control.addEventListener('click', () => setDynamicIcon(!dynamicIconEnabled));
   });
 
   media.addEventListener('change', () => {
