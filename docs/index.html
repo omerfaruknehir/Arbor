@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#101411">
+    <meta name="description" content="Xylune is a local-first Android client for user-configured AI providers, tools, widgets, and portable backups.">
+    <title>Xylune · Native Android. Private by design.</title>
+    <link rel="icon" href="assets/images/xylune-logo.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400,0,0&family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="assets/js/theme-boot.js"></script>
+    <link rel="stylesheet" href="assets/css/site.css">
+  </head>
+  <body>
+    <header class="mobile-bar">
+      <a class="brand" href="./" aria-label="Xylune home">
+        <img src="assets/images/xylune-logo.svg" alt="" width="44" height="44">
+        <span>Xylune</span>
+      </a>
+      <div class="mobile-actions">
+        <button class="icon-button" type="button" data-theme-settings aria-label="Open appearance settings">
+          <span class="material-symbols-rounded" aria-hidden="true">palette</span>
+        </button>
+        <button class="icon-button" type="button" data-menu-toggle aria-label="Open navigation" aria-expanded="false">
+          <span class="material-symbols-rounded" aria-hidden="true">menu</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="nav-scrim" data-menu-dismiss></div>
+    <aside class="site-rail" aria-label="Primary navigation">
+      <a class="brand rail-brand" href="./" aria-label="Xylune home">
+        <img src="assets/images/xylune-logo.svg" alt="" width="58" height="58">
+        <span>Xylune</span>
+      </a>
+      <nav class="rail-nav">
+        <a class="nav-item is-active" href="./" aria-current="page"><span class="material-symbols-rounded" aria-hidden="true">home</span><span>Home</span></a>
+        <a class="nav-item" href="privacy/"><span class="material-symbols-rounded" aria-hidden="true">shield</span><span>Privacy</span></a>
+        <a class="nav-item" href="terms/"><span class="material-symbols-rounded" aria-hidden="true">description</span><span>Terms</span></a>
+        <a class="nav-item" href="data-deletion/"><span class="material-symbols-rounded" aria-hidden="true">person_remove</span><span>Data deletion</span></a>
+        <a class="nav-item" href="https://github.com/omerfaruknehir/Xylune/releases"><span class="material-symbols-rounded" aria-hidden="true">sell</span><span>Releases</span></a>
+        <a class="nav-item" href="https://github.com/omerfaruknehir/Xylune"><span class="material-symbols-rounded" aria-hidden="true">code</span><span>GitHub</span></a>
+      </nav>
+      <div class="rail-spacer"></div>
+      <button class="theme-button" type="button" data-theme-settings>
+        <span class="material-symbols-rounded" aria-hidden="true">palette</span>
+        <span>Appearance</span>
+      </button>
+    </aside>
+
+    <main class="page-shell home-shell">
+      <section class="home-content" aria-labelledby="home-title">
+        <h1 id="home-title">Xylune</h1>
+        <p class="headline">Native Android. Private by design.</p>
+        <p class="intro">A local-first Android client for your choice of AI providers, tools, programmable widgets, and portable backups.</p>
+
+        <ul class="destination-list" aria-label="Xylune resources">
+          <li><a href="privacy/">Privacy Policy <span>/ Gizlilik ve KVKK Aydınlatma Metni</span></a></li>
+          <li><a href="terms/">Terms and Disclaimer <span>/ Koşullar ve Sorumluluk Reddi</span></a></li>
+          <li><a href="data-deletion/">Data Deletion <span>/ Veri Silme</span></a></li>
+          <li><a href="https://github.com/omerfaruknehir/Xylune">Source code and releases</a></li>
+          <li><a href="https://github.com/omerfaruknehir/Xylune/issues">Support and issues</a></li>
+        </ul>
+
+        <div class="primary-actions">
+          <a class="button button-primary" href="https://github.com/omerfaruknehir/Xylune/releases/latest">
+            <span class="material-symbols-rounded" aria-hidden="true">download</span>
+            <span>Get Xylune</span>
+          </a>
+          <a class="button button-text" href="https://github.com/omerfaruknehir/Xylune">
+            <span>View on GitHub</span>
+            <span class="material-symbols-rounded" aria-hidden="true">open_in_new</span>
+          </a>
+        </div>
+
+        <aside class="privacy-note">
+          <span class="note-icon material-symbols-rounded" aria-hidden="true">shield</span>
+          <p>Cloud backups move directly between the user’s device and the destination they select. Xylune does not operate a central backup service.</p>
+        </aside>
+
+        <div class="resource-card" aria-label="Legal and privacy documents">
+          <a class="resource-row" href="privacy/">
+            <span class="material-symbols-rounded resource-icon" aria-hidden="true">shield</span>
+            <span><strong>Privacy Policy</strong><small>What Xylune can—and cannot—access.</small></span>
+            <span class="material-symbols-rounded row-arrow" aria-hidden="true">chevron_right</span>
+          </a>
+          <a class="resource-row" href="terms/">
+            <span class="material-symbols-rounded resource-icon" aria-hidden="true">description</span>
+            <span><strong>Terms and Disclaimer</strong><small>Short terms for local open-source software.</small></span>
+            <span class="material-symbols-rounded row-arrow" aria-hidden="true">chevron_right</span>
+          </a>
+          <a class="resource-row" href="data-deletion/">
+            <span class="material-symbols-rounded resource-icon" aria-hidden="true">person_remove</span>
+            <span><strong>Data Deletion</strong><small>Delete local data or contact the provider that holds it.</small></span>
+            <span class="material-symbols-rounded row-arrow" aria-hidden="true">chevron_right</span>
+          </a>
+        </div>
+
+        <footer class="site-footer">
+          <p>This project is maintained by <a href="https://github.com/omerfaruknehir">omerfaruknehir</a>.</p>
+          <p>Open source on <a href="https://github.com/omerfaruknehir/Xylune">GitHub</a>.</p>
+        </footer>
+      </section>
+    </main>
+    <dialog class="appearance-dialog" data-theme-dialog aria-labelledby="appearance-title">
+      <div class="dialog-heading">
+        <div>
+          <h2 id="appearance-title">Appearance</h2>
+          <p>Choose how this page is colored.</p>
+        </div>
+        <button class="icon-button" type="button" data-theme-close aria-label="Close appearance settings">
+          <span class="material-symbols-rounded" aria-hidden="true">close</span>
+        </button>
+      </div>
+      <div class="appearance-options" role="radiogroup" aria-label="Color theme">
+        <button class="appearance-option" type="button" data-theme-choice="app" role="radio" hidden>
+          <span class="material-symbols-rounded" aria-hidden="true">phone_android</span>
+          <span><strong>App theme</strong><small>Colors passed by Xylune</small></span>
+          <span class="material-symbols-rounded option-check" aria-hidden="true">check</span>
+        </button>
+        <button class="appearance-option" type="button" data-theme-choice="dark" role="radio">
+          <span class="material-symbols-rounded" aria-hidden="true">dark_mode</span>
+          <span><strong>Dark</strong><small>Xylune’s dark green palette</small></span>
+          <span class="material-symbols-rounded option-check" aria-hidden="true">check</span>
+        </button>
+        <button class="appearance-option" type="button" data-theme-choice="light" role="radio">
+          <span class="material-symbols-rounded" aria-hidden="true">light_mode</span>
+          <span><strong>Light</strong><small>Xylune’s light green palette</small></span>
+          <span class="material-symbols-rounded option-check" aria-hidden="true">check</span>
+        </button>
+        <button class="appearance-option" type="button" data-theme-choice="system" role="radio">
+          <span class="material-symbols-rounded" aria-hidden="true">brightness_auto</span>
+          <span><strong>System</strong><small>Follow this device</small></span>
+          <span class="material-symbols-rounded option-check" aria-hidden="true">check</span>
+        </button>
+      </div>
+    </dialog>
+    <script src="assets/js/site.js" defer></script>
+  </body>
+</html>

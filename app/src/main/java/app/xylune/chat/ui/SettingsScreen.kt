@@ -52,6 +52,7 @@ import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -93,6 +94,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.Modifier
@@ -1083,6 +1086,10 @@ private fun PrivacySettingsPage(
     viewModel: ChatViewModel,
 ) = SettingsPage {
     val uriHandler = LocalUriHandler.current
+    val siteColors = MaterialTheme.colorScheme
+    val privacyUrl = remember(siteColors) { xyluneWebsiteUrl("privacy/", siteColors) }
+    val termsUrl = remember(siteColors) { xyluneWebsiteUrl("terms/", siteColors) }
+    val deletionUrl = remember(siteColors) { xyluneWebsiteUrl("data-deletion/", siteColors) }
     SectionTitle("Generated content", "Controls how Xylune handles AI-generated interactive UI.")
     SettingsSwitch("Safe generated rendering", renderSafeMode, viewModel::setRenderSafeMode)
     Text(
@@ -1111,14 +1118,18 @@ private fun PrivacySettingsPage(
     )
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(
-            onClick = { uriHandler.openUri("https://github.com/omerfaruknehir/Xylune/blob/main/PRIVACY.md") },
+            onClick = { uriHandler.openUri(privacyUrl) },
             modifier = Modifier.weight(1f),
         ) { Text("Privacy") }
         OutlinedButton(
-            onClick = { uriHandler.openUri("https://github.com/omerfaruknehir/Xylune/blob/main/TERMS.md") },
+            onClick = { uriHandler.openUri(termsUrl) },
             modifier = Modifier.weight(1f),
         ) { Text("Terms") }
     }
+    OutlinedButton(
+        onClick = { uriHandler.openUri(deletionUrl) },
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text("Data deletion") }
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Security, null)
@@ -1695,6 +1706,30 @@ private val ThemeMode.displayName: String
         ThemeMode.LIGHT -> "Light"
         ThemeMode.DARK -> "Dark"
     }
+
+internal fun xyluneWebsiteUrl(path: String, colors: ColorScheme): String {
+    fun Color.webHex(): String = "%06x".format(toArgb() and 0x00ffffff)
+    val normalizedPath = path.trim('/').takeIf(String::isNotBlank)?.plus('/').orEmpty()
+    val parameters = linkedMapOf(
+        "theme" to "app",
+        "dark" to if (colors.background.luminance() < 0.5f) "1" else "0",
+        "primary" to colors.primary.webHex(),
+        "onPrimary" to colors.onPrimary.webHex(),
+        "primaryContainer" to colors.primaryContainer.webHex(),
+        "onPrimaryContainer" to colors.onPrimaryContainer.webHex(),
+        "background" to colors.background.webHex(),
+        "surface" to colors.surface.webHex(),
+        "surfaceLow" to colors.surfaceContainerLow.webHex(),
+        "surfaceContainer" to colors.surfaceContainer.webHex(),
+        "onSurface" to colors.onSurface.webHex(),
+        "onSurfaceVariant" to colors.onSurfaceVariant.webHex(),
+        "outline" to colors.outline.webHex(),
+        "outlineVariant" to colors.outlineVariant.webHex(),
+        "rail" to colors.surfaceContainerLowest.webHex(),
+    )
+    return "https://omerfaruknehir.github.io/Xylune/$normalizedPath?" +
+        parameters.entries.joinToString("&") { (name, value) -> "$name=$value" }
+}
 
 private val ColorPalette.displayName: String
     get() = when (this) {
@@ -3230,7 +3265,7 @@ private fun ModelCatalogEditor(provider: ProviderEntity, viewModel: ChatViewMode
             ModelPickerFilter.VISION -> model.supportsVision
             ModelPickerFilter.FILES -> model.supportsFiles
             ModelPickerFilter.IMAGE -> model.supportsImageGeneration
-            ModelPickerFilter.FREE -> model.pricingConfigured && model.inputCacheMissUsdPerMillion == 0.0 && model.outputUsdPerMillion == 0.0
+            ModelPickerFilter.FREE -> model.isActuallyFree
             ModelPickerFilter.FAVORITES, ModelPickerFilter.RECENT -> true
         }
     }

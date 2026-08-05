@@ -117,11 +117,60 @@ class ModelDiscoveryService(
             if (next == null || !seenCursors.add(next)) break
             cursor = next
         }
-        val distinct = collected.distinctBy { it.id }.sortedBy { it.displayName.lowercase() }.take(MAX_MODELS)
+        if (kind == ProviderKind.OPENAI_COMPATIBLE && ModelRequestPolicy.isOpenRouterBaseUrl(baseUrl)) {
+            // OpenRouter's dedicated Images API can contain image models that are
+            // absent from the general catalog. Fetch both authoritative catalogs
+            // and merge them so image output is discovered without name guessing.
+            val imageEndpoint = "$baseUrl/images/models".toHttpUrl()
+            val imageBody = try {
+                fetchPage(kind, imageEndpoint, apiKey, customHeaders)
+            } catch (error: ProviderHttpException) {
+                if (error.status in setOf(404, 405)) null else throw error
+            }
+            collected += parseDataModels(imageBody?.get("data") as? JsonArray, baseUrl)
+        }
+        val distinct = mergeDiscoveredModels(collected)
+            .sortedBy { it.displayName.lowercase() }
+            .take(MAX_MODELS)
         val merged = if (kind == ProviderKind.OPENAI_COMPATIBLE) {
             ModelRequestPolicy.mergeOfficialOpenAiCatalog(baseUrl, distinct)
         } else distinct
         merged.ifEmpty { throw IllegalStateException("The provider returned no usable models") }
+    }
+
+    private fun mergeDiscoveredModels(models: List<DiscoveredModel>): List<DiscoveredModel> {
+        fun mergeCapability(base: Boolean?, candidate: Boolean?): Boolean? = when {
+            base == true || candidate == true -> true
+            candidate != null -> candidate
+            else -> base
+        }
+        val merged = linkedMapOf<String, DiscoveredModel>()
+        models.forEach { candidate ->
+            val base = merged[candidate.id]
+            merged[candidate.id] = if (base == null) candidate else base.copy(
+                displayName = base.displayName.ifBlank { candidate.displayName },
+                contextWindow = base.contextWindow ?: candidate.contextWindow,
+                maxOutputTokens = base.maxOutputTokens ?: candidate.maxOutputTokens,
+                supportsThinking = mergeCapability(base.supportsThinking, candidate.supportsThinking),
+                supportsVision = mergeCapability(base.supportsVision, candidate.supportsVision),
+                supportsFiles = mergeCapability(base.supportsFiles, candidate.supportsFiles),
+                supportsTools = mergeCapability(base.supportsTools, candidate.supportsTools),
+                supportsImageGeneration = mergeCapability(base.supportsImageGeneration, candidate.supportsImageGeneration),
+                description = base.description.ifBlank { candidate.description },
+                createdAtEpochSeconds = maxOf(base.createdAtEpochSeconds, candidate.createdAtEpochSeconds),
+                inputCacheHitUsdPerMillion = base.inputCacheHitUsdPerMillion ?: candidate.inputCacheHitUsdPerMillion,
+                inputCacheMissUsdPerMillion = base.inputCacheMissUsdPerMillion ?: candidate.inputCacheMissUsdPerMillion,
+                outputUsdPerMillion = base.outputUsdPerMillion ?: candidate.outputUsdPerMillion,
+                reasoningMetadataAvailable = candidate.reasoningMetadataAvailable || base.reasoningMetadataAvailable,
+                reasoningEfforts = if (base.reasoningMetadataAvailable) base.reasoningEfforts else candidate.reasoningEfforts,
+                reasoningDefaultEffort = base.reasoningDefaultEffort ?: candidate.reasoningDefaultEffort,
+                reasoningDefaultEnabled = if (base.reasoningMetadataAvailable) base.reasoningDefaultEnabled else candidate.reasoningDefaultEnabled,
+                reasoningMandatory = if (base.reasoningMetadataAvailable) base.reasoningMandatory else candidate.reasoningMandatory,
+                reasoningSupportsMaxTokens = if (base.reasoningMetadataAvailable) base.reasoningSupportsMaxTokens else candidate.reasoningSupportsMaxTokens,
+                metadataSource = base.metadataSource.ifBlank { candidate.metadataSource },
+            )
+        }
+        return merged.values.toList()
     }
 
     private suspend fun fetchPage(

@@ -257,6 +257,29 @@ class NativeProviderProtocolTest {
     }
 
     @Test
+    fun openRouterImageModelsUsePortableDedicatedApiDefaults() {
+        val base = request(
+            ProviderKind.OPENAI_COMPATIBLE,
+            listOf(InputMessage(MessageRole.USER, "Draw a forest")),
+            modelId = "vendor/image-model",
+            providerId = "openrouter",
+        )
+        val request = base.copy(
+            provider = base.provider.copy(baseUrl = "https://openrouter.ai/api/v1"),
+            model = base.model.copy(supportsImageGeneration = true),
+        )
+        val body = OpenAiCompatibleProvider().buildImageRequestBody(request)
+
+        assertEquals("vendor/image-model", body["model"]!!.jsonPrimitive.content)
+        assertEquals("Draw a forest", body["prompt"]!!.jsonPrimitive.content)
+        assertEquals("1", body["n"]!!.jsonPrimitive.content)
+        assertFalse(body.containsKey("size"))
+        assertFalse(body.containsKey("quality"))
+        assertFalse(body.containsKey("background"))
+        assertFalse(body.containsKey("output_format"))
+    }
+
+    @Test
     fun dallEImageModelsRequestBase64Responses() {
         val base = request(
             ProviderKind.OPENAI_COMPATIBLE,

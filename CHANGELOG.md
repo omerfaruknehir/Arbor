@@ -1,3 +1,10 @@
+## 0.24.3 — 2026-08-05
+
+- Replace the stock Pages landing page with the selected simple V2 Xylune design, including responsive Material navigation and a compact dark, light, system, or app-theme switcher.
+- Pass Xylune's resolved Material color scheme—including Android dynamic color and AMOLED palettes—to Privacy, Terms, and Data Deletion pages, while preserving the theme across internal links.
+- Merge OpenRouter's general and dedicated image-model catalogs, route image models through the Images API with portable parameters, and give image generation a clear composer mode.
+- Stop labeling image-output models as free from zero text-token prices when OpenRouter bills them through separate image pricing.
+
 ## 0.24.2 — 2026-08-05
 
 - Make the expanded chat model pill reliably tappable by keeping the translated control inside a full-size pointer-input ancestor and raising that ancestor above the large app bar.

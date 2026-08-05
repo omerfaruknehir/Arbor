@@ -2540,7 +2540,9 @@ private fun Composer(
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var pendingCameraFile by remember { mutableStateOf<File?>(null) }
     val haptics = rememberXyluneHaptics()
-    val hasPayload = draft.isNotBlank() || staged.isNotEmpty()
+    val imageGenerationMode = model?.supportsImageGeneration == true
+    val imageGenerationBlocked = imageGenerationMode && staged.isNotEmpty()
+    val hasPayload = draft.isNotBlank() && !imageGenerationBlocked || (!imageGenerationMode && staged.isNotEmpty())
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         uris.forEach(viewModel::import)
@@ -2632,7 +2634,33 @@ private fun Composer(
                 }
             }
             if (providerConfigured && !generating) conversation?.let { current ->
-                unsupportedToolCallingNotice(
+                if (imageGenerationMode) {
+                    Surface(
+                        color = if (imageGenerationBlocked) MaterialTheme.colorScheme.errorContainer.copy(alpha = .72f)
+                        else MaterialTheme.colorScheme.primaryContainer.copy(alpha = .72f),
+                        shape = MaterialTheme.shapes.large,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp),
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                if (imageGenerationBlocked) Icons.Outlined.WarningAmber else Icons.Outlined.Image,
+                                null,
+                                Modifier.size(18.dp),
+                            )
+                            Text(
+                                if (imageGenerationBlocked) "Remove attachments first · image editing is not enabled yet"
+                                else "Image generation · describe the image you want to create",
+                                Modifier.padding(start = 8.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
+                }
+                if (!imageGenerationMode) unsupportedToolCallingNotice(
                     modelSupportsTools = model?.supportsTools,
                     toolCallingRequested = current.webSearchEnabled ||
                         current.deepResearchEnabled ||
@@ -2663,7 +2691,7 @@ private fun Composer(
                         }
                     }
                 }
-                LazyRow(
+                if (!imageGenerationMode) LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 6.dp),
@@ -2728,8 +2756,12 @@ private fun Composer(
                 IconButton(onClick = {
                     haptics.tap()
                     plusMenu = true
-                }, enabled = !importing && providerConfigured) {
-                    Icon(Icons.Outlined.Add, "Attach files, images, or a photo")
+                }, enabled = !importing && providerConfigured && !imageGenerationMode) {
+                    Icon(
+                        Icons.Outlined.Add,
+                        if (imageGenerationMode) "Attachments are unavailable in image generation mode"
+                        else "Attach files, images, or a photo",
+                    )
                 }
                 OutlinedTextField(
                     value = draft,
@@ -2739,6 +2771,8 @@ private fun Composer(
                         Text(
                             if (!providerConfigured) "Set up a provider to start"
                             else if (generating) "Add direction…"
+                            else if (imageGenerationBlocked) "Remove attachments to generate an image"
+                            else if (imageGenerationMode) "Describe an image to generate…"
                             else if (conversation?.deepResearchEnabled == true) "Research request…"
                             else "Message Xylune…",
                             maxLines = 1,
@@ -2771,8 +2805,12 @@ private fun Composer(
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Icon(
-                            if (generating) Icons.AutoMirrored.Outlined.AltRoute else Icons.Filled.ArrowUpward,
-                            if (generating) "Steer current response" else "Send",
+                            if (generating) Icons.AutoMirrored.Outlined.AltRoute
+                            else if (imageGenerationMode) Icons.Outlined.Image
+                            else Icons.Filled.ArrowUpward,
+                            if (generating) "Steer current response"
+                            else if (imageGenerationMode) "Generate image"
+                            else "Send",
                         )
                     }
                 }

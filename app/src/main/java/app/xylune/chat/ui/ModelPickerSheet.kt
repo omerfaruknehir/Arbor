@@ -95,8 +95,7 @@ internal fun filteredModelChoices(
                     ModelPickerFilter.VISION -> choice.model.supportsVision
                     ModelPickerFilter.FILES -> choice.model.supportsFiles
                     ModelPickerFilter.IMAGE -> choice.model.supportsImageGeneration
-                    ModelPickerFilter.FREE -> choice.model.pricingConfigured &&
-                        choice.model.inputCacheMissUsdPerMillion == 0.0 && choice.model.outputUsdPerMillion == 0.0
+                    ModelPickerFilter.FREE -> choice.model.isActuallyFree
                 }
             }
         }
@@ -332,8 +331,13 @@ private val ModelEntity.pickerSummary: String
         if (supportsVision) add("Vision")
         if (supportsFiles) add("Files")
         if (supportsImageGeneration) add("Image output")
-        if (pricingConfigured && inputCacheMissUsdPerMillion == 0.0 && outputUsdPerMillion == 0.0) add("Free")
+        if (isActuallyFree) add("Free")
+        if (supportsImageGeneration) add("Image billing")
     }.joinToString(" · ")
+
+internal val ModelEntity.isActuallyFree: Boolean
+    get() = !supportsImageGeneration && pricingConfigured &&
+        inputCacheMissUsdPerMillion == 0.0 && outputUsdPerMillion == 0.0
 
 private fun Int.compactTokens(): String = when {
     this >= 1_000_000 -> "${this / 1_000_000}M"
