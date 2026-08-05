@@ -1,0 +1,328 @@
+diff --git a/app/src/main/java/app/xylune/chat/settings/AppPreferences.kt b/app/src/main/java/app/xylune/chat/settings/AppPreferences.kt
+--- a/app/src/main/java/app/xylune/chat/settings/AppPreferences.kt
++++ b/app/src/main/java/app/xylune/chat/settings/AppPreferences.kt
+@@ -93,7 +93,7 @@ data class DeveloperSettings(
+     )
+ }
+ 
+-const val XYLUNE_CORE_PROMPT_REVISION = "0.17.0"
++const val XYLUNE_CORE_PROMPT_REVISION = "0.18.0"
+ 
+ val DEFAULT_XYLUNE_SYSTEM_PROMPT = """
+ You are Xylune, a capable assistant running inside a native Android BYOK workspace.
+@@ -194,6 +194,7 @@ class AppPreferences(context: Context) {
+     private val _chromeBlurStrength = MutableStateFlow(readChromeBlurStrength())
+     private val _chromeEdgeSoftness = MutableStateFlow(readChromeEdgeSoftness())
+     private val _chromeOverlayOpacity = MutableStateFlow(preferences.getFloat(KEY_CHROME_OVERLAY_OPACITY, 1f).coerceIn(0f, 1f))
++    private val _lessEmojiEnabled = MutableStateFlow(preferences.getBoolean(KEY_LESS_EMOJI_ENABLED, true))
+     private val _newChatDefaults = MutableStateFlow(readNewChatDefaults())
+     private val _generatedRepairMaxAttempts = MutableStateFlow(preferences.getInt(KEY_GENERATED_REPAIR_ATTEMPTS, 3).coerceIn(1, 5))
+     private val _developerSettings = MutableStateFlow(readDeveloperSettings())
+@@ -206,6 +207,7 @@ class AppPreferences(context: Context) {
+     val chromeBlurStrength: StateFlow<Float> = _chromeBlurStrength.asStateFlow()
+     val chromeEdgeSoftness: StateFlow<Float> = _chromeEdgeSoftness.asStateFlow()
+     val chromeOverlayOpacity: StateFlow<Float> = _chromeOverlayOpacity.asStateFlow()
++    val lessEmojiEnabled: StateFlow<Boolean> = _lessEmojiEnabled.asStateFlow()
+     val newChatDefaults: StateFlow<NewChatDefaults> = _newChatDefaults.asStateFlow()
+     val generatedRepairMaxAttempts: StateFlow<Int> = _generatedRepairMaxAttempts.asStateFlow()
+     val developerSettings: StateFlow<DeveloperSettings> = _developerSettings.asStateFlow()
+@@ -270,6 +272,11 @@ class AppPreferences(context: Context) {
+         preferences.edit { putFloat(KEY_CHROME_OVERLAY_OPACITY, normalized) }
+     }
+ 
++    fun setLessEmojiEnabled(enabled: Boolean) {
++        _lessEmojiEnabled.value = enabled
++        preferences.edit { putBoolean(KEY_LESS_EMOJI_ENABLED, enabled) }
++    }
++
+     fun setGeneratedRepairMaxAttempts(value: Int) {
+         val normalized = value.coerceIn(1, 5)
+         _generatedRepairMaxAttempts.value = normalized
+@@ -390,6 +397,7 @@ class AppPreferences(context: Context) {
+         const val KEY_CHROME_EDGE_SOFTNESS = "chrome_edge_softness"
+         const val KEY_CHROME_EDGE_CONTROL_REVISION = "chrome_edge_control_revision"
+         const val KEY_CHROME_OVERLAY_OPACITY = "chrome_overlay_opacity"
++        const val KEY_LESS_EMOJI_ENABLED = "less_emoji_enabled"
+         const val CHROME_EDGE_CONTROL_REVISION = 2
+         const val DEFAULT_CHROME_EDGE_SOFTNESS = 0.6f // 50% semantic feather after the flat 0% anchor.
+         const val KEY_DEFAULT_PROVIDER = "new_chat_provider"
+diff --git a/app/src/main/java/app/xylune/chat/ui/ChatViewModel.kt b/app/src/main/java/app/xylune/chat/ui/ChatViewModel.kt
+--- a/app/src/main/java/app/xylune/chat/ui/ChatViewModel.kt
++++ b/app/src/main/java/app/xylune/chat/ui/ChatViewModel.kt
+@@ -219,6 +219,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
+     val chromeBlurStrength: StateFlow<Float> = container.appPreferences.chromeBlurStrength
+     val chromeEdgeSoftness: StateFlow<Float> = container.appPreferences.chromeEdgeSoftness
+     val chromeOverlayOpacity: StateFlow<Float> = container.appPreferences.chromeOverlayOpacity
++    val lessEmojiEnabled: StateFlow<Boolean> = container.appPreferences.lessEmojiEnabled
+     val generatedRepairMaxAttempts: StateFlow<Int> = container.appPreferences.generatedRepairMaxAttempts
+     val developerSettings: StateFlow<app.xylune.chat.settings.DeveloperSettings> = container.appPreferences.developerSettings
+     val palette = container.appPreferences.palette
+@@ -290,6 +291,8 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
+ 
+     fun setRenderSafeMode(enabled: Boolean) = container.crashReporter.setRenderSafeMode(enabled)
+ 
++    fun setLessEmojiEnabled(enabled: Boolean) = container.appPreferences.setLessEmojiEnabled(enabled)
++
+ 
+     fun postNotice(message: String) {
+         notices.tryEmit(message)
+diff --git a/app/src/main/java/app/xylune/chat/chat/ContextAssembler.kt b/app/src/main/java/app/xylune/chat/chat/ContextAssembler.kt
+--- a/app/src/main/java/app/xylune/chat/chat/ContextAssembler.kt
++++ b/app/src/main/java/app/xylune/chat/chat/ContextAssembler.kt
+@@ -20,6 +20,17 @@ import java.time.format.DateTimeFormatter
+ import java.util.Locale
+ 
++internal fun lessEmojiPromptLayer(enabled: Boolean): String {
++    if (!enabled) return ""
++    return """
++        Response style preference: Less emoji is enabled.
++        Use emoji sparingly. Do not decorate headings, lists, status updates, or routine answers with emoji.
++        Use an emoji only when it adds meaning that plain text would not, or when the user explicitly asks for emoji.
++        This preference does not prohibit technical symbols, ordinary punctuation, or emoji that are part of quoted user content.
++    """.trimIndent()
++}
++
+ class ContextAssembler(private val attachmentDao: AttachmentDao) {
+     suspend fun assemble(
+         conversation: ConversationEntity,
+@@ -32,6 +43,7 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
+         memories: List<MemoryEntity> = emptyList(),
+         memoryEnabled: Boolean = false,
+         memoryAutoSave: Boolean = false,
++        lessEmojiEnabled: Boolean = true,
+     ): List<InputMessage> {
+         val now = ZonedDateTime.now()
+         val localFormatter = DateTimeFormatter.ofPattern("EEEE, d MMMM uuuu, HH:mm:ss XXX", Locale.getDefault())
+@@ -135,6 +147,7 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
+         } else {
+             "Memory auto-save is disabled. Call memory_save only when the user explicitly asks Xylune to remember something. Use memory_search or memory_list to inspect existing items, memory_update for corrections, and memory_forget when asked. Do not claim a memory changed until the tool confirms it."
+         }
++        val responseStyleLayer = lessEmojiPromptLayer(lessEmojiEnabled)
+ 
+         val result = ArrayList<InputMessage>()
+         result += InputMessage(
+@@ -145,6 +158,8 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
+ 
+             $profileLayer
+ 
++            $responseStyleLayer
++
+             $runtimeContext
+ 
+             $toolInstructions
+diff --git a/app/src/main/java/app/xylune/chat/generation/GenerationWorker.kt b/app/src/main/java/app/xylune/chat/generation/GenerationWorker.kt
+--- a/app/src/main/java/app/xylune/chat/generation/GenerationWorker.kt
++++ b/app/src/main/java/app/xylune/chat/generation/GenerationWorker.kt
+@@ -225,6 +225,7 @@ class GenerationWorker(
+             memories = activeMemories,
+             memoryEnabled = automationSettings.memoryEnabled,
+             memoryAutoSave = automationSettings.memoryAutoSave,
++            lessEmojiEnabled = container.appPreferences.lessEmojiEnabled.value,
+         ).toMutableList()
+         var nativeToolsDisabled = false
+         val effectiveContinuation = continuation || initial.streamOffset > 0
+diff --git a/app/src/main/java/app/xylune/chat/transfer/AppSettingsArchiveStore.kt b/app/src/main/java/app/xylune/chat/transfer/AppSettingsArchiveStore.kt
+--- a/app/src/main/java/app/xylune/chat/transfer/AppSettingsArchiveStore.kt
++++ b/app/src/main/java/app/xylune/chat/transfer/AppSettingsArchiveStore.kt
+@@ -46,6 +46,7 @@ data class PortablePreferenceSettings(
+     val chromeEdgeSoftness: Float,
+     val chromeOverlayOpacity: Float,
+     val generatedRepairMaxAttempts: Int,
++    val lessEmojiEnabled: Boolean = true,
+     val newChatDefaults: PortableNewChatDefaults,
+     val developerSettings: PortableDeveloperSettings,
+     val selectedLinuxDistribution: String,
+@@ -183,6 +184,7 @@ class AppSettingsArchiveStore(
+                 chromeEdgeSoftness = preferences.chromeEdgeSoftness.value,
+                 chromeOverlayOpacity = preferences.chromeOverlayOpacity.value,
+                 generatedRepairMaxAttempts = preferences.generatedRepairMaxAttempts.value,
++                lessEmojiEnabled = preferences.lessEmojiEnabled.value,
+                 newChatDefaults = PortableNewChatDefaults(
+                     selectedProviderId = defaults.selectedProviderId,
+                     selectedModelId = defaults.selectedModelId,
+@@ -495,6 +497,7 @@ class AppSettingsArchiveStore(
+         preferences.setChromeEdgeSoftness(value.chromeEdgeSoftness)
+         preferences.setChromeOverlayOpacity(value.chromeOverlayOpacity)
+         preferences.setGeneratedRepairMaxAttempts(value.generatedRepairMaxAttempts)
++        preferences.setLessEmojiEnabled(value.lessEmojiEnabled)
+         val defaults = value.newChatDefaults
+         preferences.setNewChatDefaults(
+             NewChatDefaults(
+diff --git a/app/src/main/java/app/xylune/chat/ui/SettingsRoute.kt b/app/src/main/java/app/xylune/chat/ui/SettingsRoute.kt
+--- a/app/src/main/java/app/xylune/chat/ui/SettingsRoute.kt
++++ b/app/src/main/java/app/xylune/chat/ui/SettingsRoute.kt
+@@ -3,6 +3,7 @@ package app.xylune.chat.ui
+ enum class SettingsRoute(val title: String) {
+     HOME("Settings"),
+     DEFAULTS("New chat defaults"),
++    RESPONSE_STYLE("Response style"),
+     AUTOMATION("Automation"),
+     MEMORY("Memory"),
+     APPEARANCE("Appearance"),
+diff --git a/app/src/main/java/app/xylune/chat/ui/SettingsScreen.kt b/app/src/main/java/app/xylune/chat/ui/SettingsScreen.kt
+--- a/app/src/main/java/app/xylune/chat/ui/SettingsScreen.kt
++++ b/app/src/main/java/app/xylune/chat/ui/SettingsScreen.kt
+@@ -192,6 +192,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+     val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsState()
+     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsState()
+     val renderSafeMode by viewModel.renderSafeMode.collectAsState()
++    val lessEmojiEnabled by viewModel.lessEmojiEnabled.collectAsState()
+     val generatedRepairMaxAttempts by viewModel.generatedRepairMaxAttempts.collectAsState()
+     val developerSettings by viewModel.developerSettings.collectAsState()
+     val providerSetupRequested by viewModel.providerSetupRequested.collectAsState()
+@@ -275,6 +276,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
+                         )
+                         SettingsRoute.DEFAULTS -> NewChatDefaultsSettings(defaults, configuredProviders, viewModel)
++                        SettingsRoute.RESPONSE_STYLE -> ResponseStyleSettingsPage(lessEmojiEnabled, viewModel)
+                         SettingsRoute.AUTOMATION -> AutomationSettingsPage(automation, configuredProviders, viewModel)
+                         SettingsRoute.MEMORY -> MemorySettingsPage(automation, memories, viewModel)
+                         SettingsRoute.APPEARANCE -> AppearanceSettingsPage(
+@@ -349,21 +351,27 @@ private fun SettingsHome(
+             )
+         }
+     }
+-    SettingsGroup("AI & models") {
++    SettingsGroup("AI & chat") {
+         SettingsDestination(
+             icon = Icons.Outlined.Cloud,
+             title = "Providers & models",
+             subtitle = if (providerCount == 0) "Add your first API provider" else "$providerCount provider${if (providerCount == 1) "" else "s"} configured",
+             onClick = { onOpen(SettingsRoute.PROVIDERS) },
+         )
+         SettingsDestination(
+             icon = Icons.Outlined.SmartToy,
+             title = "New chat defaults",
+-            subtitle = "Model, thinking, tools, context, and output",
++            subtitle = "Model, thinking, context, and output limits",
+             onClick = { onOpen(SettingsRoute.DEFAULTS) },
+         )
+         SettingsDestination(
+             icon = Icons.Outlined.Tune,
++            title = "Response style",
++            subtitle = "Emoji use and global answer presentation",
++            onClick = { onOpen(SettingsRoute.RESPONSE_STYLE) },
++        )
++        SettingsDestination(
++            icon = Icons.Outlined.Edit,
+             title = "Custom instructions",
+             subtitle = "Reusable tone and workflow profiles",
+             onClick = { onOpen(SettingsRoute.SYSTEM_PROMPTS) },
+         )
++    }
++    SettingsGroup("Capabilities") {
++        SettingsDestination(
++            icon = Icons.Outlined.Psychology,
++            title = "Memory",
++            subtitle = "Cross-chat facts and preferences stored locally",
++            onClick = { onOpen(SettingsRoute.MEMORY) },
++        )
+         SettingsDestination(
+             icon = Icons.Outlined.AutoAwesome,
+             title = "Automation",
+             subtitle = "Naming, compression, and package approval",
+             onClick = { onOpen(SettingsRoute.AUTOMATION) },
+         )
+         SettingsDestination(
+-            icon = Icons.Outlined.Psychology,
+-            title = "Memory",
+-            subtitle = "Cross-chat facts and preferences stored locally",
+-            onClick = { onOpen(SettingsRoute.MEMORY) },
++            icon = Icons.Outlined.Code,
++            title = "Local tools",
++            subtitle = "Python, Linux workspace, and package approvals",
++            onClick = { onOpen(SettingsRoute.LOCAL_EXECUTION) },
+         )
+     }
+-    SettingsGroup("App") {
++    SettingsGroup("App & data") {
+         SettingsDestination(
+             icon = Icons.Outlined.Palette,
+             title = "Appearance",
+@@ -382,12 +390,6 @@ private fun SettingsHome(
+             subtitle = "Cloud/file backups and portable chat archives",
+             onClick = { onOpen(SettingsRoute.BACKUP) },
+         )
+-        SettingsDestination(
+-            icon = Icons.Outlined.Code,
+-            title = "Local tools",
+-            subtitle = "Defaults, workspace, and package approvals",
+-            onClick = { onOpen(SettingsRoute.LOCAL_EXECUTION) },
+-        )
+     }
+     SettingsGroup("About") {
+         SettingsDestination(
+@@ -506,6 +508,32 @@ private fun NewChatDefaultsSettings(
+     Spacer(Modifier.padding(bottom = 24.dp))
+ }
+ 
++@Composable
++private fun ResponseStyleSettingsPage(
++    lessEmojiEnabled: Boolean,
++    viewModel: ChatViewModel,
++) = SettingsPage {
++    SectionTitle(
++        "Response style",
++        "Global answer preferences. Changes apply to existing chats and new chats on their next response.",
++    )
++    SettingsGroup("Assistant responses") {
++        ListItem(
++            headlineContent = { Text("Less emoji", fontWeight = FontWeight.SemiBold) },
++            supportingContent = {
++                Text("Avoid decorative emoji and use them only when they add meaning")
++            },
++            trailingContent = {
++                Switch(
++                    checked = lessEmojiEnabled,
++                    onCheckedChange = viewModel::setLessEmojiEnabled,
++                )
++            },
++            colors = androidx.compose.material3.ListItemDefaults.colors(
++                containerColor = androidx.compose.ui.graphics.Color.Transparent,
++            ),
++        )
++    }
++    Text(
++        "Enabled by default. Technical symbols and emoji requested by the user are not blocked.",
++        style = MaterialTheme.typography.bodySmall,
++        color = MaterialTheme.colorScheme.onSurfaceVariant,
++        modifier = Modifier.padding(horizontal = 6.dp),
++    )
++    Spacer(Modifier.padding(bottom = 24.dp))
++}
++
+ @Composable
+ private fun AutomationSettingsPage(
+     automation: AutomationSettingsEntity,
+diff --git a/app/src/test/java/app/xylune/chat/chat/LessEmojiPromptTest.kt b/app/src/test/java/app/xylune/chat/chat/LessEmojiPromptTest.kt
+new file mode 100644
+--- /dev/null
++++ b/app/src/test/java/app/xylune/chat/chat/LessEmojiPromptTest.kt
+@@ -0,0 +1,27 @@
++package app.xylune.chat.chat
++
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class LessEmojiPromptTest {
++    @Test
++    fun enabledModeDiscouragesDecorativeEmojiWithoutBlockingMeaningfulUse() {
++        val layer = lessEmojiPromptLayer(true)
++
++        assertTrue(layer.contains("Less emoji is enabled"))
++        assertTrue(layer.contains("Do not decorate headings"))
++        assertTrue(layer.contains("when the user explicitly asks"))
++        assertFalse(layer.contains("never use emoji", ignoreCase = true))
++    }
++
++    @Test
++    fun disabledModeAddsNoStyleInstruction() {
++        assertTrue(lessEmojiPromptLayer(false).isBlank())
++    }
++
++    @Test
++    fun settingsDefaultIsExplicitlyEnabled() {
++        val source = java.io.File("src/main/java/app/xylune/chat/settings/AppPreferences.kt").readText()
++        assertTrue(source.contains("getBoolean(KEY_LESS_EMOJI_ENABLED, true)"))
++    }
++}
