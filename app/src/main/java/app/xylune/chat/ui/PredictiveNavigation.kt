@@ -224,9 +224,16 @@ internal fun <T : Any> PredictiveNavigationHost(
             settleImmediatelyOn(latestTargetState)
             progress.snapTo(0f)
         }
-        val destinationState = latestBackTarget ?: return@PredictiveBackHandler
+        val destinationState = latestBackTarget
         val source = currentSlot()
-        if (source.state == destinationState) return@PredictiveBackHandler
+        if (destinationState == null || source.state == destinationState) {
+            // PredictiveBackHandler can still dispatch for one frame after
+            // enabled becomes false. Its contract requires every invoked
+            // handler to collect the progress flow, even when the callback
+            // is stale and there is no valid navigation operation left.
+            events.collect {}
+            return@PredictiveBackHandler
+        }
 
         val destination = findState(destinationState)
             ?: newSlot(destinationState, NavigationSlotRole.DESTINATION).also(slots::add)

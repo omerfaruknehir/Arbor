@@ -42,6 +42,16 @@ class PredictiveNavigationMathTest {
     }
 
     @Test
+    fun stalePredictiveCallbacksStillConsumeTheProgressFlow() {
+        val source = java.io.File("src/main/java/app/xylune/chat/ui/PredictiveNavigation.kt").readText()
+        assertTrue(source.contains("if (destinationState == null || source.state == destinationState)"))
+        assertTrue(source.contains("events.collect {}"))
+        assertTrue(source.indexOf("events.collect {}") < source.indexOf("return@PredictiveBackHandler", source.indexOf("events.collect {}")))
+        assertTrue(!source.contains("latestBackTarget ?: return@PredictiveBackHandler"))
+        assertTrue(!source.contains("if (source.state == destinationState) return@PredictiveBackHandler"))
+    }
+
+    @Test
     fun cancellationBeforeFlowCompletionRollsBack() {
         assertEquals(
             PredictiveCancellationResolution.ROLLBACK,
