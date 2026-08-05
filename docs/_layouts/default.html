@@ -1,5 +1,10 @@
 <!doctype html>
-<html lang="{{ page.lang | default: 'en' }}" data-theme="dark">
+{% assign title_parts = page.title | default: site.title | split: ' / ' %}
+{% assign app_bar_title = page.heading %}
+{% if app_bar_title == nil or app_bar_title == '' %}
+  {% assign app_bar_title = title_parts | first %}
+{% endif %}
+<html lang="{{ page.lang | default: 'en' }}" data-theme="dark" class="collapsing-title-page">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,28 +12,15 @@
     <meta name="description" content="{{ page.description | default: site.description | escape }}">
     <title>{{ page.title | default: site.title | escape }} · Xylune</title>
     <link rel="icon" href="{{ '/assets/images/xylune-logo.svg' | relative_url }}" type="image/svg+xml" data-xylune-favicon>
+    <link rel="apple-touch-icon" href="{{ '/assets/images/xylune-logo.svg' | relative_url }}" data-xylune-favicon>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400,0,0&family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="{{ '/assets/js/theme-boot.js' | relative_url }}"></script>
     <link rel="stylesheet" href="{{ '/assets/css/site.css' | relative_url }}">
+    <link rel="stylesheet" href="{{ '/assets/css/app-bar.css' | relative_url }}">
   </head>
-  <body>
-    <header class="mobile-bar">
-      <a class="brand" href="{{ '/' | relative_url }}" aria-label="Xylune home">
-        <img src="{{ '/assets/images/xylune-logo.svg' | relative_url }}" alt="" data-xylune-logo width="44" height="44">
-        <span>Xylune</span>
-      </a>
-      <div class="mobile-actions">
-        <button class="icon-button" type="button" data-theme-settings aria-label="Open appearance settings">
-          <span class="material-symbols-rounded" aria-hidden="true">palette</span>
-        </button>
-        <button class="icon-button" type="button" data-menu-toggle aria-label="Open navigation" aria-expanded="false">
-          <span class="material-symbols-rounded" aria-hidden="true">menu</span>
-        </button>
-      </div>
-    </header>
-
+  <body class="page-with-collapsing-title">
     <div class="nav-scrim" data-menu-dismiss></div>
     <aside class="site-rail" aria-label="Primary navigation">
       <a class="brand rail-brand" href="{{ '/' | relative_url }}" aria-label="Xylune home">
@@ -40,25 +32,49 @@
         <a class="nav-item{% if page.url contains '/privacy/' %} is-active{% endif %}" href="{{ '/privacy/' | relative_url }}"><span class="material-symbols-rounded" aria-hidden="true">shield</span><span>Privacy</span></a>
         <a class="nav-item{% if page.url contains '/terms/' %} is-active{% endif %}" href="{{ '/terms/' | relative_url }}"><span class="material-symbols-rounded" aria-hidden="true">description</span><span>Terms</span></a>
         <a class="nav-item{% if page.url contains '/data-deletion/' %} is-active{% endif %}" href="{{ '/data-deletion/' | relative_url }}"><span class="material-symbols-rounded" aria-hidden="true">person_remove</span><span>Data deletion</span></a>
-        <a class="nav-item" href="https://github.com/omerfaruknehir/Xylune/releases"><span class="material-symbols-rounded" aria-hidden="true">sell</span><span>Releases</span></a>
+        <a class="nav-item{% if page.url == '/releases/' %} is-active{% endif %}" href="{{ '/releases/' | relative_url }}"><span class="material-symbols-rounded" aria-hidden="true">sell</span><span>Releases</span></a>
         <a class="nav-item" href="https://github.com/omerfaruknehir/Xylune"><span class="material-symbols-rounded" aria-hidden="true">code</span><span>GitHub</span></a>
       </nav>
       <div class="rail-spacer"></div>
-      <button class="theme-button" type="button" data-theme-settings>
-        <span class="material-symbols-rounded" aria-hidden="true">palette</span>
-        <span>Appearance</span>
-      </button>
+      <div class="rail-appearance">
+        <div class="rail-appearance__heading">
+          <span>Scheme</span>
+          <button class="icon-button" type="button" data-theme-settings aria-label="Open appearance settings">
+            <span class="material-symbols-rounded" aria-hidden="true">palette</span>
+          </button>
+        </div>
+        <div class="scheme-selector" role="radiogroup" aria-label="Page color scheme">
+          <button class="scheme-selector__choice" type="button" data-theme-choice="app" role="radio" title="App theme" aria-label="Use colors passed by Xylune" hidden><span class="material-symbols-rounded" aria-hidden="true">phone_android</span></button>
+          <button class="scheme-selector__choice" type="button" data-theme-choice="dark" role="radio" title="Dark" aria-label="Use dark scheme"><span class="material-symbols-rounded" aria-hidden="true">dark_mode</span></button>
+          <button class="scheme-selector__choice" type="button" data-theme-choice="light" role="radio" title="Light" aria-label="Use light scheme"><span class="material-symbols-rounded" aria-hidden="true">light_mode</span></button>
+          <button class="scheme-selector__choice" type="button" data-theme-choice="system" role="radio" title="System" aria-label="Follow system scheme"><span class="material-symbols-rounded" aria-hidden="true">brightness_auto</span></button>
+        </div>
+      </div>
     </aside>
 
-    <main class="page-shell document-shell">
-      <article class="document-content">
-        {{ content }}
-      </article>
-      <footer class="site-footer document-footer">
-        <p>This project is maintained by <a href="https://github.com/omerfaruknehir">omerfaruknehir</a>.</p>
-        <p><a href="{{ '/' | relative_url }}">Back to Xylune</a></p>
-      </footer>
+    <main class="page-shell document-shell page-with-app-bar">
+      <header class="document-app-bar">
+        <span class="document-title-collapse-snap" aria-hidden="true"></span>
+        <button class="icon-button document-app-bar__menu" type="button" data-menu-toggle aria-label="Open navigation" aria-expanded="false">
+          <span class="material-symbols-rounded" aria-hidden="true">menu</span>
+        </button>
+        <h1 class="document-app-bar__title">{{ app_bar_title | escape }}</h1>
+        <button class="icon-button" type="button" data-theme-settings aria-label="Open appearance settings">
+          <span class="material-symbols-rounded" aria-hidden="true">palette</span>
+        </button>
+      </header>
+
+      <div class="document-body">
+        <article class="document-content">
+          {{ content }}
+        </article>
+        <footer class="site-footer document-footer">
+          <p>This project is maintained by <a href="https://github.com/omerfaruknehir">omerfaruknehir</a>.</p>
+          <p><a href="{{ '/' | relative_url }}">Back to Xylune</a></p>
+        </footer>
+      </div>
     </main>
+
     <dialog class="appearance-dialog" data-theme-dialog aria-labelledby="appearance-title">
       <div class="dialog-heading">
         <div>
