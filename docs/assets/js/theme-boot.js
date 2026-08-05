@@ -4,6 +4,14 @@
     onPrimary: '--on-primary',
     primaryContainer: '--primary-container',
     onPrimaryContainer: '--on-primary-container',
+    secondary: '--secondary',
+    onSecondary: '--on-secondary',
+    secondaryContainer: '--secondary-container',
+    onSecondaryContainer: '--on-secondary-container',
+    tertiary: '--tertiary',
+    onTertiary: '--on-tertiary',
+    tertiaryContainer: '--tertiary-container',
+    onTertiaryContainer: '--on-tertiary-container',
     background: '--background',
     surface: '--surface',
     surfaceLow: '--surface-low',
@@ -25,6 +33,7 @@
   const appTheme = required.every((name) => colors[name]) ? {
     colors,
     dark: params.get('dark') === '1',
+    dynamicLogo: params.get('dynamicLogo') === '1',
   } : null;
   const urlPreference = params.get('theme');
   const stored = localStorage.getItem('xylune-theme');
@@ -48,6 +57,6 @@
   window.XylunePageTheme = {
     appTheme,
     colorVariables: Object.values(names),
-    queryKeys: ['theme', 'dark', ...Object.keys(names)],
+    queryKeys: ['theme', 'dark', 'dynamicLogo', ...Object.keys(names)],
   };
 })();

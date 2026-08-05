@@ -3,6 +3,42 @@
   const themeState = window.XylunePageTheme || { appTheme: null, colorVariables: [], queryKeys: ['theme'] };
   const supported = ['dark', 'light', 'system'];
 
+  function dynamicLogoDataUrl() {
+    const appTheme = themeState.appTheme;
+    if (!appTheme?.dynamicLogo) return null;
+    const colors = appTheme.colors;
+    const backgroundStart = colors['--primary-container'] || colors['--surface-container'];
+    const backgroundEnd = colors['--primary'];
+    const firstStroke = colors['--on-primary-container'] || colors['--on-surface'];
+    const secondStroke = colors['--on-primary'] || colors['--background'];
+    const leaf = colors['--tertiary'] || colors['--secondary'] || colors['--primary'];
+    if (![backgroundStart, backgroundEnd, firstStroke, secondStroke, leaf].every(Boolean)) return null;
+    const svg = `<svg width="512" height="512" viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="15" y1="8" x2="96" y2="101" gradientUnits="userSpaceOnUse"><stop stop-color="${backgroundStart}"/><stop offset="1" stop-color="${backgroundEnd}"/></linearGradient>
+    <linearGradient id="mark" x1="27" y1="84" x2="55" y2="25" gradientUnits="userSpaceOnUse" gradientTransform="matrix(1.014377,0.27180148,-0.27180148,1.014377,27.43436,-9.9261354)"><stop stop-color="${firstStroke}"/><stop offset="1" stop-color="${secondStroke}"/></linearGradient>
+  </defs>
+  <rect width="108" height="108" rx="24" fill="url(#bg)"/>
+  <path d="M 33.549193,80.863216 C 45.542258,64.507039 58.821502,47.408289 73.585895,32.881898" fill="none" stroke="url(#mark)" stroke-width="11.5517" stroke-linecap="round"/>
+  <path d="M 39.107895,30.166046 C 43.79571,20.768808 52.715523,17.003434 60.890902,20.847009 59.491039,30.710867 51.981892,36.353531 40.896179,34.109428 Z" fill="${leaf}"/>
+  <path d="M 33.99223,32.881898 C 48.756623,47.408289 62.035867,64.507039 74.028932,80.863216" fill="none" stroke="${secondStroke}" stroke-width="11.5517" stroke-linecap="round"/>
+</svg>`;
+    return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  }
+
+  function syncBrandLogo(preference) {
+    const dynamicSource = preference === 'app' ? dynamicLogoDataUrl() : null;
+    document.querySelectorAll('[data-xylune-logo]').forEach((image) => {
+      image.dataset.staticSrc ||= image.getAttribute('src') || '';
+      image.setAttribute('src', dynamicSource || image.dataset.staticSrc);
+    });
+    const favicon = document.querySelector('link[data-xylune-favicon]');
+    if (favicon) {
+      favicon.dataset.staticHref ||= favicon.getAttribute('href') || '';
+      favicon.setAttribute('href', dynamicSource || favicon.dataset.staticHref);
+    }
+  }
+
   function syncThemeLinks() {
     const current = new URL(location.href);
     document.querySelectorAll('a[href]').forEach((anchor) => {
@@ -35,6 +71,7 @@
     document.documentElement.dataset.theme = resolved;
     document.documentElement.dataset.themePreference = preference;
     document.documentElement.style.colorScheme = resolved;
+    syncBrandLogo(preference);
     document.querySelector('meta[name="theme-color"]')?.setAttribute(
       'content',
       getComputedStyle(document.documentElement).getPropertyValue('--background').trim(),
