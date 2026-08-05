@@ -1,17 +1,20 @@
 (() => {
+  const root = document.documentElement;
   const media = matchMedia('(prefers-color-scheme: dark)');
   const themeState = window.XylunePageTheme || { appTheme: null, colorVariables: [], queryKeys: ['theme'] };
   const supported = ['dark', 'light', 'system'];
 
-  function dynamicLogoDataUrl() {
-    const appTheme = themeState.appTheme;
-    if (!appTheme?.dynamicLogo) return null;
-    const colors = appTheme.colors;
-    const backgroundStart = colors['--primary-container'] || colors['--surface-container'];
-    const backgroundEnd = colors['--primary'];
-    const firstStroke = colors['--on-primary-container'] || colors['--on-surface'];
-    const secondStroke = colors['--on-primary'] || colors['--background'];
-    const leaf = colors['--tertiary'] || colors['--secondary'] || colors['--primary'];
+  function activeColor(variable, fallback) {
+    return getComputedStyle(root).getPropertyValue(variable).trim() || fallback || '';
+  }
+
+  function dynamicLogoDataUrl(preference) {
+    if (preference === 'app' && !themeState.appTheme?.dynamicLogo) return null;
+    const backgroundStart = activeColor('--primary-container', activeColor('--surface-container'));
+    const backgroundEnd = activeColor('--primary');
+    const firstStroke = activeColor('--on-primary-container', activeColor('--on-surface'));
+    const secondStroke = activeColor('--on-primary', activeColor('--background'));
+    const leaf = activeColor('--tertiary', activeColor('--secondary', activeColor('--primary')));
     if (![backgroundStart, backgroundEnd, firstStroke, secondStroke, leaf].every(Boolean)) return null;
     const svg = `<svg width="512" height="512" viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -27,16 +30,19 @@
   }
 
   function syncBrandLogo(preference) {
-    const dynamicSource = preference === 'app' ? dynamicLogoDataUrl() : null;
+    const dynamicSource = dynamicLogoDataUrl(preference);
     document.querySelectorAll('[data-xylune-logo]').forEach((image) => {
       image.dataset.staticSrc ||= image.getAttribute('src') || '';
       image.setAttribute('src', dynamicSource || image.dataset.staticSrc);
     });
-    const favicon = document.querySelector('link[data-xylune-favicon]');
-    if (favicon) {
-      favicon.dataset.staticHref ||= favicon.getAttribute('href') || '';
-      favicon.setAttribute('href', dynamicSource || favicon.dataset.staticHref);
-    }
+    document.querySelectorAll('link[data-xylune-favicon]').forEach((icon) => {
+      icon.dataset.staticHref ||= icon.getAttribute('href') || '';
+      const desired = dynamicSource || icon.dataset.staticHref;
+      if (icon.getAttribute('href') === desired) return;
+      const replacement = icon.cloneNode(true);
+      replacement.setAttribute('href', desired);
+      icon.replaceWith(replacement);
+    });
   }
 
   function syncThemeLinks() {
@@ -53,28 +59,30 @@
   }
 
   function currentPreference() {
-    const preference = document.documentElement.dataset.themePreference;
-    return preference === 'app' && themeState.appTheme ? 'app' : supported.includes(preference) ? preference : 'dark';
+    const preference = root.dataset.themePreference;
+    return preference === 'app' && themeState.appTheme
+      ? 'app'
+      : supported.includes(preference) ? preference : 'dark';
   }
 
   function applyTheme(preference, persist = true) {
     if (preference === 'app' && !themeState.appTheme) preference = 'dark';
-    themeState.colorVariables.forEach((name) => document.documentElement.style.removeProperty(name));
+    themeState.colorVariables.forEach((name) => root.style.removeProperty(name));
     if (preference === 'app') {
       Object.entries(themeState.appTheme.colors).forEach(([name, value]) => {
-        document.documentElement.style.setProperty(name, value);
+        root.style.setProperty(name, value);
       });
     }
     const resolved = preference === 'app'
       ? (themeState.appTheme.dark ? 'dark' : 'light')
       : preference === 'system' ? (media.matches ? 'dark' : 'light') : preference;
-    document.documentElement.dataset.theme = resolved;
-    document.documentElement.dataset.themePreference = preference;
-    document.documentElement.style.colorScheme = resolved;
+    root.dataset.theme = resolved;
+    root.dataset.themePreference = preference;
+    root.style.colorScheme = resolved;
     syncBrandLogo(preference);
     document.querySelector('meta[name="theme-color"]')?.setAttribute(
       'content',
-      getComputedStyle(document.documentElement).getPropertyValue('--background').trim(),
+      activeColor('--background'),
     );
     document.querySelectorAll('[data-theme-choice]').forEach((button) => {
       const selected = button.dataset.themeChoice === preference;
@@ -87,6 +95,21 @@
     history.replaceState(null, '', url);
     syncThemeLinks();
   }
+
+  const menuButton = document.querySelector('[data-menu-toggle]');
+  const dismissMenu = () => {
+    document.body.classList.remove('menu-open');
+    menuButton?.setAttribute('aria-expanded', 'false');
+  };
+  menuButton?.addEventListener('click', () => {
+    const open = document.body.classList.toggle('menu-open');
+    menuButton.setAttribute('aria-expanded', String(open));
+  });
+  document.querySelector('[data-menu-dismiss]')?.addEventListener('click', dismissMenu);
+  document.querySelectorAll('.site-rail a').forEach((link) => link.addEventListener('click', dismissMenu));
+  addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') dismissMenu();
+  });
 
   const dialog = document.querySelector('[data-theme-dialog]');
   document.querySelectorAll('[data-theme-settings]').forEach((button) => {
@@ -103,23 +126,8 @@
     if (button.dataset.themeChoice === 'app') button.hidden = !themeState.appTheme;
     button.addEventListener('click', () => {
       applyTheme(button.dataset.themeChoice);
-      dialog?.close();
+      if (button.closest('[data-theme-dialog]')) dialog?.close();
     });
-  });
-
-  const menuButton = document.querySelector('[data-menu-toggle]');
-  const dismissMenu = () => {
-    document.body.classList.remove('menu-open');
-    menuButton?.setAttribute('aria-expanded', 'false');
-  };
-  menuButton?.addEventListener('click', () => {
-    const open = document.body.classList.toggle('menu-open');
-    menuButton.setAttribute('aria-expanded', String(open));
-  });
-  document.querySelector('[data-menu-dismiss]')?.addEventListener('click', dismissMenu);
-  document.querySelectorAll('.site-rail a').forEach((link) => link.addEventListener('click', dismissMenu));
-  addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') dismissMenu();
   });
 
   media.addEventListener('change', () => {
