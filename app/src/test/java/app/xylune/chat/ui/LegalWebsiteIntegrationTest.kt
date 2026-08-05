@@ -21,45 +21,63 @@ class LegalWebsiteIntegrationTest {
     }
 
     @Test
-    fun `website exposes app-only dynamic logo favicon and visible scheme controls`() {
+    fun `website separates brightness theme from material color scheme`() {
         val boot = repositoryFile("docs/assets/js/theme-boot.js").readText()
         val site = repositoryFile("docs/assets/js/site.js").readText()
-        val css = repositoryFile("docs/assets/css/app-bar.css").readText()
+        val appearance = repositoryFile("docs/assets/css/appearance.css").readText()
+
+        assertTrue(boot.contains("supportedThemes = ['app', 'dark', 'light', 'system']"))
+        assertTrue(boot.contains("supportedSchemes = ['app', 'xylune', 'graphite', 'ocean', 'violet', 'sunset']"))
+        assertTrue(boot.contains("localStorage.getItem('xylune-scheme')"))
+        assertTrue(boot.contains("queryKeys: ['theme', 'scheme'"))
+        assertTrue(site.contains("<span>Theme</span>"))
+        assertTrue(site.contains("<span>Color scheme</span>"))
+        assertTrue(site.contains("data-theme-choice=\"system\""))
+        assertTrue(site.contains("schemeButton('graphite', 'Graphite'"))
+        assertTrue(site.contains("schemeButton('ocean', 'Ocean'"))
+        assertTrue(site.contains("schemeButton('violet', 'Violet'"))
+        assertTrue(site.contains("schemeButton('sunset', 'Sunset'"))
+        assertTrue(appearance.contains(".theme-selector"))
+        assertTrue(appearance.contains(".color-scheme-selector"))
+        assertTrue(appearance.contains("grid-template-columns: repeat(2"))
+    }
+
+    @Test
+    fun `app-provided palette alone controls dynamic website branding`() {
+        val boot = repositoryFile("docs/assets/js/theme-boot.js").readText()
+        val site = repositoryFile("docs/assets/js/site.js").readText()
         val home = repositoryFile("docs/index.html").readText()
         val layout = repositoryFile("docs/_layouts/default.html").readText()
+
         assertTrue(boot.contains("dynamicLogo: params.get('dynamicLogo') === '1'"))
-        assertTrue(site.contains("function syncBrandLogo(preference)"))
-        assertTrue(site.contains("function dynamicLogoDataUrl(preference)"))
-        assertTrue(site.contains("if (preference !== 'app' || !themeState.appTheme?.dynamicLogo) return null"))
+        assertTrue(site.contains("function syncBrandLogo(schemePreference)"))
+        assertTrue(site.contains("function dynamicLogoDataUrl(schemePreference)"))
+        assertTrue(site.contains("schemePreference !== 'app'"))
         assertTrue(site.contains("root.dataset.brandLogo = dynamicSource ? 'app' : 'static'"))
         assertTrue(site.contains("document.querySelectorAll('link[data-xylune-favicon]')"))
         assertTrue(home.contains("rel=\"apple-touch-icon\""))
         assertTrue(layout.contains("data-xylune-logo"))
-        assertTrue(layout.contains("class=\"scheme-selector\""))
-        assertTrue(layout.contains("class=\"scheme-selector__label\">Dark"))
-        assertTrue(layout.contains("class=\"scheme-selector__label\">Auto"))
-        assertTrue(css.contains(".scheme-selector {\n  display: flex"))
-        assertTrue(!css.contains("grid-template-columns: repeat(4"))
     }
 
     @Test
-    fun `page title motion mirrors the Android bar and snapping is local`() {
+    fun `title settling only runs inside the collapse range`() {
         val css = repositoryFile("docs/assets/css/app-bar.css").readText()
+        val appearance = repositoryFile("docs/assets/css/appearance.css").readText()
         val site = repositoryFile("docs/assets/js/site.js").readText()
-        val layout = repositoryFile("docs/_layouts/default.html").readText()
+
         assertTrue(css.contains("position: sticky"))
         assertTrue(css.contains("scroll-timeline-name: --xylune-page-scroll"))
         assertTrue(css.contains("animation-timeline: --xylune-page-scroll"))
         assertTrue(css.contains("transform: translate(-40px, 58px) scale(1.18)"))
         assertTrue(css.contains("transform: translateY(88px)"))
-        assertTrue(css.contains(".page-with-app-bar,"))
-        assertTrue(css.contains("scroll-snap-type: y proximity"))
-        assertTrue(css.contains("scroll-snap-stop: always"))
-        assertTrue(!Regex("html\\.collapsing-title-page\\s*\\{[^}]*scroll-snap-type", RegexOption.DOT_MATCHES_ALL).containsMatchIn(css))
-        assertTrue(layout.contains("document-app-bar__row"))
-        assertTrue(layout.indexOf("</header>") < layout.indexOf("document-title-collapse-snap"))
-        assertTrue(!site.contains("addEventListener('scroll'"))
-        assertTrue(!site.contains("onscroll"))
+        assertTrue(appearance.contains("html body .page-with-app-bar"))
+        assertTrue(appearance.contains("scroll-snap-type: none"))
+        assertTrue(appearance.contains("html body .document-title-collapse-snap"))
+        assertTrue(appearance.contains("display: none"))
+        assertTrue(site.contains("function setupTitleSettle()"))
+        assertTrue(site.contains("position <= 1 || position >= collapseDistance - 1"))
+        assertTrue(site.contains("position < collapseDistance / 2 ? 0 : collapseDistance"))
+        assertTrue(site.contains("addEventListener('scrollend', settle)"))
     }
 
     @Test

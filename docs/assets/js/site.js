@@ -1,8 +1,15 @@
 (() => {
   const root = document.documentElement;
   const media = matchMedia('(prefers-color-scheme: dark)');
-  const themeState = window.XylunePageTheme || { appTheme: null, colorVariables: [], queryKeys: ['theme'] };
-  const supported = ['dark', 'light', 'system'];
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const themeState = window.XylunePageTheme || {
+    appTheme: null,
+    colorVariables: [],
+    fixedColors: () => ({}),
+    supportedThemes: ['app', 'dark', 'light', 'system'],
+    supportedSchemes: ['app', 'xylune'],
+    queryKeys: ['theme', 'scheme'],
+  };
 
   function activeColor(variable, fallback) {
     return getComputedStyle(root).getPropertyValue(variable).trim() || fallback || '';
@@ -28,11 +35,8 @@
     return normalizeHex(themeState.appTheme?.colors?.[variable], fallback);
   }
 
-  function dynamicLogoDataUrl(preference) {
-    // The website's own dark/light/system choices never recolor the brand.
-    // A palette icon is generated only from colors explicitly passed by Xylune
-    // and only when Match launcher icon to palette was enabled in the app.
-    if (preference !== 'app' || !themeState.appTheme?.dynamicLogo) return null;
+  function dynamicLogoDataUrl(schemePreference) {
+    if (schemePreference !== 'app' || !themeState.appTheme?.dynamicLogo) return null;
 
     const primary = appColor('--primary', '#0c684f');
     const secondary = appColor('--secondary', primary);
@@ -56,8 +60,8 @@
     return `data:image/svg+xml,${encodeURIComponent(svg)}`;
   }
 
-  function syncBrandLogo(preference) {
-    const dynamicSource = dynamicLogoDataUrl(preference);
+  function syncBrandLogo(schemePreference) {
+    const dynamicSource = dynamicLogoDataUrl(schemePreference);
     root.dataset.brandLogo = dynamicSource ? 'app' : 'static';
     document.querySelectorAll('[data-xylune-logo]').forEach((image) => {
       image.dataset.staticSrc ||= image.getAttribute('src') || '';
@@ -74,7 +78,7 @@
     });
   }
 
-  function syncThemeLinks() {
+  function syncAppearanceLinks() {
     const current = new URL(location.href);
     document.querySelectorAll('a[href]').forEach((anchor) => {
       const target = new URL(anchor.getAttribute('href'), location.href);
@@ -87,43 +91,189 @@
     });
   }
 
-  function currentPreference() {
-    const preference = root.dataset.themePreference;
-    return preference === 'app' && themeState.appTheme
-      ? 'app'
-      : supported.includes(preference) ? preference : 'dark';
+  function storedFixedScheme() {
+    const stored = localStorage.getItem('xylune-scheme');
+    return themeState.supportedSchemes.includes(stored) && stored !== 'app'
+      ? stored
+      : 'xylune';
   }
 
-  function applyTheme(preference, persist = true) {
-    if (preference === 'app' && !themeState.appTheme) preference = 'dark';
-    themeState.colorVariables.forEach((name) => root.style.removeProperty(name));
-    if (preference === 'app') {
-      Object.entries(themeState.appTheme.colors).forEach(([name, value]) => {
-        root.style.setProperty(name, value);
-      });
+  function resolvedTheme(themePreference) {
+    if (themePreference === 'app' && themeState.appTheme) {
+      return themeState.appTheme.dark ? 'dark' : 'light';
     }
-    const resolved = preference === 'app'
-      ? (themeState.appTheme.dark ? 'dark' : 'light')
-      : preference === 'system' ? (media.matches ? 'dark' : 'light') : preference;
+    if (themePreference === 'system') return media.matches ? 'dark' : 'light';
+    return themePreference === 'light' ? 'light' : 'dark';
+  }
+
+  function colorsFor(themePreference, schemePreference) {
+    if (schemePreference === 'app' && themeState.appTheme) {
+      return {
+        ...themeState.fixedColors('xylune', themeState.appTheme.dark),
+        ...themeState.appTheme.colors,
+        '--focus': themeState.appTheme.colors['--primary'],
+      };
+    }
+    return themeState.fixedColors(
+      schemePreference,
+      resolvedTheme(themePreference) === 'dark',
+    );
+  }
+
+  function currentThemePreference() {
+    const value = root.dataset.themePreference;
+    return themeState.supportedThemes.includes(value) ? value : 'dark';
+  }
+
+  function currentSchemePreference() {
+    const value = root.dataset.schemePreference;
+    return themeState.supportedSchemes.includes(value) ? value : 'xylune';
+  }
+
+  function applyAppearance(themePreference, schemePreference, persist = true) {
+    if (themePreference === 'app' && !themeState.appTheme) themePreference = 'dark';
+    if (schemePreference === 'app' && !themeState.appTheme) schemePreference = storedFixedScheme();
+    if (schemePreference === 'app') themePreference = 'app';
+
+    const resolved = resolvedTheme(themePreference);
+    const colors = colorsFor(themePreference, schemePreference);
+    themeState.colorVariables.forEach((name) => root.style.removeProperty(name));
+    Object.entries(colors).forEach(([name, value]) => root.style.setProperty(name, value));
+
     root.dataset.theme = resolved;
-    root.dataset.themePreference = preference;
+    root.dataset.themePreference = themePreference;
+    root.dataset.schemePreference = schemePreference;
     root.style.colorScheme = resolved;
-    syncBrandLogo(preference);
+    syncBrandLogo(schemePreference);
+
     document.querySelector('meta[name="theme-color"]')?.setAttribute(
       'content',
       activeColor('--background'),
     );
     document.querySelectorAll('[data-theme-choice]').forEach((button) => {
-      const selected = button.dataset.themeChoice === preference;
+      const selected = button.dataset.themeChoice === themePreference;
       button.setAttribute('aria-checked', String(selected));
       button.classList.toggle('is-selected', selected);
     });
-    if (persist && preference !== 'app') localStorage.setItem('xylune-theme', preference);
+    document.querySelectorAll('[data-scheme-choice]').forEach((button) => {
+      const selected = button.dataset.schemeChoice === schemePreference;
+      button.setAttribute('aria-checked', String(selected));
+      button.classList.toggle('is-selected', selected);
+    });
+
+    if (persist && themePreference !== 'app') {
+      localStorage.setItem('xylune-theme', themePreference);
+    }
+    if (persist && schemePreference !== 'app') {
+      localStorage.setItem('xylune-scheme', schemePreference);
+    }
+
     const url = new URL(location.href);
-    url.searchParams.set('theme', preference);
+    url.searchParams.set('theme', themePreference);
+    url.searchParams.set('scheme', schemePreference);
     history.replaceState(null, '', url);
-    syncThemeLinks();
+    syncAppearanceLinks();
   }
+
+  function setTheme(themePreference) {
+    let schemePreference = currentSchemePreference();
+    if (themePreference !== 'app' && schemePreference === 'app') {
+      schemePreference = storedFixedScheme();
+    }
+    applyAppearance(themePreference, schemePreference);
+  }
+
+  function setScheme(schemePreference) {
+    const themePreference = schemePreference === 'app'
+      ? 'app'
+      : currentThemePreference();
+    applyAppearance(themePreference, schemePreference);
+  }
+
+  function renderAppearanceControls() {
+    const rail = `
+      <div class="appearance-control">
+        <div class="appearance-control__heading">
+          <span>Theme</span>
+          <button class="icon-button" type="button" data-theme-settings aria-label="Open appearance settings">
+            <span class="material-symbols-rounded" aria-hidden="true">tune</span>
+          </button>
+        </div>
+        <div class="theme-selector" role="radiogroup" aria-label="Theme">
+          <button class="theme-selector__choice" type="button" data-theme-choice="app" role="radio" title="Use app theme" aria-label="Use the theme passed by Xylune" hidden><span class="material-symbols-rounded" aria-hidden="true">phone_android</span><span class="theme-selector__label">App</span></button>
+          <button class="theme-selector__choice" type="button" data-theme-choice="system" role="radio" title="Auto" aria-label="Follow system theme"><span class="material-symbols-rounded" aria-hidden="true">brightness_auto</span><span class="theme-selector__label">Auto</span></button>
+          <button class="theme-selector__choice" type="button" data-theme-choice="light" role="radio" title="Light" aria-label="Use light theme"><span class="material-symbols-rounded" aria-hidden="true">light_mode</span><span class="theme-selector__label">Light</span></button>
+          <button class="theme-selector__choice" type="button" data-theme-choice="dark" role="radio" title="Dark" aria-label="Use dark theme"><span class="material-symbols-rounded" aria-hidden="true">dark_mode</span><span class="theme-selector__label">Dark</span></button>
+        </div>
+      </div>
+      <div class="appearance-control">
+        <div class="appearance-control__heading"><span>Color scheme</span></div>
+        <div class="color-scheme-selector" role="radiogroup" aria-label="Color scheme">
+          ${schemeButton('app', 'App', true)}
+          ${schemeButton('xylune', 'Xylune')}
+          ${schemeButton('graphite', 'Graphite')}
+          ${schemeButton('ocean', 'Ocean')}
+          ${schemeButton('violet', 'Violet')}
+          ${schemeButton('sunset', 'Sunset')}
+        </div>
+      </div>`;
+
+    const dialog = `
+      <div class="dialog-heading">
+        <div>
+          <h2 id="appearance-title">Appearance</h2>
+          <p>Theme controls brightness. Color scheme controls the palette.</p>
+        </div>
+        <button class="icon-button" type="button" data-theme-close aria-label="Close appearance settings">
+          <span class="material-symbols-rounded" aria-hidden="true">close</span>
+        </button>
+      </div>
+      <section class="appearance-dialog__section" aria-labelledby="theme-section-title">
+        <h3 class="appearance-dialog__section-title" id="theme-section-title">Theme</h3>
+        <div class="appearance-options" role="radiogroup" aria-label="Theme">
+          ${themeDialogButton('app', 'phone_android', 'App', 'Use the brightness passed by Xylune', true)}
+          ${themeDialogButton('system', 'brightness_auto', 'Auto', 'Follow this device')}
+          ${themeDialogButton('light', 'light_mode', 'Light', 'Always use light surfaces')}
+          ${themeDialogButton('dark', 'dark_mode', 'Dark', 'Always use dark surfaces')}
+        </div>
+      </section>
+      <section class="appearance-dialog__section" aria-labelledby="scheme-section-title">
+        <h3 class="appearance-dialog__section-title" id="scheme-section-title">Color scheme</h3>
+        <div class="dialog-scheme-grid" role="radiogroup" aria-label="Color scheme">
+          ${schemeButton('app', 'App', true, true)}
+          ${schemeButton('xylune', 'Xylune', false, true)}
+          ${schemeButton('graphite', 'Graphite', false, true)}
+          ${schemeButton('ocean', 'Ocean', false, true)}
+          ${schemeButton('violet', 'Violet', false, true)}
+          ${schemeButton('sunset', 'Sunset', false, true)}
+        </div>
+      </section>`;
+
+    document.querySelectorAll('.rail-appearance').forEach((container) => {
+      container.innerHTML = rail;
+    });
+    document.querySelectorAll('[data-theme-dialog]').forEach((container) => {
+      container.innerHTML = dialog;
+    });
+  }
+
+  function schemeButton(value, label, hidden = false, dialog = false) {
+    return `<button class="palette-choice${dialog ? ' palette-choice--dialog' : ''}" type="button" data-scheme-choice="${value}" role="radio"${hidden ? ' hidden' : ''}>
+      <span class="palette-choice__swatches" aria-hidden="true"><span></span><span></span><span></span></span>
+      <span class="palette-choice__label">${label}</span>
+      ${dialog ? '<span class="material-symbols-rounded palette-choice__check" aria-hidden="true">check</span>' : ''}
+    </button>`;
+  }
+
+  function themeDialogButton(value, icon, label, description, hidden = false) {
+    return `<button class="appearance-option" type="button" data-theme-choice="${value}" role="radio"${hidden ? ' hidden' : ''}>
+      <span class="material-symbols-rounded" aria-hidden="true">${icon}</span>
+      <span><strong>${label}</strong><small>${description}</small></span>
+      <span class="material-symbols-rounded option-check" aria-hidden="true">check</span>
+    </button>`;
+  }
+
+  renderAppearanceControls();
 
   const menuButton = document.querySelector('[data-menu-toggle]');
   const dismissMenu = () => {
@@ -151,17 +301,57 @@
   dialog?.addEventListener('click', (event) => {
     if (event.target === dialog) dialog.close();
   });
+
   document.querySelectorAll('[data-theme-choice]').forEach((button) => {
     if (button.dataset.themeChoice === 'app') button.hidden = !themeState.appTheme;
-    button.addEventListener('click', () => {
-      applyTheme(button.dataset.themeChoice);
-      if (button.closest('[data-theme-dialog]')) dialog?.close();
-    });
+    button.addEventListener('click', () => setTheme(button.dataset.themeChoice));
+  });
+  document.querySelectorAll('[data-scheme-choice]').forEach((button) => {
+    if (button.dataset.schemeChoice === 'app') button.hidden = !themeState.appTheme;
+    button.addEventListener('click', () => setScheme(button.dataset.schemeChoice));
   });
 
   media.addEventListener('change', () => {
-    if (currentPreference() === 'system') applyTheme('system', false);
+    if (currentThemePreference() === 'system') {
+      applyAppearance('system', currentSchemePreference(), false);
+    }
   });
-  applyTheme(currentPreference(), false);
-  syncThemeLinks();
+
+  function setupTitleSettle() {
+    const scroller = document.querySelector('.page-with-app-bar');
+    if (!scroller) return;
+    const collapseDistance = Number.parseFloat(
+      getComputedStyle(root).getPropertyValue('--xylune-app-bar-collapse-distance'),
+    ) || 88;
+    let fallbackTimer = 0;
+    let settling = false;
+
+    const settle = () => {
+      if (settling) return;
+      const position = scroller.scrollTop;
+      if (position <= 1 || position >= collapseDistance - 1) return;
+      const target = position < collapseDistance / 2 ? 0 : collapseDistance;
+      settling = true;
+      scroller.scrollTo({
+        top: target,
+        behavior: reducedMotion.matches ? 'auto' : 'smooth',
+      });
+      setTimeout(() => {
+        settling = false;
+      }, reducedMotion.matches ? 0 : 260);
+    };
+
+    if ('onscrollend' in scroller) {
+      scroller.addEventListener('scrollend', settle);
+    } else {
+      scroller.addEventListener('scroll', () => {
+        clearTimeout(fallbackTimer);
+        fallbackTimer = setTimeout(settle, 120);
+      }, { passive: true });
+    }
+  }
+
+  applyAppearance(currentThemePreference(), currentSchemePreference(), false);
+  syncAppearanceLinks();
+  setupTitleSettle();
 })();
