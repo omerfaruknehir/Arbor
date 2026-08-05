@@ -3,6 +3,7 @@ package app.xylune.chat.ui
 enum class SettingsRoute(val title: String) {
     HOME("Settings"),
     DEFAULTS("New chat defaults"),
+    RESPONSE_STYLE("Response style"),
     AUTOMATION("Automation"),
     MEMORY("Memory"),
     APPEARANCE("Appearance"),

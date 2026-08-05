@@ -19,6 +19,16 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+internal fun lessEmojiPromptLayer(enabled: Boolean): String {
+    if (!enabled) return ""
+    return """
+        Response style preference: Less emoji is enabled.
+        Use emoji sparingly. Do not decorate headings, lists, status updates, or routine answers with emoji.
+        Use an emoji only when it adds meaning that plain text would not, or when the user explicitly asks for emoji.
+        This preference does not prohibit technical symbols, ordinary punctuation, or emoji that are part of quoted user content.
+    """.trimIndent()
+}
+
 class ContextAssembler(private val attachmentDao: AttachmentDao) {
     suspend fun assemble(
         conversation: ConversationEntity,
@@ -30,6 +40,7 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
         memories: List<MemoryEntity> = emptyList(),
         memoryEnabled: Boolean = false,
         memoryAutoSave: Boolean = false,
+        lessEmojiEnabled: Boolean = true,
     ): List<InputMessage> {
         val now = ZonedDateTime.now()
         val localFormatter = DateTimeFormatter.ofPattern("EEEE, d MMMM uuuu, HH:mm:ss XXX", Locale.getDefault())
@@ -108,6 +119,7 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
         } else {
             "Memory auto-save is disabled. Call memory_save only when the user explicitly asks Xylune to remember something. Use memory_search or memory_list to inspect existing items, memory_update for corrections, and memory_forget when asked. Do not claim a memory changed until the tool confirms it."
         }
+        val responseStyleLayer = lessEmojiPromptLayer(lessEmojiEnabled)
 
         val result = ArrayList<InputMessage>()
         result += InputMessage(
@@ -116,6 +128,8 @@ class ContextAssembler(private val attachmentDao: AttachmentDao) {
             $DEFAULT_XYLUNE_SYSTEM_PROMPT
 
             $profileLayer
+
+            $responseStyleLayer
 
             $runtimeContext
 

@@ -219,6 +219,7 @@ class GenerationWorker(
             memories = activeMemories,
             memoryEnabled = automationSettings.memoryEnabled,
             memoryAutoSave = automationSettings.memoryAutoSave,
+            lessEmojiEnabled = container.appPreferences.lessEmojiEnabled.value,
         ).toMutableList()
         var nativeToolsDisabled = false
         val effectiveContinuation = continuation || initial.streamOffset > 0

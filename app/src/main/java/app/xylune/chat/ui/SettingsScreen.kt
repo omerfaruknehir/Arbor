@@ -175,6 +175,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsState()
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsState()
     val renderSafeMode by viewModel.renderSafeMode.collectAsState()
+    val lessEmojiEnabled by viewModel.lessEmojiEnabled.collectAsState()
     val generatedRepairMaxAttempts by viewModel.generatedRepairMaxAttempts.collectAsState()
     val developerSettings by viewModel.developerSettings.collectAsState()
     val providerSetupRequested by viewModel.providerSetupRequested.collectAsState()
@@ -269,6 +270,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             onOpen = viewModel::openSettingsRoute,
                         )
                         SettingsRoute.DEFAULTS -> NewChatDefaultsSettings(defaults, configuredProviders, viewModel)
+                        SettingsRoute.RESPONSE_STYLE -> ResponseStyleSettingsPage(lessEmojiEnabled, viewModel)
                         SettingsRoute.AUTOMATION -> AutomationSettingsPage(automation, configuredProviders, viewModel)
                         SettingsRoute.MEMORY -> MemorySettingsPage(automation, memories, viewModel)
                         SettingsRoute.APPEARANCE -> AppearanceSettingsPage(
@@ -326,7 +328,7 @@ private fun SettingsHome(
             )
         }
     }
-    SettingsGroup("AI & models") {
+    SettingsGroup("AI & chat") {
         SettingsDestination(
             icon = Icons.Outlined.Cloud,
             title = "Providers & models",
@@ -336,14 +338,28 @@ private fun SettingsHome(
         SettingsDestination(
             icon = Icons.Outlined.SmartToy,
             title = "New chat defaults",
-            subtitle = "Model, thinking, tools, context, and output",
+            subtitle = "Model, thinking, context, and output limits",
             onClick = { onOpen(SettingsRoute.DEFAULTS) },
         )
         SettingsDestination(
             icon = Icons.Outlined.Tune,
+            title = "Response style",
+            subtitle = "Emoji use and global answer presentation",
+            onClick = { onOpen(SettingsRoute.RESPONSE_STYLE) },
+        )
+        SettingsDestination(
+            icon = Icons.Outlined.Edit,
             title = "Custom instructions",
             subtitle = "Reusable tone and workflow profiles",
             onClick = { onOpen(SettingsRoute.SYSTEM_PROMPTS) },
+        )
+    }
+    SettingsGroup("Capabilities") {
+        SettingsDestination(
+            icon = Icons.Outlined.Psychology,
+            title = "Memory",
+            subtitle = "Cross-chat facts and preferences stored locally",
+            onClick = { onOpen(SettingsRoute.MEMORY) },
         )
         SettingsDestination(
             icon = Icons.Outlined.AutoAwesome,
@@ -352,13 +368,13 @@ private fun SettingsHome(
             onClick = { onOpen(SettingsRoute.AUTOMATION) },
         )
         SettingsDestination(
-            icon = Icons.Outlined.Psychology,
-            title = "Memory",
-            subtitle = "Cross-chat facts and preferences stored locally",
-            onClick = { onOpen(SettingsRoute.MEMORY) },
+            icon = Icons.Outlined.Code,
+            title = "Local tools",
+            subtitle = "Python, Linux workspace, and package approvals",
+            onClick = { onOpen(SettingsRoute.LOCAL_EXECUTION) },
         )
     }
-    SettingsGroup("App") {
+    SettingsGroup("App & data") {
         SettingsDestination(
             icon = Icons.Outlined.Palette,
             title = "Appearance",
@@ -376,12 +392,6 @@ private fun SettingsHome(
             title = "Backup & transfer",
             subtitle = "Cloud/file backups and portable chat archives",
             onClick = { onOpen(SettingsRoute.BACKUP) },
-        )
-        SettingsDestination(
-            icon = Icons.Outlined.Code,
-            title = "Local tools",
-            subtitle = "Defaults, workspace, and package approvals",
-            onClick = { onOpen(SettingsRoute.LOCAL_EXECUTION) },
         )
     }
     SettingsGroup("About") {
@@ -509,6 +519,41 @@ private fun NewChatDefaultsSettings(
         onWorkingLimit = { value -> viewModel.updateNewChatDefaults { it.copy(workingTokenLimit = value) } },
         onOutputLimit = { value -> viewModel.updateNewChatDefaults { it.copy(maxOutputTokens = value) } },
         onReasoningVisibility = { value -> viewModel.updateNewChatDefaults { it.copy(reasoningVisibility = value) } },
+    )
+    Spacer(Modifier.padding(bottom = 24.dp))
+}
+
+@Composable
+private fun ResponseStyleSettingsPage(
+    lessEmojiEnabled: Boolean,
+    viewModel: ChatViewModel,
+) = SettingsPage {
+    SectionTitle(
+        "Response style",
+        "Global answer preferences. Changes apply to existing chats and new chats on their next response.",
+    )
+    SettingsGroup("Assistant responses") {
+        ListItem(
+            headlineContent = { Text("Less emoji", fontWeight = FontWeight.SemiBold) },
+            supportingContent = {
+                Text("Avoid decorative emoji and use them only when they add meaning")
+            },
+            trailingContent = {
+                Switch(
+                    checked = lessEmojiEnabled,
+                    onCheckedChange = viewModel::setLessEmojiEnabled,
+                )
+            },
+            colors = androidx.compose.material3.ListItemDefaults.colors(
+                containerColor = androidx.compose.ui.graphics.Color.Transparent,
+            ),
+        )
+    }
+    Text(
+        "Enabled by default. Technical symbols and emoji requested by the user are not blocked.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 6.dp),
     )
     Spacer(Modifier.padding(bottom = 24.dp))
 }
