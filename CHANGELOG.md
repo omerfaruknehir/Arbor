@@ -1,3 +1,11 @@
+## 0.24.4 — 2026-08-05
+
+- Route Privacy, Terms, and Data Deletion to the rendered Xylune Pages site and expose them under About Xylune.
+- Match the website title motion to Xylune's Android app while confining title snap behavior to the two app-bar states.
+- Show labeled App, Dark, Light, and Auto scheme controls without an empty slot when no app palette is available.
+- Keep canonical branding for web themes and recolor the logo and favicon only for an app-provided palette when enabled in Xylune.
+- Sort the Pages release list numerically by semantic version and fix the stale Predictive Back progress-flow crash.
+
 ## 0.24.3 — 2026-08-05
 
 - Replace the stock Pages landing page with the selected simple V2 Xylune design, including responsive Material navigation and a compact dark, light, system, or app-theme switcher.
