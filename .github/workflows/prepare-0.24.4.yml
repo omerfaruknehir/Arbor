@@ -65,8 +65,9 @@ jobs:
 
           release_workflow = Path('.github/workflows/release.yml')
           release_text = release_workflow.read_text()
-          old_publish = '            -F draft=false \\\n            >/dev/null'
-          new_publish = '            -F draft=false \\\n            -f make_latest=true \\\n            >/dev/null'
+          slash = chr(92)
+          old_publish = f'            -F draft=false {slash}\n            >/dev/null'
+          new_publish = f'            -F draft=false {slash}\n            -f make_latest=true {slash}\n            >/dev/null'
           if new_publish not in release_text:
               if release_text.count(old_publish) != 1:
                   raise SystemExit('Could not locate the canonical release publication step')
