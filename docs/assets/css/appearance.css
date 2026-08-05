@@ -19,67 +19,39 @@ html body .document-title-collapse-snap {
 }
 
 body .rail-appearance {
-  gap: 0;
-}
-
-/* Keep appearance choices behind the original compact palette button. The
-   sidebar itself must not become a settings form. */
-.rail-appearance .scheme-selector,
-.rail-appearance .theme-selector,
-.rail-appearance .appearance-control:nth-child(n + 2) {
-  display: none !important;
-}
-
-.rail-appearance .appearance-control:first-child {
   display: block;
+  padding: 0 8px 4px;
 }
 
-.rail-appearance .appearance-control:first-child .appearance-control__heading > span {
-  display: none;
-}
-
-.rail-appearance .appearance-control:first-child .appearance-control__heading::before {
-  content: "Appearance";
-}
-
-.rail-appearance .appearance-control:first-child [data-theme-settings] .material-symbols-rounded {
-  font-size: 0;
-}
-
-.rail-appearance .appearance-control:first-child [data-theme-settings] .material-symbols-rounded::before {
-  content: "palette";
-  font-family: "Material Symbols Rounded";
-  font-size: 22px;
-  font-style: normal;
-  font-weight: 400;
-  line-height: 1;
-}
-
-.appearance-control {
-  display: grid;
-  gap: 7px;
-}
-
-.appearance-control__heading {
+.appearance-launcher {
   display: flex;
-  min-height: 28px;
+  min-height: 48px;
   align-items: center;
   justify-content: space-between;
   padding-inline: 10px 4px;
+  border-radius: 14px;
   color: var(--on-surface-variant);
-  font-size: 12px;
+}
+
+.appearance-launcher:hover {
+  background: var(--surface-low);
+  color: var(--on-surface);
+}
+
+.appearance-launcher__label {
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-.appearance-control__heading .icon-button {
-  width: 32px;
-  height: 32px;
+.appearance-launcher .icon-button {
+  width: 40px;
+  height: 40px;
 }
 
-.appearance-control__heading .material-symbols-rounded {
-  font-size: 20px;
+.appearance-launcher .material-symbols-rounded {
+  font-size: 23px;
 }
 
 .theme-selector {
@@ -87,22 +59,22 @@ body .rail-appearance {
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--outline-variant);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--surface-low);
 }
 
 .theme-selector__choice {
   display: flex;
   min-width: 0;
-  height: 50px;
+  height: 54px;
   flex: 1 1 0;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  padding: 0 3px;
+  gap: 3px;
+  padding: 0 5px;
   border: 0;
-  border-radius: 9px;
+  border-radius: 10px;
   background: transparent;
   color: var(--on-surface-variant);
   cursor: pointer;
@@ -126,23 +98,28 @@ body .rail-appearance {
 }
 
 .theme-selector__choice .material-symbols-rounded {
-  font-size: 21px;
+  font-size: 22px;
 }
 
 .theme-selector__label {
   max-width: 100%;
   overflow: hidden;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1.1;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.color-scheme-selector {
+.dialog-theme-selector {
+  width: 100%;
+}
+
+.color-scheme-selector,
+.dialog-scheme-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px;
+  gap: 7px;
 }
 
 .palette-choice {
@@ -151,13 +128,13 @@ body .rail-appearance {
   --preview-tertiary: #a5cddd;
   display: grid;
   min-width: 0;
-  min-height: 52px;
-  grid-template-columns: 38px minmax(0, 1fr);
+  min-height: 62px;
+  grid-template-columns: 42px minmax(0, 1fr) 24px;
   align-items: center;
   gap: 9px;
-  padding: 7px 8px;
+  padding: 8px 10px;
   border: 1px solid var(--outline-variant);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--surface-low);
   color: var(--on-surface-variant);
   cursor: pointer;
@@ -194,12 +171,12 @@ body .rail-appearance {
   --preview-tertiary: #d7c58d;
 }
 
-/* Material-style color accent: primary occupies the top half; secondary and
-   tertiary occupy the two lower quarters. */
+/* Material color accent: primary fills the top half; secondary and tertiary
+   fill the two lower quarters. */
 .palette-choice__swatches {
   display: block;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border: 1px solid color-mix(in srgb, var(--outline) 72%, transparent);
   border-radius: 50%;
   background: conic-gradient(
@@ -223,57 +200,10 @@ body .rail-appearance {
 .palette-choice__label {
   min-width: 0;
   overflow: hidden;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-html .appearance-dialog {
-  width: min(440px, calc(100vw - 32px));
-  max-height: min(760px, calc(100dvh - 32px));
-  overflow-y: auto;
-}
-
-.appearance-dialog__section {
-  display: grid;
-  gap: 6px;
-  padding: 4px 10px 14px;
-}
-
-.appearance-dialog__section + .appearance-dialog__section {
-  padding-top: 10px;
-  border-top: 1px solid var(--outline-variant);
-}
-
-.appearance-dialog__section-title {
-  margin: 0;
-  padding: 0 12px;
-  color: var(--on-surface-variant);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.appearance-dialog .appearance-options {
-  padding: 0;
-}
-
-.dialog-scheme-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px;
-}
-
-.dialog-scheme-grid .palette-choice {
-  min-height: 64px;
-  grid-template-columns: 42px minmax(0, 1fr) 24px;
-  padding: 8px 10px;
-}
-
-.dialog-scheme-grid .palette-choice__label {
-  font-size: 14px;
 }
 
 .palette-choice__check {
@@ -286,8 +216,151 @@ html .appearance-dialog {
   visibility: visible;
 }
 
-@media (max-width: 360px) {
+html .appearance-dialog {
+  width: min(460px, calc(100vw - 32px));
+  max-height: min(780px, calc(100dvh - 32px));
+  overflow-y: auto;
+}
+
+.appearance-dialog__section {
+  display: grid;
+  gap: 8px;
+  padding: 6px 12px 16px;
+}
+
+.appearance-dialog__section + .appearance-dialog__section {
+  padding-top: 14px;
+  border-top: 1px solid var(--outline-variant);
+}
+
+.appearance-dialog__section-title {
+  margin: 0;
+  padding: 0 4px;
+  color: var(--on-surface-variant);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.appearance-dialog__switch-section {
+  padding-bottom: 18px;
+}
+
+.appearance-switch-row {
+  display: grid;
+  min-height: 72px;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 14px;
+  background: var(--surface-low);
+}
+
+.appearance-switch-row__icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+  font-size: 21px;
+}
+
+.appearance-switch-row__copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.appearance-switch-row__copy strong {
+  color: var(--on-surface);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.appearance-switch-row__copy small {
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.material-switch {
+  position: relative;
+  width: 52px;
+  height: 32px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 2px solid var(--outline);
+  border-radius: 999px;
+  background: var(--surface-container);
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.material-switch__handle {
+  position: absolute;
+  top: 50%;
+  left: 6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--outline);
+  transform: translateY(-50%);
+  transition: left 150ms ease, width 150ms ease, height 150ms ease, background 150ms ease;
+}
+
+.material-switch:hover .material-switch__handle {
+  width: 20px;
+  height: 20px;
+  left: 4px;
+}
+
+.material-switch.is-checked {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.material-switch.is-checked .material-switch__handle {
+  left: 26px;
+  width: 24px;
+  height: 24px;
+  background: var(--on-primary);
+}
+
+.material-switch.is-checked:hover .material-switch__handle {
+  left: 28px;
+  width: 20px;
+  height: 20px;
+}
+
+.material-switch:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--primary) 42%, transparent);
+  outline-offset: 3px;
+}
+
+@media (max-width: 420px) {
   .dialog-scheme-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dialog-theme-selector .theme-selector__choice {
+    padding-inline: 2px;
+  }
+
+  .appearance-switch-row {
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    gap: 9px;
+    padding-inline: 9px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .material-switch,
+  .material-switch__handle {
+    transition: none;
   }
 }
