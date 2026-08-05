@@ -30,31 +30,43 @@ class LegalWebsiteIntegrationTest {
         assertTrue(boot.contains("supportedSchemes = ['app', 'xylune', 'graphite', 'ocean', 'violet', 'sunset']"))
         assertTrue(boot.contains("localStorage.getItem('xylune-scheme')"))
         assertTrue(boot.contains("queryKeys: ['theme', 'scheme'"))
-        assertTrue(site.contains("<span>Theme</span>"))
-        assertTrue(site.contains("<span>Color scheme</span>"))
-        assertTrue(site.contains("data-theme-choice=\"system\""))
+        assertTrue(site.contains("id=\"theme-section-title\">Theme"))
+        assertTrue(site.contains("id=\"scheme-section-title\">Color scheme"))
+        assertTrue(site.contains("class=\"theme-selector dialog-theme-selector\""))
+        assertTrue(site.contains("themeSegmentButton('system', 'brightness_auto', 'Auto')"))
+        assertTrue(site.contains("themeSegmentButton('light', 'light_mode', 'Light')"))
+        assertTrue(site.contains("themeSegmentButton('dark', 'dark_mode', 'Dark')"))
         assertTrue(site.contains("schemeButton('graphite', 'Graphite'"))
         assertTrue(site.contains("schemeButton('ocean', 'Ocean'"))
         assertTrue(site.contains("schemeButton('violet', 'Violet'"))
         assertTrue(site.contains("schemeButton('sunset', 'Sunset'"))
-        assertTrue(appearance.contains(".theme-selector"))
-        assertTrue(appearance.contains(".color-scheme-selector"))
-        assertTrue(appearance.contains("grid-template-columns: repeat(2"))
+        assertTrue(appearance.contains(".dialog-theme-selector"))
+        assertTrue(appearance.contains(".dialog-scheme-grid"))
     }
 
     @Test
-    fun `app-provided palette alone controls dynamic website branding`() {
+    fun `appearance dialog has dynamic icon switch and real gradients`() {
         val boot = repositoryFile("docs/assets/js/theme-boot.js").readText()
         val site = repositoryFile("docs/assets/js/site.js").readText()
+        val appearance = repositoryFile("docs/assets/css/appearance.css").readText()
         val home = repositoryFile("docs/index.html").readText()
         val layout = repositoryFile("docs/_layouts/default.html").readText()
 
         assertTrue(boot.contains("dynamicLogo: params.get('dynamicLogo') === '1'"))
-        assertTrue(site.contains("function syncBrandLogo(schemePreference)"))
-        assertTrue(site.contains("function dynamicLogoDataUrl(schemePreference)"))
-        assertTrue(site.contains("schemePreference !== 'app'"))
-        assertTrue(site.contains("root.dataset.brandLogo = dynamicSource ? 'app' : 'static'"))
+        assertTrue(site.contains("localStorage.getItem('xylune-dynamic-icon')"))
+        assertTrue(site.contains("function dynamicLogoDataUrl(colors)"))
+        assertTrue(site.contains("if (!dynamicIconEnabled) return null"))
+        assertTrue(site.contains("<linearGradient id=\"bg\""))
+        assertTrue(site.contains("<stop offset=\"0.52\""))
+        assertTrue(site.contains("<linearGradient id=\"mark\""))
+        assertTrue(site.contains("<stop offset=\"0.55\""))
+        assertTrue(site.contains("<linearGradient id=\"leaf\""))
+        assertTrue(site.contains("data-dynamic-icon-toggle"))
+        assertTrue(site.contains("role=\"switch\""))
+        assertTrue(site.contains("url.searchParams.set('dynamicLogo', dynamicIconEnabled ? '1' : '0')"))
         assertTrue(site.contains("document.querySelectorAll('link[data-xylune-favicon]')"))
+        assertTrue(appearance.contains(".material-switch"))
+        assertTrue(appearance.contains(".material-switch.is-checked"))
         assertTrue(home.contains("rel=\"apple-touch-icon\""))
         assertTrue(layout.contains("data-xylune-logo"))
     }
@@ -81,13 +93,15 @@ class LegalWebsiteIntegrationTest {
     }
 
     @Test
-    fun `sidebar keeps only palette launcher and dialog uses material accent circles`() {
+    fun `sidebar has one palette launcher and dialog uses material accent circles`() {
+        val site = repositoryFile("docs/assets/js/site.js").readText()
         val appearance = repositoryFile("docs/assets/css/appearance.css").readText()
 
-        assertTrue(appearance.contains(".rail-appearance .scheme-selector"))
-        assertTrue(appearance.contains(".rail-appearance .theme-selector"))
-        assertTrue(appearance.contains(".rail-appearance .appearance-control:nth-child(n + 2)"))
-        assertTrue(appearance.contains("content: \"palette\""))
+        assertTrue(site.contains("class=\"appearance-launcher\""))
+        assertTrue(site.contains("class=\"appearance-launcher__label\">Appearance"))
+        assertTrue(site.contains(">palette</span>"))
+        assertTrue(!site.contains(">tune</span>"))
+        assertTrue(appearance.contains(".appearance-launcher"))
         assertTrue(appearance.contains("conic-gradient("))
         assertTrue(appearance.contains("from 270deg"))
         assertTrue(appearance.contains("var(--preview-primary) 0deg 180deg"))
