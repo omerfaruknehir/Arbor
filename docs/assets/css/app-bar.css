@@ -1,34 +1,42 @@
 :root {
   --xylune-app-bar-expanded-height: 152px;
-  --xylune-app-bar-collapse-distance: 80px;
-  --xylune-app-bar-compact-height: 72px;
+  --xylune-app-bar-compact-height: 64px;
+  --xylune-app-bar-collapse-distance: 88px;
 }
 
-html.collapsing-title-page {
-  scroll-padding-top: var(--xylune-app-bar-compact-height);
-  scroll-snap-type: y proximity;
+html.collapsing-title-page,
+body.page-with-collapsing-title {
+  height: 100%;
 }
 
 body.page-with-collapsing-title {
-  overflow-x: clip;
+  overflow: hidden;
 }
 
 .page-with-app-bar,
 .home-shell.page-with-app-bar,
 .document-shell.page-with-app-bar {
+  height: 100dvh;
+  min-height: 0;
   padding: 0;
+  overflow-x: clip;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scroll-behavior: smooth;
+  scroll-padding-top: var(--xylune-app-bar-compact-height);
+  /* Only this page scroller has snap points, and only the two title states
+     participate. The rest of the document remains ordinary free scrolling. */
+  scroll-snap-type: y proximity;
+  scroll-timeline-name: --xylune-page-scroll;
+  scroll-timeline-axis: block;
 }
 
 .document-app-bar {
   position: sticky;
   top: calc(-1 * var(--xylune-app-bar-collapse-distance));
   z-index: 16;
-  display: grid;
   width: 100%;
   height: var(--xylune-app-bar-expanded-height);
-  grid-template-columns: 52px minmax(0, 1fr) 52px;
-  align-items: end;
-  padding: 0 clamp(18px, 4vw, 44px) 14px;
   border-bottom: 1px solid transparent;
   background: color-mix(in srgb, var(--background) 96%, transparent);
   isolation: isolate;
@@ -48,45 +56,59 @@ body.page-with-collapsing-title {
   pointer-events: none;
 }
 
+.document-app-bar__row {
+  position: absolute;
+  inset: 0 0 auto;
+  display: grid;
+  width: 100%;
+  height: var(--xylune-app-bar-compact-height);
+  grid-template-columns: 56px minmax(0, 1fr) 80px;
+  align-items: center;
+  transform: translateY(0);
+}
+
 .document-app-bar__title {
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  color: var(--primary);
-  font-size: clamp(34px, 4vw, 46px);
-  font-weight: 500;
-  letter-spacing: -0.025em;
-  line-height: 44px;
-  text-align: center;
+  color: var(--on-surface);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 28px;
+  text-align: start;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transform: translate(-40px, 58px) scale(1.18);
+  transform-origin: left center;
 }
 
 .document-app-bar__menu {
+  justify-self: center;
   visibility: hidden;
 }
 
-.document-app-bar .icon-button {
-  align-self: end;
+.document-app-bar__appearance {
+  justify-self: end;
+  margin-inline-end: 12px;
 }
 
 .document-title-collapse-snap {
-  position: absolute;
-  inset-block-start: var(--xylune-app-bar-collapse-distance);
-  inset-inline-start: 0;
   width: 1px;
   height: 1px;
+  margin: 0;
+  scroll-margin-top: var(--xylune-app-bar-compact-height);
   scroll-snap-align: start;
   scroll-snap-stop: always;
   pointer-events: none;
 }
 
 .document-body {
-  padding: 34px clamp(28px, 7vw, 96px) 48px;
+  padding: 26px clamp(28px, 7vw, 96px) 48px;
 }
 
 .home-body {
-  padding: 34px 54px 34px;
+  padding: 26px 54px 34px;
 }
 
 .document-content > h1:first-child {
@@ -118,8 +140,7 @@ body.page-with-collapsing-title {
 }
 
 .scheme-selector {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--outline-variant);
@@ -128,11 +149,15 @@ body.page-with-collapsing-title {
 }
 
 .scheme-selector__choice {
-  display: grid;
+  display: flex;
   min-width: 0;
-  height: 42px;
-  place-items: center;
-  padding: 0;
+  height: 50px;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 3px;
   border: 0;
   border-radius: 9px;
   background: transparent;
@@ -155,7 +180,17 @@ body.page-with-collapsing-title {
 }
 
 .scheme-selector__choice .material-symbols-rounded {
-  font-size: 22px;
+  font-size: 21px;
+}
+
+.scheme-selector__label {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .release-intro {
@@ -237,27 +272,40 @@ body.page-with-collapsing-title {
 }
 
 @supports (animation-timeline: scroll()) {
+  .document-app-bar__row {
+    animation: xylune-app-bar-row linear both;
+    animation-timeline: --xylune-page-scroll;
+    animation-range: 0 88px;
+  }
+
   .document-app-bar__title {
     animation: xylune-title-collapse linear both;
-    animation-timeline: scroll(root block);
-    animation-range: 0 80px;
+    animation-timeline: --xylune-page-scroll;
+    animation-range: 0 88px;
   }
 
   .document-app-bar::before {
     animation: xylune-bar-surface linear both;
-    animation-timeline: scroll(root block);
-    animation-range: 0 80px;
+    animation-timeline: --xylune-page-scroll;
+    animation-range: 0 88px;
+  }
+}
+
+@keyframes xylune-app-bar-row {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(88px);
   }
 }
 
 @keyframes xylune-title-collapse {
   from {
-    font-size: clamp(34px, 4vw, 46px);
-    letter-spacing: -0.025em;
+    transform: translate(-40px, 58px) scale(1.18);
   }
   to {
-    font-size: 24px;
-    letter-spacing: 0;
+    transform: translate(0, 0) scale(1);
   }
 }
 
@@ -272,53 +320,40 @@ body.page-with-collapsing-title {
   }
 }
 
-@media (max-width: 820px) {
-  :root {
-    --xylune-app-bar-expanded-height: 136px;
-    --xylune-app-bar-collapse-distance: 68px;
-    --xylune-app-bar-compact-height: 68px;
-  }
-
+@supports not (animation-timeline: scroll()) {
   .document-app-bar {
-    grid-template-columns: 48px minmax(0, 1fr) 48px;
-    padding: 0 10px 12px;
+    top: 0;
+    height: var(--xylune-app-bar-compact-height);
   }
 
+  .document-app-bar__row,
+  .document-app-bar__title {
+    transform: none;
+  }
+
+  .document-app-bar::before {
+    box-shadow: 0 7px 20px rgb(0 0 0 / 13%);
+    opacity: 1;
+  }
+
+  .document-title-collapse-snap {
+    display: none;
+  }
+}
+
+@media (max-width: 820px) {
   .document-app-bar__menu {
     visibility: visible;
   }
 
-  .document-app-bar__title {
-    font-size: 34px;
-    line-height: 44px;
-  }
-
   .document-body,
   .home-body {
-    padding: 26px 20px 30px;
+    padding: 22px 20px 30px;
   }
 
   .home-content {
     width: 100%;
     margin: 0;
-  }
-
-  @supports (animation-timeline: scroll()) {
-    .document-app-bar__title,
-    .document-app-bar::before {
-      animation-range: 0 68px;
-    }
-  }
-
-  @keyframes xylune-title-collapse {
-    from {
-      font-size: 34px;
-      letter-spacing: -0.025em;
-    }
-    to {
-      font-size: 22px;
-      letter-spacing: 0;
-    }
   }
 }
 
@@ -338,8 +373,27 @@ body.page-with-collapsing-title {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .document-app-bar {
+    top: 0;
+    height: var(--xylune-app-bar-compact-height);
+  }
+
+  .document-app-bar__row,
   .document-app-bar__title,
   .document-app-bar::before {
     animation: none;
+  }
+
+  .document-app-bar__row,
+  .document-app-bar__title {
+    transform: none;
+  }
+
+  .document-app-bar::before {
+    opacity: 1;
+  }
+
+  .document-title-collapse-snap {
+    display: none;
   }
 }
