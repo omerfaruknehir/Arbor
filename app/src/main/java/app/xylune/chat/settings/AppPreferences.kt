@@ -81,7 +81,7 @@ data class DeveloperSettings(
     )
 }
 
-const val XYLUNE_CORE_PROMPT_REVISION = "0.17.0"
+const val XYLUNE_CORE_PROMPT_REVISION = "0.18.0"
 
 val DEFAULT_XYLUNE_SYSTEM_PROMPT = """
 You are Xylune, a capable assistant running inside a native Android BYOK workspace.
@@ -169,6 +169,7 @@ class AppPreferences(context: Context) {
     private val _chromeBlurStrength = MutableStateFlow(readChromeBlurStrength())
     private val _chromeEdgeSoftness = MutableStateFlow(readChromeEdgeSoftness())
     private val _chromeOverlayOpacity = MutableStateFlow(preferences.getFloat(KEY_CHROME_OVERLAY_OPACITY, 1f).coerceIn(0f, 1f))
+    private val _lessEmojiEnabled = MutableStateFlow(preferences.getBoolean(KEY_LESS_EMOJI_ENABLED, true))
     private val _newChatDefaults = MutableStateFlow(readNewChatDefaults())
     private val _generatedRepairMaxAttempts = MutableStateFlow(preferences.getInt(KEY_GENERATED_REPAIR_ATTEMPTS, 3).coerceIn(1, 5))
     private val _developerSettings = MutableStateFlow(readDeveloperSettings())
@@ -180,6 +181,7 @@ class AppPreferences(context: Context) {
     val chromeBlurStrength: StateFlow<Float> = _chromeBlurStrength.asStateFlow()
     val chromeEdgeSoftness: StateFlow<Float> = _chromeEdgeSoftness.asStateFlow()
     val chromeOverlayOpacity: StateFlow<Float> = _chromeOverlayOpacity.asStateFlow()
+    val lessEmojiEnabled: StateFlow<Boolean> = _lessEmojiEnabled.asStateFlow()
     val newChatDefaults: StateFlow<NewChatDefaults> = _newChatDefaults.asStateFlow()
     val generatedRepairMaxAttempts: StateFlow<Int> = _generatedRepairMaxAttempts.asStateFlow()
     val developerSettings: StateFlow<DeveloperSettings> = _developerSettings.asStateFlow()
@@ -269,6 +271,11 @@ class AppPreferences(context: Context) {
         val normalized = value.coerceIn(0f, 1f)
         _chromeOverlayOpacity.value = normalized
         preferences.edit { putFloat(KEY_CHROME_OVERLAY_OPACITY, normalized) }
+    }
+
+    fun setLessEmojiEnabled(enabled: Boolean) {
+        _lessEmojiEnabled.value = enabled
+        preferences.edit { putBoolean(KEY_LESS_EMOJI_ENABLED, enabled) }
     }
 
     fun setGeneratedRepairMaxAttempts(value: Int) {
@@ -382,6 +389,7 @@ class AppPreferences(context: Context) {
         const val KEY_CHROME_EDGE_SOFTNESS = "chrome_edge_softness"
         const val KEY_CHROME_EDGE_CONTROL_REVISION = "chrome_edge_control_revision"
         const val KEY_CHROME_OVERLAY_OPACITY = "chrome_overlay_opacity"
+        const val KEY_LESS_EMOJI_ENABLED = "less_emoji_enabled"
         const val CHROME_EDGE_CONTROL_REVISION = 2
         const val DEFAULT_CHROME_EDGE_SOFTNESS = 0.6f // 50% semantic feather after the flat 0% anchor.
         const val KEY_DEFAULT_PROVIDER = "new_chat_provider"

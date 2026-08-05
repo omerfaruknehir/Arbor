@@ -196,6 +196,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     val chromeBlurStrength: StateFlow<Float> = container.appPreferences.chromeBlurStrength
     val chromeEdgeSoftness: StateFlow<Float> = container.appPreferences.chromeEdgeSoftness
     val chromeOverlayOpacity: StateFlow<Float> = container.appPreferences.chromeOverlayOpacity
+    val lessEmojiEnabled: StateFlow<Boolean> = container.appPreferences.lessEmojiEnabled
     val generatedRepairMaxAttempts: StateFlow<Int> = container.appPreferences.generatedRepairMaxAttempts
     val developerSettings: StateFlow<app.xylune.chat.settings.DeveloperSettings> = container.appPreferences.developerSettings
     val palette = container.appPreferences.palette
@@ -281,6 +282,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
 
     fun setRenderSafeMode(enabled: Boolean) = container.crashReporter.setRenderSafeMode(enabled)
 
+    fun setLessEmojiEnabled(enabled: Boolean) = container.appPreferences.setLessEmojiEnabled(enabled)
 
     fun postNotice(message: String) {
         notices.tryEmit(message)

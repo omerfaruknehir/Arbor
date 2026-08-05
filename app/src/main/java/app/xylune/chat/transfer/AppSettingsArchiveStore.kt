@@ -50,6 +50,7 @@ data class PortablePreferenceSettings(
     val chromeEdgeSoftness: Float,
     val chromeOverlayOpacity: Float,
     val generatedRepairMaxAttempts: Int,
+    val lessEmojiEnabled: Boolean = true,
     val newChatDefaults: PortableNewChatDefaults,
     val developerSettings: PortableDeveloperSettings,
     val selectedLinuxDistribution: String,
@@ -196,6 +197,7 @@ class AppSettingsArchiveStore(
                 chromeEdgeSoftness = preferences.chromeEdgeSoftness.value,
                 chromeOverlayOpacity = preferences.chromeOverlayOpacity.value,
                 generatedRepairMaxAttempts = preferences.generatedRepairMaxAttempts.value,
+                lessEmojiEnabled = preferences.lessEmojiEnabled.value,
                 newChatDefaults = PortableNewChatDefaults(
                     selectedProviderId = defaults.selectedProviderId,
                     selectedModelId = defaults.selectedModelId,
@@ -482,6 +484,7 @@ class AppSettingsArchiveStore(
         preferences.setChromeEdgeSoftness(value.chromeEdgeSoftness)
         preferences.setChromeOverlayOpacity(value.chromeOverlayOpacity)
         preferences.setGeneratedRepairMaxAttempts(value.generatedRepairMaxAttempts)
+        preferences.setLessEmojiEnabled(value.lessEmojiEnabled)
         val defaults = value.newChatDefaults
         preferences.setNewChatDefaults(
             NewChatDefaults(
