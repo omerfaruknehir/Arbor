@@ -6,9 +6,15 @@ Privacy Policy, Terms and Disclaimer, and Data Deletion now open the rendered Xy
 
 ## App-style Pages navigation
 
-The website now uses centered large titles that remain sticky and collapse into a compact app bar as the page scrolls. The interpolation is driven directly by the browser's scroll timeline rather than scroll-event callbacks, with snap points around the transition so the title settles expanded or collapsed instead of resting at an arbitrary partial state.
+The website now uses the same single-title motion as Xylune's Android app: the title starts lower, slightly larger, and left-aligned, then moves into the compact 64 px app-bar row while scaling to its final size. The interpolation is driven directly by a CSS scroll timeline rather than scroll-event callbacks.
 
-A visible scheme selector is available on the desktop navigation rail, while the compact appearance panel remains available on smaller screens. Dark, light, system, and app-provided schemes update the site logo and favicon immediately. App-provided branding still respects Xylune's **Match launcher icon to palette** setting.
+Title snapping is confined to the two expanded/collapsed positions at the top of the page. The rest of every legal or release document remains normal free scrolling instead of inheriting sticky snap behavior.
+
+## Predictable scheme and branding controls
+
+A labeled **Color scheme** selector is visible in the desktop navigation rail, while the full appearance panel remains available from the palette button on smaller screens. App, Dark, Light, and Auto choices use equal-width visible buttons; when the App option is unavailable, no empty fourth slot remains.
+
+Dark, Light, and Auto keep the canonical Xylune logo and favicon. Only an App theme received from Xylune may recolor them, and only when **Match launcher icon to palette** was enabled in the app. The generated app-theme logo uses normalized palette colors so it remains recognizably Xylune rather than changing unpredictably with the website's own light/dark selection.
 
 ## Correctly ordered releases
 

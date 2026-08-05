@@ -8,14 +8,41 @@
     return getComputedStyle(root).getPropertyValue(variable).trim() || fallback || '';
   }
 
+  function normalizeHex(value, fallback) {
+    const match = String(value || '').trim().match(/^#?([0-9a-f]{6})$/i);
+    return match ? `#${match[1].toLowerCase()}` : fallback;
+  }
+
+  function mixHex(left, right, rightWeight) {
+    const first = normalizeHex(left, '#000000').slice(1);
+    const second = normalizeHex(right, '#000000').slice(1);
+    const weight = Math.min(1, Math.max(0, Number(rightWeight) || 0));
+    const channel = (offset) => Math.round(
+      parseInt(first.slice(offset, offset + 2), 16) * (1 - weight)
+      + parseInt(second.slice(offset, offset + 2), 16) * weight,
+    ).toString(16).padStart(2, '0');
+    return `#${channel(0)}${channel(2)}${channel(4)}`;
+  }
+
+  function appColor(variable, fallback) {
+    return normalizeHex(themeState.appTheme?.colors?.[variable], fallback);
+  }
+
   function dynamicLogoDataUrl(preference) {
-    if (preference === 'app' && !themeState.appTheme?.dynamicLogo) return null;
-    const backgroundStart = activeColor('--primary-container', activeColor('--surface-container'));
-    const backgroundEnd = activeColor('--primary');
-    const firstStroke = activeColor('--on-primary-container', activeColor('--on-surface'));
-    const secondStroke = activeColor('--on-primary', activeColor('--background'));
-    const leaf = activeColor('--tertiary', activeColor('--secondary', activeColor('--primary')));
-    if (![backgroundStart, backgroundEnd, firstStroke, secondStroke, leaf].every(Boolean)) return null;
+    // The website's own dark/light/system choices never recolor the brand.
+    // A palette icon is generated only from colors explicitly passed by Xylune
+    // and only when Match launcher icon to palette was enabled in the app.
+    if (preference !== 'app' || !themeState.appTheme?.dynamicLogo) return null;
+
+    const primary = appColor('--primary', '#0c684f');
+    const secondary = appColor('--secondary', primary);
+    const tertiary = appColor('--tertiary', '#f4c761');
+    const backgroundStart = mixHex(primary, '#000000', 0.42);
+    const backgroundEnd = mixHex(secondary, '#000000', 0.24);
+    const firstStroke = mixHex(primary, '#ffffff', 0.68);
+    const secondStroke = mixHex(primary, '#ffffff', 0.9);
+    const leaf = mixHex(tertiary, '#ffffff', 0.08);
+
     const svg = `<svg width="512" height="512" viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bg" x1="15" y1="8" x2="96" y2="101" gradientUnits="userSpaceOnUse"><stop stop-color="${backgroundStart}"/><stop offset="1" stop-color="${backgroundEnd}"/></linearGradient>
@@ -31,6 +58,7 @@
 
   function syncBrandLogo(preference) {
     const dynamicSource = dynamicLogoDataUrl(preference);
+    root.dataset.brandLogo = dynamicSource ? 'app' : 'static';
     document.querySelectorAll('[data-xylune-logo]').forEach((image) => {
       image.dataset.staticSrc ||= image.getAttribute('src') || '';
       image.setAttribute('src', dynamicSource || image.dataset.staticSrc);
@@ -41,6 +69,7 @@
       if (icon.getAttribute('href') === desired) return;
       const replacement = icon.cloneNode(true);
       replacement.setAttribute('href', desired);
+      if (dynamicSource) replacement.setAttribute('type', 'image/svg+xml');
       icon.replaceWith(replacement);
     });
   }
