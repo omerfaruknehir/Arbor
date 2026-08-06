@@ -106,6 +106,28 @@ class NativeProviderProtocolTest {
     }
 
     @Test
+    fun openAiCompatibleRoutesThinkingTagsAcrossStreamingChunks() {
+        val parser = OpenAiCompatibleProvider.ThinkingTagStreamParser()
+
+        val first = parser.accept("Visible before <thin")
+        assertEquals("Visible before ", first.text)
+        assertEquals("", first.reasoning)
+
+        val second = parser.accept("king>hidden step</think")
+        assertEquals("", second.text)
+        assertEquals("hidden step", second.reasoning)
+
+        val third = parser.accept("ing> visible after <think>more")
+        assertEquals(" visible after ", third.text)
+        assertEquals("more", third.reasoning)
+
+        val fourth = parser.accept(" thought</think> done", explicitReasoning = "native reasoning")
+        assertEquals(" done", fourth.text)
+        assertEquals("native reasoning thought", fourth.reasoning)
+        assertEquals(DsmlChannelDelta("", ""), parser.finish())
+    }
+
+    @Test
     fun anthropicPreservesThinkingSignatureAndToolUseBlocks() {
         val provider = AnthropicProvider()
         val body = provider.buildRequestBody(request(ProviderKind.ANTHROPIC, listOf(InputMessage(MessageRole.USER, "Find it"))))

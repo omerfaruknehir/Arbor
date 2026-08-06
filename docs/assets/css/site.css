@@ -190,6 +190,20 @@ select {
   padding: 54px 54px 34px;
 }
 
+.home-banner {
+  width: min(980px, 100%);
+  margin: 0 auto 30px;
+  overflow: hidden;
+  border-radius: 22px;
+  background: var(--surface-low);
+}
+
+.home-banner img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .home-content {
   width: min(670px, 100%);
   margin-left: clamp(28px, 8vw, 100px);
@@ -659,6 +673,11 @@ h3 {
   .home-shell,
   .document-shell {
     padding: 34px 20px 30px;
+  }
+
+  .home-banner {
+    margin-bottom: 22px;
+    border-radius: 16px;
   }
 
   .home-content {

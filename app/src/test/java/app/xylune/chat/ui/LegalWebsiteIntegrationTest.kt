@@ -29,7 +29,7 @@ class LegalWebsiteIntegrationTest {
         assertTrue(boot.contains("supportedThemes = ['app', 'dark', 'light', 'system']"))
         assertTrue(boot.contains("supportedSchemes = ['app', 'xylune', 'graphite', 'ocean', 'violet', 'sunset']"))
         assertTrue(boot.contains("localStorage.getItem('xylune-scheme')"))
-        assertTrue(boot.contains("queryKeys: ['theme', 'scheme'"))
+        assertTrue(boot.contains("const queryKeys = ['theme', 'scheme'"))
         assertTrue(boot.contains("const paletteSurfaces ="))
         assertTrue(boot.contains("'--background': '#0e1416'"))
         assertTrue(boot.contains("'--on-surface': '#e7e0e8'"))
@@ -60,6 +60,10 @@ class LegalWebsiteIntegrationTest {
         val layout = repositoryFile("docs/_layouts/default.html").readText()
 
         assertTrue(boot.contains("dynamicLogo: params.get('dynamicLogo') === '1'"))
+        assertTrue(boot.contains("const APP_THEME_STORAGE = 'xylune-app-theme-v1'"))
+        assertTrue(boot.contains("localStorage.setItem(APP_THEME_STORAGE, JSON.stringify(urlAppTheme))"))
+        assertTrue(boot.contains("cleanUrl.searchParams.delete(key)"))
+        assertTrue(boot.contains("history.replaceState(null, '', cleanUrl)"))
         assertTrue(site.contains("localStorage.getItem('xylune-dynamic-icon')"))
         assertTrue(site.contains("const appIconPalettes ="))
         assertTrue(site.contains("function dynamicLogoDataUrl(schemePreference)"))
@@ -93,7 +97,9 @@ class LegalWebsiteIntegrationTest {
 
         assertTrue(site.contains("data-dynamic-icon-toggle"))
         assertTrue(site.contains("role=\"switch\""))
-        assertTrue(site.contains("url.searchParams.set('dynamicLogo', dynamicIconEnabled ? '1' : '0')"))
+        assertTrue(site.contains("localStorage.setItem('xylune-dynamic-icon', dynamicIconEnabled ? '1' : '0')"))
+        assertTrue(site.contains("themeState.queryKeys.forEach((key) => target.searchParams.delete(key))"))
+        assertTrue(!site.contains("url.searchParams.set('dynamicLogo'"))
         assertTrue(site.contains("document.querySelectorAll('link[data-xylune-favicon]')"))
         assertTrue(appearance.contains(".material-switch"))
         assertTrue(appearance.contains(".material-switch.is-checked"))
@@ -120,6 +126,9 @@ class LegalWebsiteIntegrationTest {
         assertTrue(site.contains("requestAnimationFrame(applyProgress)"))
         assertTrue(site.contains("--xylune-title-shift"))
         assertTrue(site.contains("--xylune-title-scale"))
+        assertTrue(site.contains("getPropertyValue('--xylune-title-expanded-scale')"))
+        assertTrue(css.contains(".home-shell.page-with-app-bar"))
+        assertTrue(css.contains("--xylune-title-expanded-scale: 1.82"))
         assertTrue(site.contains("position <= 1 || position >= collapseDistance - 1"))
         assertTrue(site.contains("position < collapseDistance / 2 ? 0 : collapseDistance"))
         assertTrue(site.contains("behavior: reducedMotion.matches ? 'auto' : 'smooth'"))
@@ -149,17 +158,27 @@ class LegalWebsiteIntegrationTest {
     }
 
     @Test
-    fun `release page orders versions without exposing implementation notes`() {
+    fun `home uses banner and release notes expand in page`() {
         val releases = repositoryFile("docs/assets/js/releases.js").readText()
         val page = repositoryFile("docs/releases/index.html").readText()
         val home = repositoryFile("docs/index.html").readText()
+        val css = repositoryFile("docs/assets/css/app-bar.css").readText()
         assertTrue(releases.contains("function parseSemanticVersion(value)"))
         assertTrue(releases.contains("right.numbers[index] - left.numbers[index]"))
-        assertTrue(releases.contains(".sort(compareSemanticVersionsDescending)"))
+        assertTrue(releases.contains("const MAX_RELEASES = 10"))
+        assertTrue(releases.contains(".slice(0, MAX_RELEASES)"))
+        assertTrue(releases.contains("card.open = index === 0"))
+        assertTrue(releases.contains("renderReleaseNotes(release.body)"))
+        assertTrue(releases.contains("'Show all releases'"))
+        assertTrue(releases.contains("'open_in_new'"))
+        assertTrue(!releases.contains("actionLink('Release notes'"))
         assertTrue(page.contains("data-release-list"))
         assertTrue(!page.contains("sorted numerically"))
         assertTrue(!page.contains("regardless of GitHub publication timestamps"))
-        assertTrue(!page.contains("release-intro"))
+        assertTrue(home.contains("class=\"home-banner\""))
+        assertTrue(home.contains("branding/xylune-banner.png"))
         assertTrue(home.contains("href=\"releases/\""))
+        assertTrue(css.contains(".release-card__toggle"))
+        assertTrue(css.contains(".release-list__footer"))
     }
 }

@@ -4,7 +4,8 @@
   --xylune-app-bar-collapse-distance: 88px;
   --xylune-app-bar-row-shift: 0px;
   --xylune-title-shift: 58px;
-  --xylune-title-scale: 1.18;
+  --xylune-title-expanded-scale: 1.18;
+  --xylune-title-scale: var(--xylune-title-expanded-scale);
   --xylune-bar-opacity: 0;
   --xylune-bar-shadow-alpha: 0;
 }
@@ -29,6 +30,10 @@ body.page-with-collapsing-title {
   overscroll-behavior-y: contain;
   scroll-behavior: auto;
   scroll-padding-top: var(--xylune-app-bar-compact-height);
+}
+
+.home-shell.page-with-app-bar {
+  --xylune-title-expanded-scale: 1.82;
 }
 
 .document-app-bar {
@@ -202,14 +207,9 @@ body.page-with-collapsing-title {
   white-space: nowrap;
 }
 
-.release-intro {
-  margin-top: 0;
-  color: var(--on-surface-variant);
-}
-
 .release-list {
   display: grid;
-  gap: 12px;
+  gap: 14px;
   margin-top: 24px;
 }
 
@@ -217,32 +217,63 @@ body.page-with-collapsing-title {
   margin: 0;
   padding: 18px;
   border: 1px solid var(--outline-variant);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--surface-low);
   color: var(--on-surface-variant);
 }
 
 .release-card {
-  display: grid;
-  gap: 10px;
-  padding: 18px 20px;
+  overflow: hidden;
   border: 1px solid var(--outline-variant);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--surface-low);
 }
 
-.release-card__heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
+.release-card[open] {
+  background: var(--surface-container);
 }
 
-.release-card__heading h2 {
+.release-card__toggle {
+  display: grid;
+  min-height: 86px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 17px 20px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.release-card__toggle::-webkit-details-marker {
+  display: none;
+}
+
+.release-card__toggle:hover {
+  background: color-mix(in srgb, var(--primary-container) 22%, transparent);
+}
+
+.release-card__heading {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.release-card__title-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.release-card__title-row h2 {
+  min-width: 0;
   margin: 0;
   padding: 0;
+  overflow: hidden;
   border: 0;
   font-size: 22px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .release-card__meta {
@@ -251,9 +282,89 @@ body.page-with-collapsing-title {
   font-size: 14px;
 }
 
-.release-card__summary {
-  margin: 0;
+.release-card__chevron {
   color: var(--on-surface-variant);
+  transition: transform 180ms ease;
+}
+
+.release-card[open] .release-card__chevron {
+  transform: rotate(180deg);
+}
+
+.release-card__body {
+  display: grid;
+  gap: 18px;
+  padding: 18px 20px 20px;
+  border-top: 1px solid var(--outline-variant);
+}
+
+.release-notes {
+  color: var(--on-surface-variant);
+}
+
+.release-notes > :first-child {
+  margin-top: 0;
+}
+
+.release-notes > :last-child {
+  margin-bottom: 0;
+}
+
+.release-notes h3,
+.release-notes h4 {
+  margin: 1.35em 0 0.45em;
+  padding: 0;
+  border: 0;
+  color: var(--on-surface);
+}
+
+.release-notes h3 {
+  font-size: 19px;
+}
+
+.release-notes h4 {
+  font-size: 17px;
+}
+
+.release-notes p,
+.release-notes ul,
+.release-notes ol {
+  margin: 0.65em 0;
+}
+
+.release-notes ul,
+.release-notes ol {
+  padding-left: 1.35em;
+}
+
+.release-notes code {
+  padding: 0.12em 0.34em;
+  border-radius: 5px;
+  background: var(--surface-low);
+  color: var(--on-surface);
+}
+
+.release-notes pre {
+  overflow-x: auto;
+  padding: 14px;
+  border-radius: 10px;
+  background: var(--surface-low);
+}
+
+.release-notes pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.release-notes a {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.release-notes .material-symbols-rounded,
+.external-link-icon {
+  font-size: 17px;
 }
 
 .release-card__actions {
@@ -262,7 +373,8 @@ body.page-with-collapsing-title {
   gap: 10px;
 }
 
-.release-card__actions .button {
+.release-card__actions .button,
+.release-list__footer .button {
   min-height: 44px;
   padding-inline: 18px;
   font-size: 15px;
@@ -278,6 +390,12 @@ body.page-with-collapsing-title {
   font-weight: 700;
   letter-spacing: 0.03em;
   text-transform: uppercase;
+}
+
+.release-list__footer {
+  display: flex;
+  justify-content: center;
+  padding-top: 6px;
 }
 
 @media (max-width: 820px) {
