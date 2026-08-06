@@ -162,7 +162,7 @@ html.xylune-motion-ready .palette-choice {
   }*/
 }
 
-.button:active,
+/*.button:active,
 .icon-button:active,
 .resource-row:active,
 .appearance-launcher:active,
@@ -173,7 +173,7 @@ html.xylune-motion-ready .palette-choice {
 .material-switch:active {
   transform: scale(0.97);
   transition-duration: 70ms;
-}
+}*/
 
 .material-switch {
   --xylune-switch-travel: 18px;
