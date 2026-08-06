@@ -145,21 +145,21 @@ html.xylune-motion-ready .palette-choice {
 }
 
 @media (hover: hover) {
-  .button:hover,
+  /*.button:hover,
   .resource-row:hover,
   .palette-choice:hover {
     transform: translateY(-1px);
-  }
+  }*/
 
   .button-primary:hover {
     box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
   }
 
-  .icon-button:hover,
+  /*.icon-button:hover,
   .appearance-launcher:hover,
   .release-card__toggle:hover {
     transform: scale(1.025);
-  }
+  }*/
 }
 
 .button:active,
