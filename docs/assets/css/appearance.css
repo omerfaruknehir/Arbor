@@ -31,10 +31,10 @@ body .rail-appearance {
   color: var(--on-surface-variant);
 }
 
-.appearance-launcher:hover {
+/*.appearance-launcher:hover {
   background: var(--surface-low);
   color: var(--on-surface);
-}
+}*/
 
 .appearance-launcher__label {
   font-size: 13px;
