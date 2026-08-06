@@ -13,9 +13,11 @@ class WebsiteMotionIntegrationTest {
     fun `navigation themes buttons and switches use the motion layer`() {
         val layout = repositoryFile("docs/_layouts/default.html").readText()
         val motionCss = repositoryFile("docs/assets/css/motion.css").readText()
+        val interactionCss = repositoryFile("docs/assets/css/interaction-fix.css").readText()
         val motionJs = repositoryFile("docs/assets/js/motion.js").readText()
 
         assertTrue(layout.contains("assets/css/motion.css"))
+        assertTrue(layout.contains("assets/css/interaction-fix.css"))
         assertTrue(layout.contains("assets/js/motion.js"))
 
         assertTrue(motionJs.contains("function setupNavigationTabs()"))
@@ -34,6 +36,7 @@ class WebsiteMotionIntegrationTest {
         assertTrue(motionJs.contains("setPointerCapture"))
         assertTrue(motionJs.contains("suppressNativeClick"))
         assertTrue(motionJs.contains("control.click()"))
+        assertTrue(motionJs.contains("--xylune-switch-progress"))
 
         assertTrue(motionCss.contains(".rail-nav__indicator"))
         assertTrue(motionCss.contains("transform 240ms"))
@@ -41,12 +44,21 @@ class WebsiteMotionIntegrationTest {
         assertTrue(motionCss.contains(".button:active"))
         assertTrue(motionCss.contains(".icon-button:active"))
         assertTrue(motionCss.contains("html.xylune-motion-ready body"))
-
-        assertTrue(motionCss.contains("--xylune-switch-travel: 18px"))
-        assertTrue(motionCss.contains("--xylune-switch-drag-x"))
-        assertTrue(motionCss.contains("translate3d(var(--xylune-switch-travel), -50%, 0)"))
-        assertTrue(motionCss.contains(".material-switch.is-dragging"))
-        assertTrue(motionCss.contains("touch-action: pan-y"))
         assertTrue(motionCss.contains("prefers-reduced-motion: reduce"))
+
+        // Switch geometry deliberately has one owner. Keeping these rules out of
+        // motion.css prevents hover and checked-state overrides from fighting.
+        assertTrue(!motionCss.contains("--xylune-switch-travel"))
+        assertTrue(!motionCss.contains(".material-switch.is-checked"))
+        assertTrue(!motionCss.contains(".material-switch.is-dragging"))
+
+        assertTrue(interactionCss.contains("width: 52px !important"))
+        assertTrue(interactionCss.contains("height: 32px !important"))
+        assertTrue(interactionCss.contains(".material-switch[aria-checked='true']"))
+        assertTrue(interactionCss.contains(".material-switch[aria-checked='false']"))
+        assertTrue(interactionCss.contains("--xylune-switch-progress"))
+        assertTrue(interactionCss.contains(".material-switch.is-dragging"))
+        assertTrue(interactionCss.contains("touch-action: pan-y"))
+        assertTrue(interactionCss.contains("prefers-reduced-motion: reduce"))
     }
 }
