@@ -10,9 +10,10 @@ class WebsiteSwitchPopupRegressionTest {
         ?: error("Could not locate repository file: $path")
 
     @Test
-    fun `switch state and hover use aria checked as the position source`() {
+    fun `switch state hover and drag have one geometry owner`() {
         val layout = repositoryFile("docs/_layouts/default.html").readText()
         val css = repositoryFile("docs/assets/css/interaction-fix.css").readText()
+        val sharedMotionCss = repositoryFile("docs/assets/css/motion.css").readText()
         val motion = repositoryFile("docs/assets/js/motion.js").readText()
 
         assertTrue(layout.contains("appearance.css' | relative_url }}?v=79"))
@@ -33,6 +34,11 @@ class WebsiteSwitchPopupRegressionTest {
         assertTrue(css.contains("translate3d(0, -50%, 0) !important"))
         assertTrue(!css.contains(".material-switch.is-checked:hover > .material-switch__handle"))
         assertTrue(!css.contains("left: 22px"))
+
+        assertTrue(!sharedMotionCss.contains("--xylune-switch-travel"))
+        assertTrue(!sharedMotionCss.contains(".material-switch.is-checked"))
+        assertTrue(!sharedMotionCss.contains(".material-switch.is-dragging"))
+        assertTrue(!sharedMotionCss.contains("inset-inline-start: auto"))
 
         assertTrue(css.contains("--xylune-switch-progress: 0%"))
         assertTrue(css.contains("var(--xylune-switch-progress)"))
