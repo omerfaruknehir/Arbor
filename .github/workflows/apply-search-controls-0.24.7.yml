@@ -1,0 +1,111 @@
+name: Apply search controls 0.24.7
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - .github/workflows/apply-search-controls-0.24.7.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-search-controls-0.24.7
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Extract and repair the implementation script
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout -B agent/search-controls-0.24.7
+          python3 - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/implement-search-controls-0.24.7.yml').read_text()
+          start_marker = '''      - name: Apply search configuration and Markdown-link fixes
+                  shell: bash
+                  run: |
+          '''
+          # The literal file uses eight spaces before shell/run and ten inside the block.
+          start_marker = start_marker.replace('                  ', '        ')
+          end_marker = '\n      - name: Verify third-party licenses\n'
+          start = workflow.find(start_marker)
+          if start < 0:
+              raise SystemExit('Could not locate implementation step in original workflow')
+          start += len(start_marker)
+          end = workflow.find(end_marker, start)
+          if end < 0:
+              raise SystemExit('Could not locate end of implementation step')
+          script = textwrap.dedent(workflow[start:end])
+
+          old = '''replace_once(
+              "app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt",
+              '                put("max_uses", JsonPrimitive(8))',
+              '                put("max_uses", JsonPrimitive(request.webSearchMaxResults.coerceIn(3, 20)))',
+          )
+          # There are two max_uses occurrences; replace the remaining fetch occurrence too.
+          text = read("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt")
+          text = text.replace('put("max_uses", JsonPrimitive(8))', 'put("max_uses", JsonPrimitive(request.webSearchMaxResults.coerceIn(3, 20)))')
+          write("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt", text)
+          '''
+          new = '''# Both Anthropic server tools use the configured limit.
+          text = read("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt")
+          count = text.count('put("max_uses", JsonPrimitive(8))')
+          if count != 2:
+              raise SystemExit(f"Expected two Anthropic max_uses defaults, found {count}")
+          text = text.replace(
+              'put("max_uses", JsonPrimitive(8))',
+              'put("max_uses", JsonPrimitive(request.webSearchMaxResults.coerceIn(3, 20)))',
+          )
+          write("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt", text)
+          '''
+          if script.count(old) != 1:
+              raise SystemExit(f'Could not repair duplicate max_uses block; matches={script.count(old)}')
+          script = script.replace(old, new, 1)
+          script = script.replace(
+              'Path(".github/workflows/implement-search-controls-0.24.7.yml").unlink()\n',
+              '',
+          )
+          Path('/tmp/apply-search-controls.sh').write_text(script)
+          PY
+          bash -n /tmp/apply-search-controls.sh
+          bash /tmp/apply-search-controls.sh
+
+      - name: Verify third-party licenses
+        run: ./gradlew verifyThirdPartyLicenses verifyOfflineLicenseCatalog --no-daemon
+
+      - name: Run release unit tests
+        run: ./gradlew testReleaseUnitTest --no-daemon
+
+      - name: Run release lint
+        run: ./gradlew lintRelease --no-daemon
+
+      - name: Assemble optimized release APK
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Push tested implementation branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app CHANGELOG.md docs
+          git commit -m "Add configurable search backends and literal Markdown links"
+          git push --force-with-lease origin HEAD:refs/heads/agent/search-controls-0.24.7
