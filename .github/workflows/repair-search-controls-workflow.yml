@@ -24,33 +24,38 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          target = Path('.github/workflows/implement-search-controls-0.24.7.yml')
-          text = target.read_text()
-          old = '''          replace_once(
-              "app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt",
-              '                put("max_uses", JsonPrimitive(8))',
-              '                put("max_uses", JsonPrimitive(request.webSearchMaxResults.coerceIn(3, 20)))',
-          )
-          # There are two max_uses occurrences; replace the remaining fetch occurrence too.
-          text = read("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt")
-          text = text.replace('put("max_uses", JsonPrimitive(8))', 'put("max_uses", JsonPrimitive(request.webSearchMaxResults.coerceIn(3, 20)))')
-          write("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt", text)
-'''
-          new = '''          # Both Anthropic server tools use the same max_uses default.
-          text = read("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt")
-          count = text.count('put("max_uses", JsonPrimitive(8))')
-          if count != 2:
-              raise SystemExit(f"Expected two Anthropic max_uses defaults, found {count}")
-          text = text.replace(
-              'put("max_uses", JsonPrimitive(8))',
-              'put("max_uses", JsonPrimitive(request.webSearchMaxResults.coerceIn(3, 20)))',
-          )
-          write("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt", text)
-'''
-          if text.count(old) != 1:
-              raise SystemExit('Could not find the duplicate max_uses patch block')
-          target.write_text(text.replace(old, new, 1))
-          Path('.github/workflows/repair-search-controls-workflow.yml').unlink()
+          target = Path(".github/workflows/implement-search-controls-0.24.7.yml")
+          lines = target.read_text().splitlines(keepends=True)
+          start_marker = "          replace_once(\n"
+          path_marker = '              "app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt",\n'
+          value_marker = "              '                put(\"max_uses\", JsonPrimitive(8))',\n"
+          comment_marker = "          # There are two max_uses occurrences; replace the remaining fetch occurrence too.\n"
+          write_marker = '          write("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt", text)\n'
+
+          start = None
+          for index in range(len(lines) - 2):
+              if lines[index] == start_marker and lines[index + 1] == path_marker and lines[index + 2] == value_marker:
+                  start = index
+                  break
+          if start is None:
+              raise SystemExit("Could not find duplicate max_uses replace_once block")
+
+          comment = lines.index(comment_marker, start)
+          end = lines.index(write_marker, comment) + 1
+          replacement = [
+              "          # Both Anthropic server tools use the same max_uses default.\n",
+              '          text = read("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt")\n',
+              '          count = text.count(\'put("max_uses", JsonPrimitive(8))\')\n',
+              "          if count != 2:\n",
+              '              raise SystemExit(f"Expected two Anthropic max_uses defaults, found {count}")\n',
+              "          text = text.replace(\n",
+              '              \'put("max_uses", JsonPrimitive(8))\',\n',
+              '              \'put("max_uses", JsonPrimitive(request.webSearchMaxResults.coerceIn(3, 20)))\',\n',
+              "          )\n",
+              '          write("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt", text)\n',
+          ]
+          target.write_text("".join(lines[:start] + replacement + lines[end:]))
+          Path(".github/workflows/repair-search-controls-workflow.yml").unlink()
           PY
 
           git config user.name "github-actions[bot]"
