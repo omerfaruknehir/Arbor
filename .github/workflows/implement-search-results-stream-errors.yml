@@ -10,9 +10,13 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: implement-search-results-stream-errors
+  cancel-in-progress: true
+
 jobs:
   implement:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
