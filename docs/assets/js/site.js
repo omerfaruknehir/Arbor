@@ -401,6 +401,10 @@
     control.addEventListener('click', () => setDynamicIcon(!dynamicIconEnabled));
   });
 
+  window.addEventListener("load", () => {
+    document.body.classList.remove("preload");
+  });
+
   media.addEventListener('change', () => {
     if (currentThemePreference() === 'system') {
       applyAppearance('system', currentSchemePreference(), false);
