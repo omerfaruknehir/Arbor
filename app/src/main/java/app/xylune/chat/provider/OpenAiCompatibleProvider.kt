@@ -519,13 +519,29 @@ class OpenAiCompatibleProvider(
         if (choice == null && usage == null) return null
         return StreamChunk(
             text = delta?.string("content").orEmpty(),
-            reasoning = delta?.string("reasoning_content").orEmpty(),
+            reasoning = delta.openAiCompatibleReasoningText(),
             inputTokens = usage?.long("prompt_tokens"),
             outputTokens = usage?.long("completion_tokens"),
             cachedInputTokens = details?.long("cached_tokens"),
             finishReason = choice?.string("finish_reason"),
             toolCallProgress = toolProgress,
         )
+    }
+
+    private fun JsonObject?.openAiCompatibleReasoningText(): String {
+        if (this == null) return ""
+        val direct = sequenceOf("reasoning", "reasoning_content", "thinking", "analysis")
+            .mapNotNull(::string)
+            .firstOrNull(String::isNotBlank)
+        if (direct != null) return direct
+        return array("reasoning_details").orEmpty().mapNotNull { element ->
+            val detail = element as? JsonObject ?: return@mapNotNull null
+            when (detail.string("type")) {
+                "reasoning.text" -> detail.string("text")
+                "reasoning.summary" -> detail.string("summary")
+                else -> detail.string("text") ?: detail.string("summary")
+            }
+        }.filter(String::isNotBlank).joinToString("")
     }
 
     private fun combinedText(message: InputMessage, nativeAttachmentIds: Set<String>): String {

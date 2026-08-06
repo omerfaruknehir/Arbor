@@ -187,10 +187,71 @@
     },
   };
 
+  const paletteSurfaces = {
+    xylune: { dark: {}, light: {} },
+    graphite: {
+      dark: {
+        '--background': '#111318', '--surface': '#111318', '--surface-low': '#191b20',
+        '--surface-container': '#1d2025', '--on-surface': '#e2e2e9',
+        '--on-surface-variant': '#c4c6d0', '--outline': '#8e9099',
+        '--outline-variant': '#44474e', '--rail': '#0c0e13',
+      },
+      light: {
+        '--background': '#f9f9ff', '--surface': '#f9f9ff', '--surface-low': '#f1f3fa',
+        '--surface-container': '#ebedf4', '--on-surface': '#1a1b20',
+        '--on-surface-variant': '#44474e', '--outline': '#74777f',
+        '--outline-variant': '#c4c6d0', '--rail': '#ffffff',
+      },
+    },
+    ocean: {
+      dark: {
+        '--background': '#0e1416', '--surface': '#0e1416', '--surface-low': '#161c1e',
+        '--surface-container': '#1a2022', '--on-surface': '#dce4e6',
+        '--on-surface-variant': '#bec8cb', '--outline': '#899295',
+        '--outline-variant': '#3f484b', '--rail': '#091012',
+      },
+      light: {
+        '--background': '#f4fafc', '--surface': '#f4fafc', '--surface-low': '#edf4f6',
+        '--surface-container': '#e7eef0', '--on-surface': '#161d1f',
+        '--on-surface-variant': '#3f484b', '--outline': '#6f797c',
+        '--outline-variant': '#bec8cb', '--rail': '#ffffff',
+      },
+    },
+    violet: {
+      dark: {
+        '--background': '#151218', '--surface': '#151218', '--surface-low': '#1d1a20',
+        '--surface-container': '#211e24', '--on-surface': '#e7e0e8',
+        '--on-surface-variant': '#cbc3cc', '--outline': '#958e96',
+        '--outline-variant': '#49454d', '--rail': '#100d13',
+      },
+      light: {
+        '--background': '#fcf8ff', '--surface': '#fcf8ff', '--surface-low': '#f5f0f7',
+        '--surface-container': '#efeaf1', '--on-surface': '#1d1a20',
+        '--on-surface-variant': '#49454d', '--outline': '#7a757d',
+        '--outline-variant': '#cbc3cc', '--rail': '#ffffff',
+      },
+    },
+    sunset: {
+      dark: {
+        '--background': '#181210', '--surface': '#181210', '--surface-low': '#211a18',
+        '--surface-container': '#251e1c', '--on-surface': '#f1dfda',
+        '--on-surface-variant': '#d5c2bc', '--outline': '#9e8c87',
+        '--outline-variant': '#51443f', '--rail': '#120c0a',
+      },
+      light: {
+        '--background': '#fff8f6', '--surface': '#fff8f6', '--surface-low': '#f9f1ee',
+        '--surface-container': '#f3ebe8', '--on-surface': '#211a18',
+        '--on-surface-variant': '#51443f', '--outline': '#83746f',
+        '--outline-variant': '#d5c2bc', '--rail': '#ffffff',
+      },
+    },
+  };
+
   const fixedColors = (scheme, dark) => {
     const mode = dark ? 'dark' : 'light';
     const colors = {
       ...basePalettes[mode],
+      ...(paletteSurfaces[scheme]?.[mode] || paletteSurfaces.xylune[mode]),
       ...(paletteAccents[scheme]?.[mode] || paletteAccents.xylune[mode]),
     };
     colors['--focus'] = colors['--primary'];
