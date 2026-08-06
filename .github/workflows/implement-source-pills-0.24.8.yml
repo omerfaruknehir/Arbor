@@ -58,3 +58,5 @@ jobs:
           git add app CHANGELOG.md docs/releases/RELEASE_NOTES_0.24.8.md
           git commit -m "Add inline source pills and automatic source lists"
           git push origin HEAD:agent/source-pills-0.24.8
+
+# Verification trigger: website regression expectations updated for asset version 81.
