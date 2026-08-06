@@ -175,6 +175,15 @@
   }
 }
 
+@media (max-width: 420px) {
+  .appearance-switch-row__logo {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+    border-radius: 9px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .material-switch,
   .material-switch__handle,
