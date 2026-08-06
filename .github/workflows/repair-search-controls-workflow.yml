@@ -1,0 +1,60 @@
+name: Repair search controls workflow
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - .github/workflows/repair-search-controls-workflow.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Repair duplicate max_uses patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          target = Path('.github/workflows/implement-search-controls-0.24.7.yml')
+          text = target.read_text()
+          old = '''          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt",
+              '                put("max_uses", JsonPrimitive(8))',
+              '                put("max_uses", JsonPrimitive(request.webSearchMaxResults.coerceIn(3, 20)))',
+          )
+          # There are two max_uses occurrences; replace the remaining fetch occurrence too.
+          text = read("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt")
+          text = text.replace('put("max_uses", JsonPrimitive(8))', 'put("max_uses", JsonPrimitive(request.webSearchMaxResults.coerceIn(3, 20)))')
+          write("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt", text)
+'''
+          new = '''          # Both Anthropic server tools use the same max_uses default.
+          text = read("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt")
+          count = text.count('put("max_uses", JsonPrimitive(8))')
+          if count != 2:
+              raise SystemExit(f"Expected two Anthropic max_uses defaults, found {count}")
+          text = text.replace(
+              'put("max_uses", JsonPrimitive(8))',
+              'put("max_uses", JsonPrimitive(request.webSearchMaxResults.coerceIn(3, 20)))',
+          )
+          write("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt", text)
+'''
+          if text.count(old) != 1:
+              raise SystemExit('Could not find the duplicate max_uses patch block')
+          target.write_text(text.replace(old, new, 1))
+          Path('.github/workflows/repair-search-controls-workflow.yml').unlink()
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Repair Xylune 0.24.7 search implementation workflow"
+          git push
