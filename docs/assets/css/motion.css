@@ -162,7 +162,7 @@ html.xylune-motion-ready .palette-choice {
   }*/
 }
 
-.button:active,
+/*.button:active,
 .icon-button:active,
 .resource-row:active,
 .appearance-launcher:active,
@@ -173,76 +173,7 @@ html.xylune-motion-ready .palette-choice {
 .material-switch:active {
   transform: scale(0.97);
   transition-duration: 70ms;
-}
-
-.material-switch {
-  --xylune-switch-travel: 18px;
-  --xylune-switch-drag-x: 0px;
-  box-sizing: border-box;
-  padding: 0 !important;
-  appearance: none;
-  touch-action: pan-y;
-  user-select: none;
-}
-
-.material-switch__handle,
-.material-switch:hover .material-switch__handle,
-.material-switch.is-checked .material-switch__handle,
-.material-switch.is-checked:hover .material-switch__handle {
-  left: 6px !important;
-  inset-inline-start: auto !important;
-  width: 16px;
-  height: 16px;
-  transform: translate3d(0, -50%, 0) !important;
-  transition:
-    transform 180ms var(--xylune-motion-standard),
-    width 180ms var(--xylune-motion-standard),
-    height 180ms var(--xylune-motion-standard),
-    background-color 180ms var(--xylune-motion-standard) !important;
-}
-
-.material-switch.is-checked .material-switch__handle,
-.material-switch.is-checked:hover .material-switch__handle {
-  width: 24px;
-  height: 24px;
-  transform: translate3d(var(--xylune-switch-travel), -50%, 0) !important;
-}
-
-.material-switch.is-dragging {
-  transform: none !important;
-  cursor: grabbing;
-}
-
-.material-switch.is-dragging .material-switch__handle,
-.material-switch.is-dragging:hover .material-switch__handle,
-.material-switch.is-dragging.is-checked .material-switch__handle,
-.material-switch.is-dragging.is-checked:hover .material-switch__handle {
-  width: 20px;
-  height: 20px;
-  transform: translate3d(var(--xylune-switch-drag-x), -50%, 0) !important;
-  transition:
-    width 100ms var(--xylune-motion-standard),
-    height 100ms var(--xylune-motion-standard),
-    background-color 100ms var(--xylune-motion-standard) !important;
-}
-
-.material-switch.is-dragging.is-drag-preview-on {
-  border-color: var(--primary);
-  background: var(--primary);
-}
-
-.material-switch.is-dragging.is-drag-preview-on .material-switch__handle {
-  background: var(--on-primary);
-}
-
-.material-switch.is-dragging:not(.is-drag-preview-on) {
-  border-color: var(--outline);
-  background: var(--surface-container);
-}
-
-.material-switch.is-dragging:not(.is-drag-preview-on) .material-switch__handle {
-  background: var(--outline);
-}
+}*/
 
 @media (prefers-reduced-motion: reduce) {
   html.xylune-motion-ready body,
