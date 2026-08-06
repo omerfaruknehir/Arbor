@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - .github/workflows/one-shot-search-stream-fix.yml
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -23,40 +26,61 @@ jobs:
           ref: fix/search-results-stream-errors-0.24.10
           fetch-depth: 0
 
+      - name: Check whether implementation is already applied
+        id: state
+        shell: bash
+        run: |
+          if grep -q 'versionName = "0.24.10"' app/build.gradle.kts; then
+            echo 'apply=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'apply=true' >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-java@v4
+        if: steps.state.outputs.apply == 'true'
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
 
       - uses: android-actions/setup-android@v4
+        if: steps.state.outputs.apply == 'true'
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       - uses: gradle/actions/setup-gradle@v4
+        if: steps.state.outputs.apply == 'true'
 
       - name: Apply search and stream error fixes
+        if: steps.state.outputs.apply == 'true'
         run: python3 .github/scripts/patch-search-results-stream-errors-0.24.10.py
 
       - name: Apply Qwen Cloud support
+        if: steps.state.outputs.apply == 'true'
         run: python3 .github/scripts/patch-qwen-cloud-0.24.10.py
 
       - name: Verify third-party licenses
+        if: steps.state.outputs.apply == 'true'
         run: ./ci/verify-third-party-licenses.sh
 
       - name: Verify offline license catalog
+        if: steps.state.outputs.apply == 'true'
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:generateOfflineLicenseCatalog
 
       - name: Run release unit tests
+        if: steps.state.outputs.apply == 'true'
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
 
       - name: Run release lint
+        if: steps.state.outputs.apply == 'true'
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
 
       - name: Assemble optimized release APK
+        if: steps.state.outputs.apply == 'true'
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease
 
       - name: Commit tested branch implementation
+        if: steps.state.outputs.apply == 'true'
         shell: bash
         run: |
           set -euo pipefail
