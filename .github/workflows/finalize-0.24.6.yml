@@ -1,11 +1,13 @@
 name: Finalize Xylune 0.24.6
 
-on:
+"on":
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: finalize-xylune-0.24.6
@@ -19,45 +21,40 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Bump version, update changelog, and retire this workflow
+      - name: Bump version and retire finalizer
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          current_version="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
-          current_code="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
+          current_version="$(sed -nE 's/.*versionName = "([^"]+)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          current_code="$(sed -nE 's/.*versionCode = ([0-9]+).*/\1/p' app/build.gradle.kts | head -n 1)"
+          test "$current_version" = "0.24.5"
+          test "$current_code" = "194"
 
-          if [[ "$current_version" != "0.24.5" || "$current_code" != "194" ]]; then
-            echo "Expected 0.24.5 (194), found ${current_version} (${current_code})." >&2
-            exit 1
-          fi
+          sed -i '0,/versionCode = 194/s//versionCode = 195/' app/build.gradle.kts
+          sed -i '0,/versionName = "0.24.5"/s//versionName = "0.24.6"/' app/build.gradle.kts
 
-          python3 - <<'PY'
-          from pathlib import Path
-
-          gradle = Path("app/build.gradle.kts")
-          text = gradle.read_text()
-          text = text.replace('versionCode = 194', 'versionCode = 195', 1)
-          text = text.replace('versionName = "0.24.5"', 'versionName = "0.24.6"', 1)
-          gradle.write_text(text)
-
-          changelog = Path("CHANGELOG.md")
-          entry = """## 0.24.6 — 2026-08-06
-
-- Fit every adaptive launcher foreground inside a consistent Android safe zone so the Xylune mark is fully visible in launchers, recent-app/task views, and other masked system surfaces.
-- Apply the same fitted geometry to Xylune, Dynamic/System, Graphite, Ocean, Violet, Sunset, and themed monochrome launcher artwork.
-- Replace Android 12+ splash use of adaptive launcher masks with dedicated palette-matched splash artwork that has additional outer spacing.
-
-"""
-          existing = changelog.read_text()
-          if not existing.startswith("## 0.24.6"):
-              changelog.write_text(entry + existing)
-          PY
+          {
+            printf '%s\n' \
+              '## 0.24.6 — 2026-08-06' \
+              '' \
+              '- Fit every adaptive launcher foreground inside a consistent Android safe zone so the Xylune mark is fully visible in launchers, recent-app/task views, and other masked system surfaces.' \
+              '- Apply the same fitted geometry to Xylune, Dynamic/System, Graphite, Ocean, Violet, Sunset, and themed monochrome launcher artwork.' \
+              '- Replace Android 12+ splash use of adaptive launcher masks with dedicated palette-matched splash artwork that has additional outer spacing.' \
+              ''
+            cat CHANGELOG.md
+          } > CHANGELOG.md.new
+          mv CHANGELOG.md.new CHANGELOG.md
 
           rm .github/workflows/finalize-0.24.6.yml
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/build.gradle.kts CHANGELOG.md .github/workflows/finalize-0.24.6.yml
+          git add -A
           git commit -m "Prepare Xylune 0.24.6 icon sizing release"
           git push
+
+          sleep 3
+          gh workflow run release.yml --ref main
