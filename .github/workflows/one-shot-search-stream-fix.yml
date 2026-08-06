@@ -178,4 +178,4 @@ jobs:
           set -euo pipefail
           gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main
 
-# direct-trigger: 2026-08-06T20:42Z
+# merge-trigger: 2026-08-06T20:50Z
