@@ -120,7 +120,7 @@ jobs:
               """class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)</(?:a|div)>""",
               RegexOption.IGNORE_CASE,
           )
-'''
+          '''
           client = client[:regex_start] + regex_block + client[regex_end:]
           lines = client.splitlines()
           target_indexes = [
