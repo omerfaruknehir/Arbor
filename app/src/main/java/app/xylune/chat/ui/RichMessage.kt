@@ -311,7 +311,7 @@ internal fun RichMessage(
     }
     val visibleBlocks = if (staticContent) staticBlocks else blocks
     val markwon = remember(context.applicationContext) { XyluneMarkwonCache.get(context.applicationContext) }
-    val sourceFooterMarkdown = remember(renderedText) { sourceReferencesFooterMarkdown(renderedText) }
+    val sourceReferences = remember(renderedText) { extractSourceReferences(renderedText) }
     Column(
         modifier = Modifier.noOpBringIntoView(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -418,12 +418,10 @@ internal fun RichMessage(
                 }
             }
         }
-        if (!renderStreaming && sourceFooterMarkdown.isNotBlank()) {
-            MarkdownBlock(
-                markwon = markwon,
-                markdown = sourceFooterMarkdown,
-                key = "$operationScope:sources-footer",
-                streaming = false,
+        if (!renderStreaming && sourceReferences.isNotEmpty()) {
+            SourceReferenceBar(
+                sources = sourceReferences,
+                modifier = Modifier.padding(top = 4.dp),
             )
         }
         StreamingTokenPulse(visible = streaming, modifier = Modifier.padding(top = 2.dp))
@@ -727,22 +725,6 @@ internal fun extractSourceReferences(markdown: String): List<XyluneSourceReferen
             null
         } else {
             reference
-        }
-    }
-}
-
-internal fun sourceReferencesFooterMarkdown(markdown: String): String {
-    val sources = extractSourceReferences(markdown)
-    if (sources.isEmpty()) return ""
-    return buildString {
-        append("**Sources**\n\n")
-        sources.forEachIndexed { index, source ->
-            if (index > 0) append('\n')
-            append("- [[")
-                .append(source.label.replace("[", "(").replace("]", ")"))
-                .append('|')
-                .append(source.target)
-                .append("]]" )
         }
     }
 }

@@ -1,3 +1,10 @@
+## 0.24.9 — 2026-08-06
+
+- Replace the vertical Markdown source list with a dedicated horizontal source bar at the bottom of completed responses.
+- Keep source cards compact in one scrollable lane, with numbered pills, labels, and domains.
+- Open the same anchored title/description preview and explicit Open action from both inline citations and bottom source pills.
+- Preserve source order and deduplicate repeated destinations.
+
 ## 0.24.8 — 2026-08-06
 
 - Add compact website source notation such as `[[PNA|https://example.com/article]]` and keep the earlier explicit source/file notation compatible.

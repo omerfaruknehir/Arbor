@@ -32,13 +32,15 @@ class RichMessageReferenceTest {
         assertTrue(rendered.contains("\\[ordinary\\]\\(https://example.com\\)"))
     }
 
-    @Test fun sourceFooterIsOrderedAndDeduplicatedByDestination() {
+    @Test fun sourceReferencesAreOrderedAndDeduplicatedByDestination() {
         val markdown = """First [[PNA|https://example.com/a]].
 Second [[Example|https://example.com/a]] and [[Other|https://example.com/b]]."""
-        val footer = sourceReferencesFooterMarkdown(markdown)
-        assertTrue(footer.startsWith("**Sources**"))
-        assertEquals(1, Regex("https://example.com/a").findAll(footer).count())
-        assertTrue(footer.indexOf("PNA") < footer.indexOf("Other"))
+        val sources = extractSourceReferences(markdown)
+        assertEquals(2, sources.size)
+        assertEquals("PNA", sources[0].label)
+        assertEquals("https://example.com/a", sources[0].target)
+        assertEquals("Other", sources[1].label)
+        assertEquals("https://example.com/b", sources[1].target)
     }
 
     @Test fun fileNotationBecomesAnXyluneFileLink() {
