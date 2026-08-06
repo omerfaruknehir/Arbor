@@ -259,19 +259,47 @@
   };
 
   const params = new URLSearchParams(location.search);
+  const APP_THEME_STORAGE = 'xylune-app-theme-v1';
   const isHex = (value) => /^[0-9a-f]{6}$/i.test(value || '');
-  const appColors = {};
+  const required = ['--primary', '--background', '--on-surface'];
+  const urlColors = {};
   Object.entries(names).forEach(([parameter, variable]) => {
     const value = params.get(parameter);
-    if (isHex(value)) appColors[variable] = `#${value.toLowerCase()}`;
+    if (isHex(value)) urlColors[variable] = `#${value.toLowerCase()}`;
   });
 
-  const required = ['--primary', '--background', '--on-surface'];
-  const appTheme = required.every((name) => appColors[name]) ? {
-    colors: appColors,
+  const readStoredAppTheme = () => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(APP_THEME_STORAGE) || 'null');
+      if (!stored || typeof stored !== 'object' || typeof stored.colors !== 'object') return null;
+      const colors = {};
+      Object.values(names).forEach((variable) => {
+        const value = stored.colors[variable];
+        if (/^#[0-9a-f]{6}$/i.test(value || '')) colors[variable] = value.toLowerCase();
+      });
+      if (!required.every((name) => colors[name])) return null;
+      return {
+        colors,
+        dark: Boolean(stored.dark),
+        dynamicLogo: Boolean(stored.dynamicLogo),
+      };
+    } catch (_) {
+      return null;
+    }
+  };
+
+  const urlAppTheme = required.every((name) => urlColors[name]) ? {
+    colors: urlColors,
     dark: params.get('dark') === '1',
     dynamicLogo: params.get('dynamicLogo') === '1',
   } : null;
+  if (urlAppTheme) {
+    localStorage.setItem(APP_THEME_STORAGE, JSON.stringify(urlAppTheme));
+  }
+  if (params.has('dynamicLogo')) {
+    localStorage.setItem('xylune-dynamic-icon', params.get('dynamicLogo') === '1' ? '1' : '0');
+  }
+  const appTheme = urlAppTheme || readStoredAppTheme();
 
   const supportedThemes = ['app', 'dark', 'light', 'system'];
   const supportedSchemes = ['app', 'xylune', 'graphite', 'ocean', 'violet', 'sunset'];
@@ -282,12 +310,16 @@
 
   let themePreference = supportedThemes.includes(urlTheme)
     ? urlTheme
-    : supportedThemes.includes(storedTheme) ? storedTheme : 'dark';
+    : urlAppTheme
+      ? 'app'
+      : supportedThemes.includes(storedTheme) ? storedTheme : 'dark';
   let schemePreference = supportedSchemes.includes(urlScheme)
     ? urlScheme
-    : urlTheme === 'app' && appTheme
+    : urlAppTheme
       ? 'app'
-      : supportedSchemes.includes(storedScheme) ? storedScheme : 'xylune';
+      : urlTheme === 'app' && appTheme
+        ? 'app'
+        : supportedSchemes.includes(storedScheme) ? storedScheme : 'xylune';
 
   if (!appTheme && themePreference === 'app') {
     themePreference = supportedThemes.includes(storedTheme) && storedTheme !== 'app'
@@ -300,6 +332,8 @@
       : 'xylune';
   }
   if (schemePreference === 'app') themePreference = 'app';
+  if (params.has('theme') || urlAppTheme) localStorage.setItem('xylune-theme', themePreference);
+  if (params.has('scheme') || urlAppTheme) localStorage.setItem('xylune-scheme', schemePreference);
 
   const resolvedTheme = themePreference === 'app'
     ? (appTheme.dark ? 'dark' : 'light')
@@ -328,6 +362,15 @@
     ...Object.keys(basePalettes.dark),
     '--focus',
   ])];
+  const queryKeys = ['theme', 'scheme', 'dark', 'dynamicLogo', ...Object.keys(names)];
+  const cleanUrl = new URL(location.href);
+  let removedAppearanceParameter = false;
+  queryKeys.forEach((key) => {
+    if (!cleanUrl.searchParams.has(key)) return;
+    cleanUrl.searchParams.delete(key);
+    removedAppearanceParameter = true;
+  });
+  if (removedAppearanceParameter) history.replaceState(null, '', cleanUrl);
 
   window.XylunePageTheme = {
     appTheme,
@@ -335,6 +378,6 @@
     fixedColors,
     supportedThemes,
     supportedSchemes,
-    queryKeys: ['theme', 'scheme', 'dark', 'dynamicLogo', ...Object.keys(names)],
+    queryKeys,
   };
 })();

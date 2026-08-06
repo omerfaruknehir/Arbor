@@ -17,3 +17,6 @@
 - Applies the selected Material palette to backgrounds, surfaces, ordinary text, bold text, outlines, and navigation.
 - Uses app-like expanded and collapsed page titles while keeping Privacy Policy and Terms scrolling unrestricted.
 - Keeps theme controls compact and matches website branding to Xylune's launcher-icon variants.
+- Adds the Xylune banner and a larger expanded home title.
+- Shows release notes directly on the Releases page, keeps the latest notes expanded, lists the ten newest versions, and clearly marks GitHub links as external.
+- Stores app-provided appearance parameters locally and removes them from the visible URL after the theme is applied.

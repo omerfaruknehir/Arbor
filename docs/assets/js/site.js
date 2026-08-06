@@ -10,13 +10,10 @@
     supportedSchemes: ['app', 'xylune'],
     queryKeys: ['theme', 'scheme', 'dynamicLogo'],
   };
-  const initialParams = new URLSearchParams(location.search);
   const storedDynamicIcon = localStorage.getItem('xylune-dynamic-icon');
-  let dynamicIconEnabled = initialParams.has('dynamicLogo')
-    ? initialParams.get('dynamicLogo') === '1'
-    : storedDynamicIcon !== null
-      ? storedDynamicIcon === '1'
-      : Boolean(themeState.appTheme?.dynamicLogo);
+  let dynamicIconEnabled = storedDynamicIcon !== null
+    ? storedDynamicIcon === '1'
+    : Boolean(themeState.appTheme?.dynamicLogo);
 
   const appIconPalettes = {
     xylune: {
@@ -150,14 +147,10 @@
   }
 
   function syncAppearanceLinks() {
-    const current = new URL(location.href);
     document.querySelectorAll('a[href]').forEach((anchor) => {
       const target = new URL(anchor.getAttribute('href'), location.href);
       if (target.origin !== location.origin) return;
-      themeState.queryKeys.forEach((key) => {
-        const value = current.searchParams.get(key);
-        if (value !== null) target.searchParams.set(key, value);
-      });
+      themeState.queryKeys.forEach((key) => target.searchParams.delete(key));
       anchor.href = target.href;
     });
   }
@@ -201,12 +194,15 @@
     return themeState.supportedSchemes.includes(value) ? value : 'xylune';
   }
 
-  function updateAppearanceUrl(themePreference, schemePreference) {
+  function cleanAppearanceUrl() {
     const url = new URL(location.href);
-    url.searchParams.set('theme', themePreference);
-    url.searchParams.set('scheme', schemePreference);
-    url.searchParams.set('dynamicLogo', dynamicIconEnabled ? '1' : '0');
-    history.replaceState(null, '', url);
+    let changed = false;
+    themeState.queryKeys.forEach((key) => {
+      if (!url.searchParams.has(key)) return;
+      url.searchParams.delete(key);
+      changed = true;
+    });
+    if (changed) history.replaceState(null, '', url);
   }
 
   function applyAppearance(themePreference, schemePreference, persist = true) {
@@ -241,14 +237,12 @@
       button.classList.toggle('is-selected', selected);
     });
 
-    if (persist && themePreference !== 'app') {
+    if (persist) {
       localStorage.setItem('xylune-theme', themePreference);
-    }
-    if (persist && schemePreference !== 'app') {
       localStorage.setItem('xylune-scheme', schemePreference);
     }
 
-    updateAppearanceUrl(themePreference, schemePreference);
+    cleanAppearanceUrl();
     syncAppearanceLinks();
   }
 
@@ -274,7 +268,7 @@
     const schemePreference = currentSchemePreference();
     syncBrandLogo(schemePreference);
     syncDynamicIconControls();
-    updateAppearanceUrl(themePreference, schemePreference);
+    cleanAppearanceUrl();
     syncAppearanceLinks();
   }
 
@@ -414,7 +408,9 @@
       getComputedStyle(root).getPropertyValue('--xylune-app-bar-collapse-distance'),
     ) || 88;
     const expandedTitleShift = 58;
-    const expandedTitleScale = 1.18;
+    const expandedTitleScale = Number.parseFloat(
+      getComputedStyle(scroller).getPropertyValue('--xylune-title-expanded-scale'),
+    ) || 1.18;
     const supportsScrollEnd = 'onscrollend' in scroller;
     let animationFrame = 0;
     let fallbackTimer = 0;
