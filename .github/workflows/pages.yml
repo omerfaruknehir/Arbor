@@ -29,6 +29,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validate website JavaScript
+        run: |
+          node --check docs/assets/js/theme-boot.js
+          node --check docs/assets/js/site.js
+          node --check docs/assets/js/motion.js
+          node --check docs/assets/js/logo-motion.js
+          node --check docs/assets/js/popup-motion.js
+          node --check docs/assets/js/releases.js
       - uses: actions/configure-pages@v5
       - uses: actions/jekyll-build-pages@v1
         with:

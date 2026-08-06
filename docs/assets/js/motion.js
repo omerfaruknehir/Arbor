@@ -136,6 +136,12 @@
     window.addEventListener('resize', scheduleThemeSync, { passive: true });
   }
 
+  function dispatchSwitchPreview(type, control, detail = {}) {
+    document.dispatchEvent(new CustomEvent(type, {
+      detail: { control, ...detail },
+    }));
+  }
+
   function setupDraggableSwitch(control) {
     let pointerId = null;
     let startX = 0;
@@ -153,6 +159,7 @@
       control.style.setProperty('--xylune-switch-drag-x', `${dragX}px`);
       control.style.setProperty('--xylune-switch-progress', `${progress * 100}%`);
       control.classList.add('is-dragging');
+      dispatchSwitchPreview('xylune-switch-preview', control, { progress });
     };
 
     const clearDrag = () => {
@@ -195,10 +202,15 @@
       pointerId = null;
       clearDrag();
 
-      if (cancelled || !moved) return;
+      if (cancelled) {
+        dispatchSwitchPreview('xylune-switch-preview-end', control, { checked: startChecked });
+        return;
+      }
+      if (!moved) return;
 
       suppressNativeClick = true;
       if (desired !== startChecked) control.click();
+      dispatchSwitchPreview('xylune-switch-preview-end', control, { checked: desired });
       window.setTimeout(() => {
         suppressNativeClick = false;
       }, 400);
@@ -210,6 +222,7 @@
       if (pointerId === null) return;
       pointerId = null;
       clearDrag();
+      dispatchSwitchPreview('xylune-switch-preview-end', control, { checked: checked() });
     });
   }
 
