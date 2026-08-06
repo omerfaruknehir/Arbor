@@ -29,32 +29,29 @@ html.xylune-motion-ready .palette-choice {
 
 .rail-nav__indicator {
   position: absolute;
-  inset: 0 4px auto;
+  inset: 0 0 auto;
   z-index: 0;
   height: var(--xylune-nav-indicator-height, 58px);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--primary-container) 52%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 10%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--primary-container) 44%, transparent);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(var(--xylune-nav-indicator-y, 0px));
-  transform-origin: center;
+  transform: translate3d(0, var(--xylune-nav-indicator-y, 0px), 0);
 }
 
 .rail-nav.is-ready .rail-nav__indicator {
   opacity: 1;
   transition:
-    transform 300ms var(--xylune-motion-emphasized),
-    height 300ms var(--xylune-motion-emphasized),
+    transform 240ms var(--xylune-motion-emphasized),
+    height 240ms var(--xylune-motion-emphasized),
     background-color var(--xylune-motion-medium) var(--xylune-motion-standard),
-    box-shadow var(--xylune-motion-medium) var(--xylune-motion-standard),
     opacity var(--xylune-motion-fast) linear;
 }
 
 .nav-item {
   position: relative;
   z-index: 1;
-  border-radius: 16px;
+  border-radius: 6px;
   background: transparent !important;
   transition:
     color var(--xylune-motion-fast) var(--xylune-motion-standard),
@@ -64,6 +61,8 @@ html.xylune-motion-ready .palette-choice {
 
 .nav-item.is-active {
   background: transparent !important;
+  color: var(--primary);
+  font-weight: 500;
 }
 
 .nav-item:hover {
@@ -71,7 +70,7 @@ html.xylune-motion-ready .palette-choice {
 }
 
 .nav-item.is-active:hover {
-  background: color-mix(in srgb, var(--primary-container) 18%, transparent) !important;
+  background: color-mix(in srgb, var(--primary-container) 14%, transparent) !important;
 }
 
 .theme-selector {
@@ -89,19 +88,17 @@ html.xylune-motion-ready .palette-choice {
   width: var(--xylune-theme-indicator-width, 0px);
   border-radius: 10px;
   background: var(--primary-container);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 12%, transparent);
   opacity: 0;
   pointer-events: none;
-  transform: translateX(var(--xylune-theme-indicator-x, 0px));
+  transform: translate3d(var(--xylune-theme-indicator-x, 0px), 0, 0);
 }
 
 .theme-selector.is-ready .theme-selector__indicator {
   opacity: 1;
   transition:
-    transform 280ms var(--xylune-motion-emphasized),
-    width 280ms var(--xylune-motion-emphasized),
+    transform 240ms var(--xylune-motion-emphasized),
+    width 240ms var(--xylune-motion-emphasized),
     background-color var(--xylune-motion-medium) var(--xylune-motion-standard),
-    box-shadow var(--xylune-motion-medium) var(--xylune-motion-standard),
     opacity var(--xylune-motion-fast) linear;
 }
 
@@ -179,29 +176,72 @@ html.xylune-motion-ready .palette-choice {
 }
 
 .material-switch {
+  --xylune-switch-travel: 18px;
+  --xylune-switch-drag-x: 0px;
   box-sizing: border-box;
   padding: 0 !important;
   appearance: none;
+  touch-action: pan-y;
+  user-select: none;
 }
 
-.material-switch__handle {
-  left: auto !important;
-  inset-inline-start: 6px;
+.material-switch__handle,
+.material-switch:hover .material-switch__handle,
+.material-switch.is-checked .material-switch__handle,
+.material-switch.is-checked:hover .material-switch__handle {
+  left: 6px !important;
+  inset-inline-start: auto !important;
+  width: 16px;
+  height: 16px;
+  transform: translate3d(0, -50%, 0) !important;
   transition:
-    inset-inline-start 180ms var(--xylune-motion-standard),
+    transform 180ms var(--xylune-motion-standard),
     width 180ms var(--xylune-motion-standard),
     height 180ms var(--xylune-motion-standard),
     background-color 180ms var(--xylune-motion-standard) !important;
 }
 
-.material-switch.is-checked .material-switch__handle {
-  left: auto !important;
-  inset-inline-start: 24px;
+.material-switch.is-checked .material-switch__handle,
+.material-switch.is-checked:hover .material-switch__handle {
+  width: 24px;
+  height: 24px;
+  transform: translate3d(var(--xylune-switch-travel), -50%, 0) !important;
 }
 
-.material-switch.is-checked:hover .material-switch__handle {
-  left: auto !important;
-  inset-inline-start: 26px;
+.material-switch.is-dragging {
+  transform: none !important;
+  cursor: grabbing;
+}
+
+.material-switch.is-dragging .material-switch__handle,
+.material-switch.is-dragging:hover .material-switch__handle,
+.material-switch.is-dragging.is-checked .material-switch__handle,
+.material-switch.is-dragging.is-checked:hover .material-switch__handle {
+  width: 20px;
+  height: 20px;
+  transform: translate3d(var(--xylune-switch-drag-x), -50%, 0) !important;
+  transition:
+    width 100ms var(--xylune-motion-standard),
+    height 100ms var(--xylune-motion-standard),
+    background-color 100ms var(--xylune-motion-standard) !important;
+}
+
+.material-switch.is-dragging.is-drag-preview-on {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.material-switch.is-dragging.is-drag-preview-on .material-switch__handle {
+  background: var(--on-primary);
+}
+
+.material-switch.is-dragging:not(.is-drag-preview-on) {
+  border-color: var(--outline);
+  background: var(--surface-container);
+}
+
+.material-switch.is-dragging:not(.is-drag-preview-on) .material-switch__handle {
+  background: var(--outline);
 }
 
 @media (prefers-reduced-motion: reduce) {
