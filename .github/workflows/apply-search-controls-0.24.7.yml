@@ -132,6 +132,15 @@ jobs:
           index = target_indexes[0]
           indent = lines[index][:-len(lines[index].lstrip())]
           lines[index] = indent + 'val target = Regex("""[?&]uddg=([^&]+)""").find(decoded)?.groupValues?.get(1)'
+          plain_indexes = [
+              index for index, line in enumerate(lines)
+              if ".toString().replace(Regex(" in line and ".trim()" in line
+          ]
+          if len(plain_indexes) != 1:
+              raise SystemExit(f"Expected one whitespace-normalization regex, found {len(plain_indexes)}")
+          index = plain_indexes[0]
+          indent = lines[index][:-len(lines[index].lstrip())]
+          lines[index] = indent + '.toString().replace(Regex("""\\s+"""), " ").trim()'
           client_path.write_text("\n".join(lines) + "\n")
 
           native_path = Path("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt")
