@@ -36,10 +36,7 @@
   transform: none !important;
 }
 
-.material-switch > .material-switch__handle,
-.material-switch:hover > .material-switch__handle,
-.material-switch.is-checked > .material-switch__handle,
-.material-switch.is-checked:hover > .material-switch__handle {
+.material-switch > .material-switch__handle {
   position: absolute !important;
   top: 50% !important;
   right: auto !important;
@@ -58,12 +55,14 @@
   will-change: transform;
 }
 
-.material-switch[aria-checked='true'] > .material-switch__handle {
+.material-switch[aria-checked='true'] > .material-switch__handle,
+.material-switch[aria-checked='true']:hover > .material-switch__handle {
   background: var(--on-primary) !important;
   transform: translate3d(20px, -50%, 0) !important;
 }
 
-.material-switch[aria-checked='false'] > .material-switch__handle {
+.material-switch[aria-checked='false'] > .material-switch__handle,
+.material-switch[aria-checked='false']:hover > .material-switch__handle {
   background: var(--outline) !important;
   transform: translate3d(0, -50%, 0) !important;
 }
