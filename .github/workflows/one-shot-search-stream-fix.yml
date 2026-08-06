@@ -1,4 +1,4 @@
-name: One-shot search and stream error fix
+name: One-shot search, stream error, and Qwen Cloud fix
 
 on:
   push:
@@ -8,24 +8,16 @@ on:
 
 permissions:
   contents: write
-  actions: write
+
+concurrency:
+  group: one-shot-search-stream-qwen-fix
+  cancel-in-progress: true
 
 jobs:
   implement:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 75
     steps:
-      - name: Cancel orphaned branch workflow
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          curl --fail-with-body --silent --show-error \
-            --request POST \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header "Accept: application/vnd.github+json" \
-            --header "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/31122197698/cancel" || true
-
       - uses: actions/checkout@v4
         with:
           ref: fix/search-results-stream-errors-0.24.10
@@ -43,8 +35,11 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Apply fixes
+      - name: Apply search and stream error fixes
         run: python3 .github/scripts/patch-search-results-stream-errors-0.24.10.py
+
+      - name: Apply Qwen Cloud support
+        run: python3 .github/scripts/patch-qwen-cloud-0.24.10.py
 
       - name: Verify third-party licenses
         run: ./ci/verify-third-party-licenses.sh
@@ -68,7 +63,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app CHANGELOG.md docs/releases/RELEASE_NOTES_0.24.10.md
-          git commit -m "Show search queries and useful stream errors"
+          git commit -m "Show search results, useful errors, and add Qwen Cloud"
           git push origin HEAD:fix/search-results-stream-errors-0.24.10
 
       - name: Remove one-shot workflow from main
@@ -80,6 +75,6 @@ jobs:
           path='.github/workflows/one-shot-search-stream-fix.yml'
           sha="$(gh api "repos/${GITHUB_REPOSITORY}/contents/${path}?ref=main" --jq '.sha')"
           gh api --method DELETE "repos/${GITHUB_REPOSITORY}/contents/${path}" \
-            -f message='Remove one-shot search and stream error workflow' \
+            -f message='Remove one-shot search, stream error, and Qwen workflow' \
             -f sha="$sha" \
             -f branch='main'
