@@ -1,6 +1,10 @@
 name: Apply search, stream error, and Qwen Cloud fixes
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-shot-search-stream-fix.yml'
   issue_comment:
     types: [created]
   workflow_run:
@@ -16,11 +20,12 @@ permissions:
 
 concurrency:
   group: apply-search-stream-qwen-fix
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   implement:
     if: >-
+      github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main') ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.issue.number == 88 && github.event.comment.body == '/run-xylune-fix')
