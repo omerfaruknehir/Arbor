@@ -311,6 +311,7 @@ internal fun RichMessage(
     }
     val visibleBlocks = if (staticContent) staticBlocks else blocks
     val markwon = remember(context.applicationContext) { XyluneMarkwonCache.get(context.applicationContext) }
+    val sourceFooterMarkdown = remember(renderedText) { sourceReferencesFooterMarkdown(renderedText) }
     Column(
         modifier = Modifier.noOpBringIntoView(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -416,6 +417,14 @@ internal fun RichMessage(
                     }
                 }
             }
+        }
+        if (!renderStreaming && sourceFooterMarkdown.isNotBlank()) {
+            MarkdownBlock(
+                markwon = markwon,
+                markdown = sourceFooterMarkdown,
+                key = "$operationScope:sources-footer",
+                streaming = false,
+            )
         }
         StreamingTokenPulse(visible = streaming, modifier = Modifier.padding(top = 2.dp))
     }
@@ -616,14 +625,52 @@ private fun PackageRequestBlock(
     )
 }
 
-private val XyluneReferenceNotation = Regex(
+internal data class XyluneSourceReference(
+    val label: String,
+    val target: String,
+)
+
+private val XyluneLegacyReferenceNotation = Regex(
     """\[\[(source|file)\|([^|\]]{1,160})\|([^\]]{1,1500})]]""",
+    RegexOption.IGNORE_CASE,
+)
+private val XyluneCompactSourceNotation = Regex(
+    """\[\[([^|\]\n]{1,160})\|(https?://[^\]\n]{1,1500})]]""",
+    RegexOption.IGNORE_CASE,
+)
+private val PreparedXyluneReferenceLink = Regex(
+    """\[[^\]\n]+]\(xylune-(?:source|file)://reference\?target=[^)]+\)""",
     RegexOption.IGNORE_CASE,
 )
 
 private val InlineMarkdownLink = Regex("!?\\[[^\\]\\n]+\\]\\([^)\\n]+\\)")
 private val ReferenceMarkdownLink = Regex("!?\\[[^\\]\\n]+\\]\\[[^\\]\\n]+\\]")
 private val AutoMarkdownLink = Regex("<(?:https?|mailto):[^>\\n]+>", RegexOption.IGNORE_CASE)
+
+private fun referenceMarkdownLink(kind: String, rawLabel: String, rawTarget: String): String {
+    val safeLabel = rawLabel.trim().replace("[", "(").replace("]", ")")
+    val label = if (safeLabel.length <= 30) safeLabel else safeLabel.take(29).trimEnd() + "…"
+    val target = URLEncoder.encode(rawTarget.trim(), Charsets.UTF_8.name()).replace("+", "%20")
+    return "[$label](xylune-${kind.lowercase()}://reference?target=$target)"
+}
+
+internal fun prepareReferenceMarkdown(markdown: String): String {
+    var rendered = XyluneLegacyReferenceNotation.replace(markdown) { match ->
+        referenceMarkdownLink(
+            kind = match.groupValues[1],
+            rawLabel = match.groupValues[2],
+            rawTarget = match.groupValues[3],
+        )
+    }
+    rendered = XyluneCompactSourceNotation.replace(rendered) { match ->
+        referenceMarkdownLink(
+            kind = "source",
+            rawLabel = match.groupValues[1],
+            rawTarget = match.groupValues[2],
+        )
+    }
+    return rendered
+}
 
 internal fun renderMarkdownLinksLiterally(markdown: String): String {
     fun escapeDelimiters(value: String): String = buildString(value.length + 8) {
@@ -632,18 +679,72 @@ internal fun renderMarkdownLinksLiterally(markdown: String): String {
             append(char)
         }
     }
-    var rendered = InlineMarkdownLink.replace(markdown) { escapeDelimiters(it.value) }
+
+    val protectedReferences = mutableListOf<String>()
+    var rendered = PreparedXyluneReferenceLink.replace(prepareReferenceMarkdown(markdown)) { match ->
+        val index = protectedReferences.size
+        protectedReferences += match.value
+        "\u0001xylune-reference-$index\u0002"
+    }
+    rendered = InlineMarkdownLink.replace(rendered) { escapeDelimiters(it.value) }
     rendered = ReferenceMarkdownLink.replace(rendered) { escapeDelimiters(it.value) }
     rendered = AutoMarkdownLink.replace(rendered) { escapeDelimiters(it.value) }
+    protectedReferences.forEachIndexed { index, reference ->
+        rendered = rendered.replace("\u0001xylune-reference-$index\u0002", reference)
+    }
     return rendered
 }
 
-internal fun prepareReferenceMarkdown(markdown: String): String = XyluneReferenceNotation.replace(markdown) { match ->
-    val kind = match.groupValues[1].lowercase()
-    val rawLabel = match.groupValues[2].trim().replace("[", "(").replace("]", ")")
-    val label = if (rawLabel.length <= 30) rawLabel else rawLabel.take(29).trimEnd() + "…"
-    val target = URLEncoder.encode(match.groupValues[3].trim(), Charsets.UTF_8.name()).replace("+", "%20")
-    "[$label](xylune-$kind://reference?target=$target)"
+internal fun extractSourceReferences(markdown: String): List<XyluneSourceReference> {
+    data class LocatedReference(val offset: Int, val reference: XyluneSourceReference)
+
+    val located = mutableListOf<LocatedReference>()
+    XyluneLegacyReferenceNotation.findAll(markdown).forEach { match ->
+        if (match.groupValues[1].equals("source", ignoreCase = true)) {
+            located += LocatedReference(
+                offset = match.range.first,
+                reference = XyluneSourceReference(
+                    label = match.groupValues[2].trim(),
+                    target = match.groupValues[3].trim(),
+                ),
+            )
+        }
+    }
+    XyluneCompactSourceNotation.findAll(markdown).forEach { match ->
+        located += LocatedReference(
+            offset = match.range.first,
+            reference = XyluneSourceReference(
+                label = match.groupValues[1].trim(),
+                target = match.groupValues[2].trim(),
+            ),
+        )
+    }
+
+    val seenTargets = linkedSetOf<String>()
+    return located.sortedBy(LocatedReference::offset).mapNotNull { locatedReference ->
+        val reference = locatedReference.reference
+        if (reference.label.isBlank() || reference.target.isBlank() || !seenTargets.add(reference.target)) {
+            null
+        } else {
+            reference
+        }
+    }
+}
+
+internal fun sourceReferencesFooterMarkdown(markdown: String): String {
+    val sources = extractSourceReferences(markdown)
+    if (sources.isEmpty()) return ""
+    return buildString {
+        append("**Sources**\n\n")
+        sources.forEachIndexed { index, source ->
+            if (index > 0) append('\n')
+            append("- [[")
+                .append(source.label.replace("[", "(").replace("]", ")"))
+                .append('|')
+                .append(source.target)
+                .append("]]" )
+        }
+    }
 }
 
 private object XyluneMarkwonCache {
