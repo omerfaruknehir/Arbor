@@ -15,6 +15,10 @@
     <link rel="apple-touch-icon" href="{{ '/assets/images/xylune-logo.svg' | relative_url }}" data-xylune-favicon>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    {% if page.preconnect_releases %}
+    <link rel="preconnect" href="https://api.github.com" crossorigin>
+    <link rel="dns-prefetch" href="//api.github.com">
+    {% endif %}
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400,0,0&family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="{{ '/assets/js/theme-boot.js' | relative_url }}"></script>
     <link rel="stylesheet" href="{{ '/assets/css/site.css' | relative_url }}">
