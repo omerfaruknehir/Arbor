@@ -20,3 +20,4 @@ permalink: /sitemap.xml
     <loc>{{ '/releases/' | absolute_url }}</loc>
   </url>
 </urlset>
+
