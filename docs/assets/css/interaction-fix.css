@@ -5,6 +5,7 @@
 
 .material-switch {
   --xylune-switch-drag-x: 0px;
+  --xylune-switch-progress: 0%;
   position: relative !important;
   box-sizing: border-box !important;
   width: 52px !important;
@@ -71,30 +72,30 @@
   box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
+.material-switch.is-dragging {
+  border-color: color-mix(
+    in srgb,
+    var(--outline) calc(100% - var(--xylune-switch-progress)),
+    var(--primary) var(--xylune-switch-progress)
+  ) !important;
+  background: color-mix(
+    in srgb,
+    var(--surface-container) calc(100% - var(--xylune-switch-progress)),
+    var(--primary) var(--xylune-switch-progress)
+  ) !important;
+}
+
 .material-switch.is-dragging > .material-switch__handle,
 .material-switch.is-dragging:hover > .material-switch__handle,
 .material-switch.is-dragging.is-checked > .material-switch__handle,
 .material-switch.is-dragging.is-checked:hover > .material-switch__handle {
-  transform: translate3d(var(--xylune-switch-drag-x, 0px), -50%, 0) !important;
-  transition: background-color 90ms var(--xylune-motion-standard, cubic-bezier(0.2, 0, 0, 1)) !important;
-}
-
-.material-switch.is-dragging.is-drag-preview-on {
-  border-color: var(--primary) !important;
-  background: var(--primary) !important;
-}
-
-.material-switch.is-dragging.is-drag-preview-on > .material-switch__handle {
-  background: var(--on-primary) !important;
-}
-
-.material-switch.is-dragging:not(.is-drag-preview-on) {
-  border-color: var(--outline) !important;
-  background: var(--surface-container) !important;
-}
-
-.material-switch.is-dragging:not(.is-drag-preview-on) > .material-switch__handle {
-  background: var(--outline) !important;
+  background: color-mix(
+    in srgb,
+    var(--outline) calc(100% - var(--xylune-switch-progress)),
+    var(--on-primary) var(--xylune-switch-progress)
+  ) !important;
+  transform: translate3d(var(--xylune-switch-drag-x), -50%, 0) !important;
+  transition: none !important;
 }
 
 .appearance-dialog {
