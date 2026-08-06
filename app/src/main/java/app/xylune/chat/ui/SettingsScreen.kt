@@ -279,6 +279,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         )
                         SettingsRoute.DEFAULTS -> NewChatDefaultsSettings(defaults, configuredProviders, viewModel)
                         SettingsRoute.RESPONSE_STYLE -> ResponseStyleSettingsPage(lessEmojiEnabled, viewModel)
+                        SettingsRoute.SEARCH -> SearchSettingsPage()
                         SettingsRoute.AUTOMATION -> AutomationSettingsPage(automation, configuredProviders, viewModel)
                         SettingsRoute.MEMORY -> MemorySettingsPage(automation, memories, viewModel)
                         SettingsRoute.APPEARANCE -> AppearanceSettingsPage(
@@ -392,6 +393,12 @@ private fun SettingsHome(
         )
     }
     SettingsGroup("Tools & safety") {
+        SettingsDestination(
+            icon = Icons.Outlined.Search,
+            title = "Search & web",
+            subtitle = "Native routing, search engines, credentials, and page fetching",
+            onClick = { onOpen(SettingsRoute.SEARCH) },
+        )
         SettingsDestination(
             icon = Icons.Outlined.Code,
             title = "Local execution",
@@ -3576,4 +3583,144 @@ private fun ModelEditorSheet(
             Spacer(Modifier.size(28.dp))
         }
     }
+}
+
+
+@Composable
+private fun SearchSettingsPage() = SettingsPage {
+    val context = LocalContext.current
+    val container = remember(context) {
+        (context.applicationContext as app.xylune.chat.XyluneApplication).container
+    }
+    val settings by container.appPreferences.webSearchSettings.collectAsState()
+    var apiKey by remember(settings.engine) {
+        mutableStateOf(container.secureStore.searchApiKey(settings.engine.name))
+    }
+    var keySaved by remember(settings.engine) { mutableStateOf(false) }
+
+    SettingsGroup("Routing") {
+        app.xylune.chat.settings.WebSearchRoute.entries.forEach { route ->
+            ListItem(
+                headlineContent = { Text(route.title) },
+                supportingContent = { Text(route.description) },
+                leadingContent = {
+                    RadioButton(
+                        selected = settings.route == route,
+                        onClick = null,
+                    )
+                },
+                modifier = Modifier.clickable {
+                    container.appPreferences.updateWebSearchSettings { it.copy(route = route) }
+                },
+            )
+        }
+    }
+
+    SettingsGroup("Fallback search engine") {
+        app.xylune.chat.settings.WebSearchEngine.entries.forEach { engine ->
+            ListItem(
+                headlineContent = { Text(engine.title) },
+                supportingContent = { Text(engine.description) },
+                leadingContent = {
+                    RadioButton(
+                        selected = settings.engine == engine,
+                        onClick = null,
+                    )
+                },
+                modifier = Modifier.clickable {
+                    keySaved = false
+                    container.appPreferences.updateWebSearchSettings { it.copy(engine = engine) }
+                },
+            )
+        }
+    }
+
+    if (settings.engine.requiresApiKey) {
+        SettingsGroup("${settings.engine.title} credential") {
+            OutlinedTextField(
+                value = apiKey,
+                onValueChange = {
+                    apiKey = it
+                    keySaved = false
+                },
+                label = { Text("API key") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                Button(onClick = {
+                    container.secureStore.setSearchApiKey(settings.engine.name, apiKey)
+                    keySaved = true
+                }) {
+                    Text(if (keySaved) "Saved" else "Save key")
+                }
+            }
+        }
+    }
+
+    if (settings.engine == app.xylune.chat.settings.WebSearchEngine.SEARXNG) {
+        SettingsGroup("SearXNG endpoint") {
+            OutlinedTextField(
+                value = settings.searxngEndpoint,
+                onValueChange = { value ->
+                    container.appPreferences.updateWebSearchSettings {
+                        it.copy(searxngEndpoint = value)
+                    }
+                },
+                label = { Text("Public HTTPS base URL") },
+                supportingText = { Text("The instance must enable JSON search output.") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+            )
+        }
+    }
+
+    SettingsGroup("Tool behavior") {
+        var maxResultsText by remember(settings.maxResults) {
+            mutableStateOf(settings.maxResults.toString())
+        }
+        OutlinedTextField(
+            value = maxResultsText,
+            onValueChange = { raw ->
+                maxResultsText = raw.filter(Char::isDigit).take(2)
+                maxResultsText.toIntOrNull()?.let { value ->
+                    container.appPreferences.updateWebSearchSettings {
+                        it.copy(maxResults = value)
+                    }
+                }
+            },
+            label = { Text("Maximum search results") },
+            supportingText = { Text("3–20 results per search call") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+        ListItem(
+            headlineContent = { Text("Allow page fetching") },
+            supportingContent = {
+                Text("Expose web_fetch so the model can read public HTTPS pages after searching.")
+            },
+            trailingContent = {
+                Switch(
+                    checked = settings.pageFetchEnabled,
+                    onCheckedChange = { enabled ->
+                        container.appPreferences.updateWebSearchSettings {
+                            it.copy(pageFetchEnabled = enabled)
+                        }
+                    },
+                )
+            },
+        )
+    }
+
+    Text(
+        "API keys are stored in Android encrypted preferences. Native-only mode never silently switches to a Xylune engine; Automatic mode does.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 6.dp),
+    )
 }

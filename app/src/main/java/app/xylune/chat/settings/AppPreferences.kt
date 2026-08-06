@@ -171,6 +171,7 @@ class AppPreferences(context: Context) {
     private val _chromeOverlayOpacity = MutableStateFlow(preferences.getFloat(KEY_CHROME_OVERLAY_OPACITY, 1f).coerceIn(0f, 1f))
     private val _lessEmojiEnabled = MutableStateFlow(preferences.getBoolean(KEY_LESS_EMOJI_ENABLED, true))
     private val _automaticUpdateChecks = MutableStateFlow(preferences.getBoolean(KEY_AUTOMATIC_UPDATE_CHECKS, true))
+    private val _webSearchSettings = MutableStateFlow(readWebSearchSettings())
     private val _newChatDefaults = MutableStateFlow(readNewChatDefaults())
     private val _generatedRepairMaxAttempts = MutableStateFlow(preferences.getInt(KEY_GENERATED_REPAIR_ATTEMPTS, 3).coerceIn(1, 5))
     private val _developerSettings = MutableStateFlow(readDeveloperSettings())
@@ -191,6 +192,7 @@ class AppPreferences(context: Context) {
     val chromeOverlayOpacity: StateFlow<Float> = _chromeOverlayOpacity.asStateFlow()
     val lessEmojiEnabled: StateFlow<Boolean> = _lessEmojiEnabled.asStateFlow()
     val automaticUpdateChecks: StateFlow<Boolean> = _automaticUpdateChecks.asStateFlow()
+    val webSearchSettings: StateFlow<WebSearchSettings> = _webSearchSettings.asStateFlow()
     val newChatDefaults: StateFlow<NewChatDefaults> = _newChatDefaults.asStateFlow()
     val generatedRepairMaxAttempts: StateFlow<Int> = _generatedRepairMaxAttempts.asStateFlow()
     val developerSettings: StateFlow<DeveloperSettings> = _developerSettings.asStateFlow()
@@ -294,6 +296,21 @@ class AppPreferences(context: Context) {
         preferences.edit { putBoolean(KEY_AUTOMATIC_UPDATE_CHECKS, enabled) }
     }
 
+    fun setWebSearchSettings(value: WebSearchSettings) {
+        val normalized = value.normalized()
+        _webSearchSettings.value = normalized
+        preferences.edit {
+            putString(KEY_WEB_SEARCH_ROUTE, normalized.route.name)
+            putString(KEY_WEB_SEARCH_ENGINE, normalized.engine.name)
+            putInt(KEY_WEB_SEARCH_MAX_RESULTS, normalized.maxResults)
+            putBoolean(KEY_WEB_FETCH_ENABLED, normalized.pageFetchEnabled)
+            putString(KEY_SEARXNG_ENDPOINT, normalized.searxngEndpoint)
+        }
+    }
+
+    fun updateWebSearchSettings(transform: (WebSearchSettings) -> WebSearchSettings) =
+        setWebSearchSettings(transform(_webSearchSettings.value))
+
     fun setGeneratedRepairMaxAttempts(value: Int) {
         val normalized = value.coerceIn(1, 5)
         _generatedRepairMaxAttempts.value = normalized
@@ -373,6 +390,14 @@ class AppPreferences(context: Context) {
     fun updateNewChatDefaults(transform: (NewChatDefaults) -> NewChatDefaults) =
         setNewChatDefaults(transform(_newChatDefaults.value))
 
+    private fun readWebSearchSettings() = WebSearchSettings(
+        route = enumValue(KEY_WEB_SEARCH_ROUTE, WebSearchRoute.AUTO),
+        engine = enumValue(KEY_WEB_SEARCH_ENGINE, WebSearchEngine.DUCKDUCKGO),
+        maxResults = preferences.getInt(KEY_WEB_SEARCH_MAX_RESULTS, 8),
+        pageFetchEnabled = preferences.getBoolean(KEY_WEB_FETCH_ENABLED, true),
+        searxngEndpoint = preferences.getString(KEY_SEARXNG_ENDPOINT, "").orEmpty(),
+    ).normalized()
+
     private fun readDeveloperSettings() = DeveloperSettings(
         enabled = preferences.getBoolean(KEY_DEVELOPER_ENABLED, false),
         toolDiagnosticsEnabled = preferences.getBoolean(KEY_TOOL_DIAGNOSTICS_ENABLED, false),
@@ -423,6 +448,11 @@ class AppPreferences(context: Context) {
         const val KEY_CHROME_OVERLAY_OPACITY = "chrome_overlay_opacity"
         const val KEY_LESS_EMOJI_ENABLED = "less_emoji_enabled"
         const val KEY_AUTOMATIC_UPDATE_CHECKS = "automatic_update_checks"
+        const val KEY_WEB_SEARCH_ROUTE = "web_search_route"
+        const val KEY_WEB_SEARCH_ENGINE = "web_search_engine"
+        const val KEY_WEB_SEARCH_MAX_RESULTS = "web_search_max_results"
+        const val KEY_WEB_FETCH_ENABLED = "web_fetch_enabled"
+        const val KEY_SEARXNG_ENDPOINT = "searxng_endpoint"
         const val CHROME_EDGE_CONTROL_REVISION = 2
         const val DEFAULT_CHROME_EDGE_SOFTNESS = 0.6f // 50% semantic feather after the flat 0% anchor.
         const val KEY_DEFAULT_PROVIDER = "new_chat_provider"

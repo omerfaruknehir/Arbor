@@ -117,13 +117,14 @@ class NativeWebSearchProviderTest {
 
     @Test
     fun responsesStreamExposesSearchProgressAndCitationsWithoutClientExecution() {
-        val state = ResponsesApiStreamState()
+        val state = ResponsesApiStreamState("DeepSeek native search")
         val searching = state.accept(
             """{"type":"response.web_search_call.searching","output_index":0,"item_id":"ws_1","action":{"type":"search","query":"Android 16"}}""",
         )
         val progress = searching!!.toolCallProgress.single()
-        assertEquals("web_search", progress.name)
+        assertEquals("native_web_search", progress.name)
         assertTrue(progress.argumentsJson.contains("Android 16"))
+        assertTrue(progress.argumentsJson.contains("DeepSeek native search"))
         assertFalse(progress.complete)
         assertTrue(searching.toolCalls.isEmpty())
 

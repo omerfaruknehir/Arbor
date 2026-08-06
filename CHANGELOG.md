@@ -1,3 +1,10 @@
+## 0.24.7 — 2026-08-06
+
+- Add configurable search routing: Automatic, provider-native-only, or a selected Xylune search engine.
+- Add DuckDuckGo, Brave Search, Tavily, Serper, and public SearXNG engine options, encrypted API-key storage, result-count control, and a page-fetch toggle.
+- Identify each search activity by its real backend, such as DeepSeek native search, Google Search grounding, or Brave Search, instead of leaving completed native calls as “Prepared web search”.
+- Show model-written Markdown hyperlinks as literal Markdown text rather than broken clickable spans.
+
 ## 0.24.6 — 2026-08-06
 
 - Fit every adaptive launcher foreground inside a consistent Android safe zone so the Xylune mark is fully visible in launchers, recent-app/task views, and other masked system surfaces.

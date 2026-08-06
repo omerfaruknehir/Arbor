@@ -190,6 +190,7 @@ class AgentTools(
     private val repository: ChatRepository,
     private val generatedBlockCompiler: GeneratedBlockCompiler,
     val runRecords: RunRecordStore = RunRecordStore(ubuntu::workspace),
+    private val webSearchClient: WebSearchClient,
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -214,7 +215,7 @@ class AgentTools(
         }
         "web_search", "search" -> {
             check(conversation.webSearchEnabled) { "Web search is disabled for this conversation." }
-            AgentToolOutcome(search(requireNotNull(request.query) { "Search query is missing" }))
+            AgentToolOutcome(webSearchClient.search(requireNotNull(request.query) { "Search query is missing" }))
         }
         "web_fetch", "fetch" -> {
             check(conversation.webSearchEnabled) { "Web access is disabled for this conversation." }
@@ -438,7 +439,7 @@ class AgentTools(
             val html = response.body?.readLimited(2_000_000).orEmpty()
             val results = parseDuckDuckGo(html).take(8)
             if (results.isEmpty()) "No search results were returned for: $query"
-            else json.encodeToString(WebSearchResponse(query, results))
+            else json.encodeToString(WebSearchResponse(query = query, engine = "DuckDuckGo", results = results))
         }
     }
 
@@ -562,7 +563,11 @@ private data class UbuntuToolResult(
 )
 
 @Serializable
-internal data class WebSearchResponse(val query: String, val results: List<WebSearchResult>)
+internal data class WebSearchResponse(
+    val query: String,
+    val engine: String = "DuckDuckGo",
+    val results: List<WebSearchResult>,
+)
 
 @Serializable
 internal data class WebSearchResult(val title: String, val url: String, val snippet: String)

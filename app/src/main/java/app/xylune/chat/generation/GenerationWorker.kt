@@ -206,8 +206,12 @@ class GenerationWorker(
         val activeMemories = if (automationSettings.memoryEnabled) {
             repository.memoriesForContext(newest, conversation.id)
         } else emptyList()
+        val webSearchSettings = container.appPreferences.webSearchSettings.value.normalized()
         val nativeToolDefinitions = if (model.supportsTools && !directImageModel) {
             XyluneNativeTools.definitions(conversation, memoryEnabled = automationSettings.memoryEnabled)
+                .filterNot { tool ->
+                    !webSearchSettings.pageFetchEnabled && tool.name.equals("web_fetch", ignoreCase = true)
+                }
         } else emptyList()
         val messages = ContextAssembler(container.database.attachmentDao()).assemble(
             conversation,
@@ -384,7 +388,17 @@ class GenerationWorker(
             argumentsJson: String = "",
         ): ToolExecution {
             val normalizedTool = request.type.lowercase()
-            val presentation = toolCallPresentation(request.type, argumentsJson)
+            val presentation = if (normalizedTool in setOf("web_search", "search")) {
+                ToolCallPresentation(
+                    kind = "search",
+                    preparingLabel = "Preparing ${webSearchSettings.engine.title} search",
+                    runningLabel = "Searching with ${webSearchSettings.engine.title}",
+                    completedLabel = "${webSearchSettings.engine.title} search",
+                    input = request.query.orEmpty(),
+                )
+            } else {
+                toolCallPresentation(request.type, argumentsJson)
+            }
             val label = presentation.runningLabel
             val input = if (normalizedTool in setOf("compile_widget", "widget_compile")) {
                 "xylune-widget candidate • ${request.source?.length ?: 0} characters"
@@ -718,11 +732,20 @@ class GenerationWorker(
                 val existingIndex = timeline.indexOfLast { it.id == eventId }
                 val existing = existingIndex.takeIf { it >= 0 }?.let(timeline::get)
                 val now = System.currentTimeMillis()
+                val nativeSearchComplete = progress.complete && presentation.kind == "native_search"
                 val event = MessageTimelineEvent(
                     id = eventId,
                     kind = presentation.kind,
-                    label = if (progress.complete) presentation.preparingLabel.replaceFirst("Preparing", "Prepared") else presentation.preparingLabel,
-                    status = if (progress.complete) "prepared" else "preparing",
+                    label = when {
+                        nativeSearchComplete -> presentation.completedLabel
+                        progress.complete -> presentation.preparingLabel.replaceFirst("Preparing", "Prepared")
+                        else -> presentation.preparingLabel
+                    },
+                    status = when {
+                        nativeSearchComplete -> "complete"
+                        progress.complete -> "prepared"
+                        else -> "preparing"
+                    },
                     input = presentation.input,
                     providerCallId = progress.id.ifBlank { existing?.providerCallId.orEmpty() },
                     argumentsJson = progress.argumentsJson,
@@ -784,6 +807,9 @@ class GenerationWorker(
                         thinkingEffort = conversation.thinkingEffort,
                         continuation = effectiveContinuation && round == 0 && !universalFallback,
                         customHeaders = parseHeaders(provider.customHeadersJson),
+                        webSearchRoute = webSearchSettings.route,
+                        webSearchEngine = webSearchSettings.engine,
+                        webSearchMaxResults = webSearchSettings.maxResults,
                         tools = if (nativeToolsDisabled) emptyList() else nativeToolDefinitions,
                         // Tool execution can be disabled for the final synthesis turn, but
                         // stale text-encoded calls must still be recognized and suppressed.

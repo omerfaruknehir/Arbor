@@ -621,6 +621,23 @@ private val XyluneReferenceNotation = Regex(
     RegexOption.IGNORE_CASE,
 )
 
+private val InlineMarkdownLink = Regex("!?\\[[^\\]\\n]+\\]\\([^)\\n]+\\)")
+private val ReferenceMarkdownLink = Regex("!?\\[[^\\]\\n]+\\]\\[[^\\]\\n]+\\]")
+private val AutoMarkdownLink = Regex("<(?:https?|mailto):[^>\\n]+>", RegexOption.IGNORE_CASE)
+
+internal fun renderMarkdownLinksLiterally(markdown: String): String {
+    fun escapeDelimiters(value: String): String = buildString(value.length + 8) {
+        value.forEach { char ->
+            if (char in charArrayOf('[', ']', '(', ')', '<', '>')) append('\\')
+            append(char)
+        }
+    }
+    var rendered = InlineMarkdownLink.replace(markdown) { escapeDelimiters(it.value) }
+    rendered = ReferenceMarkdownLink.replace(rendered) { escapeDelimiters(it.value) }
+    rendered = AutoMarkdownLink.replace(rendered) { escapeDelimiters(it.value) }
+    return rendered
+}
+
 internal fun prepareReferenceMarkdown(markdown: String): String = XyluneReferenceNotation.replace(markdown) { match ->
     val kind = match.groupValues[1].lowercase()
     val rawLabel = match.groupValues[2].trim().replace("[", "(").replace("]", ")")
@@ -658,7 +675,7 @@ internal fun MarkdownBlock(
     val pillForeground = MaterialTheme.colorScheme.onSecondaryContainer.toArgbCompat()
     val selectionColor = MaterialTheme.colorScheme.primary.copy(alpha = .32f).toArgbCompat()
     var pendingReference by remember(key) { mutableStateOf<LinkReferencePreview?>(null) }
-    val renderedMarkdown = remember(markdown) { prepareReferenceMarkdown(markdown) }
+    val renderedMarkdown = remember(markdown) { renderMarkdownLinksLiterally(markdown) }
     when {
         // Never feed an actively growing table to Markwon. Its TablePlugin assumes
         // the parser has already produced a complete alignment/cell matrix and can

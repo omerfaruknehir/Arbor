@@ -53,6 +53,16 @@ class SecureStore(context: Context) {
         preferences.edit { putString("key_$providerId", value.trim()) }
     }
 
+    fun searchApiKey(engineId: String): String =
+        preferences.getString("search_key_${engineId.lowercase().filter(Char::isLetterOrDigit)}", "").orEmpty()
+
+    fun setSearchApiKey(engineId: String, value: String) {
+        val key = "search_key_${engineId.lowercase().filter(Char::isLetterOrDigit)}"
+        preferences.edit {
+            if (value.isBlank()) remove(key) else putString(key, value.trim())
+        }
+    }
+
     fun cloudRecord(key: String): String? =
         preferences.getString("cloud_${key.filter { it.isLetterOrDigit() || it == '_' || it == '-' }}", null)
 

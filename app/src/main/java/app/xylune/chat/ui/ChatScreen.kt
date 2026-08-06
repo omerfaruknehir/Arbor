@@ -362,6 +362,7 @@ internal fun workEventTitle(event: MessageTimelineEvent): String =
     event.label.takeIf(String::isNotBlank) ?: when (event.kind) {
         "reasoning" -> "Reasoning"
         "search" -> "Web search"
+        "native_search" -> "Provider native search"
         "fetch" -> "Reading source"
         "script", "python" -> "Code execution"
         "ubuntu" -> "Linux command"
@@ -3166,9 +3167,14 @@ private fun SearchComposerChip(
 ) {
     var menu by remember { mutableStateOf(false) }
     val haptics = rememberXyluneHaptics()
+    val context = LocalContext.current
+    val searchSettings by remember(context) {
+        (context.applicationContext as app.xylune.chat.XyluneApplication)
+            .container.appPreferences.webSearchSettings
+    }.collectAsState()
     val label = when {
-        deepResearchEnabled -> "Deep research"
-        webEnabled -> "Search"
+        deepResearchEnabled -> "Research · ${searchSettings.activeLabel}"
+        webEnabled -> "Search · ${searchSettings.activeLabel}"
         else -> "Search off"
     }
     val icon = when {

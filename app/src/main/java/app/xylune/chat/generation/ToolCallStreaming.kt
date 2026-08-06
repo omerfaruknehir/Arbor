@@ -9,6 +9,7 @@ internal data class ToolCallPresentation(
     val kind: String,
     val preparingLabel: String,
     val runningLabel: String,
+    val completedLabel: String,
     val input: String,
 )
 
@@ -25,54 +26,72 @@ internal fun toolCallPresentation(name: String, argumentsJson: String): ToolCall
             kind = "search",
             preparingLabel = "Preparing web search",
             runningLabel = "Searching the web",
+            completedLabel = "Web search",
             input = value("query"),
         )
+        "native_web_search" -> value("source").ifBlank { "Provider native search" }.let { source ->
+            ToolCallPresentation(
+                kind = "native_search",
+                preparingLabel = "Starting $source",
+                runningLabel = source,
+                completedLabel = source,
+                input = value("query"),
+            )
+        }
         "web_fetch", "fetch" -> ToolCallPresentation(
             kind = "fetch",
             preparingLabel = "Preparing web fetch",
             runningLabel = "Reading a web page",
+            completedLabel = "Read web page",
             input = value("url"),
         )
         "linux_exec", "ubuntu_exec", "shell", "linux", "ubuntu" -> ToolCallPresentation(
             kind = "ubuntu",
             preparingLabel = "Preparing Linux tool call",
             runningLabel = "Using Linux tools",
+            completedLabel = "Linux tool",
             input = value("command"),
         )
         "send_file", "file_send" -> ToolCallPresentation(
             kind = "file_send",
             preparingLabel = "Preparing file delivery",
             runningLabel = "Preparing a file",
+            completedLabel = "Prepared file",
             input = value("path"),
         )
         "python", "python_exec" -> ToolCallPresentation(
             kind = "python",
             preparingLabel = "Preparing Python tool call",
             runningLabel = "Running Python",
+            completedLabel = "Python",
             input = value("code"),
         )
         "memory_save" -> ToolCallPresentation(
             kind = "memory",
             preparingLabel = "Preparing memory update",
             runningLabel = "Saving memory",
+            completedLabel = "Saved memory",
             input = value("text"),
         )
         "memory_list" -> ToolCallPresentation(
             kind = "memory",
             preparingLabel = "Preparing memory lookup",
             runningLabel = "Reading memory",
+            completedLabel = "Read memory",
             input = "Enabled memories",
         )
         "memory_forget" -> ToolCallPresentation(
             kind = "memory",
             preparingLabel = "Preparing memory removal",
             runningLabel = "Forgetting memory",
+            completedLabel = "Forgot memory",
             input = value("id"),
         )
         "compile_widget", "widget_compile" -> ToolCallPresentation(
             kind = "widget_compile",
             preparingLabel = "Preparing widget compile",
             runningLabel = "Compiling Home widget",
+            completedLabel = "Compiled Home widget",
             input = value("source").let { source ->
                 if (source.isBlank()) "Internal widget candidate" else "Internal widget candidate • ${source.length} characters"
             },
@@ -81,6 +100,7 @@ internal fun toolCallPresentation(name: String, argumentsJson: String): ToolCall
             kind = "tool_call",
             preparingLabel = if (name.isBlank()) "Preparing tool call" else "Preparing $name tool call",
             runningLabel = if (name.isBlank()) "Running tool" else "Running $name",
+            completedLabel = if (name.isBlank()) "Tool" else name,
             input = argumentsJson.take(4_000),
         )
     }

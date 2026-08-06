@@ -8,6 +8,7 @@ import android.os.Process
 import app.xylune.chat.chat.ChatRepository
 import app.xylune.chat.chat.AuxiliaryModelService
 import app.xylune.chat.agent.AgentTools
+import app.xylune.chat.agent.WebSearchClient
 import app.xylune.chat.data.XyluneDatabase
 import app.xylune.chat.data.DefaultCatalog
 import app.xylune.chat.data.ProviderKind
@@ -137,6 +138,14 @@ class AppContainer(val application: Application, val crashReporter: CrashReporte
         requestRepair = auxiliaryModels::repairGeneratedBlock,
     )
     val packageApprovals = PackageApprovalService(repository, auxiliaryModels)
-    val agentTools = AgentTools(pythonSandbox, ubuntuRuntime, repository, generatedBlockCompiler, runRecords)
+    val webSearchClient = WebSearchClient(appPreferences, secureStore)
+    val agentTools = AgentTools(
+        pythonSandbox,
+        ubuntuRuntime,
+        repository,
+        generatedBlockCompiler,
+        runRecords,
+        webSearchClient,
+    )
     val scheduler = GenerationScheduler(application, repository)
 }

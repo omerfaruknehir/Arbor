@@ -4,6 +4,7 @@ enum class SettingsRoute(val title: String) {
     HOME("Settings"),
     DEFAULTS("New chat defaults"),
     RESPONSE_STYLE("Response style"),
+    SEARCH("Search & web"),
     AUTOMATION("Background tasks"),
     MEMORY("Memory"),
     APPEARANCE("Appearance"),
