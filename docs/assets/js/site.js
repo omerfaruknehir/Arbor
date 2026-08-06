@@ -407,16 +407,39 @@
     }
   });
 
-  function setupTitleSettle() {
+  function setupTitleCollapse() {
     const scroller = document.querySelector('.page-with-app-bar');
     if (!scroller) return;
     const collapseDistance = Number.parseFloat(
       getComputedStyle(root).getPropertyValue('--xylune-app-bar-collapse-distance'),
     ) || 88;
+    const expandedTitleShift = 58;
+    const expandedTitleScale = 1.18;
+    const supportsScrollEnd = 'onscrollend' in scroller;
+    let animationFrame = 0;
     let fallbackTimer = 0;
+    let releaseTimer = 0;
     let settling = false;
 
-    const settle = () => {
+    const applyProgress = () => {
+      animationFrame = 0;
+      const progress = Math.min(1, Math.max(0, scroller.scrollTop / collapseDistance));
+      scroller.style.setProperty('--xylune-app-bar-row-shift', `${collapseDistance * progress}px`);
+      scroller.style.setProperty('--xylune-title-shift', `${expandedTitleShift * (1 - progress)}px`);
+      scroller.style.setProperty(
+        '--xylune-title-scale',
+        String(expandedTitleScale - ((expandedTitleScale - 1) * progress)),
+      );
+      scroller.style.setProperty('--xylune-bar-opacity', String(progress));
+      scroller.style.setProperty('--xylune-bar-shadow-alpha', String(0.13 * progress));
+    };
+
+    const queueProgress = () => {
+      if (!animationFrame) animationFrame = requestAnimationFrame(applyProgress);
+    };
+
+    const settlePartialTitle = () => {
+      applyProgress();
       if (settling) return;
       const position = scroller.scrollTop;
       if (position <= 1 || position >= collapseDistance - 1) return;
@@ -426,22 +449,26 @@
         top: target,
         behavior: reducedMotion.matches ? 'auto' : 'smooth',
       });
-      setTimeout(() => {
+      clearTimeout(releaseTimer);
+      releaseTimer = setTimeout(() => {
         settling = false;
-      }, reducedMotion.matches ? 0 : 260);
+        applyProgress();
+      }, reducedMotion.matches ? 0 : 320);
     };
 
-    if ('onscrollend' in scroller) {
-      scroller.addEventListener('scrollend', settle);
-    } else {
-      scroller.addEventListener('scroll', () => {
+    scroller.addEventListener('scroll', () => {
+      queueProgress();
+      if (!supportsScrollEnd) {
         clearTimeout(fallbackTimer);
-        fallbackTimer = setTimeout(settle, 120);
-      }, { passive: true });
-    }
+        fallbackTimer = setTimeout(settlePartialTitle, 140);
+      }
+    }, { passive: true });
+    if (supportsScrollEnd) scroller.addEventListener('scrollend', settlePartialTitle);
+    addEventListener('resize', queueProgress, { passive: true });
+    applyProgress();
   }
 
   applyAppearance(currentThemePreference(), currentSchemePreference(), false);
   syncAppearanceLinks();
-  setupTitleSettle();
+  setupTitleCollapse();
 })();

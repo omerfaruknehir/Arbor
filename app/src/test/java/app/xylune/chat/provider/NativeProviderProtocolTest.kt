@@ -71,6 +71,41 @@ class NativeProviderProtocolTest {
     }
 
     @Test
+    fun openAiCompatibleReadsVisibleReasoningAcrossProviderShapes() {
+        val provider = OpenAiCompatibleProvider()
+        val calls = linkedMapOf<Int, OpenAiCompatibleProvider.ToolCallAccumulator>()
+
+        assertEquals(
+            "OpenRouter reasoning",
+            provider.parseChunk(
+                """{"choices":[{"delta":{"reasoning":"OpenRouter reasoning"}}]}""",
+                calls,
+            )!!.reasoning,
+        )
+        assertEquals(
+            "Thinking alias",
+            provider.parseChunk(
+                """{"choices":[{"delta":{"thinking":"Thinking alias"}}]}""",
+                calls,
+            )!!.reasoning,
+        )
+        assertEquals(
+            "Structured detail",
+            provider.parseChunk(
+                """{"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.text","text":"Structured detail"}]}}]}""",
+                calls,
+            )!!.reasoning,
+        )
+        assertEquals(
+            "Summary detail",
+            provider.parseChunk(
+                """{"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.summary","summary":"Summary detail"},{"type":"reasoning.encrypted","data":"opaque"}]}}]}""",
+                calls,
+            )!!.reasoning,
+        )
+    }
+
+    @Test
     fun anthropicPreservesThinkingSignatureAndToolUseBlocks() {
         val provider = AnthropicProvider()
         val body = provider.buildRequestBody(request(ProviderKind.ANTHROPIC, listOf(InputMessage(MessageRole.USER, "Find it"))))
