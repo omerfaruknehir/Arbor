@@ -1,7 +1,8 @@
 title: Xylune
-description: Native Android. Private by design.
+description: Open-source, local-first Android BYOK AI chat app for OpenAI, Anthropic, Gemini, DeepSeek, OpenRouter, xAI, ChatGPT, and local model servers.
 url: https://omerfaruknehir.github.io
 baseurl: /Xylune
 repository: omerfaruknehir/Xylune
+default_social_image: https://raw.githubusercontent.com/omerfaruknehir/Xylune/main/branding/xylune-banner.png
 exclude:
   - README.md
