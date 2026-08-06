@@ -24,6 +24,8 @@ class WebsiteSwitchPopupRegressionTest {
         assertTrue(css.contains("height: 32px !important"))
         assertTrue(css.contains("overflow: hidden !important"))
         assertTrue(css.contains("left: 4px !important"))
+        assertTrue(css.contains("inset-inline-start: 4px !important"))
+        assertTrue(!css.contains("inset-inline-start: auto !important"))
         assertTrue(css.contains("width: 20px !important"))
         assertTrue(css.contains(".material-switch[aria-checked='true'] > .material-switch__handle"))
         assertTrue(css.contains("translate3d(20px, -50%, 0) !important"))
