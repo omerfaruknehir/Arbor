@@ -183,6 +183,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val chromeOverlayOpacity by viewModel.chromeOverlayOpacity.collectAsState()
     val renderSafeMode by viewModel.renderSafeMode.collectAsState()
     val lessEmojiEnabled by viewModel.lessEmojiEnabled.collectAsState()
+    val automaticUpdateChecks by viewModel.automaticUpdateChecks.collectAsState()
     val generatedRepairMaxAttempts by viewModel.generatedRepairMaxAttempts.collectAsState()
     val developerSettings by viewModel.developerSettings.collectAsState()
     val providerSetupRequested by viewModel.providerSetupRequested.collectAsState()
@@ -312,6 +313,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             viewModel = viewModel,
                             developerEnabled = developerSettings.enabled,
                             matchLauncherIconToPalette = matchLauncherIconToPalette,
+                            automaticUpdateChecks = automaticUpdateChecks,
                             onOpenDeveloper = { viewModel.openSettingsRoute(SettingsRoute.DEVELOPER) },
                             onOpenLicenses = { viewModel.openSettingsRoute(SettingsRoute.LICENSES) },
                         )
@@ -1517,6 +1519,7 @@ private fun AboutSettingsPage(
     viewModel: ChatViewModel,
     developerEnabled: Boolean,
     matchLauncherIconToPalette: Boolean,
+    automaticUpdateChecks: Boolean,
     onOpenDeveloper: () -> Unit,
     onOpenLicenses: () -> Unit,
 ) = SettingsPage {
@@ -1601,10 +1604,24 @@ private fun AboutSettingsPage(
     }
 
     SettingsGroup("Updates") {
+        ListItem(
+            headlineContent = { Text("Check automatically", fontWeight = FontWeight.SemiBold) },
+            supportingContent = { Text("Check the source repository once per day when Xylune starts") },
+            leadingContent = { Icon(Icons.Outlined.Refresh, null, tint = MaterialTheme.colorScheme.primary) },
+            trailingContent = {
+                Switch(
+                    checked = automaticUpdateChecks,
+                    onCheckedChange = viewModel::setAutomaticUpdateChecks,
+                    enabled = sourceRepository != null,
+                )
+            },
+            colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent),
+        )
+        HorizontalDivider()
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             when (val state = updateState) {
                 RepositoryUpdateState.Unsupported -> {
-                    Text("Automatic checks are disabled because this build has no embedded GitHub repository origin.")
+                    Text("Automatic checks are unavailable because this build has no embedded GitHub repository origin.")
                     Text(
                         "GitHub release workflows embed their own owner/repository. Fork builds therefore follow the fork they came from.",
                         style = MaterialTheme.typography.bodySmall,

@@ -1,3 +1,10 @@
+## 0.24.5 — 2026-08-06
+
+- Show visible reasoning returned through OpenAI-compatible reasoning fields and route streamed `<thinking>` or `<think>` blocks into Xylune's Working UI, even when tags are split across network chunks.
+- Add a persistent, default-on automatic update-check option under About, checking the build's source repository at most once per day while preserving manual checks.
+- Preserve the automatic-update preference in portable settings backups and restore it safely from older archives.
+- Complete the GitHub Pages appearance overhaul with full Material surface/text tinting, app-like collapsing titles, unrestricted legal-document scrolling, compact appearance controls, and launcher-icon parity.
+
 ## 0.24.4 — 2026-08-05
 
 - Route Privacy, Terms, and Data Deletion to the rendered Xylune Pages site and expose them under About Xylune.

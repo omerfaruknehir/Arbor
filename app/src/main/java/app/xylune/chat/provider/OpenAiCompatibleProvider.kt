@@ -64,6 +64,7 @@ class OpenAiCompatibleProvider(
                 attemptRequest.toolProtocolNames.mapTo(this) { it.lowercase() }
             }
             val dsmlChannels = protocolTools.takeIf { it.isNotEmpty() }?.let(::DsmlChannelsAdapter)
+            val thinkingTags = ThinkingTagStreamParser()
             val rawText = StringBuilder()
             val rawReasoning = StringBuilder()
             // DSML is filtered incrementally by DsmlChannelsAdapter. Never
@@ -88,10 +89,10 @@ class OpenAiCompatibleProvider(
                     val payload = line.removePrefix("data:").trim()
                     if (payload == "[DONE]") break
                     parseChunk(payload, calls)?.let { chunk ->
-                        rawText.append(chunk.text)
-                        rawReasoning.append(chunk.reasoning)
-                        val adapted = dsmlChannels?.accept(chunk.text, chunk.reasoning)
-                            ?: DsmlChannelDelta(chunk.text, chunk.reasoning)
+                        val tagged = thinkingTags.accept(chunk.text, chunk.reasoning)
+                        rawText.append(tagged.text)
+                        rawReasoning.append(tagged.reasoning)
+                        val adapted = dsmlChannels?.accept(tagged.text, tagged.reasoning) ?: tagged
                         val outgoing = if (
                             adapted.text == chunk.text && adapted.reasoning == chunk.reasoning
                         ) {
@@ -106,6 +107,18 @@ class OpenAiCompatibleProvider(
                         attemptCachedTokens = outgoing.cachedInputTokens ?: attemptCachedTokens
                         emit(outgoing)
                     }
+                }
+            }
+
+            val thinkingTail = thinkingTags.finish()
+            if (thinkingTail.text.isNotEmpty() || thinkingTail.reasoning.isNotEmpty()) {
+                rawText.append(thinkingTail.text)
+                rawReasoning.append(thinkingTail.reasoning)
+                val routedTail = dsmlChannels?.accept(thinkingTail.text, thinkingTail.reasoning) ?: thinkingTail
+                val outgoingTail = StreamChunk(text = routedTail.text, reasoning = routedTail.reasoning)
+                if (outgoingTail.hasMeaningfulPayload()) {
+                    meaningfulPayloadReceived = true
+                    emit(outgoingTail)
                 }
             }
 
@@ -555,6 +568,71 @@ class OpenAiCompatibleProvider(
     private fun StreamChunk.hasMeaningfulPayload(): Boolean =
         text.isNotEmpty() || reasoning.isNotEmpty() || toolCallProgress.isNotEmpty() ||
             toolCalls.isNotEmpty() || generatedImages.isNotEmpty()
+
+    internal class ThinkingTagStreamParser {
+        private data class Tag(val value: String, val entersThinking: Boolean)
+
+        private val tags = listOf(
+            Tag("<thinking>", true),
+            Tag("</thinking>", false),
+            Tag("<think>", true),
+            Tag("</think>", false),
+        )
+        private val pending = StringBuilder()
+        private var inThinking = false
+
+        fun accept(text: String, explicitReasoning: String = ""): DsmlChannelDelta {
+            val combined = buildString {
+                append(pending)
+                append(text)
+            }
+            pending.clear()
+            val visible = StringBuilder()
+            val reasoning = StringBuilder(explicitReasoning)
+
+            fun appendCurrent(value: String) {
+                if (value.isEmpty()) return
+                if (inThinking) reasoning.append(value) else visible.append(value)
+            }
+
+            var index = 0
+            while (index < combined.length) {
+                val marker = combined.indexOf('<', index)
+                if (marker < 0) {
+                    appendCurrent(combined.substring(index))
+                    break
+                }
+                appendCurrent(combined.substring(index, marker))
+                val remaining = combined.substring(marker)
+                val complete = tags.firstOrNull { tag ->
+                    remaining.length >= tag.value.length &&
+                        remaining.regionMatches(0, tag.value, 0, tag.value.length, ignoreCase = true)
+                }
+                if (complete != null) {
+                    inThinking = complete.entersThinking
+                    index = marker + complete.value.length
+                    continue
+                }
+                if (tags.any { tag -> tag.value.startsWith(remaining, ignoreCase = true) }) {
+                    pending.append(remaining)
+                    break
+                }
+                appendCurrent("<")
+                index = marker + 1
+            }
+            return DsmlChannelDelta(visible.toString(), reasoning.toString())
+        }
+
+        fun finish(): DsmlChannelDelta {
+            val remainder = pending.toString()
+            pending.clear()
+            return if (inThinking) {
+                DsmlChannelDelta(text = "", reasoning = remainder)
+            } else {
+                DsmlChannelDelta(text = remainder, reasoning = "")
+            }
+        }
+    }
 
     internal class ToolCallAccumulator {
         var id: String = ""
