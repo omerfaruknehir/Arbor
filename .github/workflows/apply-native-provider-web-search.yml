@@ -1,0 +1,48 @@
+name: Apply native provider web search patch
+
+on:
+  push:
+    branches:
+      - agent/native-provider-web-search
+    paths:
+      - tools/native-provider-web-search.patch
+      - .github/workflows/apply-native-provider-web-search.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/native-provider-web-search
+          fetch-depth: 0
+
+      - name: Apply patch
+        run: |
+          git apply --check tools/native-provider-web-search.patch
+          git apply tools/native-provider-web-search.patch
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile and run unit tests
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
+
+      - name: Commit verified implementation
+        run: |
+          rm tools/native-provider-web-search.patch
+          rm .github/workflows/apply-native-provider-web-search.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Use provider-native server-side web search'
+          git push origin HEAD:agent/native-provider-web-search
