@@ -110,9 +110,14 @@ class LauncherIconManagerTest {
 
         val adaptiveIcon = File("src/main/res/mipmap-anydpi/ic_launcher_system.xml").readText()
         assertFalse(adaptiveIcon.contains("<monochrome"))
-        val splash = File("src/main/res/values-v31/styles.xml").readText()
-        assertTrue(splash.contains("Theme.Xylune.Launcher.System"))
-        assertTrue(splash.contains("@mipmap/ic_launcher_system"))
-        assertTrue(splash.contains("@color/xylune_splash_system"))
+        assertTrue(adaptiveIcon.contains("@drawable/ic_launcher_foreground_system_safe"))
+
+        val splashStyles = File("src/main/res/values-v31/styles.xml").readText()
+        assertTrue(splashStyles.contains("Theme.Xylune.Launcher.System"))
+        assertTrue(splashStyles.contains("@drawable/ic_splash_system"))
+        assertTrue(splashStyles.contains("@color/xylune_splash_system"))
+
+        val splashArtwork = File("src/main/res/drawable/ic_splash_system.xml").readText()
+        assertTrue(splashArtwork.contains("@drawable/ic_xylune_mark_system"))
     }
 }
