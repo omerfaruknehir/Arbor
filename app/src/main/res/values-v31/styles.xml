@@ -1,31 +1,31 @@
 <resources>
     <style name="Theme.Xylune.Launcher">
         <item name="android:windowSplashScreenBackground">@color/xylune_splash_fallback</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_xylune</item>
         <item name="android:windowSplashScreenAnimationDuration">120</item>
     </style>
     <style name="Theme.Xylune.Launcher.Xylune">
         <item name="android:windowSplashScreenBackground">@color/xylune_splash_fallback</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_xylune</item>
     </style>
     <style name="Theme.Xylune.Launcher.System">
         <item name="android:windowSplashScreenBackground">@color/xylune_splash_system</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_system</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_system</item>
     </style>
     <style name="Theme.Xylune.Launcher.Graphite">
         <item name="android:windowSplashScreenBackground">@color/xylune_splash_fallback</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_graphite</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_graphite</item>
     </style>
     <style name="Theme.Xylune.Launcher.Ocean">
         <item name="android:windowSplashScreenBackground">@color/xylune_splash_fallback</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_ocean</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_ocean</item>
     </style>
     <style name="Theme.Xylune.Launcher.Violet">
         <item name="android:windowSplashScreenBackground">@color/xylune_splash_fallback</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_violet</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_violet</item>
     </style>
     <style name="Theme.Xylune.Launcher.Sunset">
         <item name="android:windowSplashScreenBackground">@color/xylune_splash_fallback</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_sunset</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_sunset</item>
     </style>
 </resources>
