@@ -1,0 +1,128 @@
+:root {
+  --xylune-popup-duration: 220ms;
+  --xylune-popup-easing: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/*
+ * The switch geometry lives here as one final, cache-busted layer. Earlier
+ * styles used both `left` and transforms, so mixed cached assets could add
+ * the two positions together and push the thumb outside the track.
+ */
+.material-switch {
+  --xylune-switch-drag-x: 0px;
+  position: relative !important;
+  box-sizing: border-box !important;
+  width: 52px !important;
+  min-width: 52px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border-width: 2px !important;
+  border-style: solid !important;
+  border-radius: 999px !important;
+  appearance: none !important;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.material-switch:active,
+.material-switch.is-dragging {
+  transform: none !important;
+}
+
+.material-switch__handle,
+.material-switch:hover .material-switch__handle,
+.material-switch.is-checked .material-switch__handle,
+.material-switch.is-checked:hover .material-switch__handle {
+  position: absolute !important;
+  top: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: 6px !important;
+  inset-inline-start: auto !important;
+  width: 16px !important;
+  height: 16px !important;
+  margin: 0 !important;
+  border-radius: 50% !important;
+  transform: translateY(-50%) !important;
+  transition:
+    left 180ms cubic-bezier(0.2, 0, 0, 1),
+    width 180ms cubic-bezier(0.2, 0, 0, 1),
+    height 180ms cubic-bezier(0.2, 0, 0, 1),
+    background-color 180ms cubic-bezier(0.2, 0, 0, 1) !important;
+}
+
+.material-switch.is-checked .material-switch__handle,
+.material-switch.is-checked:hover .material-switch__handle {
+  left: 22px !important;
+  width: 24px !important;
+  height: 24px !important;
+  transform: translateY(-50%) !important;
+}
+
+.material-switch:hover:not(.is-dragging) {
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+.material-switch.is-dragging .material-switch__handle,
+.material-switch.is-dragging:hover .material-switch__handle,
+.material-switch.is-dragging.is-checked .material-switch__handle,
+.material-switch.is-dragging.is-checked:hover .material-switch__handle {
+  left: calc(6px + var(--xylune-switch-drag-x, 0px)) !important;
+  width: 20px !important;
+  height: 20px !important;
+  transform: translateY(-50%) !important;
+  transition:
+    width 90ms var(--xylune-motion-standard, cubic-bezier(0.2, 0, 0, 1)),
+    height 90ms var(--xylune-motion-standard, cubic-bezier(0.2, 0, 0, 1)),
+    background-color 90ms var(--xylune-motion-standard, cubic-bezier(0.2, 0, 0, 1)) !important;
+}
+
+/* Native-dialog popup motion, including an animated close rather than a cut. */
+.appearance-dialog {
+  opacity: 0;
+  transform: translateY(18px) scale(0.96);
+  transform-origin: center;
+  transition:
+    opacity 160ms ease,
+    transform var(--xylune-popup-duration) var(--xylune-popup-easing);
+  will-change: opacity, transform;
+}
+
+.appearance-dialog.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.appearance-dialog.is-closing {
+  pointer-events: none;
+}
+
+.appearance-dialog::backdrop {
+  opacity: 0;
+  transition: opacity var(--xylune-popup-duration) ease;
+}
+
+.appearance-dialog.is-visible::backdrop {
+  opacity: 1;
+}
+
+@media (max-width: 620px) {
+  .appearance-dialog {
+    transform: translateY(28px) scale(0.98);
+  }
+
+  .appearance-dialog.is-visible {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .material-switch,
+  .material-switch__handle,
+  .appearance-dialog,
+  .appearance-dialog::backdrop {
+    transition: none !important;
+  }
+}
