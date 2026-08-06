@@ -18,13 +18,8 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Extract and run one-shot patch
-        shell: bash
-        run: |
-          sed -n "/python3 - <<'PY'/,/^          PY$/p" .github/workflows/patch-pages-reasoning-once.yml \
-            | sed '1d;$d;s/^          //' > /tmp/patch-pages-reasoning.py
-          python3 /tmp/patch-pages-reasoning.py
-          rm -f .github/workflows/patch-pages-reasoning-pr.yml .github/patch-pages-reasoning.trigger
+      - name: Apply one-shot patch
+        run: python3 .github/scripts/patch_pages_reasoning.py
 
       - name: Run focused unit tests
         run: ./gradlew testReleaseUnitTest --tests app.xylune.chat.provider.NativeProviderProtocolTest --tests app.xylune.chat.ui.LegalWebsiteIntegrationTest
