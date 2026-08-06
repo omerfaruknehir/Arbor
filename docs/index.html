@@ -3,17 +3,17 @@ layout: default
 home: true
 title: Xylune
 heading: Xylune
-browser_title: Xylune · Native Android. Private by design.
-description: Xylune is a local-first Android client for user-configured AI providers, tools, widgets, and portable backups.
+browser_title: Xylune — Android BYOK AI Chat App
+description: Xylune is an open-source Android BYOK AI chat app for OpenAI, Anthropic, Gemini, DeepSeek, OpenRouter, xAI, ChatGPT, and local model servers.
 ---
 
-<div class="home-banner" aria-label="Xylune banner">
-  <img src="https://raw.githubusercontent.com/omerfaruknehir/Xylune/main/branding/xylune-banner.png" alt="Xylune">
+<div class="home-banner" aria-label="Xylune Android BYOK AI chat app banner">
+  <img src="https://raw.githubusercontent.com/omerfaruknehir/Xylune/main/branding/xylune-banner.png" alt="Xylune, an Android BYOK AI chat app">
 </div>
 
 <section class="home-content" aria-labelledby="home-headline">
-  <p class="headline" id="home-headline">Native Android. Private by design.</p>
-  <p class="intro">A local-first Android client for your choice of AI providers, tools, programmable widgets, and portable backups.</p>
+  <p class="headline" id="home-headline">Native Android BYOK AI chat. Private by design.</p>
+  <p class="intro">An open-source, local-first Android AI chat app that connects directly to the providers and local models you choose.</p>
 
   <ul class="destination-list" aria-label="Xylune resources">
     <li><a href="{{ '/privacy/' | relative_url }}">Privacy Policy <span>/ Gizlilik ve KVKK Aydınlatma Metni</span></a></li>
@@ -27,13 +27,24 @@ description: Xylune is a local-first Android client for user-configured AI provi
   <div class="primary-actions">
     <a class="button button-primary" href="https://github.com/omerfaruknehir/Xylune/releases/latest">
       <span class="material-symbols-rounded" aria-hidden="true">download</span>
-      <span>Get Xylune</span>
+      <span>Download Android APK</span>
     </a>
     <a class="button button-text" href="{{ '/releases/' | relative_url }}">
-      <span>Releases</span>
+      <span>All releases</span>
       <span class="material-symbols-rounded" aria-hidden="true">chevron_right</span>
     </a>
   </div>
+
+  <section class="home-search-summary" aria-labelledby="byok-heading">
+    <p class="eyebrow">Android BYOK AI client</p>
+    <h2 id="byok-heading">One native app for your AI providers</h2>
+    <p>Bring your own API keys, a supported ChatGPT account, or a compatible local model server. Xylune sends requests directly from your Android device to the service you select, without a Xylune relay backend.</p>
+    <ul class="feature-points">
+      <li><strong>Multi-provider chat:</strong> OpenAI, Anthropic, Gemini, DeepSeek, OpenRouter, xAI, ChatGPT, and OpenAI-compatible endpoints.</li>
+      <li><strong>Local-first storage:</strong> encrypted credentials, a local SQLCipher chat database, app-private files, and portable backups.</li>
+      <li><strong>Native Android tools:</strong> streaming chat, search, files, Markdown, LaTeX, Python, optional Linux tools, and programmable widgets.</li>
+    </ul>
+  </section>
 
   <aside class="privacy-note">
     <span class="note-icon material-symbols-rounded" aria-hidden="true">shield</span>
