@@ -38,7 +38,7 @@
 
 * {
   box-sizing: border-box;
-  transition: all 100ms ease;
+  transition: color 100ms ease, background-color 100ms ease;
 }
 
 .preload * {
