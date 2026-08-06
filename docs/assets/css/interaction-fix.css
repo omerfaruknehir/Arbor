@@ -147,7 +147,7 @@
 .appearance-dialog.is-visible > .appearance-dialog__section {
   opacity: 1;
   transform: translateY(0);
-  transition-delay: calc(45ms + (var(--xylune-popup-item-index, 0) * 32ms));
+  transition-delay: var(--xylune-popup-item-delay, 45ms);
 }
 
 .appearance-dialog.is-closing > .dialog-heading,
