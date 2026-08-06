@@ -4,13 +4,17 @@
 {% if app_bar_title == nil or app_bar_title == '' %}
   {% assign app_bar_title = title_parts | first %}
 {% endif %}
+{% assign document_title = page.browser_title %}
+{% if document_title == nil or document_title == '' %}
+  {% capture document_title %}{{ page.title | default: site.title | escape }} · Xylune{% endcapture %}
+{% endif %}
 <html lang="{{ page.lang | default: 'en' }}" data-theme="dark" class="collapsing-title-page">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#101411">
     <meta name="description" content="{{ page.description | default: site.description | escape }}">
-    <title>{{ page.title | default: site.title | escape }} · Xylune</title>
+    <title>{{ document_title }}</title>
     <link rel="icon" href="{{ '/assets/images/xylune-logo.svg' | relative_url }}" type="image/svg+xml" data-xylune-favicon>
     <link rel="apple-touch-icon" href="{{ '/assets/images/xylune-logo.svg' | relative_url }}" data-xylune-favicon>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -25,7 +29,7 @@
     <link rel="stylesheet" href="{{ '/assets/css/app-bar.css' | relative_url }}">
     <link rel="stylesheet" href="{{ '/assets/css/motion.css' | relative_url }}">
   </head>
-  <body class="page-with-collapsing-title">
+  <body class="page-with-collapsing-title preload{% if page.home %} home-page{% endif %}">
     <div class="nav-scrim" data-menu-dismiss></div>
     <aside class="site-rail" aria-label="Primary navigation">
       <a class="brand rail-brand" href="{{ '/' | relative_url }}" aria-label="Xylune home">
@@ -33,31 +37,18 @@
         <span>Xylune</span>
       </a>
       <nav class="rail-nav">
-        <a class="nav-item{% if page.url == '/' %} is-active{% endif %}" href="{{ '/' | relative_url }}"><span class="material-symbols-rounded" aria-hidden="true">home</span><span>Home</span></a>
-        <a class="nav-item{% if page.url contains '/privacy/' %} is-active{% endif %}" href="{{ '/privacy/' | relative_url }}"><span class="material-symbols-rounded" aria-hidden="true">shield</span><span>Privacy</span></a>
-        <a class="nav-item{% if page.url contains '/terms/' %} is-active{% endif %}" href="{{ '/terms/' | relative_url }}"><span class="material-symbols-rounded" aria-hidden="true">description</span><span>Terms</span></a>
-        <a class="nav-item{% if page.url contains '/data-deletion/' %} is-active{% endif %}" href="{{ '/data-deletion/' | relative_url }}"><span class="material-symbols-rounded" aria-hidden="true">person_remove</span><span>Data deletion</span></a>
-        <a class="nav-item{% if page.url == '/releases/' %} is-active{% endif %}" href="{{ '/releases/' | relative_url }}"><span class="material-symbols-rounded" aria-hidden="true">sell</span><span>Releases</span></a>
+        <a class="nav-item{% if page.url == '/' %} is-active{% endif %}" href="{{ '/' | relative_url }}"{% if page.url == '/' %} aria-current="page"{% endif %}><span class="material-symbols-rounded" aria-hidden="true">home</span><span>Home</span></a>
+        <a class="nav-item{% if page.url contains '/privacy/' %} is-active{% endif %}" href="{{ '/privacy/' | relative_url }}"{% if page.url contains '/privacy/' %} aria-current="page"{% endif %}><span class="material-symbols-rounded" aria-hidden="true">shield</span><span>Privacy</span></a>
+        <a class="nav-item{% if page.url contains '/terms/' %} is-active{% endif %}" href="{{ '/terms/' | relative_url }}"{% if page.url contains '/terms/' %} aria-current="page"{% endif %}><span class="material-symbols-rounded" aria-hidden="true">description</span><span>Terms</span></a>
+        <a class="nav-item{% if page.url contains '/data-deletion/' %} is-active{% endif %}" href="{{ '/data-deletion/' | relative_url }}"{% if page.url contains '/data-deletion/' %} aria-current="page"{% endif %}><span class="material-symbols-rounded" aria-hidden="true">person_remove</span><span>Data deletion</span></a>
+        <a class="nav-item{% if page.url == '/releases/' %} is-active{% endif %}" href="{{ '/releases/' | relative_url }}"{% if page.url == '/releases/' %} aria-current="page"{% endif %}><span class="material-symbols-rounded" aria-hidden="true">sell</span><span>Releases</span></a>
         <a class="nav-item" href="https://github.com/omerfaruknehir/Xylune" aria-label="Xylune on GitHub, external link"><span class="material-symbols-rounded" aria-hidden="true">code</span><span>GitHub</span><span class="material-symbols-rounded nav-item__external" aria-hidden="true">open_in_new</span></a>
       </nav>
       <div class="rail-spacer"></div>
-      <div class="rail-appearance">
-        <div class="rail-appearance__heading">
-          <span>Theme</span>
-          <button class="icon-button" type="button" data-theme-settings aria-label="Open color scheme settings">
-            <span class="material-symbols-rounded" aria-hidden="true">palette</span>
-          </button>
-        </div>
-        <div class="scheme-selector" role="radiogroup" aria-label="Theme">
-          <button class="scheme-selector__choice" type="button" data-theme-choice="app" role="radio" title="App theme" aria-label="Use the theme passed by Xylune" hidden><span class="material-symbols-rounded" aria-hidden="true">phone_android</span><span class="scheme-selector__label">App</span></button>
-          <button class="scheme-selector__choice" type="button" data-theme-choice="system" role="radio" title="Auto" aria-label="Follow system theme"><span class="material-symbols-rounded" aria-hidden="true">brightness_auto</span><span class="scheme-selector__label">Auto</span></button>
-          <button class="scheme-selector__choice" type="button" data-theme-choice="light" role="radio" title="Light" aria-label="Use light theme"><span class="material-symbols-rounded" aria-hidden="true">light_mode</span><span class="scheme-selector__label">Light</span></button>
-          <button class="scheme-selector__choice" type="button" data-theme-choice="dark" role="radio" title="Dark" aria-label="Use dark theme"><span class="material-symbols-rounded" aria-hidden="true">dark_mode</span><span class="scheme-selector__label">Dark</span></button>
-        </div>
-      </div>
+      <div class="rail-appearance" aria-label="Appearance controls"></div>
     </aside>
 
-    <main class="page-shell document-shell page-with-app-bar">
+    <main class="page-shell {% if page.home %}home-shell{% else %}document-shell{% endif %} page-with-app-bar">
       <header class="document-app-bar">
         <div class="document-app-bar__row">
           <button class="icon-button document-app-bar__menu" type="button" data-menu-toggle aria-label="Open navigation" aria-expanded="false">
@@ -71,6 +62,11 @@
       </header>
       <div class="document-title-collapse-snap" aria-hidden="true"></div>
 
+      {% if page.home %}
+      <div class="home-body">
+        {{ content }}
+      </div>
+      {% else %}
       <div class="document-body">
         <article class="document-content">
           {{ content }}
@@ -80,6 +76,7 @@
           <p><a href="{{ '/' | relative_url }}">Back to Xylune</a></p>
         </footer>
       </div>
+      {% endif %}
     </main>
 
     <dialog class="appearance-dialog" data-theme-dialog aria-labelledby="appearance-title"></dialog>

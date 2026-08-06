@@ -70,7 +70,6 @@ class LegalWebsiteIntegrationTest {
         assertTrue(site.contains("function iconPaletteFor(schemePreference)"))
         assertTrue(site.contains("return appPrimaryToIconPalette.get(appPrimary) || 'system'"))
 
-        // Xylune launcher vector.
         assertTrue(site.contains("backgroundStart: '#083a2c'"))
         assertTrue(site.contains("backgroundEnd: '#0c684f'"))
         assertTrue(site.contains("markStart: '#86dfb8'"))
@@ -78,14 +77,12 @@ class LegalWebsiteIntegrationTest {
         assertTrue(site.contains("leaf: '#f4c761'"))
         assertTrue(site.contains("secondStroke: '#f1fff7'"))
 
-        // Android Dynamic/System launcher vector.
         assertTrue(site.contains("backgroundStart: '#293b52'"))
         assertTrue(site.contains("backgroundEnd: '#67507e'"))
         assertTrue(site.contains("markStart: '#a9d4ff'"))
         assertTrue(site.contains("markEnd: '#e8ddff'"))
         assertTrue(site.contains("leaf: '#ffb4a9'"))
 
-        // Built-in palette launcher vectors.
         assertTrue(site.contains("backgroundStart: '#162234'"))
         assertTrue(site.contains("backgroundStart: '#00363f'"))
         assertTrue(site.contains("backgroundStart: '#2e1d4f'"))
@@ -103,8 +100,10 @@ class LegalWebsiteIntegrationTest {
         assertTrue(site.contains("document.querySelectorAll('link[data-xylune-favicon]')"))
         assertTrue(appearance.contains(".material-switch"))
         assertTrue(appearance.contains(".material-switch.is-checked"))
-        assertTrue(home.contains("rel=\"apple-touch-icon\""))
+        assertTrue(layout.contains("rel=\"apple-touch-icon\""))
         assertTrue(layout.contains("data-xylune-logo"))
+        assertTrue(home.startsWith("---\nlayout: default"))
+        assertTrue(!home.contains("<html"))
     }
 
     @Test
@@ -158,6 +157,32 @@ class LegalWebsiteIntegrationTest {
     }
 
     @Test
+    fun `home and documents use exactly one shared chrome`() {
+        val home = repositoryFile("docs/index.html").readText()
+        val layout = repositoryFile("docs/_layouts/default.html").readText()
+
+        assertTrue(home.startsWith("---\nlayout: default\nhome: true"))
+        assertTrue(!home.contains("<head>"))
+        assertTrue(!home.contains("class=\"site-rail\""))
+        assertTrue(!home.contains("class=\"document-app-bar\""))
+        assertTrue(!home.contains("data-theme-dialog"))
+        assertTrue(!home.contains("assets/js/site.js"))
+        assertTrue(!home.contains("assets/js/motion.js"))
+
+        assertTrue(layout.contains("{% if page.home %}home-shell{% else %}document-shell{% endif %}"))
+        assertTrue(layout.contains("{% if page.home %}"))
+        assertTrue(layout.contains("class=\"home-body\""))
+        assertTrue(layout.contains("class=\"document-body\""))
+        assertTrue(layout.contains("class=\"page-with-collapsing-title preload"))
+        assertTrue(layout.contains("assets/css/site.css"))
+        assertTrue(layout.contains("assets/css/app-bar.css"))
+        assertTrue(layout.contains("assets/css/motion.css"))
+        assertTrue(layout.contains("assets/js/site.js"))
+        assertTrue(layout.contains("assets/js/motion.js"))
+        assertTrue(layout.contains("aria-current=\"page\""))
+    }
+
+    @Test
     fun `home uses banner and release notes expand in page`() {
         val releases = repositoryFile("docs/assets/js/releases.js").readText()
         val page = repositoryFile("docs/releases/index.html").readText()
@@ -177,7 +202,7 @@ class LegalWebsiteIntegrationTest {
         assertTrue(!page.contains("regardless of GitHub publication timestamps"))
         assertTrue(home.contains("class=\"home-banner\""))
         assertTrue(home.contains("branding/xylune-banner.png"))
-        assertTrue(home.contains("href=\"releases/\""))
+        assertTrue(home.contains("{{ '/releases/' | relative_url }}"))
         assertTrue(css.contains(".release-card__toggle"))
         assertTrue(css.contains(".release-list__footer"))
     }
