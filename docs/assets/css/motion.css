@@ -172,7 +172,8 @@ html.xylune-motion-ready .palette-choice {
 .palette-choice:active,
 .theme-selector__choice:active,
 .nav-item:active,
-.release-card__toggle:active {
+.release-card__toggle:active,
+.material-switch:active {
   transform: scale(0.97);
   transition-duration: 70ms;
 }
@@ -186,6 +187,11 @@ html.xylune-motion-ready .palette-choice {
 .material-switch__handle {
   left: auto !important;
   inset-inline-start: 6px;
+  transition:
+    inset-inline-start 180ms var(--xylune-motion-standard),
+    width 180ms var(--xylune-motion-standard),
+    height 180ms var(--xylune-motion-standard),
+    background-color 180ms var(--xylune-motion-standard) !important;
 }
 
 .material-switch.is-checked .material-switch__handle {
