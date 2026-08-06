@@ -3,8 +3,12 @@
   if (!container) return;
 
   const repository = container.dataset.repository || 'omerfaruknehir/Xylune';
-  const endpoint = `https://api.github.com/repos/${repository}/releases?per_page=100`;
   const MAX_RELEASES = 10;
+  const endpoint = `https://api.github.com/repos/${repository}/releases?per_page=${MAX_RELEASES}`;
+  const cacheKey = `xylune-release-list-v2:${repository}`;
+  const cacheMaxAgeMs = 6 * 60 * 60 * 1000;
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let renderedSignature = '';
 
   function parseSemanticVersion(value) {
     const match = String(value || '').trim().match(/^v?(\d+)\.(\d+)\.(\d+)(?:[-+]([^+]+))?$/i);
@@ -35,6 +39,48 @@
     const leftTime = Date.parse(leftRelease.published_at || leftRelease.created_at || '') || 0;
     const rightTime = Date.parse(rightRelease.published_at || rightRelease.created_at || '') || 0;
     return rightTime - leftTime;
+  }
+
+  function normalizeReleases(releases) {
+    return (Array.isArray(releases) ? releases : [])
+      .filter((release) => release && !release.draft)
+      .sort(compareSemanticVersionsDescending)
+      .slice(0, MAX_RELEASES);
+  }
+
+  function releaseSignature(releases) {
+    return releases
+      .map((release) => [
+        release.id || release.tag_name || release.name,
+        release.updated_at || release.published_at || '',
+        Array.isArray(release.assets) ? release.assets.length : 0,
+      ].join(':'))
+      .join('|');
+  }
+
+  function readCachedReleases() {
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      if (!cached || !Array.isArray(cached.releases)) return null;
+      if (!Number.isFinite(cached.storedAt)) return null;
+      return {
+        releases: normalizeReleases(cached.releases),
+        fresh: Date.now() - cached.storedAt < cacheMaxAgeMs,
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function writeCachedReleases(releases) {
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify({
+        storedAt: Date.now(),
+        releases,
+      }));
+    } catch (_) {
+      // Storage may be unavailable in private browsing or embedded web views.
+    }
   }
 
   function releaseVersion(release) {
@@ -197,6 +243,64 @@
     return root;
   }
 
+  function setReleaseOpen(card, shouldOpen) {
+    const toggle = card.querySelector('.release-card__toggle');
+    const content = card.querySelector('.release-card__content');
+    if (!toggle || !content || card.classList.contains('is-animating')) return;
+
+    const finish = () => {
+      content.style.removeProperty('height');
+      content.style.removeProperty('opacity');
+      content.style.removeProperty('overflow');
+      card.classList.remove('is-animating');
+      toggle.removeAttribute('aria-disabled');
+    };
+
+    if (reducedMotion.matches || typeof content.animate !== 'function') {
+      card.open = shouldOpen;
+      toggle.setAttribute('aria-expanded', String(shouldOpen));
+      return;
+    }
+
+    card.classList.add('is-animating');
+    toggle.setAttribute('aria-disabled', 'true');
+    toggle.setAttribute('aria-expanded', String(shouldOpen));
+    content.style.overflow = 'hidden';
+
+    if (shouldOpen) {
+      card.open = true;
+      content.style.height = '0px';
+      content.style.opacity = '0';
+      const targetHeight = content.scrollHeight;
+      const animation = content.animate([
+        { height: '0px', opacity: 0, transform: 'translateY(-6px)' },
+        { height: `${targetHeight}px`, opacity: 1, transform: 'translateY(0)' },
+      ], {
+        duration: 260,
+        easing: 'cubic-bezier(0.2, 0, 0, 1)',
+      });
+      animation.onfinish = finish;
+      animation.oncancel = finish;
+      return;
+    }
+
+    const currentHeight = content.getBoundingClientRect().height;
+    content.style.height = `${currentHeight}px`;
+    content.style.opacity = '1';
+    const animation = content.animate([
+      { height: `${currentHeight}px`, opacity: 1, transform: 'translateY(0)' },
+      { height: '0px', opacity: 0, transform: 'translateY(-6px)' },
+    ], {
+      duration: 220,
+      easing: 'cubic-bezier(0.4, 0, 1, 1)',
+    });
+    animation.onfinish = () => {
+      card.open = false;
+      finish();
+    };
+    animation.oncancel = finish;
+  }
+
   function renderRelease(release, index) {
     const card = document.createElement('details');
     card.className = 'release-card';
@@ -204,6 +308,7 @@
 
     const toggle = document.createElement('summary');
     toggle.className = 'release-card__toggle';
+    toggle.setAttribute('aria-expanded', String(card.open));
     const heading = document.createElement('div');
     heading.className = 'release-card__heading';
     const titleRow = document.createElement('div');
@@ -245,11 +350,20 @@
     }
     if (actions.hasChildNodes()) body.append(actions);
 
-    card.append(toggle, body);
+    const content = document.createElement('div');
+    content.className = 'release-card__content';
+    content.append(body);
+
+    toggle.addEventListener('click', (event) => {
+      event.preventDefault();
+      setReleaseOpen(card, !card.open);
+    });
+
+    card.append(toggle, content);
     return card;
   }
 
-  function appendAllReleasesLink() {
+  function allReleasesFooter() {
     const footer = document.createElement('div');
     footer.className = 'release-list__footer';
     footer.append(actionLink(
@@ -257,40 +371,67 @@
       `https://github.com/${repository}/releases`,
       { external: true },
     ));
-    container.append(footer);
+    return footer;
   }
 
-  fetch(endpoint, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-  })
-    .then((response) => {
+  function renderReleaseList(releases) {
+    const sorted = normalizeReleases(releases);
+    if (sorted.length === 0) return false;
+
+    const signature = releaseSignature(sorted);
+    if (signature === renderedSignature) return true;
+
+    const fragment = document.createDocumentFragment();
+    sorted.forEach((release, index) => fragment.append(renderRelease(release, index)));
+    fragment.append(allReleasesFooter());
+    container.replaceChildren(fragment);
+    container.removeAttribute('aria-busy');
+    renderedSignature = signature;
+    return true;
+  }
+
+  function renderFailure() {
+    const fallback = document.createElement('p');
+    fallback.className = 'release-status';
+    fallback.append('The live release list could not be loaded. ');
+    fallback.append(actionLink(
+      'Open releases on GitHub',
+      `https://github.com/${repository}/releases`,
+      { external: true },
+    ));
+    container.replaceChildren(fallback);
+    container.removeAttribute('aria-busy');
+  }
+
+  async function loadLiveReleases(hasCachedContent) {
+    try {
+      const response = await fetch(endpoint, {
+        mode: 'cors',
+        credentials: 'omit',
+        cache: 'default',
+      });
       if (!response.ok) throw new Error(`GitHub returned HTTP ${response.status}`);
-      return response.json();
-    })
-    .then((releases) => {
-      const sorted = releases
-        .filter((release) => !release.draft)
-        .sort(compareSemanticVersionsDescending)
-        .slice(0, MAX_RELEASES);
-      container.replaceChildren();
-      if (sorted.length === 0) throw new Error('No published releases were returned');
-      sorted.forEach((release, index) => container.append(renderRelease(release, index)));
-      appendAllReleasesLink();
-    })
-    .catch(() => {
-      const fallback = document.createElement('p');
-      fallback.className = 'release-status';
-      fallback.append('The live release list could not be loaded. ');
-      fallback.append(actionLink(
-        'Open releases on GitHub',
-        `https://github.com/${repository}/releases`,
-        { external: true },
-      ));
-      container.replaceChildren(fallback);
-    });
+      const releases = normalizeReleases(await response.json());
+      if (releases.length === 0) throw new Error('No published releases were returned');
+      writeCachedReleases(releases);
+      renderReleaseList(releases);
+    } catch (_) {
+      if (!hasCachedContent) renderFailure();
+    }
+  }
+
+  const cached = readCachedReleases();
+  const hasCachedContent = Boolean(cached && renderReleaseList(cached.releases));
+  if (!hasCachedContent) container.setAttribute('aria-busy', 'true');
+
+  const refresh = () => loadLiveReleases(hasCachedContent);
+  if (hasCachedContent && 'requestIdleCallback' in window) {
+    window.requestIdleCallback(refresh, { timeout: cached.fresh ? 1500 : 500 });
+  } else if (hasCachedContent) {
+    window.setTimeout(refresh, cached.fresh ? 250 : 0);
+  } else {
+    refresh();
+  }
 
   window.XyluneReleaseSort = {
     parseSemanticVersion,
