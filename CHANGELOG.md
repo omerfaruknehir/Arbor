@@ -1,3 +1,9 @@
+## 0.24.6 — 2026-08-06
+
+- Fit every adaptive launcher foreground inside a consistent Android safe zone so the Xylune mark is fully visible in launchers, recent-app/task views, and other masked system surfaces.
+- Apply the same fitted geometry to Xylune, Dynamic/System, Graphite, Ocean, Violet, Sunset, and themed monochrome launcher artwork.
+- Replace Android 12+ splash use of adaptive launcher masks with dedicated palette-matched splash artwork that has additional outer spacing.
+
 ## 0.24.5 — 2026-08-06
 
 - Show visible reasoning returned through OpenAI-compatible reasoning fields and route streamed `<thinking>` or `<think>` blocks into Xylune's Working UI, even when tags are split across network chunks.
