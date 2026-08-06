@@ -1,0 +1,228 @@
+:root {
+  --xylune-motion-standard: cubic-bezier(0.2, 0, 0, 1);
+  --xylune-motion-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --xylune-motion-fast: 160ms;
+  --xylune-motion-medium: 260ms;
+}
+
+html.xylune-motion-ready body,
+html.xylune-motion-ready .site-rail,
+html.xylune-motion-ready .document-app-bar,
+html.xylune-motion-ready .document-app-bar::before,
+html.xylune-motion-ready .appearance-dialog,
+html.xylune-motion-ready .appearance-dialog::backdrop,
+html.xylune-motion-ready .release-card,
+html.xylune-motion-ready .privacy-note,
+html.xylune-motion-ready .resource-card,
+html.xylune-motion-ready .appearance-switch-row,
+html.xylune-motion-ready .theme-selector,
+html.xylune-motion-ready .palette-choice {
+  transition-duration: var(--xylune-motion-medium);
+  transition-property: background-color, border-color, box-shadow, color;
+  transition-timing-function: var(--xylune-motion-standard);
+}
+
+.rail-nav {
+  position: relative;
+  isolation: isolate;
+}
+
+.rail-nav__indicator {
+  position: absolute;
+  inset: 0 4px auto;
+  z-index: 0;
+  height: var(--xylune-nav-indicator-height, 58px);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--primary-container) 52%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 10%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(var(--xylune-nav-indicator-y, 0px));
+  transform-origin: center;
+}
+
+.rail-nav.is-ready .rail-nav__indicator {
+  opacity: 1;
+  transition:
+    transform 300ms var(--xylune-motion-emphasized),
+    height 300ms var(--xylune-motion-emphasized),
+    background-color var(--xylune-motion-medium) var(--xylune-motion-standard),
+    box-shadow var(--xylune-motion-medium) var(--xylune-motion-standard),
+    opacity var(--xylune-motion-fast) linear;
+}
+
+.nav-item {
+  position: relative;
+  z-index: 1;
+  border-radius: 16px;
+  background: transparent !important;
+  transition:
+    color var(--xylune-motion-fast) var(--xylune-motion-standard),
+    transform var(--xylune-motion-fast) var(--xylune-motion-standard),
+    background-color var(--xylune-motion-fast) var(--xylune-motion-standard);
+}
+
+.nav-item.is-active {
+  background: transparent !important;
+}
+
+.nav-item:hover {
+  background: color-mix(in srgb, var(--surface-container) 68%, transparent) !important;
+}
+
+.nav-item.is-active:hover {
+  background: color-mix(in srgb, var(--primary-container) 18%, transparent) !important;
+}
+
+.theme-selector {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.theme-selector__indicator {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  z-index: 0;
+  width: var(--xylune-theme-indicator-width, 0px);
+  border-radius: 10px;
+  background: var(--primary-container);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 12%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(var(--xylune-theme-indicator-x, 0px));
+}
+
+.theme-selector.is-ready .theme-selector__indicator {
+  opacity: 1;
+  transition:
+    transform 280ms var(--xylune-motion-emphasized),
+    width 280ms var(--xylune-motion-emphasized),
+    background-color var(--xylune-motion-medium) var(--xylune-motion-standard),
+    box-shadow var(--xylune-motion-medium) var(--xylune-motion-standard),
+    opacity var(--xylune-motion-fast) linear;
+}
+
+.theme-selector__choice {
+  position: relative;
+  z-index: 1;
+  background: transparent !important;
+  transition:
+    color var(--xylune-motion-fast) var(--xylune-motion-standard),
+    transform var(--xylune-motion-fast) var(--xylune-motion-standard),
+    background-color var(--xylune-motion-fast) var(--xylune-motion-standard);
+}
+
+.theme-selector__choice.is-selected {
+  background: transparent !important;
+}
+
+.theme-selector__choice:hover {
+  background: color-mix(in srgb, var(--surface-container) 68%, transparent) !important;
+}
+
+.theme-selector__choice.is-selected:hover {
+  background: color-mix(in srgb, var(--on-primary-container) 7%, transparent) !important;
+}
+
+.button,
+.icon-button,
+.resource-row,
+.appearance-launcher,
+.palette-choice,
+.release-card__toggle,
+.material-switch {
+  transition:
+    transform var(--xylune-motion-fast) var(--xylune-motion-standard),
+    background-color var(--xylune-motion-fast) var(--xylune-motion-standard),
+    border-color var(--xylune-motion-fast) var(--xylune-motion-standard),
+    box-shadow var(--xylune-motion-fast) var(--xylune-motion-standard),
+    color var(--xylune-motion-fast) var(--xylune-motion-standard),
+    filter var(--xylune-motion-fast) var(--xylune-motion-standard);
+}
+
+.button-primary {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 16%);
+}
+
+@media (hover: hover) {
+  .button:hover,
+  .resource-row:hover,
+  .palette-choice:hover {
+    transform: translateY(-1px);
+  }
+
+  .button-primary:hover {
+    box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
+  }
+
+  .icon-button:hover,
+  .appearance-launcher:hover,
+  .release-card__toggle:hover {
+    transform: scale(1.025);
+  }
+}
+
+.button:active,
+.icon-button:active,
+.resource-row:active,
+.appearance-launcher:active,
+.palette-choice:active,
+.theme-selector__choice:active,
+.nav-item:active,
+.release-card__toggle:active {
+  transform: scale(0.97);
+  transition-duration: 70ms;
+}
+
+.material-switch {
+  box-sizing: border-box;
+  padding: 0 !important;
+  appearance: none;
+}
+
+.material-switch__handle {
+  left: auto !important;
+  inset-inline-start: 6px;
+}
+
+.material-switch.is-checked .material-switch__handle {
+  left: auto !important;
+  inset-inline-start: 24px;
+}
+
+.material-switch.is-checked:hover .material-switch__handle {
+  left: auto !important;
+  inset-inline-start: 26px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.xylune-motion-ready body,
+  html.xylune-motion-ready .site-rail,
+  html.xylune-motion-ready .document-app-bar,
+  html.xylune-motion-ready .document-app-bar::before,
+  html.xylune-motion-ready .appearance-dialog,
+  html.xylune-motion-ready .appearance-dialog::backdrop,
+  html.xylune-motion-ready .release-card,
+  html.xylune-motion-ready .privacy-note,
+  html.xylune-motion-ready .resource-card,
+  html.xylune-motion-ready .appearance-switch-row,
+  html.xylune-motion-ready .theme-selector,
+  html.xylune-motion-ready .palette-choice,
+  .rail-nav__indicator,
+  .theme-selector__indicator,
+  .nav-item,
+  .theme-selector__choice,
+  .button,
+  .icon-button,
+  .resource-row,
+  .appearance-launcher,
+  .palette-choice,
+  .release-card__toggle,
+  .material-switch,
+  .material-switch__handle {
+    transition: none !important;
+  }
+}
