@@ -87,60 +87,65 @@ jobs:
           start = text.find(marker)
           if start < 0:
               raise SystemExit('Generated native-search regression test was not found')
-          text = text[:start] + r'''
-
-class NativeSearchToolCallStreamingTest {
-    @Test
-    fun nativeSearchReportsItsProviderInsteadOfPreparedWebSearch() {
-        val presentation = toolCallPresentation(
-            "native_web_search",
-            """{"query":"Android 16","source":"DeepSeek native search"}""",
-        )
-        assertEquals("native_search", presentation.kind)
-        assertEquals("DeepSeek native search", presentation.completedLabel)
-        assertEquals("Android 16", presentation.input)
-    }
-}
-'''
-          streaming_test.write_text(text)
+          replacement = [
+              '',
+              '',
+              'class NativeSearchToolCallStreamingTest {',
+              '    @Test',
+              '    fun nativeSearchReportsItsProviderInsteadOfPreparedWebSearch() {',
+              '        val presentation = toolCallPresentation(',
+              '            "native_web_search",',
+              '            """{"query":"Android 16","source":"DeepSeek native search"}""",',
+              '        )',
+              '        assertEquals("native_search", presentation.kind)',
+              '        assertEquals("DeepSeek native search", presentation.completedLabel)',
+              '        assertEquals("Android 16", presentation.input)',
+              '    }',
+              '}',
+              '',
+          ]
+          streaming_test.write_text(text[:start] + '\n'.join(replacement))
 
           markdown_test = Path(
               'app/src/test/java/app/xylune/chat/ui/PlainMarkdownLinksTest.kt'
           )
-          markdown_test.write_text(r'''package app.xylune.chat.ui
-
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
-
-class PlainMarkdownLinksTest {
-    @Test
-    fun inlineLinksRemainVisibleMarkdownInsteadOfClickableSpans() {
-        val rendered = renderMarkdownLinksLiterally(
-            "Read [the source](https://example.com/a).",
-        )
-        assertTrue(rendered.contains("\\[the source\\]"))
-        assertTrue(rendered.contains("\\(https://example.com/a\\)"))
-        assertFalse(rendered.contains("[the source](https://example.com/a)"))
-    }
-
-    @Test
-    fun normalMarkdownFormattingIsNotEscaped() {
-        assertEquals(
-            "**bold** and `code`",
-            renderMarkdownLinksLiterally("**bold** and `code`"),
-        )
-    }
-
-    @Test
-    fun angleAutolinksAreShownLiterally() {
-        val rendered = renderMarkdownLinksLiterally("<https://example.com>")
-        assertTrue(rendered.startsWith("\\<"))
-        assertTrue(rendered.endsWith("\\>"))
-    }
-}
-''')
+          markdown_lines = [
+              'package app.xylune.chat.ui',
+              '',
+              'import org.junit.Assert.assertEquals',
+              'import org.junit.Assert.assertFalse',
+              'import org.junit.Assert.assertTrue',
+              'import org.junit.Test',
+              '',
+              'class PlainMarkdownLinksTest {',
+              '    @Test',
+              '    fun inlineLinksRemainVisibleMarkdownInsteadOfClickableSpans() {',
+              '        val rendered = renderMarkdownLinksLiterally(',
+              '            "Read [the source](https://example.com/a).",',
+              '        )',
+              r'        assertTrue(rendered.contains("\\[the source\\]"))',
+              r'        assertTrue(rendered.contains("\\(https://example.com/a\\)"))',
+              '        assertFalse(rendered.contains("[the source](https://example.com/a)"))',
+              '    }',
+              '',
+              '    @Test',
+              '    fun normalMarkdownFormattingIsNotEscaped() {',
+              '        assertEquals(',
+              '            "**bold** and `code`",',
+              '            renderMarkdownLinksLiterally("**bold** and `code`"),',
+              '        )',
+              '    }',
+              '',
+              '    @Test',
+              '    fun angleAutolinksAreShownLiterally() {',
+              '        val rendered = renderMarkdownLinksLiterally("<https://example.com>")',
+              r'        assertTrue(rendered.startsWith("\\<"))',
+              r'        assertTrue(rendered.endsWith("\\>"))',
+              '    }',
+              '}',
+              '',
+          ]
+          markdown_test.write_text('\n'.join(markdown_lines))
           PY
 
       - name: Verify third-party licenses
