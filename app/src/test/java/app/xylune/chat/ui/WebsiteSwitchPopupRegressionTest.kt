@@ -10,14 +10,14 @@ class WebsiteSwitchPopupRegressionTest {
         ?: error("Could not locate repository file: $path")
 
     @Test
-    fun `switch state uses aria checked as the single position source`() {
+    fun `switch state and hover use aria checked as the position source`() {
         val layout = repositoryFile("docs/_layouts/default.html").readText()
         val css = repositoryFile("docs/assets/css/interaction-fix.css").readText()
         val motion = repositoryFile("docs/assets/js/motion.js").readText()
 
-        assertTrue(layout.contains("appearance.css' | relative_url }}?v=78"))
-        assertTrue(layout.contains("motion.css' | relative_url }}?v=78"))
-        assertTrue(layout.contains("interaction-fix.css' | relative_url }}?v=78"))
+        assertTrue(layout.contains("appearance.css' | relative_url }}?v=79"))
+        assertTrue(layout.contains("motion.css' | relative_url }}?v=79"))
+        assertTrue(layout.contains("interaction-fix.css' | relative_url }}?v=79"))
         assertTrue(layout.indexOf("interaction-fix.css") > layout.indexOf("motion.css"))
 
         assertTrue(css.contains("width: 52px !important"))
@@ -27,12 +27,19 @@ class WebsiteSwitchPopupRegressionTest {
         assertTrue(css.contains("inset-inline-start: 4px !important"))
         assertTrue(!css.contains("inset-inline-start: auto !important"))
         assertTrue(css.contains("width: 20px !important"))
-        assertTrue(css.contains(".material-switch[aria-checked='true'] > .material-switch__handle"))
+        assertTrue(css.contains(".material-switch[aria-checked='true']:hover > .material-switch__handle"))
         assertTrue(css.contains("translate3d(20px, -50%, 0) !important"))
-        assertTrue(css.contains(".material-switch[aria-checked='false'] > .material-switch__handle"))
+        assertTrue(css.contains(".material-switch[aria-checked='false']:hover > .material-switch__handle"))
         assertTrue(css.contains("translate3d(0, -50%, 0) !important"))
-        assertTrue(css.contains("transform: translate3d(var(--xylune-switch-drag-x, 0px), -50%, 0) !important"))
+        assertTrue(!css.contains(".material-switch.is-checked:hover > .material-switch__handle"))
         assertTrue(!css.contains("left: 22px"))
+
+        assertTrue(css.contains("--xylune-switch-progress: 0%"))
+        assertTrue(css.contains("var(--xylune-switch-progress)"))
+        assertTrue(css.contains("color-mix("))
+        assertTrue(css.contains("transform: translate3d(var(--xylune-switch-drag-x), -50%, 0) !important"))
+        assertTrue(motion.contains("const progress = dragX / travel"))
+        assertTrue(motion.contains("--xylune-switch-progress"))
         assertTrue(motion.contains("control.getBoundingClientRect().width - 32"))
     }
 
@@ -42,7 +49,7 @@ class WebsiteSwitchPopupRegressionTest {
         val css = repositoryFile("docs/assets/css/interaction-fix.css").readText()
         val js = repositoryFile("docs/assets/js/popup-motion.js").readText()
 
-        assertTrue(layout.contains("popup-motion.js' | relative_url }}?v=78"))
+        assertTrue(layout.contains("popup-motion.js' | relative_url }}?v=79"))
         assertTrue(css.contains(".appearance-dialog.is-visible"))
         assertTrue(css.contains(".appearance-dialog.is-closing"))
         assertTrue(css.contains(".appearance-dialog.is-visible::backdrop"))
