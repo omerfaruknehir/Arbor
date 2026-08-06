@@ -144,7 +144,7 @@
     let moved = false;
     let suppressNativeClick = false;
 
-    const travelFor = () => Math.max(1, control.getBoundingClientRect().width - 34);
+    const travelFor = () => Math.max(1, control.getBoundingClientRect().width - 32);
     const checked = () => control.getAttribute('aria-checked') === 'true';
 
     const renderDrag = (position, travel) => {
