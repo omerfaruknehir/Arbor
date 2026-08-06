@@ -1,18 +1,7 @@
 (() => {
   const root = document.documentElement;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-  const navigationStorageKey = 'xylune-navigation-tab-from-v1';
   let themeFrame = 0;
-
-  function normalizedPath(value) {
-    try {
-      const url = new URL(value, location.href);
-      let path = url.pathname.replace(/\/+$/, '');
-      return path || '/';
-    } catch (_) {
-      return '/';
-    }
-  }
 
   function ensureIndicator(parent, className) {
     let indicator = parent.querySelector(`:scope > .${className}`);
@@ -42,40 +31,47 @@
         return false;
       }
     });
-    const active = tabs.find((item) => item.classList.contains('is-active'));
+    let active = tabs.find((item) => item.classList.contains('is-active'));
     if (!active) return;
+
+    const markActive = (target) => {
+      tabs.forEach((tab) => {
+        const selected = tab === target;
+        tab.classList.toggle('is-active', selected);
+        if (selected) tab.setAttribute('aria-current', 'page');
+        else tab.removeAttribute('aria-current');
+      });
+      active = target;
+    };
+
+    placeNavigationIndicator(nav, active);
+    void nav.offsetWidth;
+    nav.classList.add('is-ready');
 
     tabs.forEach((tab) => {
       tab.dataset.navTab = '';
-      tab.toggleAttribute('aria-current', tab === active);
-      if (tab === active) tab.setAttribute('aria-current', 'page');
-      tab.addEventListener('click', () => {
-        try {
-          sessionStorage.setItem(navigationStorageKey, normalizedPath(location.href));
-        } catch (_) {
-          // Session storage can be unavailable in restricted web views.
+      tab.addEventListener('click', (event) => {
+        if (
+          event.defaultPrevented
+          || event.button !== 0
+          || event.metaKey
+          || event.ctrlKey
+          || event.shiftKey
+          || event.altKey
+          || tab.target === '_blank'
+          || tab === active
+        ) {
+          return;
         }
-      });
-    });
 
-    let previousPath = null;
-    try {
-      previousPath = sessionStorage.getItem(navigationStorageKey);
-      sessionStorage.removeItem(navigationStorageKey);
-    } catch (_) {
-      previousPath = null;
-    }
-    const previous = previousPath
-      ? tabs.find((tab) => normalizedPath(tab.href) === previousPath)
-      : null;
+        if (reducedMotion.matches) return;
 
-    nav.classList.remove('is-ready');
-    placeNavigationIndicator(nav, previous || active);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        nav.classList.add('is-ready');
-        placeNavigationIndicator(nav, active);
-      });
+        event.preventDefault();
+        event.stopPropagation();
+        markActive(tab);
+        placeNavigationIndicator(nav, tab);
+        window.setTimeout(() => location.assign(tab.href), 220);
+      }, { capture: true });
     });
 
     const update = () => placeNavigationIndicator(nav, active);
@@ -102,7 +98,8 @@
       if (firstLayout) selector.classList.remove('is-ready');
       placeThemeIndicator(selector, !firstLayout);
       if (firstLayout) {
-        requestAnimationFrame(() => selector.classList.add('is-ready'));
+        void selector.offsetWidth;
+        selector.classList.add('is-ready');
       }
     });
   }
@@ -122,7 +119,7 @@
         if (mutation.type === 'childList') return true;
         const target = mutation.target;
         return target instanceof Element && (
-          target.matches('.theme-selector, .theme-selector__choice')
+          target.matches('.theme-selector__choice')
           || target.closest('.theme-selector')
         );
       })) {
@@ -139,8 +136,88 @@
     window.addEventListener('resize', scheduleThemeSync, { passive: true });
   }
 
+  function setupDraggableSwitch(control) {
+    let pointerId = null;
+    let startX = 0;
+    let startChecked = false;
+    let dragX = 0;
+    let moved = false;
+    let suppressNativeClick = false;
+
+    const travelFor = () => Math.max(1, control.getBoundingClientRect().width - 34);
+    const checked = () => control.getAttribute('aria-checked') === 'true';
+
+    const renderDrag = (position, travel) => {
+      dragX = Math.min(travel, Math.max(0, position));
+      control.style.setProperty('--xylune-switch-drag-x', `${dragX}px`);
+      control.classList.add('is-dragging');
+      control.classList.toggle('is-drag-preview-on', dragX >= travel / 2);
+    };
+
+    const clearDrag = () => {
+      control.classList.remove('is-dragging', 'is-drag-preview-on');
+      control.style.removeProperty('--xylune-switch-drag-x');
+    };
+
+    control.addEventListener('click', (event) => {
+      if (!suppressNativeClick || event.detail === 0) return;
+      suppressNativeClick = false;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+
+    control.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || pointerId !== null) return;
+      pointerId = event.pointerId;
+      startX = event.clientX;
+      startChecked = checked();
+      moved = false;
+      control.setPointerCapture(pointerId);
+      const travel = travelFor();
+      renderDrag(startChecked ? travel : 0, travel);
+    });
+
+    control.addEventListener('pointermove', (event) => {
+      if (event.pointerId !== pointerId) return;
+      const travel = travelFor();
+      const delta = event.clientX - startX;
+      if (Math.abs(delta) > 3) moved = true;
+      renderDrag((startChecked ? travel : 0) + delta, travel);
+    });
+
+    const finishPointer = (event, cancelled = false) => {
+      if (event.pointerId !== pointerId) return;
+      const travel = travelFor();
+      const desired = dragX >= travel / 2;
+      if (control.hasPointerCapture(pointerId)) control.releasePointerCapture(pointerId);
+      pointerId = null;
+      clearDrag();
+
+      if (cancelled || !moved) return;
+
+      suppressNativeClick = true;
+      if (desired !== startChecked) control.click();
+      window.setTimeout(() => {
+        suppressNativeClick = false;
+      }, 400);
+    };
+
+    control.addEventListener('pointerup', (event) => finishPointer(event));
+    control.addEventListener('pointercancel', (event) => finishPointer(event, true));
+    control.addEventListener('lostpointercapture', () => {
+      if (pointerId === null) return;
+      pointerId = null;
+      clearDrag();
+    });
+  }
+
+  function setupDraggableSwitches() {
+    document.querySelectorAll('.material-switch[role="switch"]').forEach(setupDraggableSwitch);
+  }
+
   setupNavigationTabs();
   setupThemeSelectionMotion();
+  setupDraggableSwitches();
   requestAnimationFrame(() => {
     requestAnimationFrame(() => root.classList.add('xylune-motion-ready'));
   });
