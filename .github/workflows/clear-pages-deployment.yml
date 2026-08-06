@@ -1,0 +1,46 @@
+name: Clear stuck Pages deployment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/clear-pages-deployment.yml
+
+permissions:
+  contents: write
+  pages: write
+
+jobs:
+  clear:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cancel orphaned Pages deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail-with-body -L -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages/deployments/6a6441b6647fe2fd6c30f20929301494fb1503d5/cancel"
+
+      - name: Restore supported timeout and trigger clean deploy
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          workflow = Path('.github/workflows/pages.yml')
+          text = workflow.read_text()
+          text = text.replace('timeout-minutes: 35', 'timeout-minutes: 15')
+          text = text.replace('timeout: 1800000', 'timeout: 600000')
+          workflow.write_text(text)
+          Path('.github/workflows/clear-pages-deployment.yml').unlink()
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/pages.yml .github/workflows/clear-pages-deployment.yml
+          git commit -m "Cancel orphaned Pages deployment and retry"
+          git push
