@@ -2,6 +2,7 @@ package app.xylune.chat.provider
 
 import app.xylune.chat.data.MessageRole
 import app.xylune.chat.data.ProviderKind
+import app.xylune.chat.settings.WebSearchRoute
 import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -35,7 +36,9 @@ internal object NativeWebSearch {
     private val replaceableToolNames = setOf("web_search", "web_fetch")
 
     fun mode(request: ChatRequest): NativeWebSearchMode {
-        if (!request.model.supportsTools || !requested(request)) return NativeWebSearchMode.NONE
+        if (!request.model.supportsTools || !requested(request) ||
+            request.webSearchRoute == WebSearchRoute.SEARCH_ENGINE
+        ) return NativeWebSearchMode.NONE
         val providerId = request.provider.id.lowercase()
         val baseUrl = request.provider.baseUrl.lowercase()
         val modelId = request.model.modelId.lowercase()
@@ -67,6 +70,21 @@ internal object NativeWebSearch {
         if (mode(request) == NativeWebSearchMode.NONE) request.tools
         else request.tools.filterNot { it.name.lowercase() in replaceableToolNames }
 
+    fun nativeSourceLabel(request: ChatRequest): String {
+        val providerId = request.provider.id.lowercase()
+        val baseUrl = request.provider.baseUrl.lowercase()
+        return when {
+            providerId == "deepseek" || baseUrl.contains("api.deepseek.com") -> "DeepSeek native search"
+            providerId == "openai" || baseUrl.contains("api.openai.com") -> "OpenAI native search"
+            providerId == "openrouter" || baseUrl.contains("openrouter.ai") -> "OpenRouter native search"
+            providerId == "xai" || baseUrl.contains("api.x.ai") -> "xAI native search"
+            baseUrl.contains("api.perplexity.ai") -> "Perplexity native search"
+            request.provider.kind == ProviderKind.ANTHROPIC -> "Anthropic native search"
+            request.provider.kind == ProviderKind.GEMINI -> "Google Search grounding"
+            else -> "${request.provider.displayName} native search"
+        }
+    }
+
     fun responsesServerToolType(request: ChatRequest): String =
         if (request.provider.id.equals("openrouter", ignoreCase = true) ||
             request.provider.baseUrl.contains("openrouter.ai", ignoreCase = true)
@@ -88,7 +106,7 @@ internal class ResponsesApiTransport(private val client: OkHttpClient) {
         if (request.apiKey.isNotBlank()) builder.header("Authorization", "Bearer ${request.apiKey}")
         request.customHeaders.forEach(builder::header)
 
-        val state = ResponsesApiStreamState()
+        val state = ResponsesApiStreamState(NativeWebSearch.nativeSourceLabel(request))
         client.newCall(builder.build()).useCancellable { response ->
             if (!response.isSuccessful) {
                 val error = response.body?.readErrorSnippet().orEmpty()
@@ -139,7 +157,7 @@ internal class ResponsesApiTransport(private val client: OkHttpClient) {
                     put("parameters", buildJsonObject {
                         put("engine", JsonPrimitive("auto"))
                         put("max_uses", JsonPrimitive(8))
-                        put("max_total_results", JsonPrimitive(30))
+                        put("max_total_results", JsonPrimitive(request.webSearchMaxResults.coerceIn(3, 20)))
                     })
                 }
             })
@@ -255,7 +273,9 @@ internal class ResponsesApiTransport(private val client: OkHttpClient) {
 }
 
 /** Stateful parser for semantic Responses SSE events, including server-side search activity and citations. */
-internal class ResponsesApiStreamState {
+internal class ResponsesApiStreamState(
+    private val searchSourceLabel: String = "Provider native search",
+) {
     private val outputItems = sortedMapOf<Int, JsonObject>()
     private val calls = sortedMapOf<Int, CallAccumulator>()
     private val searchIndexes = linkedMapOf<String, Int>()
@@ -357,9 +377,10 @@ internal class ResponsesApiStreamState {
         return NativeToolCallProgress(
             index = index,
             id = id,
-            name = "web_search",
+            name = "native_web_search",
             argumentsJson = buildJsonObject {
                 if (!query.isNullOrBlank()) put("query", JsonPrimitive(query))
+                put("source", JsonPrimitive(searchSourceLabel))
             }.toString(),
             complete = complete,
         )

@@ -36,3 +36,17 @@ class ToolCallStreamingTest {
         assertTrue(presentation.preparingLabel.contains("custom_tool"))
     }
 }
+
+
+class NativeSearchToolCallStreamingTest {
+    @Test
+    fun nativeSearchReportsItsProviderInsteadOfPreparedWebSearch() {
+        val presentation = toolCallPresentation(
+            "native_web_search",
+            """{"query":"Android 16","source":"DeepSeek native search"}""",
+        )
+        assertEquals("native_search", presentation.kind)
+        assertEquals("DeepSeek native search", presentation.completedLabel)
+        assertEquals("Android 16", presentation.input)
+    }
+}

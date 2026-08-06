@@ -5,6 +5,8 @@ import app.xylune.chat.data.MessageRole
 import app.xylune.chat.data.ModelEntity
 import app.xylune.chat.data.ProviderEntity
 import app.xylune.chat.data.ThinkingEffort
+import app.xylune.chat.settings.WebSearchEngine
+import app.xylune.chat.settings.WebSearchRoute
 
 data class InputMessage(
     val role: MessageRole,
@@ -29,6 +31,9 @@ data class ChatRequest(
     val thinkingEffort: ThinkingEffort = ThinkingEffort.MEDIUM,
     val continuation: Boolean = false,
     val customHeaders: Map<String, String> = emptyMap(),
+    val webSearchRoute: WebSearchRoute = WebSearchRoute.AUTO,
+    val webSearchEngine: WebSearchEngine = WebSearchEngine.DUCKDUCKGO,
+    val webSearchMaxResults: Int = 8,
     val tools: List<NativeToolDefinition> = emptyList(),
     /** Names recognized only by the protocol firewall; these are never serialized as callable tools. */
     val toolProtocolNames: Set<String> = emptySet(),

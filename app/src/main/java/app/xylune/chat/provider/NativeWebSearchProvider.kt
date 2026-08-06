@@ -36,6 +36,13 @@ internal class NativeWebSearchProvider(
     override suspend fun stream(request: ChatRequest, emit: suspend (StreamChunk) -> Unit) {
         val mode = NativeWebSearch.mode(request)
         if (mode == NativeWebSearchMode.NONE || mode == NativeWebSearchMode.RESPONSES && request.apiKey.isBlank()) {
+            if (request.webSearchRoute == app.xylune.chat.settings.WebSearchRoute.NATIVE_ONLY &&
+                NativeWebSearch.requested(request)
+            ) {
+                throw ProviderProtocolException(
+                    "${request.provider.displayName} / ${request.model.displayName} does not expose native web search.",
+                )
+            }
             delegate.stream(request, emit)
             return
         }
@@ -55,7 +62,10 @@ internal class NativeWebSearchProvider(
                 }
             }
         } catch (error: ProviderHttpException) {
-            if (emittedNativeChunk || error.status !in FALLBACK_HTTP_CODES) throw error
+            if (emittedNativeChunk || error.status !in FALLBACK_HTTP_CODES ||
+                request.webSearchRoute == app.xylune.chat.settings.WebSearchRoute.NATIVE_ONLY
+            ) throw error
+            emit(StreamChunk(resetCurrentAttempt = true))
             delegate.stream(request, emit)
         }
     }
@@ -81,7 +91,7 @@ private class AnthropicNativeWebSearchTransport(private val client: OkHttpClient
             .build()
 
         val providerState = AnthropicProvider.AnthropicStreamState()
-        val searchState = AnthropicSearchStreamState()
+        val searchState = AnthropicSearchStreamState(NativeWebSearch.nativeSourceLabel(request))
         client.newCall(httpRequest).useCancellable { response ->
             if (!response.isSuccessful) {
                 throw ProviderHttpException(response.code, response.body?.readErrorSnippet().orEmpty())
@@ -111,12 +121,12 @@ private class AnthropicNativeWebSearchTransport(private val client: OkHttpClient
             add(buildJsonObject {
                 put("type", JsonPrimitive("web_search_20250305"))
                 put("name", JsonPrimitive("web_search"))
-                put("max_uses", JsonPrimitive(8))
+                put("max_uses", JsonPrimitive(request.webSearchMaxResults.coerceIn(3, 20)))
             })
             if (NativeWebSearch.requestedFetch(request)) add(buildJsonObject {
                 put("type", JsonPrimitive("web_fetch_20250910"))
                 put("name", JsonPrimitive("web_fetch"))
-                put("max_uses", JsonPrimitive(8))
+                put("max_uses", JsonPrimitive(request.webSearchMaxResults.coerceIn(3, 20)))
             })
             clientTools.forEach(::add)
         }
@@ -129,7 +139,9 @@ private class AnthropicNativeWebSearchTransport(private val client: OkHttpClient
         ))
     }
 
-    private class AnthropicSearchStreamState {
+    private class AnthropicSearchStreamState(
+        private val sourceLabel: String,
+    ) {
         private val active = linkedMapOf<Int, SearchCall>()
         private val citations = linkedMapOf<String, String>()
 
@@ -195,8 +207,16 @@ private class AnthropicNativeWebSearchTransport(private val client: OkHttpClient
             fun progress(index: Int, complete: Boolean = false) = NativeToolCallProgress(
                 index = index,
                 id = id,
-                name = name,
-                argumentsJson = arguments.toString(),
+                name = "native_web_search",
+                argumentsJson = buildJsonObject {
+                    val parsed = runCatching {
+                        ProviderJson.parseToJsonElement(arguments.toString().ifBlank { "{}" }).jsonObject
+                    }.getOrNull()
+                    parsed?.string("query")?.takeIf(String::isNotBlank)?.let {
+                        put("query", JsonPrimitive(it))
+                    }
+                    put("source", JsonPrimitive("Anthropic native search"))
+                }.toString(),
                 complete = complete,
             )
         }
@@ -218,7 +238,7 @@ private class GeminiNativeWebSearchTransport(private val client: OkHttpClient) {
             .build()
 
         val providerState = GeminiProvider.GeminiStreamState()
-        val searchState = GeminiSearchStreamState()
+        val searchState = GeminiSearchStreamState(NativeWebSearch.nativeSourceLabel(request))
         client.newCall(httpRequest).useCancellable { response ->
             if (!response.isSuccessful) {
                 throw ProviderHttpException(response.code, response.body?.readErrorSnippet().orEmpty())
@@ -252,7 +272,9 @@ private class GeminiNativeWebSearchTransport(private val client: OkHttpClient) {
         return JsonObject(base + ("tools" to tools))
     }
 
-    private class GeminiSearchStreamState {
+    private class GeminiSearchStreamState(
+        private val sourceLabel: String,
+    ) {
         private val queries = linkedSetOf<String>()
         private val citations = linkedMapOf<String, String>()
 
@@ -279,8 +301,11 @@ private class GeminiNativeWebSearchTransport(private val client: OkHttpClient) {
                             NativeToolCallProgress(
                                 index = 10_000 + index,
                                 id = "gemini-search-${query.hashCode().toUInt().toString(16)}",
-                                name = "web_search",
-                                argumentsJson = buildJsonObject { put("query", JsonPrimitive(query)) }.toString(),
+                                name = "native_web_search",
+                                argumentsJson = buildJsonObject {
+                                    put("query", JsonPrimitive(query))
+                                    put("source", JsonPrimitive(sourceLabel))
+                                }.toString(),
                                 complete = true,
                             ),
                         ),
