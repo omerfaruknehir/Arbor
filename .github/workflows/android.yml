@@ -2,24 +2,47 @@ name: Android
 
 on:
   push:
-    branches: [ main ]
-    paths-ignore:
-      - 'docs/**'
-      - '.github/workflows/pages.yml'
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'ci/**'
+      - '.github/workflows/android.yml'
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - '.github/workflows/pages.yml'
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'app/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'ci/**'
+      - '.github/workflows/android.yml'
   workflow_dispatch:
     inputs:
+      run_device_smoke:
+        description: Run the Android emulator smoke tests
+        required: false
+        default: false
+        type: boolean
       build_release:
-        description: Build signed release artifacts when signing secrets are configured
+        description: Build protected signed release artifacts when signing secrets are configured
         required: false
         default: false
         type: boolean
 
 permissions:
   contents: read
+
+concurrency:
+  group: android-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   XYLUNE_SOURCE_REPOSITORY: ${{ github.repository }}
@@ -29,7 +52,7 @@ env:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
@@ -53,25 +76,21 @@ jobs:
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
       - name: Assemble optimized release APK
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease
-      - name: Assemble optimized release AAB
-        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process bundleRelease
-      - name: Assemble instrumentation APK
-        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleDebugAndroidTest
       - name: Verify release APK signature
         run: "$ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: xylune-release-and-reports
+          name: xylune-release-apk-and-reports
+          if-no-files-found: warn
           path: |
             app/build/outputs/apk/release/*.apk
-            app/build/outputs/bundle/release/*.aab
-            app/build/outputs/apk/androidTest/debug/*.apk
             app/build/reports/tests/
             app/build/reports/lint-results-release.html
 
   device-smoke:
-    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.run_device_smoke)
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -80,10 +99,10 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
-      - name: Set up Android 16 SDK
+      - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
       - name: Enable KVM acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
@@ -96,11 +115,12 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: ./gradlew --no-daemon connectedDebugAndroidTest
+          script: ./gradlew --no-daemon --stacktrace --max-workers=2 connectedDebugAndroidTest
 
   signed-release:
     if: github.event_name == 'workflow_dispatch' && inputs.build_release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    timeout-minutes: 75
     environment: release
     steps:
       - uses: actions/checkout@v4
@@ -113,24 +133,26 @@ jobs:
         uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
       - name: Verify third-party licenses
         run: ./ci/verify-third-party-licenses.sh
       - name: Verify offline license catalog
-        run: ./gradlew --no-daemon :app:generateOfflineLicenseCatalog
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:generateOfflineLicenseCatalog
       - name: Restore release keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.XYLUNE_KEYSTORE_BASE64 }}
         run: echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/xylune-release.jks"
-      - name: Build signed release
+      - name: Build protected signed release
         env:
           XYLUNE_KEYSTORE_FILE: ${{ runner.temp }}/xylune-release.jks
           XYLUNE_KEYSTORE_PASSWORD: ${{ secrets.XYLUNE_KEYSTORE_PASSWORD }}
           XYLUNE_KEY_ALIAS: ${{ secrets.XYLUNE_KEY_ALIAS }}
           XYLUNE_KEY_PASSWORD: ${{ secrets.XYLUNE_KEY_PASSWORD }}
-        run: ./gradlew --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest lintRelease assembleRelease bundleRelease
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest lintRelease assembleRelease bundleRelease
       - uses: actions/upload-artifact@v4
         with:
           name: xylune-protected-signed-release
+          if-no-files-found: error
           path: |
             app/build/outputs/apk/release/*.apk
             app/build/outputs/bundle/release/*.aab
