@@ -28,7 +28,19 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Apply Pages patch
-        run: python3 .github/patch-pages-release-0.24.5.py
+        run: |
+          python3 .github/patch-pages-release-0.24.5.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/test/java/app/xylune/chat/ui/LegalWebsiteIntegrationTest.kt')
+          text = path.read_text()
+          bad = 'fun `home uses banner and release notes expand in page`\\(\\) {'
+          good = 'fun `home uses banner and release notes expand in page`() {'
+          if text.count(bad) != 1:
+              raise SystemExit(f'Expected one malformed generated test declaration, found {text.count(bad)}')
+          path.write_text(text.replace(bad, good, 1))
+          PY
 
       - name: Validate JavaScript
         run: |
