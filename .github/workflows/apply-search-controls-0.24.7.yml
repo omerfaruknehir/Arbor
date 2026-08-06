@@ -93,6 +93,65 @@ jobs:
           bash -n /tmp/apply-search-controls.sh
           bash /tmp/apply-search-controls.sh
 
+      - name: Repair generated Kotlin sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          agent_path = Path("app/src/main/java/app/xylune/chat/agent/AgentTools.kt")
+          agent = agent_path.read_text()
+          old_call = "WebSearchResponse(query, results)"
+          new_call = 'WebSearchResponse(query = query, engine = "DuckDuckGo", results = results)'
+          if agent.count(old_call) != 1:
+              raise SystemExit(f"Expected one legacy WebSearchResponse call, found {agent.count(old_call)}")
+          agent_path.write_text(agent.replace(old_call, new_call, 1))
+
+          client_path = Path("app/src/main/java/app/xylune/chat/agent/WebSearchClient.kt")
+          client = client_path.read_text()
+          regex_start = client.index("        val anchor = Regex(")
+          regex_end = client.index("        return anchor.findAll", regex_start)
+          regex_block = r'''        val anchor = Regex(
+              """<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)</a>""",
+              RegexOption.IGNORE_CASE,
+          )
+          val snippet = Regex(
+              """class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)</(?:a|div)>""",
+              RegexOption.IGNORE_CASE,
+          )
+'''
+          client = client[:regex_start] + regex_block + client[regex_end:]
+          lines = client.splitlines()
+          target_indexes = [
+              index for index, line in enumerate(lines)
+              if "val target = Regex(" in line and "uddg" in line
+          ]
+          if len(target_indexes) != 1:
+              raise SystemExit(f"Expected one DuckDuckGo redirect regex, found {len(target_indexes)}")
+          index = target_indexes[0]
+          indent = lines[index][:-len(lines[index].lstrip())]
+          lines[index] = indent + 'val target = Regex("""[?&]uddg=([^&]+)""").find(decoded)?.groupValues?.get(1)'
+          client_path.write_text("\n".join(lines) + "\n")
+
+          native_path = Path("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt")
+          native = native_path.read_text()
+          search_call_start = native.index("        private data class SearchCall(")
+          search_call_end = native.index("    }\n}\n\nprivate class GeminiNativeWebSearchTransport", search_call_start)
+          search_call = native[search_call_start:search_call_end]
+          source_marker = 'put("source", JsonPrimitive(sourceLabel))'
+          if search_call.count(source_marker) != 1:
+              raise SystemExit(
+                  f"Expected one nested Anthropic source label, found {search_call.count(source_marker)}"
+              )
+          search_call = search_call.replace(
+              source_marker,
+              'put("source", JsonPrimitive("Anthropic native search"))',
+              1,
+          )
+          native_path.write_text(native[:search_call_start] + search_call + native[search_call_end:])
+          PY
+
       - name: Verify third-party licenses
         run: ./ci/verify-third-party-licenses.sh
 
