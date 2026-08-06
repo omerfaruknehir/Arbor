@@ -1,3 +1,11 @@
+## 0.24.8 — 2026-08-06
+
+- Add compact website source notation such as `[[PNA|https://example.com/article]]` and keep the earlier explicit source/file notation compatible.
+- Render source references as inline tappable pills while leaving ordinary model-written Markdown links visible as literal Markdown.
+- Automatically add a deduplicated Sources section at the bottom of completed answers, preserving first-use order.
+- Show an anchored source preview with page title, domain, description, destination, and an explicit Open button before leaving Xylune.
+- Teach supported AI providers to cite material sources immediately after the claims they support and never invent or manually duplicate the source list.
+
 ## 0.24.7 — 2026-08-06
 
 - Add configurable search routing: Automatic, provider-native-only, or a selected Xylune search engine.

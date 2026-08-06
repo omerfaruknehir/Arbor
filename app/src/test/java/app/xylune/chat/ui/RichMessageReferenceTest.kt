@@ -15,6 +15,32 @@ class RichMessageReferenceTest {
         assertFalse(rendered.contains("[[source|"))
     }
 
+    @Test fun compactSourceNotationBecomesAnXyluneSourceLink() {
+        val rendered = prepareReferenceMarkdown(
+            "Claim [[PNA|https://www.pna.gov.ph/index.php/articles/1281231]]",
+        )
+        assertTrue(rendered.contains("[PNA](xylune-source://reference?target="))
+        assertTrue(rendered.contains("https%3A%2F%2Fwww.pna.gov.ph%2Findex.php%2Farticles%2F1281231"))
+        assertFalse(rendered.contains("[[PNA|"))
+    }
+
+    @Test fun compactSourcePillsRemainClickableWhileOrdinaryMarkdownLinksStayLiteral() {
+        val rendered = renderMarkdownLinksLiterally(
+            "[[PNA|https://www.pna.gov.ph/article]] and [ordinary](https://example.com)",
+        )
+        assertTrue(rendered.contains("[PNA](xylune-source://reference?target="))
+        assertTrue(rendered.contains("\\[ordinary\\]\\(https://example.com\\)"))
+    }
+
+    @Test fun sourceFooterIsOrderedAndDeduplicatedByDestination() {
+        val markdown = """First [[PNA|https://example.com/a]].
+Second [[Example|https://example.com/a]] and [[Other|https://example.com/b]]."""
+        val footer = sourceReferencesFooterMarkdown(markdown)
+        assertTrue(footer.startsWith("**Sources**"))
+        assertEquals(1, Regex("https://example.com/a").findAll(footer).count())
+        assertTrue(footer.indexOf("PNA") < footer.indexOf("Other"))
+    }
+
     @Test fun fileNotationBecomesAnXyluneFileLink() {
         val rendered = prepareReferenceMarkdown("See [[file|Build log|logs/build output.txt]]")
         assertTrue(rendered.contains("[Build log](xylune-file://reference?target="))
