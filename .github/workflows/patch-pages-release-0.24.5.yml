@@ -35,11 +35,19 @@ jobs:
 
           path = Path('app/src/test/java/app/xylune/chat/ui/LegalWebsiteIntegrationTest.kt')
           text = path.read_text()
-          bad = 'fun `home uses banner and release notes expand in page`\\(\\) {'
-          good = 'fun `home uses banner and release notes expand in page`() {'
-          if text.count(bad) != 1:
-              raise SystemExit(f'Expected one malformed generated test declaration, found {text.count(bad)}')
-          path.write_text(text.replace(bad, good, 1))
+          replacements = {
+              'fun `home uses banner and release notes expand in page`\\(\\) {':
+                  'fun `home uses banner and release notes expand in page`() {',
+              'assertTrue(home.contains("class="home-banner""))':
+                  'assertTrue(home.contains("class=\\"home-banner\\""))',
+              'assertTrue(home.contains("href="releases/""))':
+                  'assertTrue(home.contains("href=\\"releases/\\""))',
+          }
+          for bad, good in replacements.items():
+              if text.count(bad) != 1:
+                  raise SystemExit(f'Expected one malformed generated test fragment, found {text.count(bad)}: {bad}')
+              text = text.replace(bad, good, 1)
+          path.write_text(text)
           PY
 
       - name: Validate JavaScript
