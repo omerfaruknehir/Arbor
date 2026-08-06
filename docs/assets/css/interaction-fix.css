@@ -45,7 +45,7 @@
   right: auto !important;
   bottom: auto !important;
   left: 4px !important;
-  inset-inline-start: auto !important;
+  inset-inline-start: 4px !important;
   width: 20px !important;
   height: 20px !important;
   margin: 0 !important;
