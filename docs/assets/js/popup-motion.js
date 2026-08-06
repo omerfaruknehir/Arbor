@@ -10,7 +10,7 @@
   const indexDialogItems = () => {
     dialog.querySelectorAll(':scope > .dialog-heading, :scope > .appearance-dialog__section')
       .forEach((item, index) => {
-        item.style.setProperty('--xylune-popup-item-index', String(index));
+        item.style.setProperty('--xylune-popup-item-delay', `${45 + (index * 32)}ms`);
       });
   };
 
