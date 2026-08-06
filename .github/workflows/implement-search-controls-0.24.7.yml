@@ -1,0 +1,366 @@
+name: Implement search controls 0.24.7
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - .github/workflows/implement-search-controls-0.24.7.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: implement-search-controls-0.24.7
+  cancel-in-progress: false
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Apply search configuration and Markdown-link fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def read(path):
+              return Path(path).read_text()
+
+          def write(path, text):
+              p = Path(path)
+              p.parent.mkdir(parents=True, exist_ok=True)
+              p.write_text(text)
+
+          def replace_once(path, old, new):
+              text = read(path)
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {count}: {old[:120]!r}")
+              write(path, text.replace(old, new, 1))
+
+          write("app/src/main/java/app/xylune/chat/settings/WebSearchSettings.kt", 'package app.xylune.chat.settings\n\nenum class WebSearchRoute(\n    val title: String,\n    val description: String,\n) {\n    AUTO(\n        "Automatic",\n        "Use the model provider\'s native server-side search when supported, otherwise use the selected Xylune search engine.",\n    ),\n    NATIVE_ONLY(\n        "Provider native only",\n        "Require the selected provider/model to perform search itself. Unsupported models fail instead of silently switching engines.",\n    ),\n    SEARCH_ENGINE(\n        "Xylune search engine",\n        "Always use the selected search engine through Xylune\'s client-side web_search tool.",\n    ),\n}\n\nenum class WebSearchEngine(\n    val title: String,\n    val description: String,\n    val requiresApiKey: Boolean,\n) {\n    DUCKDUCKGO(\n        "DuckDuckGo",\n        "No API key. Uses DuckDuckGo\'s lightweight HTML results endpoint.",\n        false,\n    ),\n    BRAVE(\n        "Brave Search",\n        "Uses the official Brave Search API.",\n        true,\n    ),\n    TAVILY(\n        "Tavily",\n        "Search API optimized for AI research and concise result content.",\n        true,\n    ),\n    SERPER(\n        "Serper",\n        "Google-result API supplied by Serper.",\n        true,\n    ),\n    SEARXNG(\n        "SearXNG",\n        "Uses a user-supplied public HTTPS SearXNG instance with JSON output enabled.",\n        false,\n    ),\n}\n\ndata class WebSearchSettings(\n    val route: WebSearchRoute = WebSearchRoute.AUTO,\n    val engine: WebSearchEngine = WebSearchEngine.DUCKDUCKGO,\n    val maxResults: Int = 8,\n    val pageFetchEnabled: Boolean = true,\n    val searxngEndpoint: String = "",\n) {\n    fun normalized() = copy(\n        maxResults = maxResults.coerceIn(3, 20),\n        searxngEndpoint = searxngEndpoint.trim().trimEnd(\'/\'),\n    )\n\n    val activeLabel: String\n        get() = when (route) {\n            WebSearchRoute.AUTO -> "Auto · ${engine.title} fallback"\n            WebSearchRoute.NATIVE_ONLY -> "Native only"\n            WebSearchRoute.SEARCH_ENGINE -> engine.title\n        }\n}\n')
+
+          replace_once(
+              "app/src/main/java/app/xylune/chat/settings/AppPreferences.kt",
+              '    private val _automaticUpdateChecks = MutableStateFlow(preferences.getBoolean(KEY_AUTOMATIC_UPDATE_CHECKS, true))\n    private val _newChatDefaults = MutableStateFlow(readNewChatDefaults())',
+              '    private val _automaticUpdateChecks = MutableStateFlow(preferences.getBoolean(KEY_AUTOMATIC_UPDATE_CHECKS, true))\n    private val _webSearchSettings = MutableStateFlow(readWebSearchSettings())\n    private val _newChatDefaults = MutableStateFlow(readNewChatDefaults())',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/settings/AppPreferences.kt",
+              '    val automaticUpdateChecks: StateFlow<Boolean> = _automaticUpdateChecks.asStateFlow()\n    val newChatDefaults: StateFlow<NewChatDefaults> = _newChatDefaults.asStateFlow()',
+              '    val automaticUpdateChecks: StateFlow<Boolean> = _automaticUpdateChecks.asStateFlow()\n    val webSearchSettings: StateFlow<WebSearchSettings> = _webSearchSettings.asStateFlow()\n    val newChatDefaults: StateFlow<NewChatDefaults> = _newChatDefaults.asStateFlow()',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/settings/AppPreferences.kt",
+              '    fun setAutomaticUpdateChecks(enabled: Boolean) {\n        _automaticUpdateChecks.value = enabled\n        preferences.edit { putBoolean(KEY_AUTOMATIC_UPDATE_CHECKS, enabled) }\n    }\n\n    fun setGeneratedRepairMaxAttempts',
+              '    fun setAutomaticUpdateChecks(enabled: Boolean) {\n        _automaticUpdateChecks.value = enabled\n        preferences.edit { putBoolean(KEY_AUTOMATIC_UPDATE_CHECKS, enabled) }\n    }\n\n    fun setWebSearchSettings(value: WebSearchSettings) {\n        val normalized = value.normalized()\n        _webSearchSettings.value = normalized\n        preferences.edit {\n            putString(KEY_WEB_SEARCH_ROUTE, normalized.route.name)\n            putString(KEY_WEB_SEARCH_ENGINE, normalized.engine.name)\n            putInt(KEY_WEB_SEARCH_MAX_RESULTS, normalized.maxResults)\n            putBoolean(KEY_WEB_FETCH_ENABLED, normalized.pageFetchEnabled)\n            putString(KEY_SEARXNG_ENDPOINT, normalized.searxngEndpoint)\n        }\n    }\n\n    fun updateWebSearchSettings(transform: (WebSearchSettings) -> WebSearchSettings) =\n        setWebSearchSettings(transform(_webSearchSettings.value))\n\n    fun setGeneratedRepairMaxAttempts',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/settings/AppPreferences.kt",
+              '    private fun readDeveloperSettings() = DeveloperSettings(',
+              '    private fun readWebSearchSettings() = WebSearchSettings(\n        route = enumValue(KEY_WEB_SEARCH_ROUTE, WebSearchRoute.AUTO),\n        engine = enumValue(KEY_WEB_SEARCH_ENGINE, WebSearchEngine.DUCKDUCKGO),\n        maxResults = preferences.getInt(KEY_WEB_SEARCH_MAX_RESULTS, 8),\n        pageFetchEnabled = preferences.getBoolean(KEY_WEB_FETCH_ENABLED, true),\n        searxngEndpoint = preferences.getString(KEY_SEARXNG_ENDPOINT, "").orEmpty(),\n    ).normalized()\n\n    private fun readDeveloperSettings() = DeveloperSettings(',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/settings/AppPreferences.kt",
+              '        const val KEY_AUTOMATIC_UPDATE_CHECKS = "automatic_update_checks"\n        const val CHROME_EDGE_CONTROL_REVISION = 2',
+              '        const val KEY_AUTOMATIC_UPDATE_CHECKS = "automatic_update_checks"\n        const val KEY_WEB_SEARCH_ROUTE = "web_search_route"\n        const val KEY_WEB_SEARCH_ENGINE = "web_search_engine"\n        const val KEY_WEB_SEARCH_MAX_RESULTS = "web_search_max_results"\n        const val KEY_WEB_FETCH_ENABLED = "web_fetch_enabled"\n        const val KEY_SEARXNG_ENDPOINT = "searxng_endpoint"\n        const val CHROME_EDGE_CONTROL_REVISION = 2',
+          )
+
+          replace_once(
+              "app/src/main/java/app/xylune/chat/security/SecureStore.kt",
+              '    fun setApiKey(providerId: String, value: String) {\n        preferences.edit { putString("key_$providerId", value.trim()) }\n    }\n\n    fun cloudRecord',
+              '    fun setApiKey(providerId: String, value: String) {\n        preferences.edit { putString("key_$providerId", value.trim()) }\n    }\n\n    fun searchApiKey(engineId: String): String =\n        preferences.getString("search_key_${engineId.lowercase().filter(Char::isLetterOrDigit)}", "").orEmpty()\n\n    fun setSearchApiKey(engineId: String, value: String) {\n        val key = "search_key_${engineId.lowercase().filter(Char::isLetterOrDigit)}"\n        preferences.edit {\n            if (value.isBlank()) remove(key) else putString(key, value.trim())\n        }\n    }\n\n    fun cloudRecord',
+          )
+
+          write("app/src/main/java/app/xylune/chat/agent/WebSearchClient.kt", 'package app.xylune.chat.agent\n\nimport android.text.Html\nimport app.xylune.chat.security.SecureStore\nimport app.xylune.chat.settings.AppPreferences\nimport app.xylune.chat.settings.WebSearchEngine\nimport kotlinx.coroutines.Dispatchers\nimport kotlinx.coroutines.withContext\nimport kotlinx.serialization.encodeToString\nimport kotlinx.serialization.json.Json\nimport kotlinx.serialization.json.JsonArray\nimport kotlinx.serialization.json.JsonObject\nimport kotlinx.serialization.json.JsonPrimitive\nimport kotlinx.serialization.json.buildJsonObject\nimport kotlinx.serialization.json.contentOrNull\nimport kotlinx.serialization.json.jsonObject\nimport kotlinx.serialization.json.jsonPrimitive\nimport okhttp3.Dns\nimport okhttp3.HttpUrl.Companion.toHttpUrl\nimport okhttp3.MediaType.Companion.toMediaType\nimport okhttp3.OkHttpClient\nimport okhttp3.Request\nimport okhttp3.RequestBody.Companion.toRequestBody\nimport okhttp3.ResponseBody\nimport java.net.InetAddress\nimport java.net.URI\nimport java.net.URLDecoder\nimport java.util.concurrent.TimeUnit\n\nclass WebSearchClient(\n    private val preferences: AppPreferences,\n    private val secureStore: SecureStore,\n    private val client: OkHttpClient = OkHttpClient.Builder()\n        .connectTimeout(20, TimeUnit.SECONDS)\n        .readTimeout(35, TimeUnit.SECONDS)\n        .dns(SearchPublicOnlyDns)\n        .build(),\n) {\n    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }\n\n    suspend fun search(rawQuery: String): String = withContext(Dispatchers.IO) {\n        val query = rawQuery.trim().take(500)\n        require(query.isNotBlank()) { "Search query is empty" }\n        val settings = preferences.webSearchSettings.value.normalized()\n        val results = when (settings.engine) {\n            WebSearchEngine.DUCKDUCKGO -> duckDuckGo(query, settings.maxResults)\n            WebSearchEngine.BRAVE -> brave(query, settings.maxResults)\n            WebSearchEngine.TAVILY -> tavily(query, settings.maxResults)\n            WebSearchEngine.SERPER -> serper(query, settings.maxResults)\n            WebSearchEngine.SEARXNG -> searxng(query, settings.maxResults, settings.searxngEndpoint)\n        }\n        json.encodeToString(\n            WebSearchResponse(\n                query = query,\n                engine = settings.engine.title,\n                results = results.distinctBy(WebSearchResult::url).take(settings.maxResults),\n            ),\n        )\n    }\n\n    private fun duckDuckGo(query: String, limit: Int): List<WebSearchResult> {\n        val url = "https://html.duckduckgo.com/html/".toHttpUrl().newBuilder()\n            .addQueryParameter("q", query)\n            .build()\n        val html = executeText(\n            Request.Builder().url(url)\n                .header("User-Agent", USER_AGENT)\n                .header("Accept", "text/html")\n                .build(),\n        )\n        val anchor = Regex(\n            "<a[^>]*class=\\\"[^\\\"]*result__a[^\\\"]*\\\"[^>]*href=\\\"([^\\\"]+)\\\"[^>]*>([\\s\\S]*?)</a>",\n            RegexOption.IGNORE_CASE,\n        )\n        val snippet = Regex(\n            "class=\\\"[^\\\"]*result__snippet[^\\\"]*\\\"[^>]*>([\\s\\S]*?)</(?:a|div)>",\n            RegexOption.IGNORE_CASE,\n        )\n        return anchor.findAll(html).map { match ->\n            val windowEnd = minOf(html.length, match.range.last + 4_000)\n            val nearby = html.substring(match.range.last + 1, windowEnd)\n            WebSearchResult(\n                title = plain(match.groupValues[2]),\n                url = cleanDuckDuckGoUrl(match.groupValues[1]),\n                snippet = snippet.find(nearby)?.groupValues?.get(1)?.let(::plain).orEmpty(),\n            )\n        }.filter { it.title.isNotBlank() && it.url.startsWith("https://") }\n            .distinctBy(WebSearchResult::url)\n            .take(limit)\n            .toList()\n    }\n\n    private fun brave(query: String, limit: Int): List<WebSearchResult> {\n        val key = requiredKey(WebSearchEngine.BRAVE)\n        val url = "https://api.search.brave.com/res/v1/web/search".toHttpUrl().newBuilder()\n            .addQueryParameter("q", query)\n            .addQueryParameter("count", limit.toString())\n            .addQueryParameter("safesearch", "moderate")\n            .build()\n        val root = parseObject(\n            executeText(\n                Request.Builder().url(url)\n                    .header("Accept", "application/json")\n                    .header("X-Subscription-Token", key)\n                    .header("User-Agent", USER_AGENT)\n                    .build(),\n            ),\n        )\n        return root.obj("web")?.array("results").orEmpty().mapNotNull { element ->\n            val item = element as? JsonObject ?: return@mapNotNull null\n            result(item.string("title"), item.string("url"), item.string("description"))\n        }.take(limit)\n    }\n\n    private fun tavily(query: String, limit: Int): List<WebSearchResult> {\n        val key = requiredKey(WebSearchEngine.TAVILY)\n        val body = buildJsonObject {\n            put("api_key", JsonPrimitive(key))\n            put("query", JsonPrimitive(query))\n            put("search_depth", JsonPrimitive("advanced"))\n            put("max_results", JsonPrimitive(limit))\n            put("include_answer", JsonPrimitive(false))\n            put("include_raw_content", JsonPrimitive(false))\n        }\n        val root = parseObject(\n            executeText(\n                Request.Builder().url("https://api.tavily.com/search")\n                    .header("Content-Type", "application/json")\n                    .header("Accept", "application/json")\n                    .post(body.toString().toRequestBody(JSON_MEDIA_TYPE))\n                    .build(),\n            ),\n        )\n        return root.array("results").orEmpty().mapNotNull { element ->\n            val item = element as? JsonObject ?: return@mapNotNull null\n            result(item.string("title"), item.string("url"), item.string("content"))\n        }.take(limit)\n    }\n\n    private fun serper(query: String, limit: Int): List<WebSearchResult> {\n        val key = requiredKey(WebSearchEngine.SERPER)\n        val body = buildJsonObject {\n            put("q", JsonPrimitive(query))\n            put("num", JsonPrimitive(limit))\n        }\n        val root = parseObject(\n            executeText(\n                Request.Builder().url("https://google.serper.dev/search")\n                    .header("X-API-KEY", key)\n                    .header("Content-Type", "application/json")\n                    .header("Accept", "application/json")\n                    .post(body.toString().toRequestBody(JSON_MEDIA_TYPE))\n                    .build(),\n            ),\n        )\n        return root.array("organic").orEmpty().mapNotNull { element ->\n            val item = element as? JsonObject ?: return@mapNotNull null\n            result(item.string("title"), item.string("link"), item.string("snippet"))\n        }.take(limit)\n    }\n\n    private fun searxng(query: String, limit: Int, endpoint: String): List<WebSearchResult> {\n        val base = endpoint.trim().trimEnd(\'/\')\n        require(base.isNotBlank()) { "Add a SearXNG endpoint in Settings → Search & web." }\n        validatePublicHttps(base)\n        val url = (if (base.endsWith("/search")) base else "$base/search").toHttpUrl().newBuilder()\n            .addQueryParameter("q", query)\n            .addQueryParameter("format", "json")\n            .build()\n        val root = parseObject(\n            executeText(\n                Request.Builder().url(url)\n                    .header("Accept", "application/json")\n                    .header("User-Agent", USER_AGENT)\n                    .build(),\n            ),\n        )\n        return root.array("results").orEmpty().mapNotNull { element ->\n            val item = element as? JsonObject ?: return@mapNotNull null\n            result(item.string("title"), item.string("url"), item.string("content"))\n        }.take(limit)\n    }\n\n    private fun requiredKey(engine: WebSearchEngine): String =\n        secureStore.searchApiKey(engine.name).also {\n            require(it.isNotBlank()) { "Add a ${engine.title} API key in Settings → Search & web." }\n        }\n\n    private fun executeText(request: Request): String {\n        client.newCall(request).execute().use { response ->\n            val body = response.body?.readLimited(2_000_000).orEmpty()\n            check(response.isSuccessful) {\n                "Search failed with HTTP ${response.code}${body.take(300).takeIf(String::isNotBlank)?.let { ": $it" }.orEmpty()}"\n            }\n            return body\n        }\n    }\n\n    private fun parseObject(raw: String): JsonObject =\n        runCatching { json.parseToJsonElement(raw).jsonObject }\n            .getOrElse { error("Search engine returned invalid JSON: ${it.message}") }\n\n    private fun result(title: String?, url: String?, snippet: String?): WebSearchResult? {\n        val safeUrl = url?.trim().orEmpty()\n        if (!safeUrl.startsWith("https://")) return null\n        return WebSearchResult(\n            title = title.orEmpty().trim().ifBlank { safeUrl },\n            url = safeUrl,\n            snippet = snippet.orEmpty().trim(),\n        )\n    }\n\n    private fun cleanDuckDuckGoUrl(value: String): String {\n        val decoded = Html.fromHtml(value, Html.FROM_HTML_MODE_LEGACY).toString()\n        val target = Regex("[?&]uddg=([^&]+)").find(decoded)?.groupValues?.get(1)\n        return if (target == null) decoded else runCatching {\n            URLDecoder.decode(target, Charsets.UTF_8.name())\n        }.getOrDefault(decoded)\n    }\n\n    private fun plain(value: String): String = Html.fromHtml(value, Html.FROM_HTML_MODE_LEGACY)\n        .toString().replace(Regex("\\s+"), " ").trim()\n\n    private fun validatePublicHttps(raw: String) {\n        val uri = URI(raw)\n        require(uri.scheme == "https" && !uri.host.isNullOrBlank()) {\n            "SearXNG must use an absolute public HTTPS URL."\n        }\n        require(InetAddress.getAllByName(uri.host).none(::isPrivateSearchAddress)) {\n            "Local and private SearXNG addresses are blocked."\n        }\n    }\n\n    private companion object {\n        const val USER_AGENT = "Mozilla/5.0 (Android) Xylune/0.24.7"\n        val JSON_MEDIA_TYPE = "application/json".toMediaType()\n    }\n}\n\nprivate object SearchPublicOnlyDns : Dns {\n    override fun lookup(hostname: String): List<InetAddress> =\n        Dns.SYSTEM.lookup(hostname).also { addresses ->\n            require(addresses.isNotEmpty() && addresses.none(::isPrivateSearchAddress)) {\n                "Local and private search endpoints are blocked."\n            }\n        }\n}\n\nprivate fun isPrivateSearchAddress(address: InetAddress): Boolean =\n    address.isAnyLocalAddress || address.isLoopbackAddress || address.isLinkLocalAddress ||\n        address.isSiteLocalAddress || address.isMulticastAddress\n\nprivate fun ResponseBody.readLimited(limit: Long): String {\n    val source = source()\n    source.request(limit + 1)\n    return source.buffer.readUtf8(minOf(source.buffer.size, limit))\n}\n\nprivate fun JsonObject.string(name: String): String? =\n    this[name]?.jsonPrimitive?.contentOrNull\n\nprivate fun JsonObject.obj(name: String): JsonObject? =\n    this[name] as? JsonObject\n\nprivate fun JsonObject.array(name: String): JsonArray? =\n    this[name] as? JsonArray\n')
+
+          replace_once(
+              "app/src/main/java/app/xylune/chat/agent/AgentTools.kt",
+              '    private val generatedBlockCompiler: GeneratedBlockCompiler,\n    val runRecords: RunRecordStore = RunRecordStore(ubuntu::workspace),\n    private val client: OkHttpClient = OkHttpClient.Builder()',
+              '    private val generatedBlockCompiler: GeneratedBlockCompiler,\n    val runRecords: RunRecordStore = RunRecordStore(ubuntu::workspace),\n    private val webSearchClient: WebSearchClient,\n    private val client: OkHttpClient = OkHttpClient.Builder()',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/agent/AgentTools.kt",
+              '            AgentToolOutcome(search(requireNotNull(request.query) { "Search query is missing" }))',
+              '            AgentToolOutcome(webSearchClient.search(requireNotNull(request.query) { "Search query is missing" }))',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/agent/AgentTools.kt",
+              'internal data class WebSearchResponse(val query: String, val results: List<WebSearchResult>)',
+              'internal data class WebSearchResponse(\n    val query: String,\n    val engine: String = "DuckDuckGo",\n    val results: List<WebSearchResult>,\n)',
+          )
+
+          replace_once(
+              "app/src/main/java/app/xylune/chat/XyluneApplication.kt",
+              'import app.xylune.chat.agent.AgentTools',
+              'import app.xylune.chat.agent.AgentTools\nimport app.xylune.chat.agent.WebSearchClient',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/XyluneApplication.kt",
+              '    val packageApprovals = PackageApprovalService(repository, auxiliaryModels)\n    val agentTools = AgentTools(pythonSandbox, ubuntuRuntime, repository, generatedBlockCompiler, runRecords)\n    val scheduler',
+              '    val packageApprovals = PackageApprovalService(repository, auxiliaryModels)\n    val webSearchClient = WebSearchClient(appPreferences, secureStore)\n    val agentTools = AgentTools(\n        pythonSandbox,\n        ubuntuRuntime,\n        repository,\n        generatedBlockCompiler,\n        runRecords,\n        webSearchClient,\n    )\n    val scheduler',
+          )
+
+          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/ProviderModels.kt",
+              'import app.xylune.chat.data.ThinkingEffort',
+              'import app.xylune.chat.data.ThinkingEffort\nimport app.xylune.chat.settings.WebSearchEngine\nimport app.xylune.chat.settings.WebSearchRoute',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/ProviderModels.kt",
+              '    val customHeaders: Map<String, String> = emptyMap(),\n    val tools: List<NativeToolDefinition> = emptyList(),',
+              '    val customHeaders: Map<String, String> = emptyMap(),\n    val webSearchRoute: WebSearchRoute = WebSearchRoute.AUTO,\n    val webSearchEngine: WebSearchEngine = WebSearchEngine.DUCKDUCKGO,\n    val webSearchMaxResults: Int = 8,\n    val tools: List<NativeToolDefinition> = emptyList(),',
+          )
+
+          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/ResponsesApiTransport.kt",
+              'import app.xylune.chat.data.ProviderKind',
+              'import app.xylune.chat.data.ProviderKind\nimport app.xylune.chat.settings.WebSearchRoute',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/ResponsesApiTransport.kt",
+              '    fun mode(request: ChatRequest): NativeWebSearchMode {\n        if (!request.model.supportsTools || !requested(request)) return NativeWebSearchMode.NONE\n        val providerId',
+              '    fun mode(request: ChatRequest): NativeWebSearchMode {\n        if (!request.model.supportsTools || !requested(request) ||\n            request.webSearchRoute == WebSearchRoute.SEARCH_ENGINE\n        ) return NativeWebSearchMode.NONE\n        val providerId',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/ResponsesApiTransport.kt",
+              '    fun responsesServerToolType(request: ChatRequest): String =',
+              '    fun nativeSourceLabel(request: ChatRequest): String {\n        val providerId = request.provider.id.lowercase()\n        val baseUrl = request.provider.baseUrl.lowercase()\n        return when {\n            providerId == "deepseek" || baseUrl.contains("api.deepseek.com") -> "DeepSeek native search"\n            providerId == "openai" || baseUrl.contains("api.openai.com") -> "OpenAI native search"\n            providerId == "openrouter" || baseUrl.contains("openrouter.ai") -> "OpenRouter native search"\n            providerId == "xai" || baseUrl.contains("api.x.ai") -> "xAI native search"\n            baseUrl.contains("api.perplexity.ai") -> "Perplexity native search"\n            request.provider.kind == ProviderKind.ANTHROPIC -> "Anthropic native search"\n            request.provider.kind == ProviderKind.GEMINI -> "Google Search grounding"\n            else -> "${request.provider.displayName} native search"\n        }\n    }\n\n    fun responsesServerToolType(request: ChatRequest): String =',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/ResponsesApiTransport.kt",
+              '        val state = ResponsesApiStreamState()',
+              '        val state = ResponsesApiStreamState(NativeWebSearch.nativeSourceLabel(request))',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/ResponsesApiTransport.kt",
+              '                        put("max_total_results", JsonPrimitive(30))',
+              '                        put("max_total_results", JsonPrimitive(request.webSearchMaxResults.coerceIn(3, 20)))',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/ResponsesApiTransport.kt",
+              'internal class ResponsesApiStreamState {',
+              'internal class ResponsesApiStreamState(\n    private val searchSourceLabel: String = "Provider native search",\n) {',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/ResponsesApiTransport.kt",
+              '            name = "web_search",\n            argumentsJson = buildJsonObject {\n                if (!query.isNullOrBlank()) put("query", JsonPrimitive(query))\n            }.toString(),',
+              '            name = "native_web_search",\n            argumentsJson = buildJsonObject {\n                if (!query.isNullOrBlank()) put("query", JsonPrimitive(query))\n                put("source", JsonPrimitive(searchSourceLabel))\n            }.toString(),',
+          )
+
+          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt",
+              '        if (mode == NativeWebSearchMode.NONE || mode == NativeWebSearchMode.RESPONSES && request.apiKey.isBlank()) {\n            delegate.stream(request, emit)\n            return\n        }',
+              '        if (mode == NativeWebSearchMode.NONE || mode == NativeWebSearchMode.RESPONSES && request.apiKey.isBlank()) {\n            if (request.webSearchRoute == app.xylune.chat.settings.WebSearchRoute.NATIVE_ONLY &&\n                NativeWebSearch.requested(request)\n            ) {\n                throw ProviderProtocolException(\n                    "${request.provider.displayName} / ${request.model.displayName} does not expose native web search.",\n                )\n            }\n            delegate.stream(request, emit)\n            return\n        }',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt",
+              '            if (emittedNativeChunk || error.status !in FALLBACK_HTTP_CODES) throw error\n            delegate.stream(request, emit)',
+              '            if (emittedNativeChunk || error.status !in FALLBACK_HTTP_CODES ||\n                request.webSearchRoute == app.xylune.chat.settings.WebSearchRoute.NATIVE_ONLY\n            ) throw error\n            emit(StreamChunk(resetCurrentAttempt = true))\n            delegate.stream(request, emit)',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt",
+              '        val searchState = AnthropicSearchStreamState()',
+              '        val searchState = AnthropicSearchStreamState(NativeWebSearch.nativeSourceLabel(request))',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt",
+              '                put("max_uses", JsonPrimitive(8))',
+              '                put("max_uses", JsonPrimitive(request.webSearchMaxResults.coerceIn(3, 20)))',
+          )
+          # There are two max_uses occurrences; replace the remaining fetch occurrence too.
+          text = read("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt")
+          text = text.replace('put("max_uses", JsonPrimitive(8))', 'put("max_uses", JsonPrimitive(request.webSearchMaxResults.coerceIn(3, 20)))')
+          write("app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt", text)
+          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt",
+              '    private class AnthropicSearchStreamState {\n        private val active',
+              '    private class AnthropicSearchStreamState(\n        private val sourceLabel: String,\n    ) {\n        private val active',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt",
+              '                name = name,\n                argumentsJson = arguments.toString(),\n                complete = complete,',
+              '                name = "native_web_search",\n                argumentsJson = buildJsonObject {\n                    val parsed = runCatching {\n                        ProviderJson.parseToJsonElement(arguments.toString().ifBlank { "{}" }).jsonObject\n                    }.getOrNull()\n                    parsed?.string("query")?.takeIf(String::isNotBlank)?.let {\n                        put("query", JsonPrimitive(it))\n                    }\n                    put("source", JsonPrimitive(sourceLabel))\n                }.toString(),\n                complete = complete,',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt",
+              '        val searchState = GeminiSearchStreamState()',
+              '        val searchState = GeminiSearchStreamState(NativeWebSearch.nativeSourceLabel(request))',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt",
+              '    private class GeminiSearchStreamState {\n        private val queries',
+              '    private class GeminiSearchStreamState(\n        private val sourceLabel: String,\n    ) {\n        private val queries',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/provider/NativeWebSearchProvider.kt",
+              '                                name = "web_search",\n                                argumentsJson = buildJsonObject { put("query", JsonPrimitive(query)) }.toString(),',
+              '                                name = "native_web_search",\n                                argumentsJson = buildJsonObject {\n                                    put("query", JsonPrimitive(query))\n                                    put("source", JsonPrimitive(sourceLabel))\n                                }.toString(),',
+          )
+
+          replace_once(
+              "app/src/main/java/app/xylune/chat/generation/ToolCallStreaming.kt",
+              '    val runningLabel: String,\n    val input: String,',
+              '    val runningLabel: String,\n    val completedLabel: String,\n    val input: String,',
+          )
+          # Add completedLabel to every constructor using the running label as a sensible final label.
+          text = read("app/src/main/java/app/xylune/chat/generation/ToolCallStreaming.kt")
+          text = text.replace(
+              'runningLabel = "Searching the web",\n            input = value("query"),',
+              'runningLabel = "Searching the web",\n            completedLabel = "Web search",\n            input = value("query"),',
+          )
+          text = text.replace(
+              'runningLabel = "Reading a web page",\n            input = value("url"),',
+              'runningLabel = "Reading a web page",\n            completedLabel = "Read web page",\n            input = value("url"),',
+          )
+          replacements = {
+              'runningLabel = "Using Linux tools",\n            input': 'runningLabel = "Using Linux tools",\n            completedLabel = "Linux tool",\n            input',
+              'runningLabel = "Preparing a file",\n            input': 'runningLabel = "Preparing a file",\n            completedLabel = "Prepared file",\n            input',
+              'runningLabel = "Running Python",\n            input': 'runningLabel = "Running Python",\n            completedLabel = "Python",\n            input',
+              'runningLabel = "Saving memory",\n            input': 'runningLabel = "Saving memory",\n            completedLabel = "Saved memory",\n            input',
+              'runningLabel = "Reading memory",\n            input': 'runningLabel = "Reading memory",\n            completedLabel = "Read memory",\n            input',
+              'runningLabel = "Forgetting memory",\n            input': 'runningLabel = "Forgetting memory",\n            completedLabel = "Forgot memory",\n            input',
+              'runningLabel = "Compiling Home widget",\n            input': 'runningLabel = "Compiling Home widget",\n            completedLabel = "Compiled Home widget",\n            input',
+              'runningLabel = if (name.isBlank()) "Running tool" else "Running $name",\n            input': 'runningLabel = if (name.isBlank()) "Running tool" else "Running $name",\n            completedLabel = if (name.isBlank()) "Tool" else name,\n            input',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f"ToolCallStreaming.kt missing constructor fragment: {old}")
+              text = text.replace(old, new, 1)
+          marker = '        "web_fetch", "fetch" -> ToolCallPresentation(\n            kind = "fetch",'
+          native_case = '        "native_web_search" -> value("source").ifBlank { "Provider native search" }.let { source ->\n            ToolCallPresentation(\n                kind = "native_search",\n                preparingLabel = "Starting $source",\n                runningLabel = source,\n                completedLabel = source,\n                input = value("query"),\n            )\n        }\n'
+          if marker not in text:
+              raise SystemExit("ToolCallStreaming.kt missing web_fetch marker")
+          text = text.replace(marker, native_case + marker, 1)
+          write("app/src/main/java/app/xylune/chat/generation/ToolCallStreaming.kt", text)
+
+          replace_once(
+              "app/src/main/java/app/xylune/chat/generation/GenerationWorker.kt",
+              '        val nativeToolDefinitions = if (model.supportsTools && !directImageModel) {\n            XyluneNativeTools.definitions(conversation, memoryEnabled = automationSettings.memoryEnabled)\n        } else emptyList()',
+              '        val webSearchSettings = container.appPreferences.webSearchSettings.value.normalized()\n        val nativeToolDefinitions = if (model.supportsTools && !directImageModel) {\n            XyluneNativeTools.definitions(conversation, memoryEnabled = automationSettings.memoryEnabled)\n                .filterNot { tool ->\n                    !webSearchSettings.pageFetchEnabled && tool.name.equals("web_fetch", ignoreCase = true)\n                }\n        } else emptyList()',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/generation/GenerationWorker.kt",
+              '            val presentation = toolCallPresentation(request.type, argumentsJson)\n            val label = presentation.runningLabel',
+              '            val presentation = if (normalizedTool in setOf("web_search", "search")) {\n                ToolCallPresentation(\n                    kind = "search",\n                    preparingLabel = "Preparing ${webSearchSettings.engine.title} search",\n                    runningLabel = "Searching with ${webSearchSettings.engine.title}",\n                    completedLabel = "${webSearchSettings.engine.title} search",\n                    input = request.query.orEmpty(),\n                )\n            } else {\n                toolCallPresentation(request.type, argumentsJson)\n            }\n            val label = presentation.runningLabel',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/generation/GenerationWorker.kt",
+              '                val event = MessageTimelineEvent(\n                    id = eventId,\n                    kind = presentation.kind,\n                    label = if (progress.complete) presentation.preparingLabel.replaceFirst("Preparing", "Prepared") else presentation.preparingLabel,\n                    status = if (progress.complete) "prepared" else "preparing",',
+              '                val nativeSearchComplete = progress.complete && presentation.kind == "native_search"\n                val event = MessageTimelineEvent(\n                    id = eventId,\n                    kind = presentation.kind,\n                    label = when {\n                        nativeSearchComplete -> presentation.completedLabel\n                        progress.complete -> presentation.preparingLabel.replaceFirst("Preparing", "Prepared")\n                        else -> presentation.preparingLabel\n                    },\n                    status = when {\n                        nativeSearchComplete -> "complete"\n                        progress.complete -> "prepared"\n                        else -> "preparing"\n                    },',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/generation/GenerationWorker.kt",
+              '                        customHeaders = parseHeaders(provider.customHeadersJson),\n                        tools = if (nativeToolsDisabled) emptyList() else nativeToolDefinitions,',
+              '                        customHeaders = parseHeaders(provider.customHeadersJson),\n                        webSearchRoute = webSearchSettings.route,\n                        webSearchEngine = webSearchSettings.engine,\n                        webSearchMaxResults = webSearchSettings.maxResults,\n                        tools = if (nativeToolsDisabled) emptyList() else nativeToolDefinitions,',
+          )
+
+          replace_once(
+              "app/src/main/java/app/xylune/chat/ui/SettingsRoute.kt",
+              '    RESPONSE_STYLE("Response style"),\n    AUTOMATION',
+              '    RESPONSE_STYLE("Response style"),\n    SEARCH("Search & web"),\n    AUTOMATION',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/ui/SettingsScreen.kt",
+              '                        SettingsRoute.RESPONSE_STYLE -> ResponseStyleSettingsPage(lessEmojiEnabled, viewModel)\n                        SettingsRoute.AUTOMATION',
+              '                        SettingsRoute.RESPONSE_STYLE -> ResponseStyleSettingsPage(lessEmojiEnabled, viewModel)\n                        SettingsRoute.SEARCH -> SearchSettingsPage()\n                        SettingsRoute.AUTOMATION',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/ui/SettingsScreen.kt",
+              '    SettingsGroup("Tools & safety") {\n        SettingsDestination(\n            icon = Icons.Outlined.Code,',
+              '    SettingsGroup("Tools & safety") {\n        SettingsDestination(\n            icon = Icons.Outlined.Search,\n            title = "Search & web",\n            subtitle = "Native routing, search engines, credentials, and page fetching",\n            onClick = { onOpen(SettingsRoute.SEARCH) },\n        )\n        SettingsDestination(\n            icon = Icons.Outlined.Code,',
+          )
+          with Path("app/src/main/java/app/xylune/chat/ui/SettingsScreen.kt").open("a") as fh:
+              fh.write('\n\n@Composable\nprivate fun SearchSettingsPage() = SettingsPage {\n    val context = LocalContext.current\n    val container = remember(context) {\n        (context.applicationContext as app.xylune.chat.XyluneApplication).container\n    }\n    val settings by container.appPreferences.webSearchSettings.collectAsState()\n    var apiKey by remember(settings.engine) {\n        mutableStateOf(container.secureStore.searchApiKey(settings.engine.name))\n    }\n    var keySaved by remember(settings.engine) { mutableStateOf(false) }\n\n    SettingsGroup("Routing") {\n        app.xylune.chat.settings.WebSearchRoute.entries.forEach { route ->\n            ListItem(\n                headlineContent = { Text(route.title) },\n                supportingContent = { Text(route.description) },\n                leadingContent = {\n                    RadioButton(\n                        selected = settings.route == route,\n                        onClick = null,\n                    )\n                },\n                modifier = Modifier.clickable {\n                    container.appPreferences.updateWebSearchSettings { it.copy(route = route) }\n                },\n            )\n        }\n    }\n\n    SettingsGroup("Fallback search engine") {\n        app.xylune.chat.settings.WebSearchEngine.entries.forEach { engine ->\n            ListItem(\n                headlineContent = { Text(engine.title) },\n                supportingContent = { Text(engine.description) },\n                leadingContent = {\n                    RadioButton(\n                        selected = settings.engine == engine,\n                        onClick = null,\n                    )\n                },\n                modifier = Modifier.clickable {\n                    keySaved = false\n                    container.appPreferences.updateWebSearchSettings { it.copy(engine = engine) }\n                },\n            )\n        }\n    }\n\n    if (settings.engine.requiresApiKey) {\n        SettingsGroup("${settings.engine.title} credential") {\n            OutlinedTextField(\n                value = apiKey,\n                onValueChange = {\n                    apiKey = it\n                    keySaved = false\n                },\n                label = { Text("API key") },\n                singleLine = true,\n                visualTransformation = PasswordVisualTransformation(),\n                modifier = Modifier.fillMaxWidth().padding(16.dp),\n            )\n            Row(\n                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),\n                horizontalArrangement = Arrangement.End,\n            ) {\n                Button(onClick = {\n                    container.secureStore.setSearchApiKey(settings.engine.name, apiKey)\n                    keySaved = true\n                }) {\n                    Text(if (keySaved) "Saved" else "Save key")\n                }\n            }\n        }\n    }\n\n    if (settings.engine == app.xylune.chat.settings.WebSearchEngine.SEARXNG) {\n        SettingsGroup("SearXNG endpoint") {\n            OutlinedTextField(\n                value = settings.searxngEndpoint,\n                onValueChange = { value ->\n                    container.appPreferences.updateWebSearchSettings {\n                        it.copy(searxngEndpoint = value)\n                    }\n                },\n                label = { Text("Public HTTPS base URL") },\n                supportingText = { Text("The instance must enable JSON search output.") },\n                singleLine = true,\n                modifier = Modifier.fillMaxWidth().padding(16.dp),\n            )\n        }\n    }\n\n    SettingsGroup("Tool behavior") {\n        var maxResultsText by remember(settings.maxResults) {\n            mutableStateOf(settings.maxResults.toString())\n        }\n        OutlinedTextField(\n            value = maxResultsText,\n            onValueChange = { raw ->\n                maxResultsText = raw.filter(Char::isDigit).take(2)\n                maxResultsText.toIntOrNull()?.let { value ->\n                    container.appPreferences.updateWebSearchSettings {\n                        it.copy(maxResults = value)\n                    }\n                }\n            },\n            label = { Text("Maximum search results") },\n            supportingText = { Text("3–20 results per search call") },\n            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),\n            singleLine = true,\n            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),\n        )\n        ListItem(\n            headlineContent = { Text("Allow page fetching") },\n            supportingContent = {\n                Text("Expose web_fetch so the model can read public HTTPS pages after searching.")\n            },\n            trailingContent = {\n                Switch(\n                    checked = settings.pageFetchEnabled,\n                    onCheckedChange = { enabled ->\n                        container.appPreferences.updateWebSearchSettings {\n                            it.copy(pageFetchEnabled = enabled)\n                        }\n                    },\n                )\n            },\n        )\n    }\n\n    Text(\n        "API keys are stored in Android encrypted preferences. Native-only mode never silently switches to a Xylune engine; Automatic mode does.",\n        style = MaterialTheme.typography.bodySmall,\n        color = MaterialTheme.colorScheme.onSurfaceVariant,\n        modifier = Modifier.padding(horizontal = 6.dp),\n    )\n}\n')
+
+          replace_once(
+              "app/src/main/java/app/xylune/chat/ui/ChatScreen.kt",
+              '    val haptics = rememberXyluneHaptics()\n    val label = when {\n        deepResearchEnabled -> "Deep research"\n        webEnabled -> "Search"\n        else -> "Search off"\n    }',
+              '    val haptics = rememberXyluneHaptics()\n    val context = LocalContext.current\n    val searchSettings by remember(context) {\n        (context.applicationContext as app.xylune.chat.XyluneApplication)\n            .container.appPreferences.webSearchSettings\n    }.collectAsState()\n    val label = when {\n        deepResearchEnabled -> "Research · ${searchSettings.activeLabel}"\n        webEnabled -> "Search · ${searchSettings.activeLabel}"\n        else -> "Search off"\n    }',
+          )
+          replace_once(
+              "app/src/main/java/app/xylune/chat/ui/ChatScreen.kt",
+              '        "search" -> "Web search"',
+              '        "search" -> "Web search"\n        "native_search" -> "Provider native search"',
+          )
+
+          replace_once(
+              "app/src/main/java/app/xylune/chat/ui/RichMessage.kt",
+              '    val renderedMarkdown = remember(markdown) { prepareReferenceMarkdown(markdown) }',
+              '    val renderedMarkdown = remember(markdown) { renderMarkdownLinksLiterally(markdown) }',
+          )
+          rich = read("app/src/main/java/app/xylune/chat/ui/RichMessage.kt")
+          marker = 'internal fun prepareReferenceMarkdown(markdown: String): String = XyluneReferenceNotation.replace(markdown) { match ->'
+          literal_fn = 'private val InlineMarkdownLink = Regex("!?\\\\[[^\\\\]\\\\n]+\\\\]\\\\([^)\\\\n]+\\\\)")\nprivate val ReferenceMarkdownLink = Regex("!?\\\\[[^\\\\]\\\\n]+\\\\]\\\\[[^\\\\]\\\\n]+\\\\]")\nprivate val AutoMarkdownLink = Regex("<(?:https?|mailto):[^>\\\\n]+>", RegexOption.IGNORE_CASE)\n\ninternal fun renderMarkdownLinksLiterally(markdown: String): String {\n    fun escapeDelimiters(value: String): String = buildString(value.length + 8) {\n        value.forEach { char ->\n            if (char in charArrayOf(\'[\', \']\', \'(\', \')\', \'<\', \'>\')) append(\'\\\\\')\n            append(char)\n        }\n    }\n    var rendered = InlineMarkdownLink.replace(markdown) { escapeDelimiters(it.value) }\n    rendered = ReferenceMarkdownLink.replace(rendered) { escapeDelimiters(it.value) }\n    rendered = AutoMarkdownLink.replace(rendered) { escapeDelimiters(it.value) }\n    return rendered\n}\n\n'
+          if marker not in rich:
+              raise SystemExit("RichMessage.kt missing prepareReferenceMarkdown marker")
+          rich = rich.replace(marker, literal_fn + marker, 1)
+          write("app/src/main/java/app/xylune/chat/ui/RichMessage.kt", rich)
+
+          # Update tests for native labels and add regression coverage.
+          replace_once(
+              "app/src/test/java/app/xylune/chat/provider/NativeWebSearchProviderTest.kt",
+              '        val state = ResponsesApiStreamState()',
+              '        val state = ResponsesApiStreamState("DeepSeek native search")',
+          )
+          replace_once(
+              "app/src/test/java/app/xylune/chat/provider/NativeWebSearchProviderTest.kt",
+              '        assertEquals("web_search", progress.name)\n        assertTrue(progress.argumentsJson.contains("Android 16"))',
+              '        assertEquals("native_web_search", progress.name)\n        assertTrue(progress.argumentsJson.contains("Android 16"))\n        assertTrue(progress.argumentsJson.contains("DeepSeek native search"))',
+          )
+          with Path("app/src/test/java/app/xylune/chat/generation/ToolCallStreamingTest.kt").open("a") as fh:
+              fh.write('\n\nclass NativeSearchToolCallStreamingTest {\n    @Test fun nativeSearchReportsItsProviderInsteadOfPreparedWebSearch() {\n        val presentation = toolCallPresentation(\n            "native_web_search",\n            "{\\\\\\\"query\\\\\\\":\\\\\\\"Android 16\\\\\\\",\\\\\\\"source\\\\\\\":\\\\\\\"DeepSeek native search\\\\\\\"}",\n        )\n        assertEquals("native_search", presentation.kind)\n        assertEquals("DeepSeek native search", presentation.completedLabel)\n        assertEquals("Android 16", presentation.input)\n    }\n}\n')
+          write("app/src/test/java/app/xylune/chat/ui/PlainMarkdownLinksTest.kt", 'package app.xylune.chat.ui\n\nimport org.junit.Assert.assertEquals\nimport org.junit.Assert.assertFalse\nimport org.junit.Assert.assertTrue\nimport org.junit.Test\n\nclass PlainMarkdownLinksTest {\n    @Test fun inlineLinksRemainVisibleMarkdownInsteadOfClickableSpans() {\n        val rendered = renderMarkdownLinksLiterally("Read [the source](https://example.com/a).")\n        assertEquals("Read \\\\\\\\[the source\\\\\\\\]\\\\\\\\(https://example.com/a\\\\\\\\).", rendered)\n        assertFalse(rendered.contains("[the source](https://example.com/a)"))\n    }\n\n    @Test fun normalMarkdownFormattingIsNotEscaped() {\n        val rendered = renderMarkdownLinksLiterally("**bold** and `code`")\n        assertEquals("**bold** and `code`", rendered)\n    }\n\n    @Test fun angleAutolinksAreShownLiterally() {\n        val rendered = renderMarkdownLinksLiterally("<https://example.com>")\n        assertTrue(rendered.startsWith("\\\\<"))\n        assertTrue(rendered.endsWith("\\\\>"))\n    }\n}\n')
+
+          # Version and release notes.
+          replace_once(
+              "app/build.gradle.kts",
+              '        versionCode = 195\n        versionName = "0.24.6"',
+              '        versionCode = 196\n        versionName = "0.24.7"',
+          )
+          changelog = read("CHANGELOG.md")
+          entry = '## 0.24.7 — 2026-08-06\n\n- Add configurable search routing: Automatic, provider-native-only, or a selected Xylune search engine.\n- Add DuckDuckGo, Brave Search, Tavily, Serper, and public SearXNG engine options, encrypted API-key storage, result-count control, and a page-fetch toggle.\n- Identify each search activity by its real backend, such as DeepSeek native search, Google Search grounding, or Brave Search, instead of leaving completed native calls as “Prepared web search”.\n- Show model-written Markdown hyperlinks as literal Markdown text rather than broken clickable spans.\n\n'
+          if not changelog.startswith("## 0.24.7"):
+              write("CHANGELOG.md", entry + changelog)
+
+          write("docs/releases/RELEASE_NOTES_0.24.7.md", '# Xylune 0.24.7\n\n## Search configuration\n\nSearch routing is now explicit and configurable:\n\n- **Automatic** uses provider-native search when supported and the selected Xylune engine otherwise.\n- **Provider native only** refuses unsupported provider/model combinations instead of silently changing backends.\n- **Xylune search engine** always uses the selected engine.\n\nAvailable client-side engines are DuckDuckGo, Brave Search, Tavily, Serper, and a configurable public SearXNG instance. Search API keys remain in Android encrypted preferences. Result count and page fetching are configurable.\n\n## Accurate activity labels\n\nThe work timeline now names the actual backend, including provider-native search and Google Search grounding. Completed native calls are marked complete rather than remaining as “Prepared web search”.\n\n## Markdown links\n\nMarkdown hyperlinks are displayed as their literal Markdown source instead of producing non-working clickable spans.\n')
+
+          # Retire this workflow in the same tested release commit.
+          Path(".github/workflows/implement-search-controls-0.24.7.yml").unlink()
+          PY
+
+      - name: Verify third-party licenses
+        run: ./gradlew verifyThirdPartyLicenses verifyOfflineLicenseCatalog --no-daemon
+
+      - name: Run release unit tests
+        run: ./gradlew testReleaseUnitTest --no-daemon
+
+      - name: Run release lint
+        run: ./gradlew lintRelease --no-daemon
+
+      - name: Assemble optimized release APK
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Commit tested Xylune 0.24.7
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Add configurable search backends and literal Markdown links"
+          git push
