@@ -16,6 +16,7 @@ concurrency:
 jobs:
   apply:
     runs-on: ubuntu-latest
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,10 +25,15 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '17'
+          cache: gradle
 
       - name: Set up Android 16 SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
 
       - name: Extract and repair the implementation script
         shell: bash
@@ -43,7 +49,6 @@ jobs:
                   shell: bash
                   run: |
           '''
-          # The literal file uses eight spaces before shell/run and ten inside the block.
           start_marker = start_marker.replace('                  ', '        ')
           end_marker = '\n      - name: Verify third-party licenses\n'
           start = workflow.find(start_marker)
@@ -89,16 +94,19 @@ jobs:
           bash /tmp/apply-search-controls.sh
 
       - name: Verify third-party licenses
-        run: ./gradlew verifyThirdPartyLicenses verifyOfflineLicenseCatalog --no-daemon
+        run: ./ci/verify-third-party-licenses.sh
+
+      - name: Verify offline license catalog
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:generateOfflineLicenseCatalog
 
       - name: Run release unit tests
-        run: ./gradlew testReleaseUnitTest --no-daemon
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
 
       - name: Run release lint
-        run: ./gradlew lintRelease --no-daemon
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
 
       - name: Assemble optimized release APK
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease
 
       - name: Push tested implementation branch
         shell: bash
