@@ -1,35 +1,47 @@
-name: One-shot search, stream error, and Qwen Cloud fix
+name: Apply search, stream error, and Qwen Cloud fixes
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/one-shot-search-stream-fix.yml
-  schedule:
-    - cron: '*/5 * * * *'
+  workflow_run:
+    workflows: [Android]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: write
+  actions: write
 
 concurrency:
-  group: one-shot-search-stream-qwen-fix
-  cancel-in-progress: true
+  group: apply-search-stream-qwen-fix
+  cancel-in-progress: false
 
 jobs:
   implement:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-22.04
-    timeout-minutes: 75
+    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out implementation branch
+        uses: actions/checkout@v4
         with:
           ref: fix/search-results-stream-errors-0.24.10
           fetch-depth: 0
+          token: ${{ github.token }}
 
-      - name: Check whether implementation is already applied
+      - name: Rebase implementation branch on current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git rebase origin/main
+
+      - name: Inspect implementation state
         id: state
         shell: bash
         run: |
+          set -euo pipefail
           if grep -q 'versionName = "0.24.10"' app/build.gradle.kts; then
             echo 'apply=false' >> "$GITHUB_OUTPUT"
           else
@@ -37,19 +49,17 @@ jobs:
           fi
 
       - uses: actions/setup-java@v4
-        if: steps.state.outputs.apply == 'true'
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
 
-      - uses: android-actions/setup-android@v4
-        if: steps.state.outputs.apply == 'true'
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       - uses: gradle/actions/setup-gradle@v4
-        if: steps.state.outputs.apply == 'true'
 
       - name: Apply search and stream error fixes
         if: steps.state.outputs.apply == 'true'
@@ -59,46 +69,100 @@ jobs:
         if: steps.state.outputs.apply == 'true'
         run: python3 .github/scripts/patch-qwen-cloud-0.24.10.py
 
-      - name: Verify third-party licenses
-        if: steps.state.outputs.apply == 'true'
-        run: ./ci/verify-third-party-licenses.sh
-
-      - name: Verify offline license catalog
-        if: steps.state.outputs.apply == 'true'
-        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:generateOfflineLicenseCatalog
-
-      - name: Run release unit tests
-        if: steps.state.outputs.apply == 'true'
-        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
-
-      - name: Run release lint
-        if: steps.state.outputs.apply == 'true'
-        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
-
-      - name: Assemble optimized release APK
-        if: steps.state.outputs.apply == 'true'
-        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease
-
-      - name: Commit tested branch implementation
-        if: steps.state.outputs.apply == 'true'
+      - name: Remove temporary implementation scaffolding
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app CHANGELOG.md docs/releases/RELEASE_NOTES_0.24.10.md
-          git commit -m "Show search results, useful errors, and add Qwen Cloud"
-          git push origin HEAD:fix/search-results-stream-errors-0.24.10
+          rm -rf .github/notes
+          rm -f \
+            .github/scripts/patch-search-results-stream-errors-0.24.10.py \
+            .github/scripts/patch-qwen-cloud-0.24.10.py \
+            .github/workflows/implement-search-results-stream-errors.yml \
+            .github/workflows/implement-search-results-stream-errors-retry.yml \
+            .github/workflows/pull-request-implementation.yml
 
-      - name: Remove one-shot workflow from main
-        if: always()
+      - name: Verify third-party licenses
+        run: ./ci/verify-third-party-licenses.sh
+
+      - name: Verify offline license catalog
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:generateOfflineLicenseCatalog
+
+      - name: Run release unit tests
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
+
+      - name: Run release lint
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
+
+      - name: Assemble optimized release APK
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease
+
+      - name: Commit and push verified implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'Implementation branch already contains the verified changes.'
+          else
+            git commit -m "Show search results, useful errors, and add Qwen Cloud"
+          fi
+          git push --force-with-lease origin HEAD:fix/search-results-stream-errors-0.24.10
+
+      - name: Merge pull request 88
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 24); do
+            state="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/88" --jq '.mergeable_state')"
+            echo "PR mergeable state: $state"
+            case "$state" in
+              clean|unstable|has_hooks) break ;;
+              dirty|behind|blocked)
+                if [[ "$attempt" -eq 24 ]]; then
+                  echo "PR #88 did not become mergeable: $state" >&2
+                  exit 1
+                fi
+                ;;
+              unknown) ;;
+              *) ;;
+            esac
+            sleep 5
+          done
+
+          head_sha="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/88" --jq '.head.sha')"
+          result="$(
+            gh api --method PUT "repos/${GITHUB_REPOSITORY}/pulls/88/merge" \
+              -f merge_method='squash' \
+              -f sha="$head_sha" \
+              -f commit_title='Show provider search results, improve errors, and add Qwen Cloud (#88)' \
+              -f commit_message='Expose provider search queries and results, add dismissible detailed stream errors, and integrate Alibaba Cloud Model Studio as a first-class Qwen Cloud provider.'
+          )"
+          echo "$result"
+          merged="$(printf '%s' "$result" | jq -r '.merged')"
+          if [[ "$merged" != 'true' ]]; then
+            printf '%s\n' "$result" >&2
+            exit 1
+          fi
+
+      - name: Remove this one-shot workflow from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -euo pipefail
           path='.github/workflows/one-shot-search-stream-fix.yml'
           sha="$(gh api "repos/${GITHUB_REPOSITORY}/contents/${path}?ref=main" --jq '.sha')"
           gh api --method DELETE "repos/${GITHUB_REPOSITORY}/contents/${path}" \
-            -f message='Remove one-shot search, stream error, and Qwen workflow' \
+            -f message='Remove completed one-shot implementation workflow' \
             -f sha="$sha" \
             -f branch='main'
+
+      - name: Dispatch canonical Android release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main
