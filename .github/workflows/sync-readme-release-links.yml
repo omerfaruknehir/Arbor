@@ -1,0 +1,52 @@
+name: Keep README release links current
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - README.md
+      - app/build.gradle.kts
+      - ci/sync-readme-release-links.py
+      - .github/workflows/sync-readme-release-links.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - README.md
+      - app/build.gradle.kts
+      - ci/sync-readme-release-links.py
+      - .github/workflows/sync-readme-release-links.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  readme-release-links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Check version-independent release links
+        if: github.event_name == 'pull_request'
+        run: python3 ci/sync-readme-release-links.py --check
+
+      - name: Normalize release links
+        if: github.event_name != 'pull_request'
+        run: python3 ci/sync-readme-release-links.py --write
+
+      - name: Commit normalized README
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- README.md; then
+            echo "README is already version-independent."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "Keep README release links version-independent"
+          git push origin HEAD:main
