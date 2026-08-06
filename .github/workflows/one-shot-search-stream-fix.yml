@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/one-shot-search-stream-fix.yml'
+  schedule:
+    - cron: '*/5 * * * *'
   issue_comment:
     types: [created]
   workflow_run:
@@ -26,6 +28,7 @@ jobs:
   implement:
     if: >-
       github.event_name == 'push' ||
+      github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main') ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.issue.number == 88 && github.event.comment.body == '/run-xylune-fix')
@@ -178,4 +181,4 @@ jobs:
           set -euo pipefail
           gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main
 
-# merge-trigger: 2026-08-06T20:50Z
+# temporary schedule trigger; workflow deletes itself after success
