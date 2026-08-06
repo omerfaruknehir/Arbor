@@ -10,15 +10,17 @@ class WebsiteSwitchPopupRegressionTest {
         ?: error("Could not locate repository file: $path")
 
     @Test
-    fun `switch state hover and drag have one geometry owner`() {
+    fun `switch state hover drag and logo preview stay synchronized`() {
         val layout = repositoryFile("docs/_layouts/default.html").readText()
         val css = repositoryFile("docs/assets/css/interaction-fix.css").readText()
         val sharedMotionCss = repositoryFile("docs/assets/css/motion.css").readText()
         val motion = repositoryFile("docs/assets/js/motion.js").readText()
+        val logoMotion = repositoryFile("docs/assets/js/logo-motion.js").readText()
 
-        assertTrue(layout.contains("appearance.css' | relative_url }}?v=79"))
-        assertTrue(layout.contains("motion.css' | relative_url }}?v=79"))
-        assertTrue(layout.contains("interaction-fix.css' | relative_url }}?v=79"))
+        assertTrue(layout.contains("appearance.css' | relative_url }}?v=80"))
+        assertTrue(layout.contains("motion.css' | relative_url }}?v=80"))
+        assertTrue(layout.contains("interaction-fix.css' | relative_url }}?v=80"))
+        assertTrue(layout.contains("logo-motion.js' | relative_url }}?v=80"))
         assertTrue(layout.indexOf("interaction-fix.css") > layout.indexOf("motion.css"))
 
         assertTrue(css.contains("width: 52px !important"))
@@ -44,25 +46,41 @@ class WebsiteSwitchPopupRegressionTest {
         assertTrue(css.contains("var(--xylune-switch-progress)"))
         assertTrue(css.contains("color-mix("))
         assertTrue(css.contains("transform: translate3d(var(--xylune-switch-drag-x), -50%, 0) !important"))
+        assertTrue(css.contains(".appearance-switch-row__logo"))
+
         assertTrue(motion.contains("const progress = dragX / travel"))
         assertTrue(motion.contains("--xylune-switch-progress"))
+        assertTrue(motion.contains("xylune-switch-preview"))
+        assertTrue(motion.contains("xylune-switch-preview-end"))
         assertTrue(motion.contains("control.getBoundingClientRect().width - 32"))
+
+        assertTrue(logoMotion.contains("function mixPalette("))
+        assertTrue(logoMotion.contains("function animateTo("))
+        assertTrue(logoMotion.contains("installDialogLogoPreview"))
+        assertTrue(logoMotion.contains("xylune-switch-preview"))
+        assertTrue(logoMotion.contains("mixPalette(palettes[staticPaletteName], palettes[paletteNameForScheme()], progress)"))
+        assertTrue(logoMotion.contains("attributeFilter: ['data-dynamic-icon', 'data-scheme-preference', 'style']"))
     }
 
     @Test
-    fun `appearance popup animates open backdrop escape and close`() {
+    fun `appearance popup animates from launcher with staggered content`() {
         val layout = repositoryFile("docs/_layouts/default.html").readText()
         val css = repositoryFile("docs/assets/css/interaction-fix.css").readText()
         val js = repositoryFile("docs/assets/js/popup-motion.js").readText()
 
-        assertTrue(layout.contains("popup-motion.js' | relative_url }}?v=79"))
+        assertTrue(layout.contains("popup-motion.js' | relative_url }}?v=80"))
         assertTrue(css.contains(".appearance-dialog.is-visible"))
         assertTrue(css.contains(".appearance-dialog.is-closing"))
         assertTrue(css.contains(".appearance-dialog.is-visible::backdrop"))
-        assertTrue(css.contains("translateY(18px) scale(0.96)"))
+        assertTrue(css.contains("translateY(28px) scale(0.92)"))
+        assertTrue(css.contains("--xylune-popup-origin-x"))
+        assertTrue(css.contains("--xylune-popup-item-index"))
+        assertTrue(css.contains(".appearance-dialog.is-visible > .appearance-dialog__section"))
         assertTrue(css.contains("prefers-reduced-motion: reduce"))
 
         assertTrue(js.contains("const closeAnimated = () =>"))
+        assertTrue(js.contains("const indexDialogItems = () =>"))
+        assertTrue(js.contains("const setTransformOrigin = (trigger) =>"))
         assertTrue(js.contains("data-theme-close"))
         assertTrue(js.contains("event.target === dialog"))
         assertTrue(js.contains("dialog.addEventListener('cancel'"))
