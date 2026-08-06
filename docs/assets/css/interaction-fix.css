@@ -1,5 +1,5 @@
 :root {
-  --xylune-popup-duration: 220ms;
+  --xylune-popup-duration: 280ms;
   --xylune-popup-easing: cubic-bezier(0.2, 0, 0, 1);
 }
 
@@ -98,23 +98,61 @@
   transition: none !important;
 }
 
+.appearance-switch-row__logo {
+  display: block;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 10px;
+}
+
 .appearance-dialog {
+  --xylune-popup-origin-x: 50%;
+  --xylune-popup-origin-y: 50%;
   opacity: 0;
-  transform: translateY(18px) scale(0.96);
-  transform-origin: center;
+  transform: translateY(28px) scale(0.92);
+  transform-origin: var(--xylune-popup-origin-x) var(--xylune-popup-origin-y);
+  border-radius: 30px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
   transition:
-    opacity 160ms ease,
-    transform var(--xylune-popup-duration) var(--xylune-popup-easing);
+    opacity 170ms ease,
+    transform var(--xylune-popup-duration) var(--xylune-popup-easing),
+    border-radius var(--xylune-popup-duration) var(--xylune-popup-easing),
+    box-shadow var(--xylune-popup-duration) var(--xylune-popup-easing);
   will-change: opacity, transform;
 }
 
 .appearance-dialog.is-visible {
   opacity: 1;
   transform: translateY(0) scale(1);
+  border-radius: 22px;
+  box-shadow: 0 24px 72px rgb(0 0 0 / 28%);
 }
 
 .appearance-dialog.is-closing {
   pointer-events: none;
+}
+
+.appearance-dialog > .dialog-heading,
+.appearance-dialog > .appearance-dialog__section {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 170ms ease,
+    transform 230ms var(--xylune-popup-easing);
+  transition-delay: 0ms;
+}
+
+.appearance-dialog.is-visible > .dialog-heading,
+.appearance-dialog.is-visible > .appearance-dialog__section {
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: calc(45ms + (var(--xylune-popup-item-index, 0) * 32ms));
+}
+
+.appearance-dialog.is-closing > .dialog-heading,
+.appearance-dialog.is-closing > .appearance-dialog__section {
+  transition-delay: 0ms;
 }
 
 .appearance-dialog::backdrop {
@@ -128,7 +166,8 @@
 
 @media (max-width: 620px) {
   .appearance-dialog {
-    transform: translateY(28px) scale(0.98);
+    transform: translateY(42px) scale(0.96);
+    transform-origin: 50% 100%;
   }
 
   .appearance-dialog.is-visible {
@@ -140,7 +179,9 @@
   .material-switch,
   .material-switch__handle,
   .appearance-dialog,
-  .appearance-dialog::backdrop {
+  .appearance-dialog::backdrop,
+  .appearance-dialog > .dialog-heading,
+  .appearance-dialog > .appearance-dialog__section {
     transition: none !important;
   }
 }
