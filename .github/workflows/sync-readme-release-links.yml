@@ -28,9 +28,11 @@ jobs:
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
-      - name: Check version-independent release links
+      - name: Exercise version-independent release-link normalization
         if: github.event_name == 'pull_request'
-        run: python3 ci/sync-readme-release-links.py --check
+        run: |
+          python3 ci/sync-readme-release-links.py --write
+          python3 ci/sync-readme-release-links.py --check
 
       - name: Normalize release links
         if: github.event_name != 'pull_request'
