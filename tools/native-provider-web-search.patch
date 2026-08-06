@@ -1,0 +1,292 @@
+diff --git a/app/src/main/java/app/xylune/chat/provider/OpenAiCompatibleProvider.kt b/app/src/main/java/app/xylune/chat/provider/OpenAiCompatibleProvider.kt
+index c8f7cee..0000000 100644
+--- a/app/src/main/java/app/xylune/chat/provider/OpenAiCompatibleProvider.kt
++++ b/app/src/main/java/app/xylune/chat/provider/OpenAiCompatibleProvider.kt
+@@ -39,6 +39,18 @@ class OpenAiCompatibleProvider(
+             return@withContext
+         }
+ 
++        if (NativeWebSearch.mode(request) == NativeWebSearchMode.RESPONSES) {
++            try {
++                ResponsesApiTransport(client).stream(request, emit)
++                return@withContext
++            } catch (error: ProviderHttpException) {
++                // A provider/model can advertise tool support while rejecting
++                // its newer Responses endpoint. Fall back before any stream was
++                // opened instead of breaking Xylune's existing local web tools.
++                if (error.status !in setOf(400, 404, 405, 422, 501)) throw error
++            }
++        }
++
+         val endpoint = endpointFor(request)
+         var emptyAttempt = 0
+         var deepSeekCorrectionAttempt = 0
+diff --git a/app/src/main/java/app/xylune/chat/provider/AnthropicProvider.kt b/app/src/main/java/app/xylune/chat/provider/AnthropicProvider.kt
+index d76c0c2..0000000 100644
+--- a/app/src/main/java/app/xylune/chat/provider/AnthropicProvider.kt
++++ b/app/src/main/java/app/xylune/chat/provider/AnthropicProvider.kt
+@@ -5,6 +5,7 @@ import kotlinx.coroutines.ensureActive
+ import kotlinx.coroutines.withContext
+ import kotlinx.serialization.json.JsonArray
++import kotlinx.serialization.json.JsonElement
+ import kotlinx.serialization.json.JsonObject
+ import kotlinx.serialization.json.JsonPrimitive
+ import kotlinx.serialization.json.buildJsonArray
+@@ -45,6 +46,8 @@ class AnthropicProvider(
+ 
+     internal fun buildRequestBody(request: ChatRequest): JsonObject {
+         val system = request.messages.filter { it.role == MessageRole.SYSTEM }.joinToString("\n\n") { it.content }
++        val nativeSearch = NativeWebSearch.mode(request) == NativeWebSearchMode.ANTHROPIC
++        val clientTools = NativeWebSearch.clientTools(request)
+         return buildJsonObject {
+             put("model", JsonPrimitive(request.model.modelId))
+             put("max_tokens", JsonPrimitive(request.maxOutputTokens))
+@@ -72,10 +75,27 @@ class AnthropicProvider(
+                     }
+                 }
+             }
+-            if (request.tools.isNotEmpty() && request.model.supportsTools) {
++            if ((clientTools.isNotEmpty() && request.model.supportsTools) || nativeSearch) {
+                 put("tools", buildJsonArray {
+-                    request.tools.forEach { tool ->
++                    if (nativeSearch) {
+                         add(buildJsonObject {
+-                            put("name", JsonPrimitive(tool.name))
++                            put("type", JsonPrimitive("web_search_20250305"))
++                            put("name", JsonPrimitive("web_search"))
++                            put("max_uses", JsonPrimitive(8))
++                        })
++                        if (NativeWebSearch.requestedFetch(request)) add(buildJsonObject {
++                            put("type", JsonPrimitive("web_fetch_20250910"))
++                            put("name", JsonPrimitive("web_fetch"))
++                            put("max_uses", JsonPrimitive(8))
++                        })
++                    }
++                    clientTools.forEach { tool ->
++                        add(buildJsonObject {
++                            put("name", JsonPrimitive(tool.name))
+                             put("description", JsonPrimitive(tool.description))
+                             put("input_schema", ProviderJson.parseToJsonElement(tool.parametersJson))
+                         })
+@@ -247,6 +267,7 @@ class AnthropicProvider(
+         private val active = linkedMapOf<Int, BlockAccumulator>()
+         private val completed = sortedMapOf<Int, JsonObject>()
+         private val calls = mutableListOf<NativeToolCall>()
++        private val citations = linkedMapOf<String, String>()
+         private var emitted = false
+ 
+         fun nextIndex(): Int = ((active.keys + completed.keys).maxOrNull() ?: -1) + 1
+         fun start(index: Int, block: JsonObject): NativeToolCallProgress? {
++            collectCitations(block)
+             val accumulator = BlockAccumulator(block)
+             active[index] = accumulator
+             return accumulator.progress(index)
+@@ -267,6 +288,9 @@ class AnthropicProvider(
+                     argumentsJson = final["input"]?.toString() ?: "{}",
+                 )
+                 return block.progress(index, complete = true)
++            } else if (final.string("type") == "server_tool_use") {
++                return block.progress(index, complete = true)
+             }
+             return null
+         }
+ 
+         fun finalChunk(): StreamChunk? {
+             if (emitted) return null
+             active.keys.toList().forEach(::stop)
+-            if (calls.isEmpty()) return null
++            if (calls.isEmpty() && citations.isEmpty()) return null
+             emitted = true
+             return StreamChunk(
++                text = if (calls.isEmpty()) sourceTail() else "",
+                 toolCalls = calls.toList(),
+                 nativeProviderPayloadJson = JsonArray(completed.values.toList()).toString(),
+             )
+         }
++
++        private fun collectCitations(root: JsonElement?) {
++            when (root) {
++                is JsonArray -> root.forEach(::collectCitations)
++                is JsonObject -> {
++                    val type = root.string("type").orEmpty()
++                    val url = root.string("url")
++                    val title = root.string("title")
++                    if (!url.isNullOrBlank() && url.startsWith("http") &&
++                        (type.contains("search_result") || type.contains("citation") || type.contains("fetch_result"))
++                    ) {
++                        citations.putIfAbsent(url, title?.takeIf(String::isNotBlank) ?: url)
++                    }
++                    root.values.forEach(::collectCitations)
++                }
++                else -> Unit
++            }
++        }
++
++        private fun sourceTail(): String = buildString {
++            if (citations.isEmpty()) return@buildString
++            append("\n\n### Sources\n")
++            citations.entries.take(12).forEach { (url, rawTitle) ->
++                val title = rawTitle.replace('\n', ' ').replace("[", "\\[").replace("]", "\\]").take(180)
++                append("- [").append(title).append("](").append(url).append(")\n")
++            }
++        }
+     }
+ 
+     internal class BlockAccumulator(private val base: JsonObject) {
+@@ -278,7 +322,7 @@ class AnthropicProvider(
+         val input = StringBuilder()
+ 
+         fun progress(index: Int, complete: Boolean = false): NativeToolCallProgress? {
+-            if (base.string("type") != "tool_use") return null
++            if (base.string("type") !in setOf("tool_use", "server_tool_use")) return null
+             return NativeToolCallProgress(
+                 index = index,
+                 id = base.string("id").orEmpty(),
+@@ -293,7 +337,7 @@ class AnthropicProvider(
+                 "thinking" to JsonPrimitive(thinking.toString()),
+                 "signature" to JsonPrimitive(signature.toString()),
+             ))
+-            "tool_use" -> JsonObject(base + ("input" to runCatching {
++            "tool_use", "server_tool_use" -> JsonObject(base + ("input" to runCatching {
+                 ProviderJson.parseToJsonElement(input.toString().ifBlank { base["input"]?.toString() ?: "{}" })
+             }.getOrElse { JsonObject(emptyMap()) }))
+             else -> base
+diff --git a/app/src/main/java/app/xylune/chat/provider/GeminiProvider.kt b/app/src/main/java/app/xylune/chat/provider/GeminiProvider.kt
+index dd06352..0000000 100644
+--- a/app/src/main/java/app/xylune/chat/provider/GeminiProvider.kt
++++ b/app/src/main/java/app/xylune/chat/provider/GeminiProvider.kt
+@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonPrimitive
+ import kotlinx.serialization.json.buildJsonArray
+ import kotlinx.serialization.json.buildJsonObject
++import kotlinx.serialization.json.contentOrNull
+ import kotlinx.serialization.json.jsonObject
+ import kotlinx.serialization.json.jsonPrimitive
+ import okhttp3.MediaType.Companion.toMediaType
+@@ -45,6 +46,8 @@ class GeminiProvider(
+ 
+     internal fun buildRequestBody(request: ChatRequest): JsonObject {
+         val system = request.messages.filter { it.role == MessageRole.SYSTEM }.joinToString("\n\n") { it.content }
++        val nativeSearch = NativeWebSearch.mode(request) == NativeWebSearchMode.GEMINI
++        val clientTools = NativeWebSearch.clientTools(request)
+         return buildJsonObject {
+             if (system.isNotBlank()) put("systemInstruction", buildJsonObject {
+                 put("parts", buildJsonArray { add(buildJsonObject { put("text", JsonPrimitive(system)) }) })
+@@ -61,21 +64,26 @@ class GeminiProvider(
+                     }
+                 })
+             })
+-            if (request.tools.isNotEmpty() && request.model.supportsTools) {
++            if ((clientTools.isNotEmpty() && request.model.supportsTools) || nativeSearch) {
+                 put("tools", buildJsonArray {
+-                    add(buildJsonObject {
+-                        put("functionDeclarations", buildJsonArray {
+-                            request.tools.forEach { tool ->
+-                                add(buildJsonObject {
+-                                    put("name", JsonPrimitive(tool.name))
+-                                    put("description", JsonPrimitive(tool.description))
+-                                    put("parameters", ProviderJson.parseToJsonElement(tool.parametersJson))
+-                                })
+-                            }
++                    if (nativeSearch) add(buildJsonObject { put("googleSearch", buildJsonObject {}) })
++                    if (clientTools.isNotEmpty()) add(buildJsonObject {
++                        put("functionDeclarations", buildJsonArray {
++                            clientTools.forEach { tool ->
++                                add(buildJsonObject {
++                                    put("name", JsonPrimitive(tool.name))
++                                    put("description", JsonPrimitive(tool.description))
++                                    put("parameters", ProviderJson.parseToJsonElement(tool.parametersJson))
++                                })
++                            }
+                         })
+                     })
+                 })
+-                put("toolConfig", buildJsonObject {
++                if (clientTools.isNotEmpty()) put("toolConfig", buildJsonObject {
+                     put("functionCallingConfig", buildJsonObject { put("mode", JsonPrimitive("AUTO")) })
+                 })
+             }
+@@ -148,8 +156,9 @@ class GeminiProvider(
+         root.obj("promptFeedback")?.string("blockReason")?.let { reason ->
+             if (reason.isNotBlank()) throw ProviderProtocolException("Gemini blocked the prompt: $reason")
+         }
+-        val parts = root.array("candidates")?.firstOrNull()?.jsonObject?.obj("content")?.array("parts").orEmpty()
++        val candidate = root.array("candidates")?.firstOrNull()?.jsonObject
++        val parts = candidate?.obj("content")?.array("parts").orEmpty()
+         val chunks = parts.mapNotNull { element ->
+             val part = element.jsonObject
+             state.addPart(part)
+@@ -164,6 +173,7 @@ class GeminiProvider(
+                 else StreamChunk(text = text)
+             }
+         }.toMutableList()
++        chunks += state.acceptGrounding(candidate?.obj("groundingMetadata"))
+         val usage = root.obj("usageMetadata")
+         val usageChunk = StreamChunk(
+             inputTokens = usage?.long("promptTokenCount"),
+@@ -184,6 +194,9 @@ class GeminiProvider(
+     internal class GeminiStreamState {
+         private val parts = mutableListOf<JsonObject>()
+         private val calls = linkedMapOf<String, NativeToolCall>()
++        private val searchQueries = linkedMapOf<String, Int>()
++        private val citations = linkedMapOf<String, String>()
++        private var sourcesEmitted = false
+         private var emitted = false
+ 
+         fun addPart(part: JsonObject) { parts += part }
+@@ -205,13 +218,50 @@ class GeminiProvider(
+             )
+         }
+ 
++        fun acceptGrounding(grounding: JsonObject?): List<StreamChunk> {
++            if (grounding == null) return emptyList()
++            grounding.array("groundingChunks")?.forEach { element ->
++                val web = (element as? JsonObject)?.obj("web") ?: return@forEach
++                val url = web.string("uri") ?: web.string("url")
++                if (!url.isNullOrBlank()) citations.putIfAbsent(
++                    url,
++                    web.string("title")?.takeIf(String::isNotBlank) ?: url,
++                )
++            }
++            return grounding.array("webSearchQueries").orEmpty().mapNotNull { element ->
++                val query = runCatching { element.jsonPrimitive.contentOrNull }.getOrNull()
++                    ?.takeIf(String::isNotBlank) ?: return@mapNotNull null
++                val index = searchQueries.getOrPut(query) { searchQueries.size }
++                if (searchQueries.keys.elementAt(index) != query) return@mapNotNull null
++                StreamChunk(
++                    toolCallProgress = listOf(
++                        NativeToolCallProgress(
++                            index = 10_000 + index,
++                            id = "gemini-search-${query.hashCode().toUInt().toString(16)}",
++                            name = "web_search",
++                            argumentsJson = buildJsonObject { put("query", JsonPrimitive(query)) }.toString(),
++                            complete = true,
++                        ),
++                    ),
++                )
++            }
++        }
++
+         fun finalChunk(): StreamChunk? {
+-            if (emitted || calls.isEmpty()) return null
++            if (emitted || (calls.isEmpty() && citations.isEmpty())) return null
+             emitted = true
+             return StreamChunk(
++                text = if (calls.isEmpty()) sourceTail() else "",
+                 toolCalls = calls.values.toList(),
+                 nativeProviderPayloadJson = JsonArray(parts).toString(),
+             )
+         }
++
++        private fun sourceTail(): String {
++            if (sourcesEmitted || citations.isEmpty()) return ""
++            sourcesEmitted = true
++            return buildString {
++                append("\n\n### Sources\n")
++                citations.entries.take(12).forEach { (url, rawTitle) ->
++                    val title = rawTitle.replace('\n', ' ').replace("[", "\\[").replace("]", "\\]").take(180)
++                    append("- [").append(title).append("](").append(url).append(")\n")
++                }
++            }
++        }
+     }
+ }
