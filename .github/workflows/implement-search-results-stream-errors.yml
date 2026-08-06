@@ -6,12 +6,15 @@ on:
       - fix/search-results-stream-errors-0.24.10
     paths:
       - .github/workflows/implement-search-results-stream-errors.yml
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
 
 concurrency:
-  group: implement-search-results-stream-errors
+  group: implement-search-results-stream-errors-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,42 +24,64 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
           fetch-depth: 0
 
+      - name: Check whether implementation is already applied
+        id: state
+        shell: bash
+        run: |
+          if grep -q 'versionName = "0.24.10"' app/build.gradle.kts; then
+            echo 'apply=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'apply=true' >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-java@v4
+        if: steps.state.outputs.apply == 'true'
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
 
       - uses: android-actions/setup-android@v4
+        if: steps.state.outputs.apply == 'true'
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       - uses: gradle/actions/setup-gradle@v4
+        if: steps.state.outputs.apply == 'true'
 
       - name: Apply search and stream error fixes
+        if: steps.state.outputs.apply == 'true'
         run: python3 .github/scripts/patch-search-results-stream-errors-0.24.10.py
 
       - name: Apply Qwen Cloud support
+        if: steps.state.outputs.apply == 'true'
         run: python3 .github/scripts/patch-qwen-cloud-0.24.10.py
 
       - name: Verify third-party licenses
+        if: steps.state.outputs.apply == 'true'
         run: ./ci/verify-third-party-licenses.sh
 
       - name: Verify offline license catalog
+        if: steps.state.outputs.apply == 'true'
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:generateOfflineLicenseCatalog
 
       - name: Run release unit tests
+        if: steps.state.outputs.apply == 'true'
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
 
       - name: Run release lint
+        if: steps.state.outputs.apply == 'true'
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
 
       - name: Assemble optimized release APK
+        if: steps.state.outputs.apply == 'true'
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease
 
       - name: Commit tested implementation
+        if: steps.state.outputs.apply == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -64,4 +89,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app CHANGELOG.md docs/releases/RELEASE_NOTES_0.24.10.md
           git commit -m "Show search results, useful errors, and add Qwen Cloud"
-          git push origin HEAD:fix/search-results-stream-errors-0.24.10
+          git push origin HEAD:${{ github.event.pull_request.head.ref || github.ref_name }}
