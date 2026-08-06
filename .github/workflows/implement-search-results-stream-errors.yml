@@ -1,4 +1,4 @@
-name: Implement search results and stream errors
+name: Implement search results, stream errors, and Qwen Cloud
 
 on:
   push:
@@ -35,8 +35,11 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Apply fixes
+      - name: Apply search and stream error fixes
         run: python3 .github/scripts/patch-search-results-stream-errors-0.24.10.py
+
+      - name: Apply Qwen Cloud support
+        run: python3 .github/scripts/patch-qwen-cloud-0.24.10.py
 
       - name: Verify third-party licenses
         run: ./ci/verify-third-party-licenses.sh
@@ -60,5 +63,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app CHANGELOG.md docs/releases/RELEASE_NOTES_0.24.10.md
-          git commit -m "Show search queries and useful stream errors"
+          git commit -m "Show search results, useful errors, and add Qwen Cloud"
           git push origin HEAD:fix/search-results-stream-errors-0.24.10
