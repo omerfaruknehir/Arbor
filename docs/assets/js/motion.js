@@ -149,14 +149,16 @@
 
     const renderDrag = (position, travel) => {
       dragX = Math.min(travel, Math.max(0, position));
+      const progress = dragX / travel;
       control.style.setProperty('--xylune-switch-drag-x', `${dragX}px`);
+      control.style.setProperty('--xylune-switch-progress', `${progress * 100}%`);
       control.classList.add('is-dragging');
-      control.classList.toggle('is-drag-preview-on', dragX >= travel / 2);
     };
 
     const clearDrag = () => {
-      control.classList.remove('is-dragging', 'is-drag-preview-on');
+      control.classList.remove('is-dragging');
       control.style.removeProperty('--xylune-switch-drag-x');
+      control.style.removeProperty('--xylune-switch-progress');
     };
 
     control.addEventListener('click', (event) => {
