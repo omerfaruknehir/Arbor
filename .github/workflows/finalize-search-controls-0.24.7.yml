@@ -1,0 +1,169 @@
+name: Finalize search controls 0.24.7
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - .github/workflows/finalize-search-controls-0.24.7.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-search-controls-0.24.7
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Reuse the implementation and source repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          source = Path('.github/workflows/apply-search-controls-0.24.7.yml').read_text()
+
+          def extract(step_name: str) -> str:
+              marker = f'      - name: {step_name}\n'
+              step_start = source.find(marker)
+              if step_start < 0:
+                  raise SystemExit(f'Missing workflow step: {step_name}')
+              run_marker = '        run: |\n'
+              run_start = source.find(run_marker, step_start)
+              if run_start < 0:
+                  raise SystemExit(f'Missing run block: {step_name}')
+              run_start += len(run_marker)
+              run_end = source.find('\n      - name:', run_start)
+              if run_end < 0:
+                  raise SystemExit(f'Missing end of run block: {step_name}')
+              return textwrap.dedent(source[run_start:run_end])
+
+          Path('/tmp/xylune-search-implement.sh').write_text(
+              extract('Extract and repair the implementation script')
+          )
+          Path('/tmp/xylune-search-repair.sh').write_text(
+              extract('Repair generated Kotlin sources')
+          )
+          PY
+          bash -n /tmp/xylune-search-implement.sh
+          bash -n /tmp/xylune-search-repair.sh
+          bash /tmp/xylune-search-implement.sh
+          bash /tmp/xylune-search-repair.sh
+
+      - name: Correct search and literal-Markdown regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          streaming_test = Path(
+              'app/src/test/java/app/xylune/chat/generation/ToolCallStreamingTest.kt'
+          )
+          text = streaming_test.read_text()
+          marker = '\n\nclass NativeSearchToolCallStreamingTest'
+          start = text.find(marker)
+          if start < 0:
+              raise SystemExit('Generated native-search regression test was not found')
+          text = text[:start] + r'''
+
+class NativeSearchToolCallStreamingTest {
+    @Test
+    fun nativeSearchReportsItsProviderInsteadOfPreparedWebSearch() {
+        val presentation = toolCallPresentation(
+            "native_web_search",
+            """{"query":"Android 16","source":"DeepSeek native search"}""",
+        )
+        assertEquals("native_search", presentation.kind)
+        assertEquals("DeepSeek native search", presentation.completedLabel)
+        assertEquals("Android 16", presentation.input)
+    }
+}
+'''
+          streaming_test.write_text(text)
+
+          markdown_test = Path(
+              'app/src/test/java/app/xylune/chat/ui/PlainMarkdownLinksTest.kt'
+          )
+          markdown_test.write_text(r'''package app.xylune.chat.ui
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class PlainMarkdownLinksTest {
+    @Test
+    fun inlineLinksRemainVisibleMarkdownInsteadOfClickableSpans() {
+        val rendered = renderMarkdownLinksLiterally(
+            "Read [the source](https://example.com/a).",
+        )
+        assertTrue(rendered.contains("\\[the source\\]"))
+        assertTrue(rendered.contains("\\(https://example.com/a\\)"))
+        assertFalse(rendered.contains("[the source](https://example.com/a)"))
+    }
+
+    @Test
+    fun normalMarkdownFormattingIsNotEscaped() {
+        assertEquals(
+            "**bold** and `code`",
+            renderMarkdownLinksLiterally("**bold** and `code`"),
+        )
+    }
+
+    @Test
+    fun angleAutolinksAreShownLiterally() {
+        val rendered = renderMarkdownLinksLiterally("<https://example.com>")
+        assertTrue(rendered.startsWith("\\<"))
+        assertTrue(rendered.endsWith("\\>"))
+    }
+}
+''')
+          PY
+
+      - name: Verify third-party licenses
+        run: ./ci/verify-third-party-licenses.sh
+
+      - name: Verify offline license catalog
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:generateOfflineLicenseCatalog
+
+      - name: Run release unit tests
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
+
+      - name: Run release lint
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
+
+      - name: Assemble optimized release APK
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease
+
+      - name: Push tested implementation branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app CHANGELOG.md docs
+          git commit -m "Add configurable search backends and literal Markdown links"
+          git push --force-with-lease origin HEAD:refs/heads/agent/search-controls-0.24.7
