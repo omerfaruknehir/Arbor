@@ -52,3 +52,13 @@ namespace = {
     "__file__": str(core_path),
 }
 exec(compile(source, str(core_path), "exec"), namespace)
+
+# Responses now expose sources using Xylune's structured source notation rather
+# than embedding an extra Markdown heading in the assistant message.
+native_test_path = Path("app/src/test/java/app/xylune/chat/provider/NativeWebSearchProviderTest.kt")
+native_test = native_test_path.read_text()
+old_assertion = '        assertTrue(completed.text.contains("### Sources"))\n'
+new_assertion = '        assertTrue(completed.text.contains("[[Android source|https://example.com/android]]"))\n'
+if native_test.count(old_assertion) != 1:
+    raise SystemExit("native search source assertion changed")
+native_test_path.write_text(native_test.replace(old_assertion, new_assertion, 1))
