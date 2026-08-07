@@ -1,10 +1,9 @@
 package app.xylune.chat.provider
 
 /**
- * Keeps Qwen-Image's DashScope-native transport scoped to an actual Alibaba
- * compatible-mode endpoint. If a user repoints the qwen-cloud preset at a
- * different OpenAI-compatible server, image models stay on that server's
- * generic image transport rather than inheriting an Alibaba URL from the preset id.
+ * Applies provider-level routing and request normalization for Alibaba Model Studio.
+ * Qwen-Image uses DashScope's native multimodal endpoint; hosted third-party models
+ * otherwise stay on the standard OpenAI-compatible chat transport.
  */
 internal class AlibabaImageRoutingProvider(
     private val generic: ChatProvider,
@@ -16,8 +15,21 @@ internal class AlibabaImageRoutingProvider(
                 ModelRequestPolicy.isQwenCloudImageModel(request.provider, request.model)
         if (useNativeQwenImage) {
             qwenImage.stream(request, emit)
-        } else {
-            generic.stream(request, emit)
+            return
         }
+
+        // MiniMax-M2.x on Alibaba exposes reasoning_content but the current
+        // OpenAI-compatible documentation does not expose an enable_thinking /
+        // thinking request control. Keep the UI metadata as thinking-capable while
+        // suppressing Qwen/GLM-specific thinking parameters on the wire.
+        val normalized = if (
+            ModelRequestPolicy.isAlibabaModelStudio(request.provider) &&
+            !AlibabaRequestCapabilities.usesEnableThinking(request.provider, request.model)
+        ) {
+            request.copy(model = request.model.copy(supportsThinking = false))
+        } else {
+            request
+        }
+        generic.stream(normalized, emit)
     }
 }
