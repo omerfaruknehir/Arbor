@@ -622,13 +622,18 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         models.firstOrNull { it.modelId == conversation?.selectedModelId }
     }
 
+    // Paging snapshots can contain hundreds of messages. Bookkeeping belongs to
+    // snapshot changes, not composition: doing this loop in Scaffold content made
+    // unrelated chrome or scroll-state recompositions O(loaded message count).
     LaunchedEffect(paging, conversation?.id) {
         snapshotFlow { paging.itemSnapshotList.items.map(MessageEntity::nodeId) }
             .distinctUntilChanged()
             .collect { nodeIds ->
                 pagingNodeIds = nodeIds
                 nodeIds.forEachIndexed { sourceIndex, nodeId ->
-                    stableMessageKeysByUiIndex[chronologicalUiIndex(sourceIndex, nodeIds.size)] = nodeId
+                    stableMessageKeysByUiIndex[
+                        chronologicalUiIndex(sourceIndex, nodeIds.size)
+                    ] = nodeId
                 }
                 if (!generatingState.value && nodeIds.isNotEmpty()) {
                     stableMessageKeysByUiIndex.keys.removeAll { it !in nodeIds.indices }
@@ -636,6 +641,9 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             }
     }
 
+    // Streaming haptics are intentionally sparse: one subtle pulse per visible
+    // text chunk, not per token/database update. Initial paging hydration only
+    // establishes a baseline and never vibrates.
     LaunchedEffect(paging, conversation?.id) {
         var activeNodeId: String? = null
         var lastLength = 0
@@ -678,17 +686,21 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
 
     val applyWorkingCardMutation = remember(messageListState, listScope, conversation?.id) {
         { mutation: WorkingCardMutation, boundsProvider: () -> Rect?, mutate: () -> Unit ->
-            val manual = mutation == WorkingCardMutation.MANUAL_EXPAND || mutation == WorkingCardMutation.MANUAL_COLLAPSE
+            val manual = mutation == WorkingCardMutation.MANUAL_EXPAND ||
+                mutation == WorkingCardMutation.MANUAL_COLLAPSE
             if (manual) {
                 manualFollowHold = true
                 followMode = ChatFollowMode.DETACHED
             }
+
             listScope.launch {
                 val before = boundsProvider()
                 val viewport = messageViewportBoundsState.value
                 val anchor = chooseWorkingCardViewportAnchor(
                     manual = manual,
-                    followingLatest = !manual && followModeState.value == ChatFollowMode.FOLLOWING && !manualFollowHoldState.value,
+                    followingLatest = !manual &&
+                        followModeState.value == ChatFollowMode.FOLLOWING &&
+                        !manualFollowHoldState.value,
                     cardTopPx = before?.top,
                     cardBottomPx = before?.bottom,
                     viewportTopPx = viewport?.top,
@@ -696,51 +708,84 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 )
                 val anchoredTop = before?.top
                 val anchoredBottom = before?.bottom
+
                 workingCardMutationCount += 1
                 try {
                     mutate()
+
                     suspend fun correctViewportAnchor() {
                         if (userDraggingMessageListState.value) return
                         val correction = when (anchor) {
                             WorkingCardViewportAnchor.NONE -> 0f
                             WorkingCardViewportAnchor.TOP -> {
                                 val current = boundsProvider()
-                                if (current != null && anchoredTop != null) calculateCardViewportCorrectionPx(current.top, anchoredTop) else 0f
+                                if (current != null && anchoredTop != null) {
+                                    calculateCardViewportCorrectionPx(current.top, anchoredTop)
+                                } else 0f
                             }
                             WorkingCardViewportAnchor.BOTTOM -> {
                                 val current = boundsProvider()
-                                if (current != null && anchoredBottom != null) calculateCardViewportCorrectionPx(current.bottom, anchoredBottom) else 0f
+                                if (current != null && anchoredBottom != null) {
+                                    calculateCardViewportCorrectionPx(current.bottom, anchoredBottom)
+                                } else 0f
                             }
                             WorkingCardViewportAnchor.LATEST -> {
                                 val layout = messageListState.layoutInfo
                                 val lastIndex = layout.totalItemsCount - 1
                                 val last = layout.visibleItemsInfo.firstOrNull { it.index == lastIndex }
                                 if (last != null) {
-                                    val visibleEnd = calculateVisibleChatViewportEndPx(layout.viewportEndOffset, messageBottomInsetState.value)
+                                    val visibleEnd = calculateVisibleChatViewportEndPx(
+                                        viewportEndPx = layout.viewportEndOffset,
+                                        obscuredBottomPx = messageBottomInsetState.value,
+                                    )
                                     (last.offset + last.size - visibleEnd).toFloat()
                                 } else 0f
                             }
                         }
-                        if (abs(correction) >= 0.25f) messageListState.scrollBy(correction)
+                        if (abs(correction) >= 0.25f) {
+                            messageListState.scrollBy(correction)
+                        }
                     }
+
                     val startedAt = withFrameNanos { it }
                     var frameNanos = startedAt
                     do {
                         frameNanos = withFrameNanos { it }
                         correctViewportAnchor()
-                    } while (frameNanos - startedAt <= (WorkingCardExpansionDurationMillis + 72L) * 1_000_000L)
-                    repeat(2) { withFrameNanos { }; correctViewportAnchor() }
-                    if (mutation == WorkingCardMutation.MANUAL_COLLAPSE && !userDraggingMessageListState.value) {
+                    } while (
+                        frameNanos - startedAt <=
+                            (WorkingCardExpansionDurationMillis + 72L) * 1_000_000L
+                    )
+
+                    repeat(2) {
+                        withFrameNanos { }
+                        correctViewportAnchor()
+                    }
+
+                    if (
+                        mutation == WorkingCardMutation.MANUAL_COLLAPSE &&
+                        !userDraggingMessageListState.value
+                    ) {
                         val collapsedViewport = messageViewportBoundsState.value
                         val collapsed = boundsProvider()
-                        if (before != null && collapsedViewport != null && collapsed != null && shouldCenterCollapsedCard(before.height, collapsedViewport.height)) {
+                        if (
+                            before != null &&
+                            collapsedViewport != null &&
+                            collapsed != null &&
+                            shouldCenterCollapsedCard(before.height, collapsedViewport.height)
+                        ) {
                             val centerCorrection = calculateCenteredCardCorrectionPx(
                                 cardTopPx = collapsed.top,
                                 cardBottomPx = collapsed.bottom,
                                 viewportTopPx = collapsedViewport.top,
                                 viewportBottomPx = collapsedViewport.bottom,
                             )
-                            if (abs(centerCorrection) >= 1f) messageListState.animateScrollBy(centerCorrection, tween(durationMillis = 180))
+                            if (abs(centerCorrection) >= 1f) {
+                                messageListState.animateScrollBy(
+                                    centerCorrection,
+                                    tween(durationMillis = 180),
+                                )
+                            }
                         }
                     }
                 } finally {
@@ -752,17 +797,27 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     }
     val userScrollConnection = remember(messageListState, conversation?.id) {
         object : NestedScrollConnection {
-            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
                 if (source == NestedScrollSource.UserInput && abs(consumed.y) >= 0.5f) {
                     manualFollowHold = false
-                    followMode = if (messageListState.canScrollForward) ChatFollowMode.DETACHED else ChatFollowMode.FOLLOWING
+                    followMode = if (messageListState.canScrollForward) {
+                        ChatFollowMode.DETACHED
+                    } else {
+                        ChatFollowMode.FOLLOWING
+                    }
                 }
                 return Offset.Zero
             }
         }
     }
     val isAtLatest by remember(messageListState) {
-        derivedStateOf { messageListState.layoutInfo.totalItemsCount == 0 || !messageListState.canScrollForward }
+        derivedStateOf {
+            messageListState.layoutInfo.totalItemsCount == 0 || !messageListState.canScrollForward
+        }
     }
 
     LaunchedEffect(conversation?.id) {
@@ -781,19 +836,33 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     }
 
     LaunchedEffect(conversation?.id, paging.itemCount, initialPositioned, messageBottomInsetPx) {
+        // Do not lock the initial position until Scaffold has measured the live
+        // composer. Positioning with a zero inset is what briefly left the last
+        // response behind the input controls.
         if (!initialPositioned && paging.itemCount > 0 && messageBottomInsetPx > 0) {
             val snapshot = savedScroll
             if (snapshot != null && !snapshot.atLatest) {
-                val sourceIndex = snapshot.anchorNodeId?.let { nodeId -> paging.itemSnapshotList.items.indexOfFirst { it.nodeId == nodeId }.takeIf { it >= 0 } }
-                val targetIndex = sourceIndex?.let { chronologicalUiIndex(it, paging.itemSnapshotList.items.size) }
-                    ?: snapshot.firstVisibleItemIndex.coerceIn(0, paging.itemCount - 1)
+                val sourceIndex = snapshot.anchorNodeId?.let { nodeId ->
+                    paging.itemSnapshotList.items.indexOfFirst { it.nodeId == nodeId }
+                        .takeIf { it >= 0 }
+                }
+                val targetIndex = sourceIndex?.let {
+                    chronologicalUiIndex(it, paging.itemSnapshotList.items.size)
+                } ?: snapshot.firstVisibleItemIndex.coerceIn(0, paging.itemCount - 1)
                 messageListState.scrollToItem(targetIndex, snapshot.firstVisibleItemOffset)
                 followMode = ChatFollowMode.DETACHED
             } else {
                 snapChatToBottom(messageListState, paging.itemCount - 1, messageBottomInsetPx)
             }
+
+            // Restore chrome once after the list anchor settles. Material nested
+            // scroll is the only live owner after this point; continuously deriving
+            // chrome from LazyColumn coordinates creates a feedback loop because
+            // the changing app-bar height also changes the list's top inset.
             val limit = snapshotFlow { topAppBarState.heightOffsetLimit }.first { it < 0f }
             val restoredHeightOffset = if (paging.itemCount > 0 && (snapshot == null || snapshot.atLatest)) {
+                // A non-empty chat opened at its latest message uses compact chrome,
+                // even when the short list has no physical scroll range.
                 limit
             } else {
                 chatTopBarHeightOffsetForScroll(
@@ -822,18 +891,25 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 atLatest = !messageListState.canScrollForward,
                 topBarHeightOffset = topAppBarState.heightOffset,
             )
-        }.distinctUntilChanged().collect { snapshot ->
-            viewModel.saveChatScrollSnapshot(
-                conversationId = conversationId,
-                anchorNodeId = snapshot.anchorNodeId,
-                firstVisibleItemIndex = snapshot.firstVisibleItemIndex,
-                firstVisibleItemOffset = snapshot.firstVisibleItemOffset,
-                atLatest = snapshot.atLatest,
-                topBarHeightOffset = snapshot.topBarHeightOffset,
-            )
         }
+            .distinctUntilChanged()
+            .collect { snapshot ->
+                viewModel.saveChatScrollSnapshot(
+                    conversationId = conversationId,
+                    anchorNodeId = snapshot.anchorNodeId,
+                    firstVisibleItemIndex = snapshot.firstVisibleItemIndex,
+                    firstVisibleItemOffset = snapshot.firstVisibleItemOffset,
+                    atLatest = snapshot.atLatest,
+                    topBarHeightOffset = snapshot.topBarHeightOffset,
+                )
+            }
     }
 
+    // Reattach follow mode when generation starts, but never hard-position the
+    // list here. paging.itemCount changes as tool/file/result cards are appended;
+    // snapping to lastIndex on each change briefly aligned that item at the top
+    // before the nonlinear follower moved back down. During generation, the
+    // frame-paced follower below is the sole owner of list movement.
     LaunchedEffect(generating, initialPositioned) {
         if (generating && initialPositioned) {
             manualFollowHold = false
@@ -843,32 +919,75 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         }
     }
 
-    LaunchedEffect(messageListState, conversation?.id, initialPositioned, generating, messageBottomInsetPx, followMode, manualFollowHold, workingCardMutationCount) {
-        if (!initialPositioned || followMode != ChatFollowMode.FOLLOWING || manualFollowHold || workingCardMutationCount > 0) return@LaunchedEffect
+    // Follow the growing response from the rendered layout, not from database
+    // token events. A frame-paced loop remains active for the whole generation
+    // and briefly after completion so the final batched Markdown frame is not
+    // left under the composer. User input immediately switches followMode to
+    // DETACHED and cancels this effect.
+    LaunchedEffect(
+        messageListState,
+        conversation?.id,
+        initialPositioned,
+        generating,
+        messageBottomInsetPx,
+        followMode,
+        manualFollowHold,
+        workingCardMutationCount,
+    ) {
+        if (
+            !initialPositioned ||
+            followMode != ChatFollowMode.FOLLOWING ||
+            manualFollowHold ||
+            workingCardMutationCount > 0
+        ) return@LaunchedEffect
+
         var settleFramesRemaining = if (generating) Int.MAX_VALUE else 36
         var previousFrameNanos = withFrameNanos { it }
         var offscreenSeekElapsedSeconds = 0f
         while (generating || settleFramesRemaining-- > 0) {
             currentCoroutineContext().ensureActive()
             val frameNanos = withFrameNanos { it }
-            val frameSeconds = ((frameNanos - previousFrameNanos).coerceAtLeast(1L) / 1_000_000_000f).coerceAtMost(0.05f)
+            val frameSeconds = ((frameNanos - previousFrameNanos).coerceAtLeast(1L) / 1_000_000_000f)
+                .coerceAtMost(0.05f)
             previousFrameNanos = frameNanos
+
             if (followMode != ChatFollowMode.FOLLOWING || manualFollowHold) break
+            // Only a finger drag suspends follow. isScrollInProgress also becomes
+            // true for our own scrollBy/animate calls, which previously caused the
+            // loop to suppress itself and made auto-scroll stop altogether.
             if (userDraggingMessageList) continue
+
             val layout = messageListState.layoutInfo
             val lastIndex = layout.totalItemsCount - 1
             if (lastIndex < 0) continue
             val firstVisible = layout.visibleItemsInfo.firstOrNull()
             val lastVisible = layout.visibleItemsInfo.lastOrNull()
+
+            // Room invalidates the PagingSource whenever the streamed message is
+            // updated. In a narrow refresh window LazyColumn can temporarily lose
+            // its key anchor and report item 0, even though neither the user nor
+            // the follower requested an upward scroll. Preserve the last visible
+            // message key and immediately restore it before continuing downward.
             val previousAnchor = streamingAnchorTracker.anchor
             val currentFirstIndex = firstVisible?.index ?: messageListState.firstVisibleItemIndex
-            if (generating && previousAnchor != null && shouldRestoreStreamingAnchor(previousAnchor.itemIndex, currentFirstIndex, userDraggingMessageList)) {
+            if (
+                generating &&
+                previousAnchor != null &&
+                shouldRestoreStreamingAnchor(
+                    previousItemIndex = previousAnchor.itemIndex,
+                    currentItemIndex = currentFirstIndex,
+                    userDragging = userDraggingMessageList,
+                )
+            ) {
                 val currentItems = paging.itemSnapshotList.items
                 val sourceIndex = currentItems.indexOfFirst { it.nodeId == previousAnchor.messageNodeId }
                 if (sourceIndex >= 0) {
                     val targetUiIndex = chronologicalUiIndex(sourceIndex, currentItems.size)
                     if (targetUiIndex in 0 until layout.totalItemsCount) {
-                        messageListState.scrollToItem(targetUiIndex, previousAnchor.scrollOffsetPx.coerceAtLeast(0))
+                        messageListState.scrollToItem(
+                            targetUiIndex,
+                            previousAnchor.scrollOffsetPx.coerceAtLeast(0),
+                        )
                         streamingAnchorTracker.missingAnchorFrames = 0
                         withFrameNanos { }
                         continue
@@ -881,27 +1000,60 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     }
                 }
             }
+
             val currentFirstKey = firstVisible?.key as? String
-            if (currentFirstKey != null && !currentFirstKey.startsWith("loading-") && (previousAnchor == null || currentFirstIndex >= previousAnchor.itemIndex - 1)) {
-                streamingAnchorTracker.anchor = StreamingScrollAnchor(currentFirstKey, currentFirstIndex, messageListState.firstVisibleItemScrollOffset)
+            if (
+                currentFirstKey != null &&
+                !currentFirstKey.startsWith("loading-") &&
+                (previousAnchor == null || currentFirstIndex >= previousAnchor.itemIndex - 1)
+            ) {
+                streamingAnchorTracker.anchor = StreamingScrollAnchor(
+                    messageNodeId = currentFirstKey,
+                    itemIndex = currentFirstIndex,
+                    scrollOffsetPx = messageListState.firstVisibleItemScrollOffset,
+                )
                 streamingAnchorTracker.missingAnchorFrames = 0
             }
+
             if (lastVisible == null || lastVisible.index < lastIndex) {
+                // Accelerate non-linearly while the tail is still off-screen. The
+                // old constant-speed seek was visibly slow after large tables,
+                // file cards, or tool groups appeared in one batch.
                 if (messageListState.canScrollForward) {
-                    offscreenSeekElapsedSeconds = (offscreenSeekElapsedSeconds + frameSeconds).coerceAtMost(2f)
+                    offscreenSeekElapsedSeconds =
+                        (offscreenSeekElapsedSeconds + frameSeconds).coerceAtMost(2f)
                     val lastKnownIndex = lastVisible?.index ?: messageListState.firstVisibleItemIndex
                     val hiddenItemCount = (lastIndex - lastKnownIndex).coerceAtLeast(1)
-                    val seekSpeed = calculateAutoFollowSeekSpeedPxPerSecond(hiddenItemCount, offscreenSeekElapsedSeconds, ChatFollowSeekMinSpeedPxPerSecond, ChatFollowSeekMaxSpeedPxPerSecond)
-                    val step = min(seekSpeed * frameSeconds, ChatFollowSeekMaxFrameStepPx)
+                    val seekSpeed = calculateAutoFollowSeekSpeedPxPerSecond(
+                        hiddenItemCount = hiddenItemCount,
+                        elapsedSeconds = offscreenSeekElapsedSeconds,
+                        minSpeedPxPerSecond = ChatFollowSeekMinSpeedPxPerSecond,
+                        maxSpeedPxPerSecond = ChatFollowSeekMaxSpeedPxPerSecond,
+                    )
+                    val step = min(
+                        seekSpeed * frameSeconds,
+                        ChatFollowSeekMaxFrameStepPx,
+                    )
                     if (step > 0f) messageListState.scrollBy(step)
                 }
                 continue
             }
+
             offscreenSeekElapsedSeconds = 0f
-            val visibleEnd = calculateVisibleChatViewportEndPx(layout.viewportEndOffset, messageBottomInsetPx)
+            val visibleEnd = calculateVisibleChatViewportEndPx(
+                viewportEndPx = layout.viewportEndOffset,
+                obscuredBottomPx = messageBottomInsetPx,
+            )
             val overflow = (lastVisible.offset + lastVisible.size - visibleEnd).toFloat()
             if (overflow > 0.5f) {
-                val step = min(calculateAutoFollowStepPx(overflow, frameSeconds, ChatFollowMaxSpeedPxPerSecond), ChatFollowMaxFrameStepPx)
+                val step = min(
+                    calculateAutoFollowStepPx(
+                        distancePx = overflow,
+                        frameSeconds = frameSeconds,
+                        maxSpeedPxPerSecond = ChatFollowMaxSpeedPxPerSecond,
+                    ),
+                    ChatFollowMaxFrameStepPx,
+                )
                 if (step > 0f) messageListState.scrollBy(step)
             }
         }
@@ -910,7 +1062,9 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     LaunchedEffect(messageListState, conversation?.id) {
         snapshotFlow { messageListState.isScrollInProgress to messageListState.canScrollForward }
             .collect { (scrolling, canScrollForward) ->
-                if (!scrolling && !canScrollForward && !manualFollowHold) followMode = ChatFollowMode.FOLLOWING
+                if (!scrolling && !canScrollForward && !manualFollowHold) {
+                    followMode = ChatFollowMode.FOLLOWING
+                }
             }
     }
 
@@ -951,13 +1105,18 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 overlayOpacity = chromeOverlayOpacity,
                 topPanelHeight = CHAT_TOP_PANEL_HEIGHT_DP.dp,
                 navigationIcon = {
-                    if (openDrawer != null) IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Conversations") }
-                    else Spacer(Modifier.size(48.dp))
+                    if (openDrawer != null) {
+                        IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Conversations") }
+                    } else {
+                        Spacer(Modifier.size(48.dp))
+                    }
                 },
                 actions = {
                     if (pending.isNotEmpty()) Badge { Text(pending.size.toString()) }
                     conversation?.let { activeConversation ->
-                        IconButton(onClick = { viewModel.requestShareConversation(activeConversation.id) }) { Icon(Icons.Outlined.Share, "Share portable chat") }
+                        IconButton(onClick = { viewModel.requestShareConversation(activeConversation.id) }) {
+                            Icon(Icons.Outlined.Share, "Share portable chat")
+                        }
                     }
                     Box {
                         IconButton(onClick = { chatMenu = true }) { Icon(Icons.Outlined.MoreVert, "Chat actions") }
@@ -969,7 +1128,10 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 },
                 modelSelector = {
                     Surface(
-                        onClick = { if (usableProviders.isEmpty()) viewModel.openProviderSetup() else showModelPicker = true },
+                        onClick = {
+                            if (usableProviders.isEmpty()) viewModel.openProviderSetup()
+                            else showModelPicker = true
+                        },
                         color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .78f),
                         shape = CircleShape,
                     ) {
@@ -977,7 +1139,10 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             Icon(Icons.Outlined.Psychology, null, Modifier.size(14.dp))
                             Text(
                                 buildString {
-                                    if (usableProviders.isEmpty()) { append("Set up provider"); return@buildString }
+                                    if (usableProviders.isEmpty()) {
+                                        append("Set up provider")
+                                        return@buildString
+                                    }
                                     val provider = usableProviders.firstOrNull { it.id == conversation?.selectedProviderId }
                                     if (provider != null && usableProviders.size > 1) append(provider.displayName).append(" · ")
                                     append(models.firstOrNull { it.modelId == conversation?.selectedModelId }?.displayName ?: conversation?.selectedModelId ?: "Choose model")
@@ -996,7 +1161,9 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             Composer(
                 viewModel = viewModel,
                 provider = allProviders.firstOrNull { it.id == conversation?.selectedProviderId },
-                model = models.firstOrNull { it.providerId == conversation?.selectedProviderId && it.modelId == conversation?.selectedModelId },
+                model = models.firstOrNull {
+                    it.providerId == conversation?.selectedProviderId && it.modelId == conversation?.selectedModelId
+                },
                 generating = generating,
                 providerConfigured = usableProviders.isNotEmpty(),
                 linuxInstalled = linuxStatus.installed,
@@ -1007,33 +1174,49 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     manualFollowHold = false
                     followMode = ChatFollowMode.FOLLOWING
                     val limit = topAppBarState.heightOffsetLimit
-                    if (limit < 0f) { topAppBarState.heightOffset = limit; topAppBarState.contentOffset = limit }
+                    if (limit < 0f) {
+                        // Sending compacts the header even if this short conversation
+                        // cannot consume enough LazyColumn scroll to collapse it.
+                        topAppBarState.heightOffset = limit
+                        topAppBarState.contentOffset = limit
+                    }
                 },
             )
         },
     ) { padding ->
         val messageTopGutter = 44.dp
         val messageBottomGutter = 34.dp
-        val measuredMessageBottomInsetPx = with(density) { (padding.calculateBottomPadding() + messageBottomGutter).roundToPx() }
-        LaunchedEffect(measuredMessageBottomInsetPx) { messageBottomInsetPx = measuredMessageBottomInsetPx }
+        val measuredMessageBottomInsetPx = with(density) {
+            (padding.calculateBottomPadding() + messageBottomGutter).roundToPx()
+        }
+        LaunchedEffect(measuredMessageBottomInsetPx) {
+            messageBottomInsetPx = measuredMessageBottomInsetPx
+        }
         Box(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxSize().xyluneBackdropSource(blurState)) {
                 if (paging.itemCount == 0 && recoverable.isEmpty()) {
                     EmptyConversation(
                         providerConfigured = usableProviders.isNotEmpty(),
                         onSetUpProvider = viewModel::openProviderSetup,
-                        modifier = Modifier.zIndex(1f).padding(top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding()),
+                        modifier = Modifier.zIndex(1f).padding(
+                            top = padding.calculateTopPadding(),
+                            bottom = padding.calculateBottomPadding(),
+                        ),
                     )
                 }
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().nestedScroll(userScrollConnection).onGloballyPositioned { coordinates ->
-                        val bounds = coordinates.boundsInRoot()
-                        if (messageViewportBounds != bounds) messageViewportBounds = bounds
-                    },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .nestedScroll(userScrollConnection)
+                        .onGloballyPositioned { coordinates ->
+                            val bounds = coordinates.boundsInRoot()
+                            if (messageViewportBounds != bounds) messageViewportBounds = bounds
+                        },
                     state = messageListState,
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        start = 12.dp, end = 12.dp,
+                        start = 12.dp,
+                        end = 12.dp,
                         top = padding.calculateTopPadding() + messageTopGutter,
                         bottom = padding.calculateBottomPadding() + messageBottomGutter,
                     ),
@@ -1042,19 +1225,39 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         count = paging.itemCount,
                         key = { uiIndex ->
                             val sourceIndex = chronologicalSourceIndex(uiIndex, paging.itemCount)
-                            paging.peek(sourceIndex)?.nodeId?.also { stableMessageKeysByUiIndex[uiIndex] = it }
-                                ?: stableMessageKeysByUiIndex[uiIndex] ?: "loading-${conversation?.id.orEmpty()}-$uiIndex"
+                            paging.peek(sourceIndex)?.nodeId
+                                ?.also { stableMessageKeysByUiIndex[uiIndex] = it }
+                                ?: stableMessageKeysByUiIndex[uiIndex]
+                                ?: "loading-${conversation?.id.orEmpty()}-$uiIndex"
                         },
-                        contentType = { uiIndex -> paging.peek(chronologicalSourceIndex(uiIndex, paging.itemCount))?.role },
+                        contentType = { uiIndex ->
+                            val sourceIndex = chronologicalSourceIndex(uiIndex, paging.itemCount)
+                            paging.peek(sourceIndex)?.role
+                        },
                     ) { uiIndex ->
                         val sourceIndex = chronologicalSourceIndex(uiIndex, paging.itemCount)
                         paging[sourceIndex]?.let { persistedMessage ->
                             val message = if (persistedMessage.status == MessageStatus.STREAMING) {
-                                streamingPreviews[persistedMessage.nodeId]?.let { preview -> persistedMessage.copy(content = preview.content, reasoning = preview.reasoning) } ?: persistedMessage
+                                streamingPreviews[persistedMessage.nodeId]?.let { preview ->
+                                    persistedMessage.copy(
+                                        content = preview.content,
+                                        reasoning = preview.reasoning,
+                                    )
+                                } ?: persistedMessage
                             } else persistedMessage
-                            val branchOptions = remember(message.nodeId, revisionBranchGroups) { inlineBranchOptions(message, revisionBranchGroups) }
-                            val viewportController = remember(messageViewportBounds, messageListState.isScrollInProgress, applyWorkingCardMutation) {
-                                WorkingCardViewportController(messageViewportBounds, messageListState.isScrollInProgress, applyWorkingCardMutation)
+                            val branchOptions = remember(message.nodeId, revisionBranchGroups) {
+                                inlineBranchOptions(message, revisionBranchGroups)
+                            }
+                            val viewportController = remember(
+                                messageViewportBounds,
+                                messageListState.isScrollInProgress,
+                                applyWorkingCardMutation,
+                            ) {
+                                WorkingCardViewportController(
+                                    viewportBounds = messageViewportBounds,
+                                    listScrolling = messageListState.isScrollInProgress,
+                                    applyMutation = applyWorkingCardMutation,
+                                )
                             }
                             MessageCard(
                                 message = message,
@@ -1078,71 +1281,116 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         manualFollowHold = false
                         followMode = ChatFollowMode.FOLLOWING
                         val limit = topAppBarState.heightOffsetLimit
-                        if (limit < 0f) { topAppBarState.heightOffset = limit; topAppBarState.contentOffset = limit }
+                        if (limit < 0f) {
+                            topAppBarState.heightOffset = limit
+                            topAppBarState.contentOffset = limit
+                        }
                         listScope.launch { snapChatToBottom(messageListState, paging.itemCount - 1, messageBottomInsetPx) }
                     },
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                ) { Icon(Icons.Filled.KeyboardArrowDown, "Go to latest message") }
+                ) {
+                    Icon(Icons.Filled.KeyboardArrowDown, "Go to latest message")
+                }
             }
             val interrupted = recoverable.firstOrNull { candidate ->
                 val recoverableStatus = candidate.status == MessageStatus.ERROR ||
-                    (candidate.status == MessageStatus.INTERRUPTED && candidate.error !in setOf("Steered by user", "Replaced by an edited message"))
+                    (candidate.status == MessageStatus.INTERRUPTED &&
+                        candidate.error !in setOf("Steered by user", "Replaced by an edited message"))
                 recoverableStatus && recoveryNoticeKey(candidate) != dismissedRecoveryNoticeKey
             }
             AnimatedVisibility(
                 visible = interrupted != null && !generating,
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = padding.calculateTopPadding() + 8.dp, start = 12.dp, end = 12.dp),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = padding.calculateTopPadding() + 8.dp, start = 12.dp, end = 12.dp),
             ) {
                 interrupted?.let { message ->
                     val failed = message.status == MessageStatus.ERROR
                     Surface(
-                        color = if (failed) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer,
+                        color = if (failed) MaterialTheme.colorScheme.errorContainer
+                        else MaterialTheme.colorScheme.secondaryContainer,
                         shape = MaterialTheme.shapes.extraLarge,
                         tonalElevation = 2.dp,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Column(Modifier.padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Column(
+                            Modifier.padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 6.dp),
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Outlined.WarningAmber, null, Modifier.size(18.dp))
-                                Text(if (failed) "Request failed" else "Response paused", Modifier.padding(start = 9.dp).weight(1f), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                IconButton(onClick = { dismissedRecoveryNoticeKey = recoveryNoticeKey(message) }, modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.Close, "Dismiss error", Modifier.size(18.dp)) }
+                                Text(
+                                    if (failed) "Request failed" else "Response paused",
+                                    Modifier.padding(start = 9.dp).weight(1f),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                )
+                                IconButton(
+                                    onClick = { dismissedRecoveryNoticeKey = recoveryNoticeKey(message) },
+                                    modifier = Modifier.size(34.dp),
+                                ) {
+                                    Icon(Icons.Outlined.Close, "Dismiss error", Modifier.size(18.dp))
+                                }
                             }
                             Text(
                                 recoveryErrorSummary(message),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (failed) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer,
+                                color = if (failed) MaterialTheme.colorScheme.onErrorContainer
+                                else MaterialTheme.colorScheme.onSecondaryContainer,
                                 maxLines = 3,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(end = 8.dp),
                             )
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                                TextButton(onClick = { recoveryDetailsMessage = message }) { Text("Details") }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                TextButton(onClick = { recoveryDetailsMessage = message }) {
+                                    Text("Details")
+                                }
                                 TextButton(onClick = {
                                     dismissedRecoveryNoticeKey = recoveryNoticeKey(message)
                                     if (failed) viewModel.retryMessage(message) else viewModel.resume(message)
-                                }) { Text(if (failed) "Retry" else "Continue") }
+                                }) {
+                                    Text(if (failed) "Retry" else "Continue")
+                                }
                             }
                         }
                     }
                 }
             }
+
         }
     }
     recoveryDetailsMessage?.let { message ->
         val dialogContext = LocalContext.current
-        val fullError = message.error?.trim().orEmpty().ifBlank { "No additional diagnostic text was returned by the provider." }
+        val fullError = message.error?.trim().orEmpty().ifBlank {
+            "No additional diagnostic text was returned by the provider."
+        }
         XyluneAlertDialog(
             onDismissRequest = { recoveryDetailsMessage = null },
-            title = { Text(if (message.status == MessageStatus.ERROR) "Request error" else "Interrupted response") },
+            title = {
+                Text(if (message.status == MessageStatus.ERROR) "Request error" else "Interrupted response")
+            },
             text = {
-                Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
                     Text(
-                        listOfNotNull(message.providerId, message.modelId).joinToString(" · ").ifBlank { "Provider details unavailable" },
+                        listOfNotNull(message.providerId, message.modelId).joinToString(" · ")
+                            .ifBlank { "Provider details unavailable" },
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    CodeSourcePanel(language = "text", code = fullError, title = if (message.status == MessageStatus.ERROR) "ERROR" else "DETAILS")
+                    CodeSourcePanel(
+                        language = "text",
+                        code = fullError,
+                        title = if (message.status == MessageStatus.ERROR) "ERROR" else "DETAILS",
+                    )
                 }
             },
             dismissButton = {
@@ -1150,21 +1398,29 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     dialogContext.getSystemService(android.content.ClipboardManager::class.java)
                         .setPrimaryClip(android.content.ClipData.newPlainText("Xylune stream error", fullError))
                 }) {
-                    Icon(Icons.Outlined.ContentCopy, null, Modifier.size(17.dp)); Spacer(Modifier.width(5.dp)); Text("Copy")
+                    Icon(Icons.Outlined.ContentCopy, null, Modifier.size(17.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Copy")
                 }
             },
-            confirmButton = { TextButton(onClick = { recoveryDetailsMessage = null }) { Text("Close") } },
+            confirmButton = {
+                TextButton(onClick = { recoveryDetailsMessage = null }) { Text("Close") }
+            },
         )
     }
     if (showChatConfiguration) {
-        conversation?.let { ChatConfigurationSheet(it, contextSummary, viewModel) { showChatConfiguration = false } } ?: run { showChatConfiguration = false }
+        conversation?.let { current ->
+            ChatConfigurationSheet(current, contextSummary, viewModel) { showChatConfiguration = false }
+        } ?: run { showChatConfiguration = false }
     }
     if (showModelPicker) {
         ModelPickerSheet(
-            providers = usableProviders, models = allModels,
+            providers = usableProviders,
+            models = allModels,
             selectedProviderId = conversation?.selectedProviderId,
             selectedModelId = conversation?.selectedModelId,
-            favoriteKeys = favoriteModels, recentKeys = recentModels,
+            favoriteKeys = favoriteModels,
+            recentKeys = recentModels,
             onToggleFavorite = viewModel::toggleFavoriteModel,
             onSelect = viewModel::selectModel,
             onDismiss = { showModelPicker = false },
@@ -1172,30 +1428,62 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     }
 }
 
-internal fun normalModelPickerModels(models: List<ModelEntity>): List<ModelEntity> = models.sortedBy { it.displayName.lowercase() }
 
-internal fun shouldShowOcrCompatibility(isImage: Boolean, modelSupportsVision: Boolean): Boolean = isImage && !modelSupportsVision
+internal fun normalModelPickerModels(models: List<ModelEntity>): List<ModelEntity> =
+    models.sortedBy { it.displayName.lowercase() }
 
-internal fun unsupportedToolCallingNotice(modelSupportsTools: Boolean?, toolCallingRequested: Boolean): String? =
-    if (modelSupportsTools == false && toolCallingRequested) "This model doesn't support tool calling. Web, Python, and Linux tools won't run." else null
+internal fun shouldShowOcrCompatibility(isImage: Boolean, modelSupportsVision: Boolean): Boolean =
+    isImage && !modelSupportsVision
+
+internal fun unsupportedToolCallingNotice(
+    modelSupportsTools: Boolean?,
+    toolCallingRequested: Boolean,
+): String? = if (modelSupportsTools == false && toolCallingRequested) {
+    "This model doesn't support tool calling. Web, Python, and Linux tools won't run."
+} else null
 
 @Composable
-private fun EmptyConversation(providerConfigured: Boolean, onSetUpProvider: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Icon(if (providerConfigured) Icons.Outlined.Psychology else Icons.Outlined.Cloud, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(38.dp))
+private fun EmptyConversation(
+    providerConfigured: Boolean,
+    onSetUpProvider: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier.fillMaxSize().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            if (providerConfigured) Icons.Outlined.Psychology else Icons.Outlined.Cloud,
+            null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(38.dp),
+        )
         Spacer(Modifier.size(14.dp))
         Text(
             if (providerConfigured) "What are we working on?" else "Connect a model provider",
-            style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.Center,
         )
         Spacer(Modifier.size(10.dp))
         Text(
-            if (providerConfigured) "Ask a question, attach a file, or choose Search and Tools beside the message box."
-            else "Xylune cannot send messages until ChatGPT, an API provider, or a local model server is connected.",
-            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
+            if (providerConfigured) {
+                "Ask a question, attach a file, or choose Search and Tools beside the message box."
+            } else {
+                "Xylune cannot send messages until ChatGPT, an API provider, or a local model server is connected."
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
-        if (!providerConfigured) { Spacer(Modifier.size(18.dp)); Button(onClick = onSetUpProvider) { Text("Set up a provider") } }
+        if (!providerConfigured) {
+            Spacer(Modifier.size(18.dp))
+            Button(onClick = onSetUpProvider) {
+                Text("Set up a provider")
+            }
+        }
     }
 }
 
@@ -1209,24 +1497,50 @@ private fun MessageCard(
     modifier: Modifier = Modifier,
     workingCardViewport: WorkingCardViewportController,
 ) {
-    val attachments by viewModel.run { containerAttachments(message.nodeId) }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val attachments by viewModel.run { containerAttachments(message.nodeId) }
+        .collectAsStateWithLifecycle(initialValue = emptyList())
     val working = message.status == MessageStatus.STREAMING
     val animateStreaming = working
     val user = message.role == MessageRole.USER
     val haptics = rememberXyluneHaptics()
-    val encodedTimeline = remember(message.timelineJson) { runCatching { ChatMessageJson.decodeFromString<List<MessageTimelineEvent>>(message.timelineJson) }.getOrDefault(emptyList()) }
-    val rawTimeline = remember(encodedTimeline, message.content, message.reasoning) { materializeTimelineContent(encodedTimeline, message.content, message.reasoning) }
-    val deepResearchResponse = remember(message.role, message.requestSnapshotJson) { ResearchStateProtocol.isDeepResearchResponse(message.role, message.requestSnapshotJson) }
+    val encodedTimeline = remember(message.timelineJson) {
+        runCatching { ChatMessageJson.decodeFromString<List<MessageTimelineEvent>>(message.timelineJson) }.getOrDefault(emptyList())
+    }
+    val rawTimeline = remember(encodedTimeline, message.content, message.reasoning) {
+        materializeTimelineContent(encodedTimeline, message.content, message.reasoning)
+    }
+    val deepResearchResponse = remember(message.role, message.requestSnapshotJson) {
+        ResearchStateProtocol.isDeepResearchResponse(message.role, message.requestSnapshotJson)
+    }
     val researchState = remember(deepResearchResponse, rawTimeline, message.reasoning, message.content) {
-        if (!deepResearchResponse) null else ResearchStateProtocol.latest(if (rawTimeline.isNotEmpty()) rawTimeline.map { it.content } else listOf(message.reasoning, message.content))
+        if (!deepResearchResponse) null
+        else ResearchStateProtocol.latest(
+            if (rawTimeline.isNotEmpty()) rawTimeline.map { it.content }
+            else listOf(message.reasoning, message.content),
+        )
     }
     val timeline = remember(rawTimeline, deepResearchResponse) {
-        rawTimeline.map { event -> if (deepResearchResponse) event.copy(content = ResearchStateProtocol.extract(event.content).cleanedText) else event }
-            .filterNot { event -> event.kind in setOf("text", "reasoning") && event.content.isBlank() && event.input.isBlank() && event.output.isBlank() }
+        rawTimeline.map { event ->
+            if (deepResearchResponse) event.copy(content = ResearchStateProtocol.extract(event.content).cleanedText)
+            else event
+        }.filterNot { event ->
+            event.kind in setOf("text", "reasoning") && event.content.isBlank() && event.input.isBlank() && event.output.isBlank()
+        }
     }
-    val displayReasoning = if (deepResearchResponse) remember(message.reasoning) { ResearchStateProtocol.extract(message.reasoning).cleanedText } else message.reasoning
-    val displayContent = if (deepResearchResponse) remember(message.content) { ResearchStateProtocol.extract(message.content).cleanedText } else message.content
-    if (message.role == MessageRole.ASSISTANT && message.status != MessageStatus.STREAMING && displayContent.isBlank() && displayReasoning.isBlank() && timeline.isEmpty() && attachments.isEmpty()) return
+    val displayReasoning = if (deepResearchResponse) {
+        remember(message.reasoning) { ResearchStateProtocol.extract(message.reasoning).cleanedText }
+    } else message.reasoning
+    val displayContent = if (deepResearchResponse) {
+        remember(message.content) { ResearchStateProtocol.extract(message.content).cleanedText }
+    } else message.content
+    if (
+        message.role == MessageRole.ASSISTANT &&
+        message.status != MessageStatus.STREAMING &&
+        displayContent.isBlank() &&
+        displayReasoning.isBlank() &&
+        timeline.isEmpty() &&
+        attachments.isEmpty()
+    ) return
     var editing by remember(message.nodeId) { mutableStateOf(false) }
     var editedText by remember(message.nodeId) { mutableStateOf(message.content) }
     var copied by remember(message.nodeId) { mutableStateOf(false) }
@@ -1246,30 +1560,58 @@ private fun MessageCard(
                                 attachment.mimeType == "application/pdf" -> activeModel?.supportsFiles == false
                                 else -> false
                             }
-                            AttachmentCard(attachment = attachment, modelUsesFallback = fallback, allowOcr = fallback, onEnableOcr = if (fallback) ({ viewModel.enableOcr(attachment) }) else null)
+                            AttachmentCard(
+                                attachment = attachment,
+                                modelUsesFallback = fallback,
+                                allowOcr = fallback,
+                                onEnableOcr = if (fallback) ({ viewModel.enableOcr(attachment) }) else null,
+                            )
                         }
                     }
                 }
                 if (deepResearchResponse && researchState != null) {
-                    StreamingFade(transitionKey = "${message.nodeId}:research-roadmap", enabled = animateStreaming, modifier = Modifier.padding(bottom = 8.dp)) {
-                        ReportedResearchRoadmap(state = researchState, streaming = animateStreaming)
+                    StreamingFade(
+                        transitionKey = "${message.nodeId}:research-roadmap",
+                        enabled = animateStreaming,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    ) {
+                        ReportedResearchRoadmap(
+                            state = researchState,
+                            streaming = animateStreaming,
+                        )
                     }
                 }
                 if (timeline.isNotEmpty()) {
                     OrderedMessageTimeline(
-                        messageKey = message.nodeId, events = timeline, attachments = attachments,
-                        working = working, animateStreaming = animateStreaming, visibility = reasoningVisibility,
-                        viewModel = viewModel, workingCardViewport = workingCardViewport,
+                        messageKey = message.nodeId,
+                        events = timeline,
+                        attachments = attachments,
+                        working = working,
+                        animateStreaming = animateStreaming,
+                        visibility = reasoningVisibility,
+                        viewModel = viewModel,
+                        workingCardViewport = workingCardViewport,
                     )
                 } else {
                     LegacyWorkingBlock(
-                        messageKey = message.nodeId, text = displayReasoning, toolTraceJson = message.toolTraceJson,
-                        working = working, animateStreaming = animateStreaming, visibility = reasoningVisibility,
-                        viewModel = viewModel, workingCardViewport = workingCardViewport,
+                        messageKey = message.nodeId,
+                        text = displayReasoning,
+                        toolTraceJson = message.toolTraceJson,
+                        working = working,
+                        animateStreaming = animateStreaming,
+                        visibility = reasoningVisibility,
+                        viewModel = viewModel,
+                        workingCardViewport = workingCardViewport,
                     )
+                    // Keep the renderer alive from the empty first frame so a
+                    // provider's first large chunk is revealed progressively too.
                     if (displayContent.isNotBlank() || animateStreaming) RichMessage(
-                        operationScope = message.nodeId, text = displayContent, streaming = animateStreaming, staticContent = user,
-                        onRunPython = viewModel::executePython, onRunUbuntu = viewModel::executeUbuntu,
+                        operationScope = message.nodeId,
+                        text = displayContent,
+                        streaming = animateStreaming,
+                        staticContent = user,
+                        onRunPython = viewModel::executePython,
+                        onRunUbuntu = viewModel::executeUbuntu,
                         onReviewPythonPackages = viewModel::reviewPythonPackages,
                         onInstallPackages = viewModel::installPythonPackagesAndContinue,
                         onReviewUbuntuPackages = viewModel::reviewUbuntuPackages,
@@ -1281,7 +1623,13 @@ private fun MessageCard(
                         workingCardViewport = workingCardViewport,
                     )
                 }
-                if (animateStreaming && message.content.isBlank() && timeline.isEmpty() && displayReasoning.isBlank() && message.toolTraceJson.isBlank()) {
+                if (
+                    animateStreaming &&
+                    message.content.isBlank() &&
+                    timeline.isEmpty() &&
+                    displayReasoning.isBlank() &&
+                    message.toolTraceJson.isBlank()
+                ) {
                     StreamingTokenPulse(visible = true, label = "Working")
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
@@ -1298,10 +1646,19 @@ private fun MessageCard(
                             }
                             if (message.status !in setOf(MessageStatus.COMPLETE, MessageStatus.STREAMING)) append(" • ${message.status.name.lowercase()}")
                         },
-                        modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (branchOptions.size > 1) InlineBranchNavigator(message.nodeId, branchOptions, viewModel::activateBranch)
+                    if (branchOptions.size > 1) {
+                        InlineBranchNavigator(
+                            activeNodeId = message.nodeId,
+                            options = branchOptions,
+                            onActivate = viewModel::activateBranch,
+                        )
+                    }
                     IconButton(onClick = {
                         haptics.selection()
                         val label = if (user) "message" else "response"
@@ -1320,29 +1677,60 @@ private fun MessageCard(
                             Icon(Icons.Outlined.Refresh, "Retry response", Modifier.size(18.dp))
                         }
                     }
-                    MessageContextMenu(message)
                 }
             }
         }
     }
     if (editing) XyluneAlertDialog(
-        onDismissRequest = { editing = false }, title = { Text("Edit message") },
-        text = { OutlinedTextField(value = editedText, onValueChange = { editedText = it }, minLines = 3, maxLines = 12, modifier = Modifier.fillMaxWidth()) },
+        onDismissRequest = { editing = false },
+        title = { Text("Edit message") },
+        text = {
+            OutlinedTextField(
+                value = editedText,
+                onValueChange = { editedText = it },
+                minLines = 3,
+                maxLines = 12,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
         dismissButton = { AssistChip(onClick = { editing = false }, label = { Text("Cancel") }) },
-        confirmButton = { Button(onClick = { haptics.confirm(); viewModel.editMessage(message, editedText); editing = false }, enabled = editedText.isNotBlank()) { Text("Save & regenerate") } },
+        confirmButton = {
+            Button(onClick = { haptics.confirm(); viewModel.editMessage(message, editedText); editing = false }, enabled = editedText.isNotBlank()) {
+                Text("Save & regenerate")
+            }
+        },
     )
 }
 
 @Composable
-private fun InlineBranchNavigator(activeNodeId: String, options: List<MessageEntity>, onActivate: (MessageEntity) -> Unit) {
+private fun InlineBranchNavigator(
+    activeNodeId: String,
+    options: List<MessageEntity>,
+    onActivate: (MessageEntity) -> Unit,
+) {
     val haptics = rememberXyluneHaptics()
     val activeIndex = options.indexOfFirst { it.nodeId == activeNodeId }.coerceAtLeast(0)
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(0.dp)) {
-        IconButton(onClick = { haptics.selection(); onActivate(options[activeIndex - 1]) }, enabled = activeIndex > 0, modifier = Modifier.size(30.dp)) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(0.dp),
+    ) {
+        IconButton(
+            onClick = { haptics.selection(); onActivate(options[activeIndex - 1]) },
+            enabled = activeIndex > 0,
+            modifier = Modifier.size(30.dp),
+        ) {
             Icon(Icons.Outlined.ChevronLeft, "Previous branch", Modifier.size(18.dp))
         }
-        Text("${activeIndex + 1} / ${options.size}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        IconButton(onClick = { haptics.selection(); onActivate(options[activeIndex + 1]) }, enabled = activeIndex < options.lastIndex, modifier = Modifier.size(30.dp)) {
+        Text(
+            "${activeIndex + 1} / ${options.size}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        IconButton(
+            onClick = { haptics.selection(); onActivate(options[activeIndex + 1]) },
+            enabled = activeIndex < options.lastIndex,
+            modifier = Modifier.size(30.dp),
+        ) {
             Icon(Icons.Outlined.ChevronRight, "Next branch", Modifier.size(18.dp))
         }
     }
@@ -1362,14 +1750,19 @@ private fun OrderedMessageTimeline(
     val orderedEvents = remember(events, attachments) {
         val explicitAttachmentIds = events.filter { it.kind == "file" }.map { it.output }.toSet()
         val synthetic = attachments.filterNot { it.id in explicitAttachmentIds }.map { attachment ->
-            MessageTimelineEvent(id = "file-${attachment.id}", kind = "file", label = "Sent file", status = "complete", input = attachment.displayName, output = attachment.id, startedAt = attachment.createdAt, finishedAt = attachment.createdAt)
+            MessageTimelineEvent(
+                id = "file-${attachment.id}", kind = "file", label = "Sent file",
+                status = "complete", input = attachment.displayName, output = attachment.id,
+                startedAt = attachment.createdAt, finishedAt = attachment.createdAt,
+            )
         }
         (events + synthetic).sortedBy(MessageTimelineEvent::startedAt)
     }
     val segments = remember(orderedEvents) { groupOrderedTimeline(orderedEvents) }
     val usedSourceUrls = remember(orderedEvents) {
         orderedEvents.filter { it.kind == "fetch" && it.status == "complete" }.mapNotNull { event ->
-            runCatching { ChatMessageJson.decodeFromString<WebFetchResponse>(event.output).url }.getOrNull()?.takeIf(String::isNotBlank)
+            runCatching { ChatMessageJson.decodeFromString<WebFetchResponse>(event.output).url }.getOrNull()
+                ?.takeIf(String::isNotBlank)
                 ?: event.input.takeIf { it.startsWith("http://") || it.startsWith("https://") }
         }.toSet()
     }
@@ -1378,7 +1771,9 @@ private fun OrderedMessageTimeline(
             orderedEvents.forEach { event ->
                 addAll(extractTimelineSourceLinks(event.content))
                 if (event.kind == "fetch" && event.status == "complete") {
-                    val url = runCatching { ChatMessageJson.decodeFromString<WebFetchResponse>(event.output).url }.getOrNull()?.takeIf(String::isNotBlank)
+                    val url = runCatching {
+                        ChatMessageJson.decodeFromString<WebFetchResponse>(event.output).url
+                    }.getOrNull()?.takeIf(String::isNotBlank)
                         ?: event.input.takeIf { it.startsWith("http://") || it.startsWith("https://") }
                     url?.let { target ->
                         val host = runCatching { target.toUri().host }.getOrNull().orEmpty().removePrefix("www.")
@@ -1393,15 +1788,23 @@ private fun OrderedMessageTimeline(
             if (segment.working) {
                 val activeBlock = working && index == segments.lastIndex
                 TimelineWorkingBlock(
-                    stateKey = "$messageKey:${segment.events.first().id}", events = segment.events,
-                    active = activeBlock, animateStreaming = animateStreaming && activeBlock,
-                    visibility = visibility, usedSourceUrls = usedSourceUrls, sourceLinks = sourceLinks,
-                    viewModel = viewModel, workingCardViewport = workingCardViewport,
+                    stateKey = "$messageKey:${segment.events.first().id}",
+                    events = segment.events,
+                    active = activeBlock,
+                    animateStreaming = animateStreaming && activeBlock,
+                    visibility = visibility,
+                    usedSourceUrls = usedSourceUrls,
+                    sourceLinks = sourceLinks,
+                    viewModel = viewModel,
+                    workingCardViewport = workingCardViewport,
                 )
             } else {
                 segment.events.forEach { event ->
                     val activeEvent = animateStreaming && index == segments.lastIndex && event == segment.events.lastOrNull()
-                    StreamingFade(transitionKey = "$messageKey:${event.id}", enabled = activeEvent) {
+                    StreamingFade(
+                        transitionKey = "$messageKey:${event.id}",
+                        enabled = activeEvent,
+                    ) {
                         if (event.kind == "file") {
                             attachments.firstOrNull { it.id == event.output }?.let { attachment ->
                                 Column(Modifier.padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -1410,8 +1813,11 @@ private fun OrderedMessageTimeline(
                                 }
                             }
                         } else if (event.content.isNotBlank()) RichMessage(
-                            operationScope = "$messageKey:${event.id}", text = event.content, streaming = activeEvent,
-                            onRunPython = viewModel::executePython, onRunUbuntu = viewModel::executeUbuntu,
+                            operationScope = "$messageKey:${event.id}",
+                            text = event.content,
+                            streaming = activeEvent,
+                            onRunPython = viewModel::executePython,
+                            onRunUbuntu = viewModel::executeUbuntu,
                             onReviewPythonPackages = viewModel::reviewPythonPackages,
                             onInstallPackages = viewModel::installPythonPackagesAndContinue,
                             onReviewUbuntuPackages = viewModel::reviewUbuntuPackages,
@@ -1431,104 +1837,230 @@ private fun OrderedMessageTimeline(
 
 @Composable
 private fun TimelineWorkingBlock(
-    stateKey: String, events: List<MessageTimelineEvent>, active: Boolean, animateStreaming: Boolean,
-    visibility: ReasoningVisibility, usedSourceUrls: Set<String>, sourceLinks: List<TimelineSourceLink>,
-    viewModel: ChatViewModel, workingCardViewport: WorkingCardViewportController,
+    stateKey: String,
+    events: List<MessageTimelineEvent>,
+    active: Boolean,
+    animateStreaming: Boolean,
+    visibility: ReasoningVisibility,
+    usedSourceUrls: Set<String>,
+    sourceLinks: List<TimelineSourceLink>,
+    viewModel: ChatViewModel,
+    workingCardViewport: WorkingCardViewportController,
 ) {
     if (events.isEmpty()) return
     val defaultExpanded = workingBlockDefaultExpanded(visibility, active)
-    var expanded by rememberSaveable("working-expanded-$stateKey") { mutableStateOf(defaultExpanded) }
-    var previousDefaultExpanded by rememberSaveable("working-default-$stateKey") { mutableStateOf(defaultExpanded) }
+    var expanded by rememberSaveable("working-expanded-$stateKey") {
+        mutableStateOf(defaultExpanded)
+    }
+    var previousDefaultExpanded by rememberSaveable("working-default-$stateKey") {
+        mutableStateOf(defaultExpanded)
+    }
     var cardBounds by remember(stateKey) { mutableStateOf<Rect?>(null) }
     var animateVisibility by remember(stateKey) { mutableStateOf(true) }
     val cardVisible = workingCardViewport.isVisible(cardBounds)
     LaunchedEffect(defaultExpanded, cardVisible, workingCardViewport.listScrolling) {
         if (previousDefaultExpanded != defaultExpanded) {
             animateVisibility = cardVisible && !workingCardViewport.listScrolling
-            workingCardViewport.applyMutation(if (defaultExpanded) WorkingCardMutation.AUTO_EXPAND else WorkingCardMutation.AUTO_COLLAPSE, { cardBounds }) { expanded = defaultExpanded }
+            workingCardViewport.applyMutation(
+                if (defaultExpanded) WorkingCardMutation.AUTO_EXPAND else WorkingCardMutation.AUTO_COLLAPSE,
+                { cardBounds },
+            ) {
+                expanded = defaultExpanded
+            }
             previousDefaultExpanded = defaultExpanded
-            if (!animateVisibility) { androidx.compose.runtime.withFrameNanos { }; animateVisibility = true }
+            if (!animateVisibility) {
+                androidx.compose.runtime.withFrameNanos { }
+                animateVisibility = true
+            }
         }
     }
     Surface(
-        onClick = {
-            animateVisibility = true
-            workingCardViewport.applyMutation(if (expanded) WorkingCardMutation.MANUAL_COLLAPSE else WorkingCardMutation.MANUAL_EXPAND, { cardBounds }) { expanded = !expanded }
-        },
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        shape = MaterialTheme.shapes.medium,
-        modifier = Modifier.fillMaxWidth().onGloballyPositioned { cardBounds = it.boundsInRoot() },
-    ) {
-        Column(Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (active) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                else if (events.any { it.status == "error" }) Icon(Icons.Outlined.Close, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
-                else Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-                Column(Modifier.padding(start = 9.dp).weight(1f)) {
-                    Text(workingBlockHeadline(events, active), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    Text(workingBlockSummary(events, active), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            onClick = {
+                animateVisibility = true
+                workingCardViewport.applyMutation(
+                    if (expanded) WorkingCardMutation.MANUAL_COLLAPSE else WorkingCardMutation.MANUAL_EXPAND,
+                    { cardBounds },
+                ) {
+                    expanded = !expanded
                 }
-                Icon(if (expanded) Icons.Filled.KeyboardArrowDown else Icons.Outlined.ChevronRight, if (expanded) "Collapse work details" else "Expand work details", Modifier.size(20.dp))
-            }
-            AnimatedVisibility(
-                visible = expanded,
-                enter = if (animateVisibility) workingCardExpandIn() else EnterTransition.None,
-                exit = if (animateVisibility) workingCardCollapseOut() else ExitTransition.None,
-            ) {
-                Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    events.forEachIndexed { index, event ->
-                        val activeEvent = animateStreaming && index == events.lastIndex
-                        val runId = if (event.kind == "script") scriptRunId(event.output) else null
-                        val superseded = runId != null && events.drop(index + 1).any { later -> scriptRunId(later.output) == runId }
-                        TimelineWorkStep(
-                            stateKey = "$stateKey:${event.id}", index = index, event = event, active = activeEvent,
-                            superseded = superseded, usedSourceUrls = usedSourceUrls, sourceLinks = sourceLinks,
-                            viewModel = viewModel, workingCardViewport = workingCardViewport,
+            },
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.fillMaxWidth().onGloballyPositioned { cardBounds = it.boundsInRoot() },
+        ) {
+            Column(Modifier.padding(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (active) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    else if (events.any { it.status == "error" }) {
+                        Icon(Icons.Outlined.Close, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
+                    } else {
+                        Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                    }
+                    Column(Modifier.padding(start = 9.dp).weight(1f)) {
+                        Text(
+                            workingBlockHeadline(events, active),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
                         )
+                        Text(
+                            workingBlockSummary(events, active),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Icon(
+                        if (expanded) Icons.Filled.KeyboardArrowDown else Icons.Outlined.ChevronRight,
+                        if (expanded) "Collapse work details" else "Expand work details",
+                        Modifier.size(20.dp),
+                    )
+                }
+                AnimatedVisibility(
+                    visible = expanded,
+                    enter = if (animateVisibility) workingCardExpandIn() else EnterTransition.None,
+                    exit = if (animateVisibility) workingCardCollapseOut() else ExitTransition.None,
+                ) {
+                    Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        events.forEachIndexed { index, event ->
+                            val activeEvent = animateStreaming && index == events.lastIndex
+                            val runId = if (event.kind == "script") scriptRunId(event.output) else null
+                            val superseded = runId != null &&
+                                events.drop(index + 1).any { later -> scriptRunId(later.output) == runId }
+                            TimelineWorkStep(
+                                stateKey = "$stateKey:${event.id}",
+                                index = index,
+                                event = event,
+                                active = activeEvent,
+                                superseded = superseded,
+                                usedSourceUrls = usedSourceUrls,
+                                sourceLinks = sourceLinks,
+                                viewModel = viewModel,
+                                workingCardViewport = workingCardViewport,
+                            )
+                        }
                     }
                 }
             }
         }
-    }
 }
 
 @Composable
 private fun TimelineWorkStep(
-    stateKey: String, index: Int, event: MessageTimelineEvent, active: Boolean, superseded: Boolean,
-    usedSourceUrls: Set<String>, sourceLinks: List<TimelineSourceLink>, viewModel: ChatViewModel,
+    stateKey: String,
+    index: Int,
+    event: MessageTimelineEvent,
+    active: Boolean,
+    superseded: Boolean,
+    usedSourceUrls: Set<String>,
+    sourceLinks: List<TimelineSourceLink>,
+    viewModel: ChatViewModel,
     workingCardViewport: WorkingCardViewportController,
 ) {
-    val hasDetails = event.content.isNotBlank() || event.input.isNotBlank() || event.output.isNotBlank() || active || superseded
+    val hasDetails = event.content.isNotBlank() || event.input.isNotBlank() ||
+        event.output.isNotBlank() || active || superseded
     val keepExpanded = event.kind in setOf("search", "native_search")
-    var expanded by rememberSaveable("work-step-$stateKey") { mutableStateOf(active || keepExpanded) }
-    var previouslyActive by rememberSaveable("work-step-active-$stateKey") { mutableStateOf(active) }
-    LaunchedEffect(active, keepExpanded) {
-        if (active != previouslyActive) { expanded = active || keepExpanded; previouslyActive = active }
+    var expanded by rememberSaveable("work-step-$stateKey") {
+        mutableStateOf(active || keepExpanded)
     }
+    var previouslyActive by rememberSaveable("work-step-active-$stateKey") {
+        mutableStateOf(active)
+    }
+    LaunchedEffect(active, keepExpanded) {
+        if (active != previouslyActive) {
+            expanded = active || keepExpanded
+            previouslyActive = active
+        }
+    }
+
     StreamingFade(transitionKey = "working-event:${event.id}", enabled = active) {
-        Surface(onClick = { if (hasDetails) expanded = !expanded }, enabled = hasDetails, color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
+        Surface(
+            onClick = { if (hasDetails) expanded = !expanded },
+            enabled = hasDetails,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
             Column(Modifier.padding(horizontal = 11.dp, vertical = 9.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     when {
-                        active || event.status in setOf("preparing", "prepared", "running") -> CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 1.8.dp)
-                        event.status == "error" -> Icon(Icons.Outlined.Close, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
-                        else -> Icon(Icons.Outlined.Check, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                        active || event.status in setOf("preparing", "prepared", "running") ->
+                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 1.8.dp)
+                        event.status == "error" ->
+                            Icon(Icons.Outlined.Close, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
+                        else ->
+                            Icon(Icons.Outlined.Check, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
                     }
                     Column(Modifier.padding(start = 9.dp).weight(1f)) {
-                        Text("${index + 1}. ${workEventTitle(event)}", style = MaterialTheme.typography.labelLarge, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium, color = if (event.status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
-                        Text(workEventStateLabel(event), style = MaterialTheme.typography.labelSmall, color = if (event.status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "${index + 1}. ${workEventTitle(event)}",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                            color = if (event.status == "error") MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            workEventStateLabel(event),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (event.status == "error") MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
-                    if (hasDetails) Icon(if (expanded) Icons.Filled.KeyboardArrowDown else Icons.Outlined.ChevronRight, if (expanded) "Collapse step" else "Expand step", Modifier.size(18.dp))
+                    if (hasDetails) {
+                        Icon(
+                            if (expanded) Icons.Filled.KeyboardArrowDown else Icons.Outlined.ChevronRight,
+                            if (expanded) "Collapse step" else "Expand step",
+                            Modifier.size(18.dp),
+                        )
+                    }
                 }
-                AnimatedVisibility(visible = expanded && hasDetails, enter = workingCardExpandIn(), exit = workingCardCollapseOut()) {
-                    Column(Modifier.padding(top = 9.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (event.content.isNotBlank()) DisplayOnlyMarkdown(operationScope = "reasoning:${event.id}", text = event.content, streaming = active, workingCardViewport = workingCardViewport)
+                AnimatedVisibility(
+                    visible = expanded && hasDetails,
+                    enter = workingCardExpandIn(),
+                    exit = workingCardCollapseOut(),
+                ) {
+                    Column(
+                        Modifier.padding(top = 9.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (event.content.isNotBlank()) {
+                            DisplayOnlyMarkdown(
+                                operationScope = "reasoning:${event.id}",
+                                text = event.content,
+                                streaming = active,
+                                workingCardViewport = workingCardViewport,
+                            )
+                        }
                         when {
-                            superseded -> Text("This attempt continued in the newer step below.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            event.kind in setOf("script", "python", "ubuntu", "search", "native_search", "fetch") -> ToolStepDetails(event.kind, event.input, event.output, event.status, usedSourceUrls, sourceLinks, viewModel, workingCardViewport)
+                            superseded -> Text(
+                                "This attempt continued in the newer step below.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            event.kind in setOf("script", "python", "ubuntu", "search", "native_search", "fetch") ->
+                                ToolStepDetails(
+                                    event.kind,
+                                    event.input,
+                                    event.output,
+                                    event.status,
+                                    usedSourceUrls,
+                                    sourceLinks,
+                                    viewModel,
+                                    workingCardViewport,
+                                )
                             else -> {
-                                if (event.input.isNotBlank()) HighlightedCodeText(language = event.kind, code = event.input, style = MaterialTheme.typography.labelSmall, softWrap = true)
-                                if (event.output.isNotBlank()) GenericToolOutputCard(event.output, failed = event.status == "error")
+                                if (event.input.isNotBlank()) {
+                                    HighlightedCodeText(
+                                        language = event.kind,
+                                        code = event.input,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        softWrap = true,
+                                    )
+                                }
+                                if (event.output.isNotBlank()) {
+                                    GenericToolOutputCard(
+                                        event.output,
+                                        failed = event.status == "error",
+                                    )
+                                }
                             }
                         }
                     }
@@ -1538,36 +2070,63 @@ private fun TimelineWorkStep(
     }
 }
 
-internal fun scriptRunId(output: String): String? = output.takeIf(String::isNotBlank)?.let { runCatching { ChatMessageJson.decodeFromString<ScriptRunResult>(it).runId }.getOrNull() }
+internal fun scriptRunId(output: String): String? = output.takeIf(String::isNotBlank)?.let {
+    runCatching { ChatMessageJson.decodeFromString<ScriptRunResult>(it).runId }.getOrNull()
+}
 
 @Composable
 private fun LegacyWorkingBlock(
-    messageKey: String, text: String, toolTraceJson: String, working: Boolean, animateStreaming: Boolean,
-    visibility: ReasoningVisibility, viewModel: ChatViewModel, workingCardViewport: WorkingCardViewportController,
+    messageKey: String,
+    text: String,
+    toolTraceJson: String,
+    working: Boolean,
+    animateStreaming: Boolean,
+    visibility: ReasoningVisibility,
+    viewModel: ChatViewModel,
+    workingCardViewport: WorkingCardViewportController,
 ) {
     val developerSettings by viewModel.developerSettings.collectAsStateWithLifecycle()
     val showDiagnostics = developerSettings.enabled && developerSettings.toolDiagnosticsEnabled
-    val traces = remember(toolTraceJson) { runCatching { ChatMessageJson.decodeFromString<List<ToolTraceEvent>>(toolTraceJson) }.getOrDefault(emptyList()) }
+    val traces = remember(toolTraceJson) {
+        runCatching { ChatMessageJson.decodeFromString<List<ToolTraceEvent>>(toolTraceJson) }.getOrDefault(emptyList())
+    }
     val hasContent = text.isNotBlank() || traces.isNotEmpty()
     if (!hasContent) return
     val defaultExpanded = workingBlockDefaultExpanded(visibility, working)
-    var expanded by rememberSaveable("legacy-working-$messageKey") { mutableStateOf(defaultExpanded) }
-    var previousDefaultExpanded by rememberSaveable("legacy-working-default-$messageKey") { mutableStateOf(defaultExpanded) }
+    var expanded by rememberSaveable("legacy-working-$messageKey") {
+        mutableStateOf(defaultExpanded)
+    }
+    var previousDefaultExpanded by rememberSaveable("legacy-working-default-$messageKey") {
+        mutableStateOf(defaultExpanded)
+    }
     var cardBounds by remember(messageKey) { mutableStateOf<Rect?>(null) }
     var animateVisibility by remember(messageKey) { mutableStateOf(true) }
     val cardVisible = workingCardViewport.isVisible(cardBounds)
     LaunchedEffect(defaultExpanded, cardVisible, workingCardViewport.listScrolling) {
         if (previousDefaultExpanded != defaultExpanded) {
             animateVisibility = cardVisible && !workingCardViewport.listScrolling
-            workingCardViewport.applyMutation(if (defaultExpanded) WorkingCardMutation.AUTO_EXPAND else WorkingCardMutation.AUTO_COLLAPSE, { cardBounds }) { expanded = defaultExpanded }
+            workingCardViewport.applyMutation(
+                if (defaultExpanded) WorkingCardMutation.AUTO_EXPAND else WorkingCardMutation.AUTO_COLLAPSE,
+                { cardBounds },
+            ) {
+                expanded = defaultExpanded
+            }
             previousDefaultExpanded = defaultExpanded
-            if (!animateVisibility) { androidx.compose.runtime.withFrameNanos { }; animateVisibility = true }
+            if (!animateVisibility) {
+                androidx.compose.runtime.withFrameNanos { }
+                animateVisibility = true
+            }
         }
     }
     Surface(
         onClick = {
             animateVisibility = true
-            workingCardViewport.applyMutation(if (expanded) WorkingCardMutation.MANUAL_COLLAPSE else WorkingCardMutation.MANUAL_EXPAND, { cardBounds }) { expanded = !expanded }
+            workingCardViewport.applyMutation(
+                if (expanded) WorkingCardMutation.MANUAL_COLLAPSE else WorkingCardMutation.MANUAL_EXPAND,
+                { cardBounds },
+            ) {
+                expanded = !expanded
+            }
         },
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = MaterialTheme.shapes.medium,
@@ -1576,8 +2135,11 @@ private fun LegacyWorkingBlock(
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (working) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                else if (traces.any { it.status == "error" }) Icon(Icons.Outlined.Close, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
-                else Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                else if (traces.any { it.status == "error" }) {
+                    Icon(Icons.Outlined.Close, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
+                } else {
+                    Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                }
                 Column(Modifier.padding(start = 9.dp).weight(1f)) {
                     Text(
                         when {
@@ -1585,21 +2147,54 @@ private fun LegacyWorkingBlock(
                             traces.any { it.status == "error" } -> "Finished with an error"
                             else -> "Work complete"
                         },
-                        style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
                     )
-                    Text(if (working) "Running" else "${traces.size + if (text.isNotBlank()) 1 else 0} steps", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        if (working) "Running" else "${traces.size + if (text.isNotBlank()) 1 else 0} steps",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                Icon(if (expanded) Icons.Filled.KeyboardArrowDown else Icons.Outlined.ChevronRight, if (expanded) "Collapse work details" else "Expand work details", Modifier.size(20.dp))
+                Icon(
+                    if (expanded) Icons.Filled.KeyboardArrowDown else Icons.Outlined.ChevronRight,
+                    if (expanded) "Collapse work details" else "Expand work details",
+                    Modifier.size(20.dp),
+                )
             }
-            AnimatedVisibility(visible = expanded, enter = if (animateVisibility) workingCardExpandIn() else EnterTransition.None, exit = if (animateVisibility) workingCardCollapseOut() else ExitTransition.None) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = if (animateVisibility) workingCardExpandIn() else EnterTransition.None,
+                exit = if (animateVisibility) workingCardCollapseOut() else ExitTransition.None,
+            ) {
                 Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (text.isNotBlank()) DisplayOnlyMarkdown(operationScope = "legacy-reasoning:$messageKey", text = text, streaming = animateStreaming, workingCardViewport = workingCardViewport)
+                    if (text.isNotBlank()) DisplayOnlyMarkdown(
+                        operationScope = "legacy-reasoning:$messageKey",
+                        text = text,
+                        streaming = animateStreaming,
+                        workingCardViewport = workingCardViewport,
+                    )
                     traces.forEach { event ->
-                        StreamingFade(transitionKey = "legacy-tool:${event.id}", enabled = animateStreaming && event == traces.lastOrNull()) {
+                        StreamingFade(
+                            transitionKey = "legacy-tool:${event.id}",
+                            enabled = animateStreaming && event == traces.lastOrNull(),
+                        ) {
                             Column {
                                 Text("${event.label} • ${event.status}", style = MaterialTheme.typography.labelMedium, color = if (event.status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                                if (showDiagnostics && event.input.isNotBlank()) CodeSourcePanel(if (event.type.contains("python", true)) "python" else if (event.type.contains("ubuntu", true) || event.type.contains("shell", true)) "bash" else "input", event.input.take(4_000))
-                                if (showDiagnostics && event.output.isNotBlank()) GenericToolOutputCard(event.output.take(12_000), failed = event.status == "error")
+                                if (showDiagnostics && event.input.isNotBlank()) {
+                                    CodeSourcePanel(
+                                        if (event.type.contains("python", true)) "python"
+                                        else if (event.type.contains("ubuntu", true) || event.type.contains("shell", true)) "bash"
+                                        else "input",
+                                        event.input.take(4_000),
+                                    )
+                                }
+                                if (showDiagnostics && event.output.isNotBlank()) {
+                                    GenericToolOutputCard(
+                                        event.output.take(12_000),
+                                        failed = event.status == "error",
+                                    )
+                                }
                             }
                         }
                     }
@@ -1611,21 +2206,52 @@ private fun LegacyWorkingBlock(
 
 @Composable
 private fun ToolStepDetails(
-    kind: String, input: String, output: String, status: String, usedSourceUrls: Set<String>, sourceLinks: List<TimelineSourceLink>,
-    viewModel: ChatViewModel, workingCardViewport: WorkingCardViewportController,
+    kind: String,
+    input: String,
+    output: String,
+    status: String,
+    usedSourceUrls: Set<String>,
+    sourceLinks: List<TimelineSourceLink>,
+    viewModel: ChatViewModel,
+    workingCardViewport: WorkingCardViewportController,
 ) {
     val developerSettings by viewModel.developerSettings.collectAsStateWithLifecycle()
     val showDiagnostics = developerSettings.enabled && developerSettings.toolDiagnosticsEnabled
     val language = if (kind == "python") "python" else if (kind == "ubuntu") "bash" else "text"
     when (kind) {
-        "search", "native_search" -> CompactSearchToolCard(query = input, output = output, status = status, usedSourceUrls = usedSourceUrls, sourceLinks = sourceLinks, nativeSearch = kind == "native_search")
+        "search", "native_search" -> CompactSearchToolCard(
+            query = input,
+            output = output,
+            status = status,
+            usedSourceUrls = usedSourceUrls,
+            sourceLinks = sourceLinks,
+            nativeSearch = kind == "native_search",
+        )
         "fetch" -> CompactFetchToolCard(input, output, status)
         else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (showDiagnostics && input.isNotBlank()) CodeSourcePanel(language, input, when (kind) { "python" -> "PYTHON CODE"; "ubuntu" -> "SHELL COMMAND"; else -> "INPUT" }, live = status == "preparing")
+            if (showDiagnostics && input.isNotBlank()) CodeSourcePanel(
+                language,
+                input,
+                when (kind) {
+                    "python" -> "PYTHON CODE"
+                    "ubuntu" -> "SHELL COMMAND"
+                    else -> "INPUT"
+                },
+                live = status == "preparing",
+            )
             val json = ChatMessageJson
             if (status == "running" && kind in setOf("script", "python", "ubuntu")) {
-                val progress = output.takeIf(String::isNotBlank)?.let { runCatching { json.decodeFromString<ExecutionProgress>(it) }.getOrNull() } ?: ExecutionProgress()
-                LiveExecutionCard(progress = progress, title = when (kind) { "python" -> "Python execution"; "ubuntu" -> "Linux execution"; else -> "Code execution" })
+                val progress = output.takeIf(String::isNotBlank)
+                    ?.let { runCatching { json.decodeFromString<ExecutionProgress>(it) }.getOrNull() }
+                    ?: ExecutionProgress()
+                LiveExecutionCard(
+                    progress = progress,
+                    title = when (kind) {
+                        "python" -> "Python execution"
+                        "ubuntu" -> "Linux execution"
+                        else -> "Code execution"
+                    },
+                )
             } else if (output.isNotBlank()) {
                 when (kind) {
                     "script", "python", "ubuntu" -> {
@@ -1634,14 +2260,53 @@ private fun ToolStepDetails(
                         val read = runCatching { json.decodeFromString<WorkspaceReadResult>(output) }.getOrNull()
                         when {
                             run != null -> ScriptRunActivityCard(run, viewModel, workingCardViewport)
-                            patch != null -> GenericToolOutputCard(if (showDiagnostics) "${patch.summary}\nRevision ${patch.revision ?: "workspace"} · ${patch.sourceSha256}" else patch.summary, failed = false)
-                            read != null -> if (showDiagnostics) CodeSourcePanel("text", read.text, "${read.path} • lines ${read.startLine}–${read.endLine}") else Text("Source read completed", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            kind == "python" && showDiagnostics -> runCatching { json.decodeFromString<ExecutionResult>(output) }.getOrNull()?.let { PythonExecutionCard(it, "Python tool result") } ?: GenericToolOutputCard(output, failed = status == "error")
-                            kind == "ubuntu" && showDiagnostics -> runCatching { json.decodeFromString<UbuntuExecutionResult>(output) }.getOrNull()?.let { UbuntuExecutionCard(it, "Ubuntu tool result") } ?: GenericToolOutputCard(output, failed = status == "error")
-                            else -> Text(if (status == "error") "Execution failed" else "Execution completed", style = MaterialTheme.typography.bodySmall, color = if (status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                            patch != null -> GenericToolOutputCard(
+                                if (showDiagnostics) {
+                                    "${patch.summary}\nRevision ${patch.revision ?: "workspace"} · ${patch.sourceSha256}"
+                                } else {
+                                    patch.summary
+                                },
+                                failed = false,
+                            )
+                            read != null -> if (showDiagnostics) {
+                                CodeSourcePanel(
+                                    "text",
+                                    read.text,
+                                    "${read.path} • lines ${read.startLine}–${read.endLine}",
+                                )
+                            } else {
+                                Text(
+                                    "Source read completed",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            kind == "python" && showDiagnostics ->
+                                runCatching { json.decodeFromString<ExecutionResult>(output) }.getOrNull()
+                                    ?.let { PythonExecutionCard(it, "Python tool result") }
+                                    ?: GenericToolOutputCard(output, failed = status == "error")
+                            kind == "ubuntu" && showDiagnostics ->
+                                runCatching { json.decodeFromString<UbuntuExecutionResult>(output) }.getOrNull()
+                                    ?.let { UbuntuExecutionCard(it, "Ubuntu tool result") }
+                                    ?: GenericToolOutputCard(output, failed = status == "error")
+                            else -> Text(
+                                if (status == "error") "Execution failed" else "Execution completed",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (status == "error") MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     }
-                    else -> if (showDiagnostics) GenericToolOutputCard(output, failed = status == "error") else Text(if (status == "error") "Tool failed" else "Tool completed", style = MaterialTheme.typography.bodySmall, color = if (status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                    else -> if (showDiagnostics) {
+                        GenericToolOutputCard(output, failed = status == "error")
+                    } else {
+                        Text(
+                            if (status == "error") "Tool failed" else "Tool completed",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (status == "error") MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }
@@ -1663,59 +2328,162 @@ private fun ScriptRunActivityCard(initial: ScriptRunResult, viewModel: ChatViewM
     val latest = results.last()
     val failed = latest.exitCode != 0 || latest.timedOut || latest.cancelled
     val diagnostics = latest.diagnostic.ifBlank { latest.stderrTail }.takeLast(4_000)
-    Column(modifier = Modifier.fillMaxWidth().noOpBringIntoView().onGloballyPositioned { cardBounds = it.boundsInRoot() }, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(scriptRunSummary(latest), style = MaterialTheme.typography.bodySmall, color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
-        if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .noOpBringIntoView()
+            .onGloballyPositioned { cardBounds = it.boundsInRoot() },
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            scriptRunSummary(latest),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (failed) MaterialTheme.colorScheme.error
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (error.isNotBlank()) {
+            Text(
+                error,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Button(
                 onClick = {
-                    error = ""
-                    rerunJob = scope.launch {
-                        runCatching { viewModel.rerunRecordedScript(initial.runId) }
-                            .onSuccess { completed -> workingCardViewport.applyMutation(WorkingCardMutation.AUTO_EXPAND, { cardBounds }) { results = results + completed } }
-                            .onFailure { failure -> if (failure !is CancellationException) workingCardViewport.applyMutation(WorkingCardMutation.AUTO_EXPAND, { cardBounds }) { error = failure.message.orEmpty() } }
-                    }
-                },
-                enabled = rerunJob?.isActive != true, modifier = Modifier.heightIn(min = 40.dp),
+                        error = ""
+                        rerunJob = scope.launch {
+                            runCatching { viewModel.rerunRecordedScript(initial.runId) }
+                                .onSuccess { completed ->
+                                    workingCardViewport.applyMutation(WorkingCardMutation.AUTO_EXPAND, { cardBounds }) {
+                                        results = results + completed
+                                    }
+                                }
+                                .onFailure { failure ->
+                                    if (failure !is CancellationException) {
+                                        workingCardViewport.applyMutation(
+                                            WorkingCardMutation.AUTO_EXPAND,
+                                            { cardBounds },
+                                        ) {
+                                            error = failure.message.orEmpty()
+                                        }
+                                    }
+                                }
+                        }
+                    },
+                enabled = rerunJob?.isActive != true,
+                modifier = Modifier.heightIn(min = 40.dp),
             ) {
-                if (rerunJob?.isActive == true) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                else { Icon(Icons.Outlined.Refresh, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Retry") }
+                if (rerunJob?.isActive == true) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Outlined.Refresh, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Retry")
+                }
             }
-            if (showDiagnostics) TextButton(onClick = { detailsOpen = true }) { Text("Details") }
-            if (rerunJob?.isActive == true) TextButton(onClick = { rerunJob?.cancel() }) { Text("Stop") }
+            if (showDiagnostics) {
+                TextButton(onClick = { detailsOpen = true }) {
+                    Text("Details")
+                }
+            }
+            if (rerunJob?.isActive == true) {
+                TextButton(onClick = { rerunJob?.cancel() }) {
+                    Text("Stop")
+                }
+            }
         }
     }
     if (showDiagnostics && detailsOpen) {
         XyluneAlertDialog(
-            onDismissRequest = { detailsOpen = false }, title = { Text(if (failed) "Run failed" else "Run details") },
+            onDismissRequest = { detailsOpen = false },
+            title = { Text(if (failed) "Run failed" else "Run details") },
             text = {
-                Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("${latest.runtime.name.lowercase()} · attempt ${latest.attempt} · revision ${latest.revision}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(latest.scriptPath, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    if (diagnostics.isNotBlank()) CodeSourcePanel("text", diagnostics, "ERROR")
-                    if (latest.stdoutTail.isNotBlank()) CodeSourcePanel("text", latest.stdoutTail.takeLast(4_000), "OUTPUT")
+                Column(
+                    Modifier
+                        .heightIn(max = 480.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "${latest.runtime.name.lowercase()} · attempt ${latest.attempt} · revision ${latest.revision}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        latest.scriptPath,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (diagnostics.isNotBlank()) {
+                        CodeSourcePanel("text", diagnostics, "ERROR")
+                    }
+                    if (latest.stdoutTail.isNotBlank()) {
+                        CodeSourcePanel("text", latest.stdoutTail.takeLast(4_000), "OUTPUT")
+                    }
                 }
             },
-            confirmButton = { TextButton(onClick = { detailsOpen = false }) { Text("Close") } },
+            confirmButton = {
+                TextButton(onClick = { detailsOpen = false }) {
+                    Text("Close")
+                }
+            },
             dismissButton = {
                 Row {
-                    if (diagnostics.isNotBlank()) TextButton(onClick = {
-                        context.getSystemService(android.content.ClipboardManager::class.java)
-                            .setPrimaryClip(android.content.ClipData.newPlainText("script diagnostics", diagnostics))
-                    }) { Icon(Icons.Outlined.ContentCopy, null, Modifier.size(17.dp)); Spacer(Modifier.width(5.dp)); Text("Copy") }
+                    if (diagnostics.isNotBlank()) {
+                        TextButton(onClick = {
+                            context.getSystemService(android.content.ClipboardManager::class.java)
+                                .setPrimaryClip(
+                                    android.content.ClipData.newPlainText(
+                                        "script diagnostics",
+                                        diagnostics,
+                                    ),
+                                )
+                        }) {
+                            Icon(Icons.Outlined.ContentCopy, null, Modifier.size(17.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text("Copy")
+                        }
+                    }
                     TextButton(onClick = {
                         detailsOpen = false
-                        scope.launch { runCatching { viewModel.readScriptSource(latest.scriptPath).text }.onSuccess { source = it }.onFailure { error = it.message.orEmpty() } }
-                    }) { Text("Source") }
+                        scope.launch {
+                            runCatching { viewModel.readScriptSource(latest.scriptPath).text }
+                                .onSuccess { source = it }
+                                .onFailure { error = it.message.orEmpty() }
+                        }
+                    }) {
+                        Text("Source")
+                    }
                 }
             },
         )
     }
     if (showDiagnostics) source?.let { text ->
         XyluneAlertDialog(
-            onDismissRequest = { source = null }, title = { Text(latest.scriptPath) },
-            text = { CodeSourcePanel(if (latest.runtime.name == "PYTHON") "python" else "bash", text, "SOURCE") },
-            confirmButton = { TextButton(onClick = { source = null }) { Text("Close") } },
+            onDismissRequest = { source = null },
+            title = { Text(latest.scriptPath) },
+            text = {
+                CodeSourcePanel(
+                    if (latest.runtime.name == "PYTHON") "python" else "bash",
+                    text,
+                    "SOURCE",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { source = null }) {
+                    Text("Close")
+                }
+            },
         )
     }
 }
@@ -1723,43 +2491,104 @@ private fun ScriptRunActivityCard(initial: ScriptRunResult, viewModel: ChatViewM
 internal fun scriptRunSummary(result: ScriptRunResult): String {
     if (result.cancelled) return "Cancelled"
     if (result.timedOut) return "Timed out"
-    if (result.exitCode == 0) return formatExecutionDuration(result.elapsedMs).takeIf(String::isNotBlank)?.let { "Completed in $it" } ?: "Completed"
-    val lines = result.diagnostic.ifBlank { result.stderrTail }.ifBlank { result.stdoutTail }
-        .lineSequence().map(String::trim).filter(String::isNotBlank).toList()
-    val useful = lines.lastOrNull { line -> listOf("error", "failed", "exception", "not found").any { line.contains(it, ignoreCase = true) } } ?: lines.lastOrNull()
+    if (result.exitCode == 0) {
+        return formatExecutionDuration(result.elapsedMs)
+            .takeIf(String::isNotBlank)
+            ?.let { "Completed in $it" }
+            ?: "Completed"
+    }
+    val lines = result.diagnostic
+        .ifBlank { result.stderrTail }
+        .ifBlank { result.stdoutTail }
+        .lineSequence()
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .toList()
+    val useful = lines.lastOrNull { line ->
+        listOf("error", "failed", "exception", "not found").any {
+            line.contains(it, ignoreCase = true)
+        }
+    } ?: lines.lastOrNull()
     return useful?.take(240) ?: "Run failed with exit code ${result.exitCode}"
 }
 
 @Composable
 private fun CompactSearchToolCard(
-    query: String, output: String, status: String, usedSourceUrls: Set<String>, sourceLinks: List<TimelineSourceLink>, nativeSearch: Boolean,
+    query: String,
+    output: String,
+    status: String,
+    usedSourceUrls: Set<String>,
+    sourceLinks: List<TimelineSourceLink>,
+    nativeSearch: Boolean,
 ) {
-    val parsed = remember(output) { runCatching { ChatMessageJson.decodeFromString<WebSearchResponse>(output) }.getOrNull() }
+    val parsed = remember(output) {
+        runCatching { ChatMessageJson.decodeFromString<WebSearchResponse>(output) }.getOrNull()
+    }
     val results = remember(parsed, sourceLinks, nativeSearch) {
         val structured = parsed?.results.orEmpty()
-        val providerResults = if (nativeSearch) sourceLinks.map { source -> WebSearchResult(source.title, source.url, "Result exposed by the model provider's search response.") } else emptyList()
-        structured.ifEmpty { providerResults }.filter { it.url.startsWith("http://") || it.url.startsWith("https://") }.distinctBy(WebSearchResult::url).take(12)
+        val providerResults = if (nativeSearch) {
+            sourceLinks.map { source ->
+                WebSearchResult(
+                    title = source.title,
+                    url = source.url,
+                    snippet = "Result exposed by the model provider's search response.",
+                )
+            }
+        } else emptyList()
+        (structured.ifEmpty { providerResults })
+            .filter { it.url.startsWith("http://") || it.url.startsWith("https://") }
+            .distinctBy(WebSearchResult::url)
+            .take(12)
     }
     var selectedUrl by remember { mutableStateOf<String?>(null) }
-    val visibleQuery = parsed?.query?.takeIf(String::isNotBlank) ?: query.takeIf(String::isNotBlank) ?: "Query unavailable"
-    val engine = parsed?.engine?.takeIf(String::isNotBlank) ?: if (nativeSearch) "Provider search" else "Web search"
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
+    val visibleQuery = parsed?.query?.takeIf(String::isNotBlank)
+        ?: query.takeIf(String::isNotBlank)
+        ?: "Query unavailable"
+    val engine = parsed?.engine?.takeIf(String::isNotBlank)
+        ?: if (nativeSearch) "Provider search" else "Web search"
+
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Search, null, Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
                 Column(Modifier.padding(start = 7.dp).weight(1f)) {
                     Text(engine, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                     Text(
-                        when (status) { "preparing" -> "Preparing query"; "prepared" -> "Query ready"; "running" -> "Searching"; "error" -> "Search failed"; else -> if (results.isEmpty()) "No result details" else "${results.size} results" },
+                        when (status) {
+                            "preparing" -> "Preparing query"
+                            "prepared" -> "Query ready"
+                            "running" -> "Searching"
+                            "error" -> "Search failed"
+                            else -> if (results.isEmpty()) "No result details" else "${results.size} results"
+                        },
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (status == "error") MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                    Text("QUERY", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                    Text(visibleQuery, style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        "QUERY",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        visibleQuery,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 4,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
             if (results.isNotEmpty()) {
@@ -1769,18 +2598,63 @@ private fun CompactSearchToolCard(
                         val host = runCatching { result.url.toUri().host }.getOrNull().orEmpty().removePrefix("www.")
                         val used = result.url in usedSourceUrls
                         Box {
-                            Surface(onClick = { selectedUrl = result.url }, color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large, modifier = Modifier.width(260.dp)) {
-                                Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                    Text("${index + 1}. ${result.title.ifBlank { host.ifBlank { result.url } }}", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    Text(host.ifBlank { result.url }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    if (result.snippet.isNotBlank()) Text(result.snippet, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                                    if (used) Text("Opened by Xylune", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.SemiBold)
+                            Surface(
+                                onClick = { selectedUrl = result.url },
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                shape = MaterialTheme.shapes.large,
+                                modifier = Modifier.width(260.dp),
+                            ) {
+                                Column(
+                                    Modifier.padding(11.dp),
+                                    verticalArrangement = Arrangement.spacedBy(5.dp),
+                                ) {
+                                    Text(
+                                        "${index + 1}. ${result.title.ifBlank { host.ifBlank { result.url } }}",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        host.ifBlank { result.url },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    if (result.snippet.isNotBlank()) {
+                                        Text(
+                                            result.snippet,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 3,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                    if (used) {
+                                        Text(
+                                            "Opened by Xylune",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.tertiary,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                    }
                                 }
                             }
-                            XyluneDropdownMenu(expanded = selectedUrl == result.url, onDismissRequest = { selectedUrl = null }, modifier = Modifier.width(330.dp)) {
+                            XyluneDropdownMenu(
+                                expanded = selectedUrl == result.url,
+                                onDismissRequest = { selectedUrl = null },
+                                modifier = Modifier.width(330.dp),
+                            ) {
                                 LinkPreviewDetails(
-                                    reference = LinkReferencePreview(LinkReferenceKind.SOURCE, result.title, result.url, result.snippet),
-                                    onDismiss = { selectedUrl = null }, modifier = Modifier.padding(14.dp),
+                                    reference = LinkReferencePreview(
+                                        kind = LinkReferenceKind.SOURCE,
+                                        label = result.title,
+                                        target = result.url,
+                                        description = result.snippet,
+                                    ),
+                                    onDismiss = { selectedUrl = null },
+                                    modifier = Modifier.padding(14.dp),
                                 )
                             }
                         }
@@ -1795,7 +2669,8 @@ private fun CompactSearchToolCard(
                         else -> "No search results were returned."
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (status == "error") MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -1808,28 +2683,73 @@ private fun CompactFetchToolCard(url: String, output: String, status: String) {
     var show by remember { mutableStateOf(false) }
     val target = parsed?.url ?: url
     Box {
-        Surface(onClick = { if (target.isNotBlank()) show = true }, color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
+        Surface(
+            onClick = { if (target.isNotBlank()) show = true },
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.TravelExplore, null, Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
                 Column(Modifier.padding(start = 8.dp).weight(1f)) {
-                    Text(when (status) { "preparing" -> "Writing source request…"; "prepared" -> "Source request ready"; "running" -> "Reading source…"; "error" -> "Source failed"; else -> "Source read" }, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        when (status) {
+                            "preparing" -> "Writing source request…"
+                            "prepared" -> "Source request ready"
+                            "running" -> "Reading source…"
+                            "error" -> "Source failed"
+                            else -> "Source read"
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                     Text(runCatching { target.toUri().host }.getOrNull().orEmpty().removePrefix("www.").ifBlank { target }, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
-        XyluneDropdownMenu(expanded = show, onDismissRequest = { show = false }, modifier = Modifier.width(330.dp)) {
-            LinkPreviewDetails(reference = LinkReferencePreview(LinkReferenceKind.SOURCE, "Fetched source", target, parsed?.contentType.orEmpty()), onDismiss = { show = false }, modifier = Modifier.padding(14.dp))
+        XyluneDropdownMenu(
+            expanded = show,
+            onDismissRequest = { show = false },
+            modifier = Modifier.width(330.dp),
+        ) {
+            LinkPreviewDetails(
+                reference = LinkReferencePreview(
+                    kind = LinkReferenceKind.SOURCE,
+                    label = "Fetched source",
+                    target = target,
+                    description = parsed?.contentType.orEmpty(),
+                ),
+                onDismiss = { show = false },
+                modifier = Modifier.padding(14.dp),
+            )
         }
     }
 }
 
 @Composable
-private fun ReportedResearchRoadmap(state: ReportedResearchState, streaming: Boolean, modifier: Modifier = Modifier) {
-    val effectiveStatus = state.status.takeIf(String::isNotBlank) ?: if (streaming) "Research in progress" else "Research state reported"
+private fun ReportedResearchRoadmap(
+    state: ReportedResearchState,
+    streaming: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val effectiveStatus = state.status.takeIf(String::isNotBlank)
+        ?: if (streaming) "Research in progress" else "Research state reported"
     val progress = state.progress.coerceIn(0f, 1f)
     val steps = state.steps
-    val stateLabel = when (state.reportState) { "planning" -> "Planning"; "researching" -> "Researching"; "synthesizing" -> "Writing report"; "complete" -> "Complete"; "blocked" -> "Blocked"; else -> if (streaming) "Starting" else "Unreported" }
-    Surface(color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = .42f), shape = MaterialTheme.shapes.large, modifier = modifier.fillMaxWidth()) {
+    val stateLabel = when (state.reportState) {
+        "planning" -> "Planning"
+        "researching" -> "Researching"
+        "synthesizing" -> "Writing report"
+        "complete" -> "Complete"
+        "blocked" -> "Blocked"
+        else -> if (streaming) "Starting" else "Unreported"
+    }
+
+    Surface(
+        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = .42f),
+        shape = MaterialTheme.shapes.large,
+        modifier = modifier.fillMaxWidth(),
+    ) {
         Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.TravelExplore, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.tertiary)
@@ -1838,15 +2758,27 @@ private fun ReportedResearchRoadmap(state: ReportedResearchState, streaming: Boo
             }
             Text(effectiveStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
             LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-            if (steps.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                steps.forEach { step ->
-                    val containerColor = when (step.state) { "complete" -> MaterialTheme.colorScheme.primaryContainer; "active" -> MaterialTheme.colorScheme.tertiaryContainer; "blocked" -> MaterialTheme.colorScheme.errorContainer; else -> MaterialTheme.colorScheme.surfaceContainer }
-                    Surface(color = containerColor, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
-                        Row(Modifier.padding(horizontal = 9.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                            when (step.state) { "complete" -> Icon(Icons.Outlined.Check, null, Modifier.size(15.dp)); "active" -> CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 1.7.dp); "blocked" -> Icon(Icons.Outlined.Close, null, Modifier.size(15.dp), tint = MaterialTheme.colorScheme.error); else -> Icon(Icons.Outlined.Schedule, null, Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
-                            Column(Modifier.padding(start = 7.dp).weight(1f)) {
-                                Text(step.title, style = MaterialTheme.typography.labelMedium, fontWeight = if (step.state == "active") FontWeight.SemiBold else FontWeight.Normal)
-                                if (step.detail.isNotBlank()) Text(step.detail, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (steps.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    steps.forEach { step ->
+                        val containerColor = when (step.state) {
+                            "complete" -> MaterialTheme.colorScheme.primaryContainer
+                            "active" -> MaterialTheme.colorScheme.tertiaryContainer
+                            "blocked" -> MaterialTheme.colorScheme.errorContainer
+                            else -> MaterialTheme.colorScheme.surfaceContainer
+                        }
+                        Surface(color = containerColor, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                            Row(Modifier.padding(horizontal = 9.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                when (step.state) {
+                                    "complete" -> Icon(Icons.Outlined.Check, null, Modifier.size(15.dp))
+                                    "active" -> CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 1.7.dp)
+                                    "blocked" -> Icon(Icons.Outlined.Close, null, Modifier.size(15.dp), tint = MaterialTheme.colorScheme.error)
+                                    else -> Icon(Icons.Outlined.Schedule, null, Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Column(Modifier.padding(start = 7.dp).weight(1f)) {
+                                    Text(step.title, style = MaterialTheme.typography.labelMedium, fontWeight = if (step.state == "active") FontWeight.SemiBold else FontWeight.Normal)
+                                    if (step.detail.isNotBlank()) Text(step.detail, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                }
                             }
                         }
                     }
@@ -1859,9 +2791,16 @@ private fun ReportedResearchRoadmap(state: ReportedResearchState, streaming: Boo
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun Composer(
-    viewModel: ChatViewModel, provider: ProviderEntity?, model: ModelEntity?, generating: Boolean,
-    providerConfigured: Boolean, linuxInstalled: Boolean, linuxDistributionName: String,
-    blurState: XyluneBackdropBlurState, onOpenLinuxSetup: () -> Unit, onImmediateSend: () -> Unit,
+    viewModel: ChatViewModel,
+    provider: ProviderEntity?,
+    model: ModelEntity?,
+    generating: Boolean,
+    providerConfigured: Boolean,
+    linuxInstalled: Boolean,
+    linuxDistributionName: String,
+    blurState: XyluneBackdropBlurState,
+    onOpenLinuxSetup: () -> Unit,
+    onImmediateSend: () -> Unit,
 ) {
     val conversation by viewModel.conversation.collectAsStateWithLifecycle()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsStateWithLifecycle()
@@ -1881,99 +2820,278 @@ private fun Composer(
     val imageGenerationBlocked = imageGenerationMode && staged.isNotEmpty()
     val hasPayload = draft.isNotBlank() && !imageGenerationBlocked || (!imageGenerationMode && staged.isNotEmpty())
 
-    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> uris.forEach(viewModel::import) }
-    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(12)) { uris -> uris.forEach(viewModel::import) }
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        uris.forEach(viewModel::import)
+    }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(12)) { uris ->
+        uris.forEach(viewModel::import)
+    }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
-        val uri = pendingCameraUri; val file = pendingCameraFile; pendingCameraUri = null; pendingCameraFile = null
+        val uri = pendingCameraUri
+        val file = pendingCameraFile
+        pendingCameraUri = null
+        pendingCameraFile = null
         if (saved && uri != null) viewModel.import(uri) else file?.delete()
     }
+
     fun takePhoto() {
         val file = File(context.cacheDir, "camera/${UUID.randomUUID()}.jpg").also { it.parentFile?.mkdirs() }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
-        pendingCameraFile = file; pendingCameraUri = uri; camera.launch(uri)
+        pendingCameraFile = file
+        pendingCameraUri = uri
+        camera.launch(uri)
     }
 
     Box(Modifier.fillMaxWidth().imePadding()) {
-        Box(Modifier.fillMaxWidth().xyluneBackdropBlur(
-            state = blurState, strength = chromeBlurStrength, edgeSoftness = chromeEdgeSoftness,
-            overlayOpacity = chromeOverlayOpacity, tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.46f),
-            edge = XyluneBlurEdge.BOTTOM, panelHeight = CHAT_COMPOSER_MIN_PANEL_HEIGHT_DP.dp, expandToMeasuredHeight = true,
-        )) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .xyluneBackdropBlur(
+                    state = blurState,
+                    strength = chromeBlurStrength,
+                    edgeSoftness = chromeEdgeSoftness,
+                    overlayOpacity = chromeOverlayOpacity,
+                    tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.46f),
+                    edge = XyluneBlurEdge.BOTTOM,
+                    panelHeight = CHAT_COMPOSER_MIN_PANEL_HEIGHT_DP.dp,
+                    expandToMeasuredHeight = true,
+                ),
+        ) {
             Column(Modifier.navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp)) {
-                if (generating || pending.isNotEmpty()) {
-                    Surface(color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .72f), shape = CircleShape, modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp)) {
-                        Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 3.dp, bottom = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                            if (generating) CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 1.8.dp) else Icon(Icons.Outlined.Schedule, null, Modifier.size(16.dp))
-                            Text(when { generating && pending.isNotEmpty() -> "Working · ${pending.size} queued"; generating -> "Working"; else -> "${pending.size} queued" }, modifier = Modifier.padding(start = 9.dp).weight(1f), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                            if (generating) IconButton(onClick = { haptics.reject(); viewModel.stop() }, modifier = Modifier.size(36.dp)) { Icon(Icons.Filled.Stop, "Stop current response", Modifier.size(19.dp)) }
-                        }
-                    }
-                }
-                if (staged.isNotEmpty()) {
-                    LazyRow(modifier = Modifier.fillMaxWidth().heightIn(max = 96.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 4.dp)) {
-                        items(staged.size, key = { staged[it].id }) { index -> StagedAttachmentPreview(staged[index], model?.supportsVision != false) { viewModel.removeStaged(staged[index].id) } }
-                    }
-                }
-                if (providerConfigured && !generating) conversation?.let { current ->
-                    if (imageGenerationMode) {
-                        Surface(color = if (imageGenerationBlocked) MaterialTheme.colorScheme.errorContainer.copy(alpha = .72f) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = .72f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp)) {
-                            Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(if (imageGenerationBlocked) Icons.Outlined.WarningAmber else Icons.Outlined.Image, null, Modifier.size(18.dp))
-                                Text(if (imageGenerationBlocked) "Remove attachments first · image editing is not enabled yet" else "Image generation · describe the image you want to create", Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                            }
-                        }
-                    }
-                    if (!imageGenerationMode) unsupportedToolCallingNotice(
-                        modelSupportsTools = model?.supportsTools,
-                        toolCallingRequested = current.webSearchEnabled || current.deepResearchEnabled || current.agentPythonEnabled || current.agentUbuntuEnabled,
-                    )?.let { notice ->
-                        Surface(color = MaterialTheme.colorScheme.errorContainer.copy(alpha = .72f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp)) {
-                            Row(Modifier.padding(horizontal = 11.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Outlined.WarningAmber, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onErrorContainer)
-                                Text(notice, Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
-                            }
-                        }
-                    }
-                    if (!imageGenerationMode) LazyRow(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 36.dp, end = 56.dp),
+            if (generating || pending.isNotEmpty()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .72f),
+                    shape = CircleShape,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp),
+                ) {
+                    Row(
+                        Modifier.padding(start = 12.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        item { ThinkingComposerChip(current.thinkingEnabled, current.thinkingEffort, provider, model) { enabled, effort -> viewModel.updateConversation { it.copy(thinkingEnabled = enabled, thinkingEffort = effort ?: it.thinkingEffort) } } }
-                        item { SearchComposerChip(current.webSearchEnabled, current.deepResearchEnabled) { webEnabled, deepResearchEnabled -> viewModel.updateConversation { it.copy(webSearchEnabled = webEnabled, deepResearchEnabled = deepResearchEnabled) } } }
-                        item { ToolComposerChip(
-                            pythonEnabled = current.agentPythonEnabled, linuxEnabled = current.agentUbuntuEnabled,
-                            linuxInstalled = linuxInstalled, linuxDistributionName = linuxDistributionName,
-                            onOpenLinuxSetup = onOpenLinuxSetup,
-                            onPythonEnabled = { enabled -> viewModel.updateConversation { it.copy(agentPythonEnabled = enabled) } },
-                            onLinuxEnabled = { enabled -> viewModel.updateConversation { it.copy(agentUbuntuEnabled = enabled) } },
-                        ) }
+                        if (generating) {
+                            CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 1.8.dp)
+                        } else {
+                            Icon(Icons.Outlined.Schedule, null, Modifier.size(16.dp))
+                        }
+                        Text(
+                            when {
+                                generating && pending.isNotEmpty() -> "Working · ${pending.size} queued"
+                                generating -> "Working"
+                                else -> "${pending.size} queued"
+                            },
+                            modifier = Modifier.padding(start = 9.dp).weight(1f),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        if (generating) {
+                            IconButton(
+                                onClick = { haptics.reject(); viewModel.stop() },
+                                modifier = Modifier.size(36.dp),
+                            ) {
+                                Icon(Icons.Filled.Stop, "Stop current response", Modifier.size(19.dp))
+                            }
+                        }
                     }
                 }
-                Row(verticalAlignment = Alignment.Bottom) {
-                    IconButton(onClick = { haptics.tap(); plusMenu = true }, enabled = !importing && providerConfigured && !imageGenerationMode) {
-                        Icon(Icons.Outlined.Add, if (imageGenerationMode) "Attachments are unavailable in image generation mode" else "Attach files, images, or a photo")
+            }
+            if (staged.isNotEmpty()) {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 96.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+                ) {
+                    items(staged.size, key = { staged[it].id }) { index ->
+                        StagedAttachmentPreview(
+                            attachment = staged[index],
+                            modelSupportsVision = model?.supportsVision != false,
+                            onRemove = { viewModel.removeStaged(staged[index].id) },
+                        )
                     }
-                    OutlinedTextField(
-                        value = draft, onValueChange = viewModel::setDraft, enabled = providerConfigured,
-                        placeholder = { Text(if (!providerConfigured) "Set up a provider to start" else if (generating) "Add direction…" else if (imageGenerationBlocked) "Remove attachments to generate an image" else if (imageGenerationMode) "Describe an image to generate…" else if (conversation?.deepResearchEnabled == true) "Research request…" else "Message Xylune…", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                        modifier = Modifier.weight(1f).heightIn(min = 54.dp, max = 170.dp), shape = MaterialTheme.shapes.extraLarge, maxLines = 7,
-                    )
-                    Spacer(Modifier.width(6.dp))
+                }
+            }
+            if (providerConfigured && !generating) conversation?.let { current ->
+                if (imageGenerationMode) {
                     Surface(
-                        shape = CircleShape,
-                        color = if (providerConfigured && hasPayload && !importing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
-                        contentColor = if (providerConfigured && hasPayload && !importing) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(48.dp).combinedClickable(
-                            enabled = providerConfigured && hasPayload && !importing,
-                            onClick = { haptics.confirm(); onImmediateSend(); viewModel.send(if (generating) SendMode.STEER else SendMode.SEND_NOW) },
-                            onLongClick = { haptics.longPress(); sendMenu = true },
-                        ),
+                        color = if (imageGenerationBlocked) MaterialTheme.colorScheme.errorContainer.copy(alpha = .72f)
+                        else MaterialTheme.colorScheme.primaryContainer.copy(alpha = .72f),
+                        shape = MaterialTheme.shapes.large,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp),
                     ) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Icon(if (generating) Icons.AutoMirrored.Outlined.AltRoute else if (imageGenerationMode) Icons.Outlined.Image else Icons.Filled.ArrowUpward, if (generating) "Steer current response" else if (imageGenerationMode) "Generate image" else "Send")
+                        Row(
+                            Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                if (imageGenerationBlocked) Icons.Outlined.WarningAmber else Icons.Outlined.Image,
+                                null,
+                                Modifier.size(18.dp),
+                            )
+                            Text(
+                                if (imageGenerationBlocked) "Remove attachments first · image editing is not enabled yet"
+                                else "Image generation · describe the image you want to create",
+                                Modifier.padding(start = 8.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                            )
                         }
                     }
                 }
+                if (!imageGenerationMode) unsupportedToolCallingNotice(
+                    modelSupportsTools = model?.supportsTools,
+                    toolCallingRequested = current.webSearchEnabled ||
+                        current.deepResearchEnabled ||
+                        current.agentPythonEnabled ||
+                        current.agentUbuntuEnabled,
+                )?.let { notice ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = .72f),
+                        shape = MaterialTheme.shapes.large,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp),
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Outlined.WarningAmber,
+                                null,
+                                Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                            Text(
+                                notice,
+                                Modifier.padding(start = 8.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                        }
+                    }
+                }
+                if (!imageGenerationMode) LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    // Keep the first pill aligned while leaving the LazyRow's
+                    // gesture viewport edge-to-edge across the composer.
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        start = 36.dp,
+                        end = 56.dp,
+                    ),
+                ) {
+                    item {
+                        ThinkingComposerChip(
+                            enabled = current.thinkingEnabled,
+                            effort = current.thinkingEffort,
+                            provider = provider,
+                            model = model,
+                            onSelection = { enabled, effort ->
+                                viewModel.updateConversation {
+                                    it.copy(
+                                        thinkingEnabled = enabled,
+                                        thinkingEffort = effort ?: it.thinkingEffort,
+                                    )
+                                }
+                            },
+                        )
+                    }
+                    item {
+                        SearchComposerChip(
+                            webEnabled = current.webSearchEnabled,
+                            deepResearchEnabled = current.deepResearchEnabled,
+                            onSelection = { webEnabled, deepResearchEnabled ->
+                                viewModel.updateConversation {
+                                    it.copy(
+                                        webSearchEnabled = webEnabled,
+                                        deepResearchEnabled = deepResearchEnabled,
+                                    )
+                                }
+                            },
+                        )
+                    }
+                    item {
+                        ToolComposerChip(
+                            pythonEnabled = current.agentPythonEnabled,
+                            linuxEnabled = current.agentUbuntuEnabled,
+                            linuxInstalled = linuxInstalled,
+                            linuxDistributionName = linuxDistributionName,
+                            onOpenLinuxSetup = onOpenLinuxSetup,
+                            onPythonEnabled = { enabled ->
+                                viewModel.updateConversation { it.copy(agentPythonEnabled = enabled) }
+                            },
+                            onLinuxEnabled = { enabled ->
+                                viewModel.updateConversation { it.copy(agentUbuntuEnabled = enabled) }
+                            },
+                        )
+                    }
+                }
+            }
+
+            Row(verticalAlignment = Alignment.Bottom) {
+                IconButton(onClick = {
+                    haptics.tap()
+                    plusMenu = true
+                }, enabled = !importing && providerConfigured && !imageGenerationMode) {
+                    Icon(
+                        Icons.Outlined.Add,
+                        if (imageGenerationMode) "Attachments are unavailable in image generation mode"
+                        else "Attach files, images, or a photo",
+                    )
+                }
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = viewModel::setDraft,
+                    enabled = providerConfigured,
+                    placeholder = {
+                        Text(
+                            if (!providerConfigured) "Set up a provider to start"
+                            else if (generating) "Add direction…"
+                            else if (imageGenerationBlocked) "Remove attachments to generate an image"
+                            else if (imageGenerationMode) "Describe an image to generate…"
+                            else if (conversation?.deepResearchEnabled == true) "Research request…"
+                            else "Message Xylune…",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    modifier = Modifier.weight(1f).heightIn(min = 54.dp, max = 170.dp),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    maxLines = 7,
+                )
+                Spacer(Modifier.width(6.dp))
+                Surface(
+                    shape = CircleShape,
+                    color = if (providerConfigured && hasPayload && !importing) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = if (providerConfigured && hasPayload && !importing) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(48.dp).combinedClickable(
+                        enabled = providerConfigured && hasPayload && !importing,
+                        onClick = {
+                            haptics.confirm()
+                            onImmediateSend()
+                            viewModel.send(if (generating) SendMode.STEER else SendMode.SEND_NOW)
+                        },
+                        onLongClick = {
+                            haptics.longPress()
+                            sendMenu = true
+                        },
+                    ),
+                ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(
+                            if (generating) Icons.AutoMirrored.Outlined.AltRoute
+                            else if (imageGenerationMode) Icons.Outlined.Image
+                            else Icons.Filled.ArrowUpward,
+                            if (generating) "Steer current response"
+                            else if (imageGenerationMode) "Generate image"
+                            else "Send",
+                        )
+                    }
+                }
+            }
+
             }
         }
     }
@@ -1982,27 +3100,64 @@ private fun Composer(
         ModalBottomSheet(onDismissRequest = { plusMenu = false }) {
             Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
                 Text("Attach", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
-                ComposerActionRow(Icons.Outlined.AttachFile, "Files", "Documents, archives, code, audio, and other supported files") { plusMenu = false; filePicker.launch(arrayOf("*/*")) }
-                ComposerActionRow(Icons.Outlined.Image, "Photos", "Choose one or more images") { plusMenu = false; photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
-                ComposerActionRow(Icons.Outlined.CameraAlt, "Camera", "Take a photo and attach it") { plusMenu = false; takePhoto() }
+                ComposerActionRow(Icons.Outlined.AttachFile, "Files", "Documents, archives, code, audio, and other supported files") {
+                    plusMenu = false
+                    filePicker.launch(arrayOf("*/*"))
+                }
+                ComposerActionRow(Icons.Outlined.Image, "Photos", "Choose one or more images") {
+                    plusMenu = false
+                    photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                }
+                ComposerActionRow(Icons.Outlined.CameraAlt, "Camera", "Take a photo and attach it") {
+                    plusMenu = false
+                    takePhoto()
+                }
             }
         }
     }
+
     if (sendMenu) {
         ModalBottomSheet(onDismissRequest = { sendMenu = false }) {
             Column(Modifier.padding(bottom = 24.dp)) {
-                Text(if (generating) "While Xylune is working" else "Send options", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
+                Text(
+                    if (generating) "While Xylune is working" else "Send options",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                )
                 if (generating) {
                     ListItem(
-                        headlineContent = { Text("Queue this message") }, supportingContent = { Text(if (hasPayload) "Send after the current response finishes" else "Type a message or attach a file first") },
+                        headlineContent = { Text("Queue this message") },
+                        supportingContent = { Text(if (hasPayload) "Send after the current response finishes" else "Type a message or attach a file first") },
                         leadingContent = { Icon(Icons.Outlined.Schedule, null) },
-                        modifier = Modifier.clickable { if (hasPayload) { viewModel.send(SendMode.QUEUE); sendMenu = false } },
+                        modifier = Modifier.clickable {
+                            if (hasPayload) {
+                                viewModel.send(SendMode.QUEUE)
+                                sendMenu = false
+                            }
+                        },
                     )
-                    ListItem(headlineContent = { Text("Stop current response") }, supportingContent = { Text("Keep the partial answer") }, leadingContent = { Icon(Icons.Filled.Stop, null) }, modifier = Modifier.clickable { viewModel.stop(); sendMenu = false })
+                    ListItem(
+                        headlineContent = { Text("Stop current response") },
+                        supportingContent = { Text("Keep the partial answer") },
+                        leadingContent = { Icon(Icons.Filled.Stop, null) },
+                        modifier = Modifier.clickable {
+                            viewModel.stop()
+                            sendMenu = false
+                        },
+                    )
                 } else {
                     ListItem(
-                        headlineContent = { Text("Send now") }, supportingContent = { Text(if (hasPayload) "Start a response" else "Type a message or attach a file first") }, leadingContent = { Icon(Icons.AutoMirrored.Filled.Send, null) },
-                        modifier = Modifier.clickable { if (hasPayload) { onImmediateSend(); viewModel.send(SendMode.SEND_NOW); sendMenu = false } },
+                        headlineContent = { Text("Send now") },
+                        supportingContent = { Text(if (hasPayload) "Start a response" else "Type a message or attach a file first") },
+                        leadingContent = { Icon(Icons.AutoMirrored.Filled.Send, null) },
+                        modifier = Modifier.clickable {
+                            if (hasPayload) {
+                                onImmediateSend()
+                                viewModel.send(SendMode.SEND_NOW)
+                                sendMenu = false
+                            }
+                        },
                     )
                 }
             }
@@ -2011,31 +3166,91 @@ private fun Composer(
 }
 
 @Composable
-private fun StagedAttachmentPreview(attachment: AttachmentEntity, modelSupportsVision: Boolean, onRemove: () -> Unit) {
+private fun StagedAttachmentPreview(
+    attachment: AttachmentEntity,
+    modelSupportsVision: Boolean,
+    onRemove: () -> Unit,
+) {
     val isImage = attachment.mimeType.startsWith("image/") && attachment.mimeType != "image/svg+xml"
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = .92f), shape = MaterialTheme.shapes.large, modifier = Modifier.width(if (isImage) 86.dp else 176.dp).height(82.dp)) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = .92f),
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier
+            .width(if (isImage) 86.dp else 176.dp)
+            .height(82.dp),
+    ) {
         Box(Modifier.fillMaxSize()) {
             if (isImage) {
-                AsyncImage(model = File(attachment.thumbnailPath ?: attachment.localPath), contentDescription = attachment.displayName, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .62f)), startY = 20f)))
-                Text(attachment.displayName, modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, end = 28.dp, bottom = 7.dp), color = Color.White, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                AsyncImage(
+                    model = File(attachment.thumbnailPath ?: attachment.localPath),
+                    contentDescription = attachment.displayName,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, Color.Black.copy(alpha = .62f)),
+                                startY = 20f,
+                            ),
+                        ),
+                )
+                Text(
+                    attachment.displayName,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, end = 28.dp, bottom = 7.dp),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             } else {
-                Row(Modifier.fillMaxSize().padding(start = 10.dp, end = 30.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(stagedFileIcon(attachment), null, Modifier.size(30.dp), tint = MaterialTheme.colorScheme.primary)
+                Row(
+                    Modifier.fillMaxSize().padding(start = 10.dp, end = 30.dp, top = 10.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        stagedFileIcon(attachment),
+                        null,
+                        Modifier.size(30.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
                     Column(Modifier.padding(start = 9.dp)) {
                         Text(attachment.displayName, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
-                        Text(Formatter.formatShortFileSize(LocalContext.current, attachment.sizeBytes), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            Formatter.formatShortFileSize(LocalContext.current, attachment.sizeBytes),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
-            IconButton(onClick = onRemove, modifier = Modifier.align(Alignment.TopEnd).size(30.dp)) {
+            IconButton(
+                onClick = onRemove,
+                modifier = Modifier.align(Alignment.TopEnd).size(30.dp),
+            ) {
                 Surface(shape = CircleShape, color = MaterialTheme.colorScheme.scrim.copy(alpha = if (isImage) .58f else .12f)) {
-                    Icon(Icons.Outlined.Close, "Remove ${attachment.displayName}", Modifier.padding(5.dp).size(15.dp), tint = if (isImage) Color.White else MaterialTheme.colorScheme.onSurface)
+                    Icon(
+                        Icons.Outlined.Close,
+                        "Remove ${attachment.displayName}",
+                        Modifier.padding(5.dp).size(15.dp),
+                        tint = if (isImage) Color.White else MaterialTheme.colorScheme.onSurface,
+                    )
                 }
             }
             if (shouldShowOcrCompatibility(isImage, modelSupportsVision)) {
-                Surface(color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .94f), shape = CircleShape, modifier = Modifier.align(Alignment.TopStart).padding(5.dp)) {
-                    Text(if (attachment.ocrJson != null) "OCR" else "OCR on send", Modifier.padding(horizontal = 6.dp, vertical = 3.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .94f),
+                    shape = CircleShape,
+                    modifier = Modifier.align(Alignment.TopStart).padding(5.dp),
+                ) {
+                    Text(
+                        if (attachment.ocrJson != null) "OCR" else "OCR on send",
+                        Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
                 }
             }
         }
@@ -2051,130 +3266,344 @@ private fun stagedFileIcon(attachment: AttachmentEntity) = when {
 }
 
 @Composable
-private fun ThinkingComposerChip(enabled: Boolean, effort: ThinkingEffort, provider: ProviderEntity?, model: ModelEntity?, onSelection: (Boolean, ThinkingEffort?) -> Unit) {
+private fun ThinkingComposerChip(
+    enabled: Boolean,
+    effort: ThinkingEffort,
+    provider: ProviderEntity?,
+    model: ModelEntity?,
+    onSelection: (Boolean, ThinkingEffort?) -> Unit,
+) {
     var menu by remember { mutableStateOf(false) }
     val haptics = rememberXyluneHaptics()
-    val options = remember(provider?.id, provider?.kind, model?.modelId, model?.supportsThinking, model?.reasoningMetadataAvailable, model?.reasoningEffortsCsv, model?.reasoningMandatory) { supportedThinkingLevels(provider, model) }
+    val options = remember(
+        provider?.id,
+        provider?.kind,
+        model?.modelId,
+        model?.supportsThinking,
+        model?.reasoningMetadataAvailable,
+        model?.reasoningEffortsCsv,
+        model?.reasoningMandatory,
+    ) {
+        supportedThinkingLevels(provider, model)
+    }
     val effectiveEnabled = effectiveThinkingEnabled(model, enabled)
     val effectiveEffort = defaultThinkingEffort(model, effort)
     val selectedIndex = remember(options, effectiveEnabled, effectiveEffort) {
-        options.indexOfFirst { option -> if (!effectiveEnabled) !option.enabled else option.enabled && option.effort == effectiveEffort }.takeIf { it >= 0 } ?: options.indexOfFirst { it.enabled }.coerceAtLeast(0)
+        options.indexOfFirst { option ->
+            if (!effectiveEnabled) !option.enabled else option.enabled && option.effort == effectiveEffort
+        }.takeIf { it >= 0 } ?: options.indexOfFirst { it.enabled }.coerceAtLeast(0)
     }
     val selected = options.getOrNull(selectedIndex)
     var sliderTarget by remember(options) { mutableFloatStateOf(selectedIndex.toFloat()) }
     var settlingIndex by remember(options) { mutableIntStateOf(-1) }
     val sliderValue by animateFloatAsState(
         targetValue = sliderTarget,
-        animationSpec = if (settlingIndex >= 0) spring(dampingRatio = .72f, stiffness = 430f) else snap(),
+        animationSpec = if (settlingIndex >= 0) {
+            spring(dampingRatio = .72f, stiffness = 430f)
+        } else {
+            snap()
+        },
         label = "ThinkingEffortSnap",
         finishedListener = {
             val index = settlingIndex
-            if (index >= 0) { settlingIndex = -1; options.getOrNull(index)?.let { option -> onSelection(option.enabled, option.effort) } }
+            if (index >= 0) {
+                settlingIndex = -1
+                options.getOrNull(index)?.let { option ->
+                    onSelection(option.enabled, option.effort)
+                }
+            }
         },
     )
-    LaunchedEffect(selectedIndex, options, menu) { if (settlingIndex < 0) sliderTarget = selectedIndex.toFloat() }
+    LaunchedEffect(selectedIndex, options, menu) {
+        if (settlingIndex < 0) sliderTarget = selectedIndex.toFloat()
+    }
     val previewIndex = sliderValue.roundToInt().coerceIn(0, options.lastIndex.coerceAtLeast(0))
     val preview = options.getOrNull(previewIndex) ?: selected
+
     Box {
         Surface(
-            onClick = { if (options.isNotEmpty()) { haptics.tap(); menu = true } }, enabled = options.isNotEmpty(),
-            color = if (effectiveEnabled && options.isNotEmpty()) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = if (effectiveEnabled && options.isNotEmpty()) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+            onClick = {
+                if (options.isNotEmpty()) {
+                    haptics.tap()
+                    menu = true
+                }
+            },
+            enabled = options.isNotEmpty(),
+            color = if (effectiveEnabled && options.isNotEmpty()) MaterialTheme.colorScheme.secondaryContainer
+            else MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = if (effectiveEnabled && options.isNotEmpty()) MaterialTheme.colorScheme.onSecondaryContainer
+            else MaterialTheme.colorScheme.onSurfaceVariant,
             shape = CircleShape,
         ) {
-            Row(Modifier.padding(start = 12.dp, end = 8.dp, top = 7.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                Modifier.padding(start = 12.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 Icon(Icons.Outlined.Psychology, null, Modifier.size(17.dp))
-                Text(if (options.isEmpty()) "Thinking unavailable" else "Think · ${selected?.label ?: if (effectiveEnabled) effort.composerName else "Off"}", style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    if (options.isEmpty()) "Thinking unavailable"
+                    else "Think · ${selected?.label ?: if (effectiveEnabled) effort.composerName else "Off"}",
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Icon(Icons.Filled.KeyboardArrowDown, "Choose thinking level", Modifier.size(19.dp))
             }
         }
-        XyluneDropdownMenu(expanded = menu, onDismissRequest = { menu = false }, modifier = Modifier.width(340.dp), dismissOnClickOutside = true) {
-            Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        XyluneDropdownMenu(
+            expanded = menu,
+            onDismissRequest = { menu = false },
+            modifier = Modifier.width(340.dp),
+            dismissOnClickOutside = true,
+        ) {
+            Column(
+                Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 Text("Thinking effort", style = MaterialTheme.typography.labelLarge)
-                Text(preview?.label.orEmpty(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                Text(preview?.description.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    preview?.label.orEmpty(),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    preview?.description.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 if (options.size > 1) {
                     XyluneSlider(
-                        value = sliderValue, onValueChange = { requested -> settlingIndex = -1; sliderTarget = requested },
-                        valueRange = 0f..options.lastIndex.toFloat(), steps = (options.size - 2).coerceAtLeast(0), snapOnRelease = true,
+                        value = sliderValue,
+                        onValueChange = { requested ->
+                            settlingIndex = -1
+                            sliderTarget = requested
+                        },
+                        valueRange = 0f..options.lastIndex.toFloat(),
+                        steps = (options.size - 2).coerceAtLeast(0),
+                        snapOnRelease = true,
                         onValueChangeFinished = {
                             val index = sliderTarget.roundToInt().coerceIn(options.indices)
-                            if (abs(sliderTarget - index.toFloat()) < .001f) { settlingIndex = -1; options[index].let { option -> onSelection(option.enabled, option.effort) } }
-                            else { settlingIndex = index; sliderTarget = index.toFloat() }
+                            if (abs(sliderTarget - index.toFloat()) < .001f) {
+                                settlingIndex = -1
+                                options[index].let { option ->
+                                    onSelection(option.enabled, option.effort)
+                                }
+                            } else {
+                                settlingIndex = index
+                                sliderTarget = index.toFloat()
+                            }
                         },
                     )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(options.first().label, style = MaterialTheme.typography.labelSmall); Text(options.last().label, style = MaterialTheme.typography.labelSmall)
+                        Text(options.first().label, style = MaterialTheme.typography.labelSmall)
+                        Text(options.last().label, style = MaterialTheme.typography.labelSmall)
                     }
-                    Text("Release to snap to the nearest supported level", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Release to snap to the nearest supported level",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
     }
 }
 
-private val ThinkingEffort.effortDescription: String get() = when (this) {
-    ThinkingEffort.MINIMAL -> "Fastest, light reasoning"; ThinkingEffort.LOW -> "Short reasoning"; ThinkingEffort.MEDIUM -> "Balanced"; ThinkingEffort.HIGH -> "More thorough reasoning"; ThinkingEffort.XHIGH -> "Extended reasoning"; ThinkingEffort.MAX -> "Maximum supported reasoning"
-}
-private val ThinkingEffort.displayName: String get() = name.lowercase().replaceFirstChar(Char::uppercase)
-private val ThinkingEffort.composerName: String get() = when (this) { ThinkingEffort.MINIMAL -> "Min"; ThinkingEffort.LOW -> "Low"; ThinkingEffort.MEDIUM -> "Med"; ThinkingEffort.HIGH -> "High"; ThinkingEffort.XHIGH -> "XHigh"; ThinkingEffort.MAX -> "Max" }
+private val ThinkingEffort.effortDescription: String
+    get() = when (this) {
+        ThinkingEffort.MINIMAL -> "Fastest, light reasoning"
+        ThinkingEffort.LOW -> "Short reasoning"
+        ThinkingEffort.MEDIUM -> "Balanced"
+        ThinkingEffort.HIGH -> "More thorough reasoning"
+        ThinkingEffort.XHIGH -> "Extended reasoning"
+        ThinkingEffort.MAX -> "Maximum supported reasoning"
+    }
+
+private val ThinkingEffort.displayName: String
+    get() = name.lowercase().replaceFirstChar(Char::uppercase)
+
+private val ThinkingEffort.composerName: String
+    get() = when (this) {
+        ThinkingEffort.MINIMAL -> "Min"
+        ThinkingEffort.LOW -> "Low"
+        ThinkingEffort.MEDIUM -> "Med"
+        ThinkingEffort.HIGH -> "High"
+        ThinkingEffort.XHIGH -> "XHigh"
+        ThinkingEffort.MAX -> "Max"
+    }
 
 @Composable
-private fun SearchComposerChip(webEnabled: Boolean, deepResearchEnabled: Boolean, onSelection: (Boolean, Boolean) -> Unit) {
+private fun SearchComposerChip(
+    webEnabled: Boolean,
+    deepResearchEnabled: Boolean,
+    onSelection: (Boolean, Boolean) -> Unit,
+) {
     var menu by remember { mutableStateOf(false) }
     val haptics = rememberXyluneHaptics()
     val context = LocalContext.current
-    val searchSettings by remember(context) { (context.applicationContext as app.xylune.chat.XyluneApplication).container.appPreferences.webSearchSettings }.collectAsState()
-    val label = when { deepResearchEnabled -> "Research · ${searchSettings.activeLabel}"; webEnabled -> "Search · ${searchSettings.activeLabel}"; else -> "Search off" }
-    val icon = if (deepResearchEnabled) Icons.Outlined.TravelExplore else Icons.Outlined.Search
+    val searchSettings by remember(context) {
+        (context.applicationContext as app.xylune.chat.XyluneApplication)
+            .container.appPreferences.webSearchSettings
+    }.collectAsState()
+    val label = when {
+        deepResearchEnabled -> "Research · ${searchSettings.activeLabel}"
+        webEnabled -> "Search · ${searchSettings.activeLabel}"
+        else -> "Search off"
+    }
+    val icon = when {
+        deepResearchEnabled -> Icons.Outlined.TravelExplore
+        else -> Icons.Outlined.Search
+    }
     Box {
         Surface(
-            onClick = { haptics.tap(); menu = true },
-            color = when { deepResearchEnabled -> MaterialTheme.colorScheme.tertiaryContainer; webEnabled -> MaterialTheme.colorScheme.secondaryContainer; else -> MaterialTheme.colorScheme.surfaceContainerHigh },
-            contentColor = when { deepResearchEnabled -> MaterialTheme.colorScheme.onTertiaryContainer; webEnabled -> MaterialTheme.colorScheme.onSecondaryContainer; else -> MaterialTheme.colorScheme.onSurfaceVariant }, shape = CircleShape,
+            onClick = {
+                haptics.tap()
+                menu = true
+            },
+            color = when {
+                deepResearchEnabled -> MaterialTheme.colorScheme.tertiaryContainer
+                webEnabled -> MaterialTheme.colorScheme.secondaryContainer
+                else -> MaterialTheme.colorScheme.surfaceContainerHigh
+            },
+            contentColor = when {
+                deepResearchEnabled -> MaterialTheme.colorScheme.onTertiaryContainer
+                webEnabled -> MaterialTheme.colorScheme.onSecondaryContainer
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            shape = CircleShape,
         ) {
-            Row(Modifier.padding(start = 12.dp, end = 8.dp, top = 7.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Icon(icon, null, Modifier.size(17.dp)); Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis); Icon(Icons.Filled.KeyboardArrowDown, "Choose search mode", Modifier.size(19.dp))
+            Row(
+                Modifier.padding(start = 12.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(icon, null, Modifier.size(17.dp))
+                Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Icon(Icons.Filled.KeyboardArrowDown, "Choose search mode", Modifier.size(19.dp))
             }
         }
         XyluneDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(text = { Text("Search off") }, onClick = { haptics.selection(); onSelection(false, false); menu = false }, leadingIcon = { Icon(Icons.Outlined.Close, null) })
-            DropdownMenuItem(text = { Text("Web search") }, onClick = { haptics.selection(); onSelection(true, false); menu = false }, leadingIcon = { Icon(Icons.Outlined.Search, null) })
-            DropdownMenuItem(text = { Text("Deep Research") }, onClick = { haptics.selection(); onSelection(true, true); menu = false }, leadingIcon = { Icon(Icons.Outlined.TravelExplore, null) })
+            DropdownMenuItem(
+                text = { Text("Search off") },
+                onClick = { haptics.selection(); onSelection(false, false); menu = false },
+                leadingIcon = { Icon(Icons.Outlined.Close, null) },
+            )
+            DropdownMenuItem(
+                text = { Text("Web search") },
+                onClick = { haptics.selection(); onSelection(true, false); menu = false },
+                leadingIcon = { Icon(Icons.Outlined.Search, null) },
+            )
+            DropdownMenuItem(
+                text = { Text("Deep Research") },
+                onClick = { haptics.selection(); onSelection(true, true); menu = false },
+                leadingIcon = { Icon(Icons.Outlined.TravelExplore, null) },
+            )
         }
     }
 }
 
 @Composable
 private fun ToolComposerChip(
-    pythonEnabled: Boolean, linuxEnabled: Boolean, linuxInstalled: Boolean, linuxDistributionName: String,
-    onOpenLinuxSetup: () -> Unit, onPythonEnabled: (Boolean) -> Unit, onLinuxEnabled: (Boolean) -> Unit,
+    pythonEnabled: Boolean,
+    linuxEnabled: Boolean,
+    linuxInstalled: Boolean,
+    linuxDistributionName: String,
+    onOpenLinuxSetup: () -> Unit,
+    onPythonEnabled: (Boolean) -> Unit,
+    onLinuxEnabled: (Boolean) -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     val haptics = rememberXyluneHaptics()
     val effectiveLinuxEnabled = linuxEnabled && linuxInstalled
     val enabledCount = listOf(pythonEnabled, effectiveLinuxEnabled).count { it }
-    val label = when { pythonEnabled && effectiveLinuxEnabled -> "Tools · 2"; pythonEnabled -> "Tools · Code"; effectiveLinuxEnabled -> "Tools · Linux"; else -> "Tools off" }
+    val label = when {
+        pythonEnabled && effectiveLinuxEnabled -> "Tools · 2"
+        pythonEnabled -> "Tools · Code"
+        effectiveLinuxEnabled -> "Tools · Linux"
+        else -> "Tools off"
+    }
     Box {
         Surface(
-            onClick = { haptics.tap(); menu = true },
-            color = if (enabledCount > 0) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = if (enabledCount > 0) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, shape = CircleShape,
+            onClick = {
+                haptics.tap()
+                menu = true
+            },
+            color = if (enabledCount > 0) MaterialTheme.colorScheme.secondaryContainer
+            else MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = if (enabledCount > 0) MaterialTheme.colorScheme.onSecondaryContainer
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            shape = CircleShape,
         ) {
-            Row(Modifier.padding(start = 12.dp, end = 8.dp, top = 7.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Icon(Icons.Outlined.Code, null, Modifier.size(17.dp)); Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1); Icon(Icons.Filled.KeyboardArrowDown, "Choose chat tools", Modifier.size(19.dp))
+            Row(
+                Modifier.padding(start = 12.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(Icons.Outlined.Code, null, Modifier.size(17.dp))
+                Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                Icon(Icons.Filled.KeyboardArrowDown, "Choose chat tools", Modifier.size(19.dp))
             }
         }
-        XyluneDropdownMenu(expanded = menu, onDismissRequest = { menu = false }, modifier = Modifier.width(340.dp)) {
-            Text("Tools available to Xylune in this chat", modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-            ComposerToggleRow(Icons.Outlined.Code, "Local Code Execution", "Run Python in this chat's persistent workspace", pythonEnabled, onCheckedChange = onPythonEnabled)
-            ComposerToggleRow(Icons.Outlined.Terminal, "Linux", if (linuxInstalled) "Use the $linuxDistributionName tooling workspace" else "Install a Linux workspace before enabling", effectiveLinuxEnabled, enabled = linuxInstalled, onCheckedChange = onLinuxEnabled)
+        XyluneDropdownMenu(
+            expanded = menu,
+            onDismissRequest = { menu = false },
+            modifier = Modifier.width(340.dp),
+        ) {
+            Text(
+                "Tools available to Xylune in this chat",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            ComposerToggleRow(
+                icon = Icons.Outlined.Code,
+                title = "Local Code Execution",
+                subtitle = "Run Python in this chat's persistent workspace",
+                checked = pythonEnabled,
+                onCheckedChange = onPythonEnabled,
+            )
+            ComposerToggleRow(
+                icon = Icons.Outlined.Terminal,
+                title = "Linux",
+                subtitle = if (linuxInstalled) {
+                    "Use the $linuxDistributionName tooling workspace"
+                } else {
+                    "Install a Linux workspace before enabling"
+                },
+                checked = effectiveLinuxEnabled,
+                enabled = linuxInstalled,
+                onCheckedChange = onLinuxEnabled,
+            )
             if (!linuxInstalled) {
-                Surface(color = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer, shape = MaterialTheme.shapes.large, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Outlined.WarningAmber, null, Modifier.size(20.dp)); Text("Linux workspace not installed", fontWeight = FontWeight.SemiBold) }
-                        Text("Install Ubuntu, Debian, or Alpine before Xylune can use Linux tools.", style = MaterialTheme.typography.bodySmall)
-                        TextButton(onClick = { menu = false; onOpenLinuxSetup() }) { Text("Manage Linux workspace") }
+                Surface(
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                ) {
+                    Column(
+                        Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Outlined.WarningAmber, null, Modifier.size(20.dp))
+                            Text("Linux workspace not installed", fontWeight = FontWeight.SemiBold)
+                        }
+                        Text(
+                            "Install Ubuntu, Debian, or Alpine before Xylune can use Linux tools.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        TextButton(onClick = {
+                            menu = false
+                            onOpenLinuxSetup()
+                        }) {
+                            Text("Manage Linux workspace")
+                        }
                     }
                 }
             }
@@ -2183,25 +3612,64 @@ private fun ToolComposerChip(
 }
 
 @Composable
-private fun ComposerActionRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+private fun ComposerActionRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
     val haptics = rememberXyluneHaptics()
-    val activate = { haptics.selection(); onClick() }
-    ListItem(headlineContent = { Text(title) }, supportingContent = { Text(subtitle) }, leadingContent = { Icon(icon, null) }, modifier = Modifier.combinedClickable(onClick = activate, onLongClick = { haptics.longPress(); onClick() }))
+    val activate = {
+        haptics.selection()
+        onClick()
+    }
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(subtitle) },
+        leadingContent = { Icon(icon, null) },
+        modifier = Modifier.combinedClickable(onClick = activate, onLongClick = {
+            haptics.longPress()
+            onClick()
+        }),
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ComposerToggleRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, checked: Boolean,
-    enabled: Boolean = true, onCheckedChange: (Boolean) -> Unit,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit,
 ) {
     val haptics = rememberXyluneHaptics()
-    val toggle = { val next = !checked; haptics.toggle(next); onCheckedChange(next) }
+    val toggle = {
+        val next = !checked
+        haptics.toggle(next)
+        onCheckedChange(next)
+    }
     ListItem(
-        headlineContent = { Text(title) }, supportingContent = { Text(subtitle) }, leadingContent = { Icon(icon, null) },
-        trailingContent = { Switch(checked = checked, enabled = enabled, onCheckedChange = { next -> haptics.toggle(next); onCheckedChange(next) }) },
-        modifier = Modifier.combinedClickable(enabled = enabled, onClick = toggle, onLongClick = { haptics.longPress(); onCheckedChange(!checked) }),
+        headlineContent = { Text(title) },
+        supportingContent = { Text(subtitle) },
+        leadingContent = { Icon(icon, null) },
+        trailingContent = {
+            Switch(
+                checked = checked,
+                enabled = enabled,
+                onCheckedChange = { next ->
+                    haptics.toggle(next)
+                    onCheckedChange(next)
+                },
+            )
+        },
+        modifier = Modifier.combinedClickable(enabled = enabled, onClick = toggle, onLongClick = {
+            haptics.longPress()
+            onCheckedChange(!checked)
+        }),
     )
 }
+
 
 private fun ChatViewModel.containerAttachments(nodeId: String) = observeAttachments(nodeId)
