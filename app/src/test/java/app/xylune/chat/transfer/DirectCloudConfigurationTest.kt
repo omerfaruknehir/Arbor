@@ -32,13 +32,13 @@ class DirectCloudConfigurationTest {
     @Test
     fun providerSetupUsesPublicBuildVariablesNotClientSecrets() {
         val build = java.io.File("build.gradle.kts").readText()
-        val release = java.io.File("../.github/workflows/release.yml").readText()
+        val androidWorkflow = java.io.File("../.github/workflows/android.yml").readText()
         assertTrue(build.contains("XYLUNE_MICROSOFT_CLIENT_ID"))
         assertTrue(build.contains("XYLUNE_DROPBOX_APP_KEY"))
-        assertTrue(release.contains("vars.XYLUNE_MICROSOFT_CLIENT_ID"))
-        assertTrue(release.contains("vars.XYLUNE_DROPBOX_APP_KEY"))
-        assertTrue(!release.contains("MICROSOFT_CLIENT_SECRET"))
-        assertTrue(!release.contains("DROPBOX_APP_SECRET"))
+        assertTrue(androidWorkflow.contains("vars.XYLUNE_MICROSOFT_CLIENT_ID"))
+        assertTrue(androidWorkflow.contains("vars.XYLUNE_DROPBOX_APP_KEY"))
+        assertTrue(!androidWorkflow.contains("MICROSOFT_CLIENT_SECRET"))
+        assertTrue(!androidWorkflow.contains("DROPBOX_APP_SECRET"))
     }
 
     @Test
