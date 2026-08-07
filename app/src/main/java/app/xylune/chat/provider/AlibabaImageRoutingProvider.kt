@@ -10,9 +10,9 @@ internal class AlibabaImageRoutingProvider(
     private val qwenImage: ChatProvider = QwenCloudImageProvider(generic),
 ) : ChatProvider {
     override suspend fun stream(request: ChatRequest, emit: suspend (StreamChunk) -> Unit) {
-        val useNativeQwenImage =
-            ModelRequestPolicy.isQwenCloudBaseUrl(request.provider.baseUrl) &&
-                ModelRequestPolicy.isQwenCloudImageModel(request.provider, request.model)
+        val isAlibabaEndpoint = ModelRequestPolicy.isQwenCloudBaseUrl(request.provider.baseUrl)
+        val useNativeQwenImage = isAlibabaEndpoint &&
+            ModelRequestPolicy.isQwenCloudImageModel(request.provider, request.model)
         if (useNativeQwenImage) {
             qwenImage.stream(request, emit)
             return
@@ -23,7 +23,7 @@ internal class AlibabaImageRoutingProvider(
         // thinking request control. Keep the UI metadata as thinking-capable while
         // suppressing Qwen/GLM-specific thinking parameters on the wire.
         val normalized = if (
-            ModelRequestPolicy.isAlibabaModelStudio(request.provider) &&
+            isAlibabaEndpoint &&
             !AlibabaRequestCapabilities.usesEnableThinking(request.provider, request.model)
         ) {
             request.copy(model = request.model.copy(supportsThinking = false))
