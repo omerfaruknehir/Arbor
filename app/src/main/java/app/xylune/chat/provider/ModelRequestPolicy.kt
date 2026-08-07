@@ -52,15 +52,18 @@ object ModelRequestPolicy {
             path.endsWith("/compatible-mode/v1")
     }
 
-    fun isQwenCloud(provider: ProviderEntity, model: ModelEntity): Boolean =
+    /** True for the Alibaba Model Studio OpenAI-compatible provider, including hosted third-party models. */
+    fun isAlibabaModelStudio(provider: ProviderEntity): Boolean =
         provider.kind == ProviderKind.OPENAI_COMPATIBLE &&
             (provider.id.equals("qwen-cloud", ignoreCase = true) || isQwenCloudBaseUrl(provider.baseUrl))
 
+    /** Kept for request code that needs Alibaba's provider-level compatibility behavior. */
+    fun isQwenCloud(provider: ProviderEntity, model: ModelEntity): Boolean =
+        isAlibabaModelStudio(provider)
+
     /** Qwen-Image is served by DashScope native multimodal generation, not compatible-mode Images. */
     fun isQwenCloudImageModel(provider: ProviderEntity, model: ModelEntity): Boolean =
-        provider.kind == ProviderKind.OPENAI_COMPATIBLE &&
-            isQwenCloudBaseUrl(provider.baseUrl) &&
-            isQwenNativeImageModelId(model.modelId)
+        isAlibabaModelStudio(provider) && isQwenNativeImageModelId(model.modelId)
 
     fun qwenCloudImageAcceptsInputImages(model: ModelEntity): Boolean =
         qwenImageAcceptsInputImages(model.modelId)
@@ -69,15 +72,42 @@ object ModelRequestPolicy {
         qwenImageRequiresInputImage(model.modelId)
 
     fun isAlibabaGlmModel(model: ModelEntity): Boolean =
-        model.modelId.substringAfterLast('/').lowercase().startsWith("glm-")
+        modelLeaf(model).startsWith("glm-")
+
+    fun isAlibabaMiniMaxModel(model: ModelEntity): Boolean =
+        modelLeaf(model).startsWith("minimax-")
 
     fun isAlibabaQwenTextModel(model: ModelEntity): Boolean {
-        val id = model.modelId.substringAfterLast('/').lowercase()
+        val id = modelLeaf(model)
         return id.startsWith("qwen") && !id.startsWith("qwen-image")
     }
 
+    /**
+     * Alibaba's Responses web_search tool is not provider-wide. Keep third-party
+     * GLM/Kimi/MiniMax models, older Qwen families, and unsupported snapshots on
+     * Xylune's client-side web-search path instead of sending an invalid /responses request.
+     */
+    fun supportsAlibabaResponsesWebSearch(
+        provider: ProviderEntity,
+        model: ModelEntity,
+        thinkingEnabled: Boolean,
+    ): Boolean {
+        if (!isAlibabaModelStudio(provider)) return false
+        val id = modelLeaf(model)
+        return when {
+            id.startsWith("qwen3.7-max") -> true
+            id.startsWith("qwen3.7-plus") -> true
+            id.startsWith("qwen3.6-plus") -> true
+            id.startsWith("qwen3.6-flash") -> true
+            id.startsWith("qwen3.5-plus") -> true
+            id.startsWith("qwen3.5-flash") -> true
+            id == "qwen3-max" || id == "qwen3-max-2026-01-23" -> thinkingEnabled
+            else -> false
+        }
+    }
+
     fun qwenCloudImageEndpoint(provider: ProviderEntity): String {
-        require(isQwenCloudBaseUrl(provider.baseUrl)) {
+        require(isAlibabaModelStudio(provider)) {
             "Qwen-Image requires an Alibaba Cloud Model Studio compatible-mode base URL."
         }
         val uri = URI(provider.baseUrl.trim())
@@ -282,6 +312,7 @@ object ModelRequestPolicy {
             )
 
             leaf.startsWith("qwen3.6-max-preview") -> AlibabaModelHint(
+                contextWindow = 256_000,
                 supportsThinking = true,
                 supportsVision = false,
                 supportsTools = true,
@@ -311,6 +342,7 @@ object ModelRequestPolicy {
                 reasoningDefaultEnabled = true,
             )
             leaf in setOf("qwen3.5-397b-a17b", "qwen3.5-122b-a10b", "qwen3.5-27b", "qwen3.5-35b-a3b") -> AlibabaModelHint(
+                contextWindow = 256_000,
                 supportsThinking = true,
                 supportsVision = true,
                 supportsTools = true,
@@ -385,6 +417,7 @@ object ModelRequestPolicy {
             )
 
             leaf.startsWith("glm-5.2") -> AlibabaModelHint(
+                contextWindow = 198_000,
                 supportsThinking = true,
                 supportsVision = false,
                 supportsTools = true,
@@ -400,6 +433,7 @@ object ModelRequestPolicy {
                 reasoningDefaultEnabled = true,
             )
             leaf.startsWith("glm-5.1") -> AlibabaModelHint(
+                contextWindow = 198_000,
                 supportsThinking = true,
                 supportsVision = false,
                 supportsTools = true,
@@ -414,6 +448,7 @@ object ModelRequestPolicy {
                 reasoningDefaultEnabled = true,
             )
             leaf == "glm-5" || leaf.startsWith("glm-5-") -> AlibabaModelHint(
+                contextWindow = 198_000,
                 supportsThinking = true,
                 supportsVision = false,
                 supportsTools = true,
@@ -422,6 +457,7 @@ object ModelRequestPolicy {
                 reasoningDefaultEnabled = true,
             )
             leaf.startsWith("glm-4.7") || leaf.startsWith("glm-4.6") || leaf.startsWith("glm-4.5") -> AlibabaModelHint(
+                contextWindow = 198_000,
                 supportsThinking = true,
                 supportsVision = false,
                 supportsTools = true,
@@ -436,31 +472,43 @@ object ModelRequestPolicy {
                 reasoningMandatory = true,
             )
             leaf == "kimi-k2-thinking" || leaf.startsWith("kimi-k2-thinking-") -> AlibabaModelHint(
+                contextWindow = 256_000,
                 supportsThinking = true,
                 supportsTools = true,
                 reasoningDefaultEnabled = true,
                 reasoningMandatory = true,
             )
             leaf.startsWith("kimi-k2.6") || leaf.startsWith("kimi-k2.5") -> AlibabaModelHint(
+                contextWindow = 256_000,
                 supportsThinking = true,
                 supportsVision = true,
                 supportsTools = true,
                 reasoningDefaultEnabled = false,
             )
+            leaf.startsWith("moonshot-kimi-k2-instruct") -> AlibabaModelHint(
+                contextWindow = 256_000,
+                supportsThinking = false,
+                supportsVision = false,
+                supportsTools = true,
+            )
 
             leaf == "minimax-m2.5" || leaf.startsWith("minimax-m2.5-") -> AlibabaModelHint(
+                contextWindow = 192_000,
                 supportsThinking = true,
                 supportsTools = true,
                 reasoningDefaultEnabled = true,
                 reasoningMandatory = true,
             )
             leaf == "minimax-m2.1" || leaf.startsWith("minimax-m2.1-") -> AlibabaModelHint(
+                contextWindow = 200_000,
                 supportsThinking = true,
+                supportsTools = true,
                 reasoningDefaultEnabled = true,
                 reasoningMandatory = true,
             )
 
             leaf.startsWith("deepseek-v4-") -> AlibabaModelHint(
+                contextWindow = 1_000_000,
                 supportsThinking = true,
                 supportsVision = false,
                 supportsTools = true,
@@ -469,12 +517,22 @@ object ModelRequestPolicy {
                 reasoningDefaultEnabled = false,
             )
             leaf.startsWith("deepseek-v3.2") || leaf.startsWith("deepseek-v3.1") -> AlibabaModelHint(
+                contextWindow = 128_000,
                 supportsThinking = true,
                 supportsVision = false,
                 supportsTools = true,
                 reasoningDefaultEnabled = false,
             )
+            leaf.startsWith("deepseek-r1-distill-") -> AlibabaModelHint(
+                contextWindow = 128_000,
+                supportsThinking = true,
+                supportsVision = false,
+                supportsTools = false,
+                reasoningDefaultEnabled = true,
+                reasoningMandatory = true,
+            )
             leaf.startsWith("deepseek-r1") -> AlibabaModelHint(
+                contextWindow = 128_000,
                 supportsThinking = true,
                 supportsVision = false,
                 supportsTools = true,
@@ -501,6 +559,9 @@ object ModelRequestPolicy {
         val date = Regex("\\d{4}-\\d{2}-\\d{2}").find(raw)?.value ?: return false
         return date >= threshold
     }
+
+    private fun modelLeaf(model: ModelEntity): String =
+        model.modelId.substringAfterLast('/').lowercase()
 
     private fun isQwenNativeImageModelId(rawId: String): Boolean =
         rawId.substringAfterLast('/').lowercase().startsWith("qwen-image")
