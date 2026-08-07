@@ -7,7 +7,7 @@ import app.xylune.chat.data.ProviderKind
  * OpenAI-compatible /models endpoint is intentionally sparse, so provider discovery
  * alone cannot be treated as a complete capability contract.
  */
-internal class AlibabaCloudModelDiscoveryService(
+class AlibabaCloudModelDiscoveryService(
     private val delegate: ModelDiscoveryService,
 ) {
     constructor(oauth: OpenAiOAuthManager?) : this(ModelDiscoveryService(oauth))
