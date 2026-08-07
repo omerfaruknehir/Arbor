@@ -30,6 +30,7 @@ import app.xylune.chat.data.MessageStatus
 import app.xylune.chat.data.GenerationUsageEntity
 import app.xylune.chat.data.ProviderKind
 import app.xylune.chat.provider.ChatRequest
+import app.xylune.chat.provider.GeneratedImageOutput
 import app.xylune.chat.provider.InputMessage
 import app.xylune.chat.provider.NativeToolCall
 import app.xylune.chat.provider.NativeToolResult
@@ -244,6 +245,9 @@ class GenerationWorker(
             ?: mutableListOf()
         var savedContent = initial.content
         var savedReasoning = initial.reasoning
+        var generatedImagePreview: GeneratedImageOutput? = null
+        var generatedImagePreviewIndex: Int? = null
+        var generatedImagePreviewCount: Int? = null
         var timelineDirty = false
         var tracesDirty = false
         var persistedContentLength = savedContent.length
@@ -252,8 +256,12 @@ class GenerationWorker(
         fun publishPreview() {
             StreamingPreviewStore.publish(
                 nodeId = assistantId,
+                conversationId = conversationId,
                 content = savedContent,
                 reasoning = savedReasoning,
+                generatedImagePreview = generatedImagePreview,
+                generatedImagePreviewIndex = generatedImagePreviewIndex,
+                generatedImagePreviewCount = generatedImagePreviewCount,
             )
         }
         publishPreview()
@@ -822,6 +830,9 @@ class GenerationWorker(
                             closeOpenStreamEvents()
                             savedContent = savedContent.substring(0, callContentStart.coerceAtMost(savedContent.length))
                             savedReasoning = savedReasoning.substring(0, callReasoningStart.coerceAtMost(savedReasoning.length))
+                            generatedImagePreview = null
+                            generatedImagePreviewIndex = null
+                            generatedImagePreviewCount = null
                             if (timeline.size > callTimelineStart) {
                                 timeline.subList(callTimelineStart, timeline.size).clear()
                             }
@@ -840,7 +851,26 @@ class GenerationWorker(
                             persistTimeline(forceMetadata = true)
                             return@stream
                         }
-                        if (chunk.text.isNotEmpty() || chunk.reasoning.isNotEmpty() || chunk.toolCallProgress.isNotEmpty() || chunk.toolCalls.isNotEmpty() || chunk.generatedImages.isNotEmpty()) passReceived = true
+                        if (
+                            chunk.text.isNotEmpty() || chunk.reasoning.isNotEmpty() ||
+                            chunk.toolCallProgress.isNotEmpty() || chunk.toolCalls.isNotEmpty() ||
+                            chunk.generatedImages.isNotEmpty() || chunk.generatedImagePreview != null
+                        ) passReceived = true
+                        chunk.generatedImagePreview?.let { preview ->
+                            generatedImagePreview = preview
+                            generatedImagePreviewIndex = chunk.generatedImagePreviewIndex
+                            generatedImagePreviewCount = chunk.generatedImagePreviewCount
+                            publishPreview()
+                            val currentIndex = (chunk.generatedImagePreviewIndex ?: 0) + 1
+                            val total = chunk.generatedImagePreviewCount ?: currentIndex
+                            setForeground(notification("Rendering image preview • $currentIndex/$total", indeterminate = true))
+                        }
+                        if (chunk.generatedImages.isNotEmpty()) {
+                            generatedImagePreview = null
+                            generatedImagePreviewIndex = null
+                            generatedImagePreviewCount = null
+                            publishPreview()
+                        }
                         chunk.generatedImages.forEach { image ->
                             closeOpenStreamEvents()
                             val attachment = container.attachmentStore.saveGeneratedImage(
