@@ -66,6 +66,7 @@ internal enum class ModelPickerFilter(val label: String) {
     TOOLS("Tools"),
     VISION("Vision"),
     FILES("Files"),
+    IMAGE("Image"),
     FREE("Free"),
 }
 
@@ -109,6 +110,7 @@ internal fun filteredModelChoices(
                     ModelPickerFilter.TOOLS -> choice.model.supportsTools
                     ModelPickerFilter.VISION -> choice.model.supportsVision
                     ModelPickerFilter.FILES -> choice.model.supportsFiles
+                    ModelPickerFilter.IMAGE -> choice.model.supportsImageGeneration
                     ModelPickerFilter.FREE -> choice.model.isActuallyFree
                 }
             }
@@ -227,7 +229,7 @@ internal fun ModelPickerSheet(
                         selected = mode == ModelPickerMode.CHAT,
                         onClick = {
                             mode = ModelPickerMode.CHAT
-                            filters = filters - setOf(ModelPickerFilter.VISION, ModelPickerFilter.FILES)
+                            filters = filters - setOf(ModelPickerFilter.VISION, ModelPickerFilter.FILES, ModelPickerFilter.IMAGE)
                         },
                         label = { Text("Chat · $chatModelCount") },
                         leadingIcon = { Icon(Icons.Outlined.Psychology, null) },
@@ -278,7 +280,7 @@ internal fun ModelPickerSheet(
                     val visibleFilters = if (mode == ModelPickerMode.IMAGE) {
                         listOf(ModelPickerFilter.FAVORITES, ModelPickerFilter.RECENT)
                     } else {
-                        ModelPickerFilter.entries.filterNot { it == ModelPickerFilter.ALL }
+                        ModelPickerFilter.entries.filterNot { it in setOf(ModelPickerFilter.ALL, ModelPickerFilter.IMAGE) }
                     }
                     visibleFilters.forEach { option ->
                         FilterChip(
