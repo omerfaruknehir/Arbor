@@ -7,11 +7,12 @@ on:
       - 'app/**'
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
+      - 'gradle.properties'
       - 'gradle/**'
       - 'gradlew'
       - 'gradlew.bat'
       - 'ci/**'
-      - '.github/workflows/android.yml'
+      - 'licenses/**'
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
@@ -19,11 +20,12 @@ on:
       - 'app/**'
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
+      - 'gradle.properties'
       - 'gradle/**'
       - 'gradlew'
       - 'gradlew.bat'
       - 'ci/**'
-      - '.github/workflows/android.yml'
+      - 'licenses/**'
   workflow_dispatch:
     inputs:
       run_device_smoke:
