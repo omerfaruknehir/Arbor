@@ -89,6 +89,33 @@ class QwenCloudProviderTest {
     }
 
     @Test
+    fun miniMaxUsesItsOwnThinkingObjectInsteadOfQwenParameter() {
+        val provider = DefaultCatalog.providers.single { it.id == "qwen-cloud" }
+        val model = ModelRequestPolicy.enrichQwenCloudStoredModel(
+            ModelEntity(
+                providerId = provider.id,
+                modelId = "MiniMax-M2.5",
+                displayName = "MiniMax M2.5",
+                contextWindow = 0,
+                maxOutputTokens = 32_000,
+                inputCacheHitUsdPerMillion = 0.0,
+                inputCacheMissUsdPerMillion = 0.0,
+                outputUsdPerMillion = 0.0,
+            ),
+        )
+        val body = OpenAiCompatibleProvider().buildRequestBody(
+            request().copy(provider = provider, model = model, tools = listOf(webSearch)),
+        )
+
+        assertTrue(model.reasoningMandatory)
+        assertEquals(192_000, model.contextWindow)
+        assertFalse("enable_thinking" in body)
+        assertEquals("adaptive", body["thinking"]!!.jsonObject["type"]!!.jsonPrimitive.content)
+        assertTrue("tools" in body)
+        assertFalse("tool_stream" in body)
+    }
+
+    @Test
     fun qwenNativeSearchUsesResponsesAndAddsWebExtractor() {
         val request = request()
         assertEquals(NativeWebSearchMode.RESPONSES, NativeWebSearch.mode(request))
@@ -98,6 +125,31 @@ class QwenCloudProviderTest {
         assertTrue("web_search" in toolTypes)
         assertTrue("web_extractor" in toolTypes)
         assertTrue(body["enable_thinking"]!!.jsonPrimitive.content.toBoolean())
+        assertFalse("reasoning" in body)
+    }
+
+    @Test
+    fun alibabaThirdPartyModelsUseClientSearchInsteadOfQwenResponses() {
+        val provider = DefaultCatalog.providers.single { it.id == "qwen-cloud" }
+        listOf(
+            ModelRequestPolicy.enrichQwenCloudStoredModel(model(provider, "glm-5.2")),
+            ModelRequestPolicy.enrichQwenCloudStoredModel(model(provider, "kimi-k2.6")),
+            ModelRequestPolicy.enrichQwenCloudStoredModel(model(provider, "MiniMax-M2.5")),
+        ).forEach { model ->
+            val thirdPartyRequest = request().copy(provider = provider, model = model)
+            assertEquals(model.modelId, NativeWebSearchMode.NONE, NativeWebSearch.mode(thirdPartyRequest))
+            assertTrue(NativeWebSearch.clientTools(thirdPartyRequest).any { it.name == "web_search" })
+        }
+    }
+
+    @Test
+    fun unsupportedQwenFamilyFallsBackToClientSearch() {
+        val provider = DefaultCatalog.providers.single { it.id == "qwen-cloud" }
+        val model = ModelRequestPolicy.enrichQwenCloudStoredModel(model(provider, "qwen3-vl-plus"))
+        val qwenVlRequest = request().copy(provider = provider, model = model)
+
+        assertEquals(NativeWebSearchMode.NONE, NativeWebSearch.mode(qwenVlRequest))
+        assertTrue(NativeWebSearch.clientTools(qwenVlRequest).any { it.name == "web_search" })
     }
 
     @Test
@@ -119,11 +171,13 @@ class QwenCloudProviderTest {
                 DiscoveredModel(id = "glm-5.2", displayName = "GLM 5.2"),
                 DiscoveredModel(id = "glm-5.1", displayName = "GLM 5.1"),
                 DiscoveredModel(id = "kimi-k2.6", displayName = "Kimi K2.6"),
+                DiscoveredModel(id = "Moonshot-Kimi-K2-Instruct", displayName = "Kimi K2 Instruct"),
                 DiscoveredModel(id = "qwen3.6-plus", displayName = "Qwen3.6 Plus"),
                 DiscoveredModel(id = "qwen-image-2.0", displayName = "Qwen Image 2.0"),
                 DiscoveredModel(id = "qwen-image-plus", displayName = "Qwen Image Plus"),
                 DiscoveredModel(id = "qwen-image-edit-plus", displayName = "Qwen Image Edit Plus"),
                 DiscoveredModel(id = "MiniMax-M2.5", displayName = "MiniMax M2.5"),
+                DiscoveredModel(id = "deepseek-r1-distill-qwen-32b", displayName = "DeepSeek R1 Distill"),
             ),
         )
 
@@ -131,6 +185,7 @@ class QwenCloudProviderTest {
         assertEquals(true, glm.supportsThinking)
         assertEquals(false, glm.supportsVision)
         assertEquals(true, glm.supportsTools)
+        assertEquals(198_000, glm.contextWindow)
         assertTrue(glm.reasoningMetadataAvailable)
         assertEquals(
             listOf(
@@ -154,8 +209,14 @@ class QwenCloudProviderTest {
         assertEquals(true, kimi.supportsThinking)
         assertEquals(true, kimi.supportsVision)
         assertEquals(true, kimi.supportsTools)
+        assertEquals(256_000, kimi.contextWindow)
         assertFalse(kimi.reasoningDefaultEnabled)
         assertTrue(kimi.reasoningEfforts.isEmpty())
+
+        val kimiInstruct = merged.single { it.id == "Moonshot-Kimi-K2-Instruct" }
+        assertEquals(false, kimiInstruct.supportsThinking)
+        assertEquals(true, kimiInstruct.supportsTools)
+        assertEquals(256_000, kimiInstruct.contextWindow)
 
         val qwen = merged.single { it.id == "qwen3.6-plus" }
         assertEquals(true, qwen.supportsThinking)
@@ -183,7 +244,14 @@ class QwenCloudProviderTest {
         assertEquals(true, minimax.supportsThinking)
         assertTrue(minimax.reasoningMandatory)
         assertEquals(true, minimax.supportsTools)
+        assertEquals(192_000, minimax.contextWindow)
         assertTrue(minimax.reasoningEfforts.isEmpty())
+
+        val distill = merged.single { it.id == "deepseek-r1-distill-qwen-32b" }
+        assertEquals(true, distill.supportsThinking)
+        assertTrue(distill.reasoningMandatory)
+        assertEquals(false, distill.supportsTools)
+        assertEquals(128_000, distill.contextWindow)
     }
 
     @Test
@@ -371,6 +439,18 @@ class QwenCloudProviderTest {
         outputUsdPerMillion = 0.0,
         supportsVision = supportsVision,
         supportsImageGeneration = true,
+    )
+
+    private fun model(provider: ProviderEntity, id: String) = ModelEntity(
+        providerId = provider.id,
+        modelId = id,
+        displayName = id,
+        contextWindow = 0,
+        maxOutputTokens = 32_000,
+        inputCacheHitUsdPerMillion = 0.0,
+        inputCacheMissUsdPerMillion = 0.0,
+        outputUsdPerMillion = 0.0,
+        supportsTools = true,
     )
 
     private fun request() = ChatRequest(
