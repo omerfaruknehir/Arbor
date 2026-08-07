@@ -52,8 +52,10 @@ fun defaultThinkingEffort(model: ModelEntity?, fallback: ThinkingEffort = Thinki
     val supported = supportedThinkingLevels(null, model).mapNotNull(ThinkingLevelOption::effort)
     val declared = runCatching { ThinkingEffort.valueOf(model.reasoningDefaultEffort.uppercase()) }.getOrNull()
     return when {
-        declared in supported -> requireNotNull(declared)
+        // A request-selected effort is authoritative when the model supports it. Metadata's
+        // default is only a fallback for callers which did not choose a supported level.
         fallback in supported -> fallback
+        declared in supported -> requireNotNull(declared)
         else -> supported.getOrNull(supported.size / 2) ?: fallback
     }
 }
