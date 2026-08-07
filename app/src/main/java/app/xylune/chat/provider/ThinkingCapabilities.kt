@@ -14,7 +14,7 @@ data class ThinkingLevelOption(
 
 fun supportedThinkingLevels(provider: ProviderEntity?, model: ModelEntity?): List<ThinkingLevelOption> {
     if (model?.supportsThinking != true) return emptyList()
-    if (model.reasoningMetadataAvailable) return metadataLevels(model)
+    if (model.reasoningMetadataAvailable) return metadataLevels(provider, model)
     val id = model.modelId.lowercase()
     return when (provider?.kind) {
         ProviderKind.ANTHROPIC -> anthropicLevels(id)
@@ -23,12 +23,23 @@ fun supportedThinkingLevels(provider: ProviderEntity?, model: ModelEntity?): Lis
     }
 }
 
-private fun metadataLevels(model: ModelEntity): List<ThinkingLevelOption> {
+private fun metadataLevels(provider: ProviderEntity?, model: ModelEntity): List<ThinkingLevelOption> {
     val declared = model.reasoningEffortsCsv.split(',')
         .mapNotNull { value -> runCatching { ThinkingEffort.valueOf(value.trim().uppercase()) }.getOrNull() }
         .distinct()
-    // OpenRouter documents null supported_efforts as accepting the complete
-    // normalized gateway scale. An empty persisted list represents that case.
+    if (declared.isEmpty()) {
+        // OpenRouter documents null supported_efforts as accepting its complete normalized
+        // gateway scale. Other providers use an empty effort list to mean that thinking is
+        // controllable only as an on/off mode and must not inherit fake OpenAI effort levels.
+        val openRouterMetadata = provider?.id.equals("openrouter", ignoreCase = true) ||
+            model.metadataSource.contains("openrouter", ignoreCase = true)
+        if (!openRouterMetadata) {
+            return buildList {
+                if (!model.reasoningMandatory) add(off)
+                add(on)
+            }
+        }
+    }
     val efforts = declared.ifEmpty { ThinkingEffort.entries }.sortedBy(ThinkingEffort.entries::indexOf)
     return buildList {
         if (!model.reasoningMandatory) add(off)
@@ -54,6 +65,7 @@ fun effectiveThinkingEnabled(model: ModelEntity?, requested: Boolean): Boolean =
 }
 
 private val off = ThinkingLevelOption(false, null, "Off", "No deliberate reasoning where the model API allows it")
+private val on = ThinkingLevelOption(true, null, "On", "Use the model's provider-managed thinking mode")
 private val minimal = ThinkingLevelOption(true, ThinkingEffort.MINIMAL, "Minimal", "Fastest available reasoning")
 private val low = ThinkingLevelOption(true, ThinkingEffort.LOW, "Low", "Short reasoning with lower latency")
 private val medium = ThinkingLevelOption(true, ThinkingEffort.MEDIUM, "Medium", "Balanced reasoning")
