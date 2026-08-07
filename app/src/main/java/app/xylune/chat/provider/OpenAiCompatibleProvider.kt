@@ -422,12 +422,25 @@ class OpenAiCompatibleProvider(
                 })
                 // Xylune executes one side effect at a time so interruption and replay remain deterministic.
                 put("parallel_tool_calls", JsonPrimitive(false))
+                if (isQwenCloud && (
+                        ModelRequestPolicy.isAlibabaGlmModel(request.model) ||
+                            ModelRequestPolicy.isAlibabaQwenTextModel(request.model)
+                    )
+                ) {
+                    // Alibaba requires this for streaming complex object/array tool parameters.
+                    put("tool_stream", JsonPrimitive(true))
+                }
             }
             if (request.model.supportsThinking) {
                 val enabled = effectiveThinkingEnabled(request.model, request.thinkingEnabled)
                 val effort = defaultThinkingEffort(request.model, request.thinkingEffort)
                 when {
-                    isQwenCloud -> put("enable_thinking", JsonPrimitive(enabled))
+                    isQwenCloud -> {
+                        put("enable_thinking", JsonPrimitive(enabled))
+                        if (enabled && request.model.reasoningEffortsCsv.isNotBlank()) {
+                            put("reasoning_effort", JsonPrimitive(effort.qwenCloudApiValue))
+                        }
+                    }
                     isOpenRouter -> put("reasoning", buildJsonObject {
                         put("effort", JsonPrimitive(if (enabled) effort.apiValue else "none"))
                     })
@@ -686,5 +699,8 @@ private val app.xylune.chat.data.ThinkingEffort.apiValue: String
         app.xylune.chat.data.ThinkingEffort.XHIGH,
         app.xylune.chat.data.ThinkingEffort.MAX -> "xhigh"
     }
+
+private val app.xylune.chat.data.ThinkingEffort.qwenCloudApiValue: String
+    get() = if (this == app.xylune.chat.data.ThinkingEffort.MAX) "max" else apiValue
 
 }
