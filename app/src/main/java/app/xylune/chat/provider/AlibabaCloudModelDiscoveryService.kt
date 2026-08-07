@@ -27,7 +27,7 @@ class AlibabaCloudModelDiscoveryService(
             providerId = providerId,
         )
         val isAlibaba = kind == ProviderKind.OPENAI_COMPATIBLE &&
-            (providerId.equals("qwen-cloud", ignoreCase = true) || ModelRequestPolicy.isQwenCloudBaseUrl(rawBaseUrl))
+            ModelRequestPolicy.isQwenCloudBaseUrl(rawBaseUrl)
         return if (isAlibaba) discovered.map(AlibabaCloudModelPolicy::correct) else discovered
     }
 }
