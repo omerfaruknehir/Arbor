@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           ref: fix/search-results-stream-errors-0.24.10
           fetch-depth: 0
@@ -35,7 +35,7 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Materialize search and stream-error source changes
         run: python3 .github/scripts/patch-search-results-stream-errors-0.24.10.py
