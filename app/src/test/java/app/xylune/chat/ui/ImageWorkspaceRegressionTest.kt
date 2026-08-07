@@ -20,7 +20,7 @@ class ImageWorkspaceRegressionTest {
         assertTrue(screen.contains("ImageRequestModeCard("))
         assertTrue(screen.contains("ImageGenerationProgressCard("))
         assertTrue(screen.contains("SendMode.QUEUE"))
-        assertTrue(screen.contains("PickMultipleVisualMedia(12)"))
+        assertTrue(screen.contains("PickMultipleVisualMedia(16)"))
         assertTrue(screen.contains("TakePicture()"))
         assertFalse(screen.contains("SearchComposerChip"))
         assertFalse(screen.contains("ThinkingComposerChip"))
