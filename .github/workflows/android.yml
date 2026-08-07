@@ -44,7 +44,7 @@ permissions:
 
 concurrency:
   group: android-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 env:
   XYLUNE_SOURCE_REPOSITORY: ${{ github.repository }}
@@ -72,23 +72,179 @@ jobs:
         run: ./ci/verify-third-party-licenses.sh
       - name: Verify offline license catalog
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:generateOfflineLicenseCatalog
-      - name: Run release unit tests
-        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest
-      - name: Run release lint
-        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process lintRelease
-      - name: Assemble optimized release APK
-        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process assembleRelease
+      - name: Test, lint, and build public release
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest lintRelease assembleRelease bundleRelease
       - name: Verify release APK signature
         run: "$ANDROID_HOME/build-tools/36.0.0/apksigner verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk"
-      - uses: actions/upload-artifact@v4
-        if: always()
+      - name: Stage verified binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ci-release
+          mkdir ci-release
+          cp app/build/outputs/apk/release/app-release.apk ci-release/app-release.apk
+          cp app/build/outputs/bundle/release/app-release.aab ci-release/app-release.aab
+      - uses: actions/upload-artifact@v7
         with:
-          name: xylune-release-apk-and-reports
-          if-no-files-found: warn
+          name: xylune-public-release-build
+          if-no-files-found: error
+          retention-days: 7
           path: |
-            app/build/outputs/apk/release/*.apk
+            ci-release/app-release.apk
+            ci-release/app-release.aab
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: xylune-android-failure-reports
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
             app/build/reports/tests/
             app/build/reports/lint-results-release.html
+            app/build/reports/problems/
+
+  detect-release:
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      should_release: ${{ steps.version.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Detect unpublished app version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)"
+          test -n "$version"
+          tag="v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          published="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$tag\" and .draft == false) | .id" | head -n1)"
+          if [[ -n "$published" ]]; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "$tag is already published."
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "$tag is unpublished and will use this verified build."
+          fi
+
+  publish-release:
+    needs: [verify, detect-release]
+    if: needs.detect-release.outputs.should_release == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      XYLUNE_VERSION: ${{ needs.detect-release.outputs.version }}
+      XYLUNE_TAG: ${{ needs.detect-release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Set up Android tools
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools build-tools;36.0.0'
+      - uses: actions/download-artifact@v5
+        with:
+          name: xylune-public-release-build
+          path: ci-release
+      - name: Prepare fixed six-asset release
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf release
+          mkdir release
+
+          apk="Xylune-${XYLUNE_VERSION}-release.apk"
+          aab="Xylune-${XYLUNE_VERSION}-release.aab"
+          source_zip="Xylune-${XYLUNE_VERSION}-source.zip"
+          source_tar="Xylune-${XYLUNE_VERSION}-source.tar.gz"
+          manifest="Xylune-${XYLUNE_VERSION}-release.json"
+          checksums="Xylune-${XYLUNE_VERSION}-SHA256.txt"
+
+          cp ci-release/app-release.apk "release/$apk"
+          cp ci-release/app-release.aab "release/$aab"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "release/$apk"
+          git archive --format=zip --prefix="Xylune-${XYLUNE_VERSION}/" -o "release/$source_zip" "$GITHUB_SHA"
+          git archive --format=tar --prefix="Xylune-${XYLUNE_VERSION}/" "$GITHUB_SHA" | gzip -n > "release/$source_tar"
+
+          apk_sha256="$(sha256sum "release/$apk" | awk '{print $1}')"
+          cert_sha256="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "release/$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1)"
+          package_name="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "release/$apk" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -n1)"
+          version_code="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n1)"
+          export apk apk_sha256 cert_sha256 package_name version_code manifest
+
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          data = {
+              "schemaVersion": 1,
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "tag": os.environ["XYLUNE_TAG"],
+              "versionName": os.environ["XYLUNE_VERSION"],
+              "versionCode": int(os.environ["version_code"]),
+              "packageName": os.environ["package_name"],
+              "apkAsset": os.environ["apk"],
+              "apkSha256": os.environ["apk_sha256"],
+              "signingCertificateSha256": os.environ["cert_sha256"],
+              "sourceCommit": os.environ["GITHUB_SHA"],
+          }
+          Path("release", os.environ["manifest"]).write_text(
+              json.dumps(data, indent=2, sort_keys=True) + "\n"
+          )
+          PY
+
+          (cd release && sha256sum "$apk" "$aab" "$source_zip" "$source_tar" "$manifest" > "$checksums")
+          mapfile -t actual < <(find release -maxdepth 1 -type f -printf '%f\n' | sort)
+          expected=("$apk" "$aab" "$source_zip" "$source_tar" "$manifest" "$checksums")
+          mapfile -t expected_sorted < <(printf '%s\n' "${expected[@]}" | sort)
+          [[ ${#actual[@]} -eq 6 ]]
+          diff -u <(printf '%s\n' "${expected_sorted[@]}") <(printf '%s\n' "${actual[@]}")
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes="docs/releases/RELEASE_NOTES_${XYLUNE_VERSION}.md"
+          [[ -f "$notes" ]] || notes="CHANGELOG.md"
+
+          mapfile -t draft_ids < <(
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              --jq ".[] | select(.tag_name == \"${XYLUNE_TAG}\" and .draft == true) | .id"
+          )
+          for id in "${draft_ids[@]}"; do
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/$id"
+          done
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${XYLUNE_TAG}" >/dev/null 2>&1; then
+            git push origin ":refs/tags/${XYLUNE_TAG}"
+          fi
+
+          gh release create "$XYLUNE_TAG" \
+            "release/Xylune-${XYLUNE_VERSION}-release.apk" \
+            "release/Xylune-${XYLUNE_VERSION}-release.aab" \
+            "release/Xylune-${XYLUNE_VERSION}-source.zip" \
+            "release/Xylune-${XYLUNE_VERSION}-source.tar.gz" \
+            "release/Xylune-${XYLUNE_VERSION}-release.json" \
+            "release/Xylune-${XYLUNE_VERSION}-SHA256.txt" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Xylune ${XYLUNE_VERSION}" \
+            --notes-file "$notes"
 
   device-smoke:
     if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.run_device_smoke)
@@ -151,10 +307,11 @@ jobs:
           XYLUNE_KEY_ALIAS: ${{ secrets.XYLUNE_KEY_ALIAS }}
           XYLUNE_KEY_PASSWORD: ${{ secrets.XYLUNE_KEY_PASSWORD }}
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest lintRelease assembleRelease bundleRelease
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: xylune-protected-signed-release
           if-no-files-found: error
+          retention-days: 7
           path: |
             app/build/outputs/apk/release/*.apk
             app/build/outputs/bundle/release/*.aab
