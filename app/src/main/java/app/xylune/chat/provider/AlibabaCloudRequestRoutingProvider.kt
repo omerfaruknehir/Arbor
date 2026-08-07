@@ -11,7 +11,10 @@ internal class AlibabaCloudRequestRoutingProvider(
     private val delegate: ChatProvider,
 ) : ChatProvider {
     override suspend fun stream(request: ChatRequest, emit: suspend (StreamChunk) -> Unit) {
-        if (!ModelRequestPolicy.isAlibabaModelStudio(request.provider)) {
+        // A built-in qwen-cloud entry can be repointed to another compatible server.
+        // Apply Alibaba-only request semantics only when the configured endpoint is
+        // actually a Model Studio compatible-mode endpoint.
+        if (!ModelRequestPolicy.isQwenCloudBaseUrl(request.provider.baseUrl)) {
             delegate.stream(request, emit)
             return
         }
