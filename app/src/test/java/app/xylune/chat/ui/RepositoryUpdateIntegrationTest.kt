@@ -5,8 +5,8 @@ import org.junit.Test
 
 class RepositoryUpdateIntegrationTest {
     @Test
-    fun releaseWorkflowEmbedsRepositoryAndSignedManifest() {
-        val workflow = java.io.File("../.github/workflows/release.yml").readText()
+    fun androidWorkflowEmbedsRepositoryAndSignedManifest() {
+        val workflow = java.io.File("../.github/workflows/android.yml").readText()
         assertTrue(workflow.contains("XYLUNE_SOURCE_REPOSITORY: \${{ github.repository }}"))
         assertTrue(workflow.contains("signingCertificateSha256"))
         assertTrue(workflow.contains("release.json"))
