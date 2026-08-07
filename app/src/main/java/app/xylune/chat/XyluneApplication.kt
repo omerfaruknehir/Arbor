@@ -64,11 +64,20 @@ class XyluneApplication : Application() {
             container.database.attachmentDao().clearAssistantImageAnalysis()
             // Builds before 0.11 materialized every tap on New chat. Remove
             // only rows that never acquired a message or attachment.
-            container.database.catalogDao().insertProvidersIfMissing(DefaultCatalog.providers)
-            container.database.catalogDao().insertModelsIfMissing(DefaultCatalog.models)
+            val catalogDao = container.database.catalogDao()
+            catalogDao.insertProvidersIfMissing(DefaultCatalog.providers)
+            catalogDao.insertModelsIfMissing(DefaultCatalog.models)
             // 0.19.4 could leave existing official image rows absent or classified as chat.
             // Repair only Xylune-owned OpenAI image presets; user-defined models remain untouched.
-            container.database.catalogDao().upsertModels(ModelRequestPolicy.officialOpenAiImageModels())
+            catalogDao.upsertModels(ModelRequestPolicy.officialOpenAiImageModels())
+            // 0.24.10 stored Alibaba's intentionally sparse /models response verbatim. Repair
+            // documented capabilities immediately so an app update does not require the user to
+            // manually refresh Qwen Cloud before thinking/image controls become correct.
+            val qwenMetadataRepairs = catalogDao.allModels().mapNotNull { existing ->
+                val enriched = ModelRequestPolicy.enrichQwenCloudStoredModel(existing)
+                if (enriched == existing) null else enriched.copy(metadataUpdatedAt = System.currentTimeMillis())
+            }
+            if (qwenMetadataRepairs.isNotEmpty()) catalogDao.upsertModels(qwenMetadataRepairs)
             container.repository.observeProviders().first()
                 .filter { it.kind == ProviderKind.OPENAI_OAUTH }
                 .forEach { oauthProvider ->

@@ -72,6 +72,164 @@ class QwenCloudProviderTest {
         assertTrue(chunk.nativeProviderPayloadJson.contains("web_search_call"))
     }
 
+    @Test
+    fun sparseAlibabaCatalogGetsDocumentedThinkingAndVisionMetadata() {
+        val merged = ModelRequestPolicy.mergeQwenCloudCatalog(
+            discovered = listOf(
+                DiscoveredModel(id = "glm-5.2", displayName = "GLM 5.2"),
+                DiscoveredModel(id = "kimi-k2.6", displayName = "Kimi K2.6"),
+                DiscoveredModel(id = "qwen3.6-plus", displayName = "Qwen3.6 Plus"),
+                DiscoveredModel(id = "qwen-image-2.0", displayName = "Qwen Image 2.0"),
+                DiscoveredModel(id = "MiniMax-M2.5", displayName = "MiniMax M2.5"),
+            ),
+        )
+
+        val glm = merged.single { it.id == "glm-5.2" }
+        assertEquals(true, glm.supportsThinking)
+        assertEquals(false, glm.supportsVision)
+        assertTrue(glm.reasoningMetadataAvailable)
+        assertTrue(glm.reasoningDefaultEnabled)
+
+        val kimi = merged.single { it.id == "kimi-k2.6" }
+        assertEquals(true, kimi.supportsThinking)
+        assertEquals(true, kimi.supportsVision)
+        assertEquals(true, kimi.supportsTools)
+        assertFalse(kimi.reasoningDefaultEnabled)
+
+        val qwen = merged.single { it.id == "qwen3.6-plus" }
+        assertEquals(true, qwen.supportsThinking)
+        assertEquals(true, qwen.supportsVision)
+        assertEquals(true, qwen.supportsTools)
+        assertEquals(1_000_000, qwen.contextWindow)
+        assertEquals(65_536, qwen.maxOutputTokens)
+
+        val image = merged.single { it.id == "qwen-image-2.0" }
+        assertEquals(true, image.supportsImageGeneration)
+        assertEquals(false, image.supportsThinking)
+        assertEquals(false, image.supportsVision)
+        assertEquals(false, image.supportsTools)
+
+        val minimax = merged.single { it.id == "MiniMax-M2.5" }
+        assertEquals(true, minimax.supportsThinking)
+        assertTrue(minimax.reasoningMandatory)
+        assertEquals(true, minimax.supportsTools)
+    }
+
+    @Test
+    fun qwenVlAndMaxSnapshotsDoNotUseBroadFamilyGuesses() {
+        val merged = ModelRequestPolicy.mergeQwenCloudCatalog(
+            discovered = listOf(
+                DiscoveredModel(id = "qwen3-vl-30b-a3b-instruct", displayName = "VL Instruct"),
+                DiscoveredModel(id = "qwen3-vl-30b-a3b-thinking", displayName = "VL Thinking"),
+                DiscoveredModel(id = "qwen3-vl-plus", displayName = "VL Plus"),
+                DiscoveredModel(id = "qwen3.7-max", displayName = "Qwen3.7 Max"),
+                DiscoveredModel(id = "qwen3.7-max-2026-06-08", displayName = "Qwen3.7 Max Jun 8"),
+                DiscoveredModel(id = "qwen-plus", displayName = "Qwen Plus"),
+            ),
+        )
+
+        val instruct = merged.single { it.id == "qwen3-vl-30b-a3b-instruct" }
+        assertEquals(false, instruct.supportsThinking)
+        assertEquals(true, instruct.supportsVision)
+
+        val thinking = merged.single { it.id == "qwen3-vl-30b-a3b-thinking" }
+        assertEquals(true, thinking.supportsThinking)
+        assertTrue(thinking.reasoningMandatory)
+        assertEquals(true, thinking.supportsVision)
+
+        val vlPlus = merged.single { it.id == "qwen3-vl-plus" }
+        assertEquals(true, vlPlus.supportsThinking)
+        assertFalse(vlPlus.reasoningDefaultEnabled)
+
+        assertEquals(false, merged.single { it.id == "qwen3.7-max" }.supportsVision)
+        assertEquals(true, merged.single { it.id == "qwen3.7-max-2026-06-08" }.supportsVision)
+
+        val qwenPlus = merged.single { it.id == "qwen-plus" }
+        assertEquals(true, qwenPlus.supportsThinking)
+        assertFalse(qwenPlus.reasoningDefaultEnabled)
+    }
+
+    @Test
+    fun cachedQwenCloudRowsAreRepairedWithoutManualRefresh() {
+        val stale = ModelEntity(
+            providerId = "qwen-cloud",
+            modelId = "glm-5.2",
+            displayName = "GLM 5.2",
+            contextWindow = 198_000,
+            maxOutputTokens = 32_000,
+            inputCacheHitUsdPerMillion = 0.0,
+            inputCacheMissUsdPerMillion = 0.0,
+            outputUsdPerMillion = 0.0,
+            supportsThinking = false,
+            supportsVision = true,
+            metadataSource = "Alibaba Cloud Model Studio",
+        )
+
+        val repaired = ModelRequestPolicy.enrichQwenCloudStoredModel(stale)
+
+        assertTrue(repaired.supportsThinking)
+        assertFalse(repaired.supportsVision)
+        assertTrue(repaired.reasoningMetadataAvailable)
+        assertTrue(repaired.reasoningDefaultEnabled)
+    }
+
+    @Test
+    fun qwenImageUsesDashScopeNativeSingleUserMessageSchema() {
+        val provider = DefaultCatalog.providers.single { it.id == "qwen-cloud" }
+        val imageModel = ModelEntity(
+            providerId = provider.id,
+            modelId = "qwen-image-2.0",
+            displayName = "Qwen Image 2.0",
+            contextWindow = 0,
+            maxOutputTokens = 0,
+            inputCacheHitUsdPerMillion = 0.0,
+            inputCacheMissUsdPerMillion = 0.0,
+            outputUsdPerMillion = 0.0,
+            supportsImageGeneration = true,
+        )
+        val imageRequest = request().copy(
+            provider = provider,
+            model = imageModel,
+            messages = listOf(
+                InputMessage(MessageRole.SYSTEM, "This history must not be sent to Qwen-Image"),
+                InputMessage(MessageRole.ASSISTANT, "Nor this"),
+                InputMessage(MessageRole.USER, "A red moon above Antalya"),
+            ),
+            tools = emptyList(),
+        )
+        val transport = QwenCloudImageProvider(OpenAiCompatibleProvider())
+
+        assertTrue(ModelRequestPolicy.isQwenCloudImageModel(provider, imageModel))
+        assertEquals(
+            "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+            transport.endpointFor(imageRequest),
+        )
+
+        val body = transport.buildRequestBody(imageRequest)
+        assertFalse("prompt" in body)
+        val messages = body["input"]!!.jsonObject["messages"]!!.jsonArray
+        assertEquals(1, messages.size)
+        val message = messages.single().jsonObject
+        assertEquals("user", message["role"]!!.jsonPrimitive.content)
+        val content = message["content"]!!.jsonArray
+        assertEquals(1, content.size)
+        assertEquals("A red moon above Antalya", content.single().jsonObject["text"]!!.jsonPrimitive.content)
+        assertEquals("1", body["parameters"]!!.jsonObject["n"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun qwenImageNativeResponseUrlsAreExtracted() {
+        val root = ProviderJson.parseToJsonElement(
+            """{"output":{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":[{"image":"https://example.com/result-1.png"},{"image":"https://example.com/result-2.png"}]}}]},"usage":{"image_count":2}}""",
+        ).jsonObject
+        val transport = QwenCloudImageProvider(OpenAiCompatibleProvider())
+
+        assertEquals(
+            listOf("https://example.com/result-1.png", "https://example.com/result-2.png"),
+            transport.imageUrls(root),
+        )
+    }
+
     private fun request() = ChatRequest(
         provider = ProviderEntity(
             id = "qwen-cloud",
