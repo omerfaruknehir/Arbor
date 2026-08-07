@@ -15,6 +15,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
 
@@ -52,6 +53,14 @@ class GeminiProvider(
             })
             put("generationConfig", buildJsonObject {
                 put("maxOutputTokens", JsonPrimitive(request.maxOutputTokens))
+                if (request.model.supportsImageGeneration) {
+                    // Gemini image models can return both useful text and image parts.
+                    // Be explicit so the same request shape works for generation and editing.
+                    put("responseModalities", buildJsonArray {
+                        add(JsonPrimitive("TEXT"))
+                        add(JsonPrimitive("IMAGE"))
+                    })
+                }
                 if (request.model.supportsThinking) put("thinkingConfig", buildJsonObject {
                     put("includeThoughts", JsonPrimitive(request.thinkingEnabled))
                     val modelId = request.model.modelId.lowercase()
@@ -155,19 +164,54 @@ class GeminiProvider(
             val part = element.jsonObject
             state.addPart(part)
             val functionCall = part.obj("functionCall")
-            if (functionCall != null) {
-                StreamChunk(toolCallProgress = listOf(state.addCall(part, functionCall)))
-            } else {
-                val text = part.string("text").orEmpty()
-                if (text.isEmpty()) null
-                else if (part["thought"]?.jsonPrimitive?.content == "true") StreamChunk(reasoning = text)
-                else StreamChunk(text = text)
+            val inlineData = part.obj("inlineData")
+            when {
+                functionCall != null -> StreamChunk(toolCallProgress = listOf(state.addCall(part, functionCall)))
+                inlineData != null -> {
+                    val encoded = inlineData.string("data").orEmpty()
+                    if (encoded.isBlank()) null else {
+                        val mimeType = inlineData.string("mimeType").orEmpty().ifBlank { "image/png" }
+                        val bytes = try {
+                            Base64.getDecoder().decode(encoded)
+                        } catch (error: IllegalArgumentException) {
+                            throw ProviderProtocolException("Gemini returned malformed base64 image data", error)
+                        }
+                        val extension = when (mimeType.lowercase()) {
+                            "image/jpeg", "image/jpg" -> "jpg"
+                            "image/webp" -> "webp"
+                            else -> "png"
+                        }
+                        StreamChunk(
+                            generatedImages = listOf(
+                                GeneratedImageOutput(
+                                    bytes = bytes,
+                                    mimeType = mimeType,
+                                    displayName = "gemini-generated.$extension",
+                                ),
+                            ),
+                        )
+                    }
+                }
+                else -> {
+                    val text = part.string("text").orEmpty()
+                    if (text.isEmpty()) null
+                    else if (part["thought"]?.jsonPrimitive?.content == "true") StreamChunk(reasoning = text)
+                    else StreamChunk(text = text)
+                }
             }
         }.toMutableList()
         val usage = root.obj("usageMetadata")
+        val candidateTokens = usage?.long("candidatesTokenCount")
+        val thoughtTokens = usage?.long("thoughtsTokenCount")
+        // Gemini bills thinking tokens as output in addition to candidate tokens.
+        // Preserve that in Xylune's generic billable output counter rather than
+        // silently under-pricing thinking requests.
+        val billedOutputTokens = if (candidateTokens != null || thoughtTokens != null) {
+            (candidateTokens ?: 0L) + (thoughtTokens ?: 0L)
+        } else null
         val usageChunk = StreamChunk(
             inputTokens = usage?.long("promptTokenCount"),
-            outputTokens = usage?.long("candidatesTokenCount"),
+            outputTokens = billedOutputTokens,
             cachedInputTokens = usage?.long("cachedContentTokenCount"),
             finishReason = root.array("candidates")?.firstOrNull()?.jsonObject?.string("finishReason"),
         )
