@@ -16,7 +16,8 @@ import app.xylune.chat.files.AttachmentStore
 import app.xylune.chat.files.OcrEngine
 import app.xylune.chat.generation.GenerationScheduler
 import app.xylune.chat.provider.ProviderRegistry
-import app.xylune.chat.provider.ModelDiscoveryService
+import app.xylune.chat.provider.AlibabaCloudModelDiscoveryService
+import app.xylune.chat.provider.AlibabaCloudModelPolicy
 import app.xylune.chat.provider.ModelRequestPolicy
 import app.xylune.chat.provider.HybridTokenCounter
 import app.xylune.chat.provider.OpenAiOAuthManager
@@ -74,7 +75,9 @@ class XyluneApplication : Application() {
             // documented capabilities immediately so an app update does not require the user to
             // manually refresh Qwen Cloud before thinking/image controls become correct.
             val qwenMetadataRepairs = catalogDao.allModels().mapNotNull { existing ->
-                val enriched = ModelRequestPolicy.enrichQwenCloudStoredModel(existing)
+                val enriched = AlibabaCloudModelPolicy.correct(
+                    ModelRequestPolicy.enrichQwenCloudStoredModel(existing),
+                )
                 if (enriched == existing) null else enriched.copy(metadataUpdatedAt = System.currentTimeMillis())
             }
             if (qwenMetadataRepairs.isNotEmpty()) catalogDao.upsertModels(qwenMetadataRepairs)
@@ -123,7 +126,7 @@ class AppContainer(val application: Application, val crashReporter: CrashReporte
     val repository = ChatRepository(database)
     val openAiOAuth = OpenAiOAuthManager(application, secureStore)
     val providers = ProviderRegistry(openAiOAuth)
-    val modelDiscovery = ModelDiscoveryService(openAiOAuth)
+    val modelDiscovery = AlibabaCloudModelDiscoveryService(openAiOAuth)
     val tokenCounter = HybridTokenCounter()
     val auxiliaryModels = AuxiliaryModelService(repository, providers, secureStore)
     val attachmentStore = AttachmentStore(application, database.attachmentDao())
