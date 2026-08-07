@@ -90,12 +90,44 @@ class ModelCatalogOverhaulTest {
     }
 
     @Test
+    fun `chat and image models live in separate picker modes`() {
+        val chat = model("chat", "Chat")
+        val image = model("image", "Image", imageGeneration = true)
+        val models = listOf(chat, image)
+
+        val chatChoices = filteredModelChoices(
+            providers = listOf(openRouter),
+            models = models,
+            query = "",
+            providerId = null,
+            filters = emptySet(),
+            favoriteKeys = emptySet(),
+            recentKeys = emptyList(),
+            mode = ModelPickerMode.CHAT,
+        )
+        val imageChoices = filteredModelChoices(
+            providers = listOf(openRouter),
+            models = models,
+            query = "",
+            providerId = null,
+            filters = emptySet(),
+            favoriteKeys = emptySet(),
+            recentKeys = emptyList(),
+            mode = ModelPickerMode.IMAGE,
+        )
+
+        assertEquals(listOf("chat"), chatChoices.map { it.model.modelId })
+        assertEquals(listOf("image"), imageChoices.map { it.model.modelId })
+    }
+
+    @Test
     fun `large model catalog uses a stable full screen surface`() {
         val source = java.io.File("src/main/java/app/xylune/chat/ui/ModelPickerSheet.kt").readText()
 
         assertTrue(source.contains("Dialog("))
         assertTrue(source.contains("Modifier.fillMaxSize()"))
         assertTrue(source.contains("decorFitsSystemWindows = false"))
+        assertTrue(source.contains("ModelPickerMode.IMAGE"))
         assertTrue(!source.contains("ModalBottomSheet"))
     }
 
@@ -104,6 +136,7 @@ class ModelCatalogOverhaulTest {
         name: String,
         vision: Boolean = false,
         tools: Boolean = false,
+        imageGeneration: Boolean = false,
     ) = ModelEntity(
         providerId = openRouter.id,
         modelId = id,
@@ -115,5 +148,6 @@ class ModelCatalogOverhaulTest {
         outputUsdPerMillion = 0.0,
         supportsVision = vision,
         supportsTools = tools,
+        supportsImageGeneration = imageGeneration,
     )
 }

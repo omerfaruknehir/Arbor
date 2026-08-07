@@ -62,7 +62,15 @@ data class StreamChunk(
      * transparently retrying the same model turn.
      */
     val resetCurrentAttempt: Boolean = false,
+    /** Final image outputs. These are persisted as normal assistant attachments. */
     val generatedImages: List<GeneratedImageOutput> = emptyList(),
+    /**
+     * Transient provider-rendered preview for an image request. This must never be
+     * persisted as an attachment; later previews replace it until generatedImages arrives.
+     */
+    val generatedImagePreview: GeneratedImageOutput? = null,
+    val generatedImagePreviewIndex: Int? = null,
+    val generatedImagePreviewCount: Int? = null,
 )
 
 interface ChatProvider {

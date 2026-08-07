@@ -4,8 +4,9 @@ import app.xylune.chat.data.ProviderKind
 
 class ProviderRegistry(oauth: OpenAiOAuthManager) {
     private val openAiCompatible = OpenAiCompatibleProvider()
+    private val openAiImages = OpenAiImageStreamingProvider(openAiCompatible)
     private val openAi = AlibabaCloudRequestRoutingProvider(
-        NativeWebSearchProvider(AlibabaImageRoutingProvider(openAiCompatible)),
+        NativeWebSearchProvider(AlibabaImageRoutingProvider(openAiImages)),
     )
     private val openAiOAuth = OpenAiOAuthProvider(oauth)
     private val anthropic = NativeWebSearchProvider(AnthropicProvider())

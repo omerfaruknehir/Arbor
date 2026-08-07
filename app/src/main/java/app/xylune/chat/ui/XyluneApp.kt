@@ -55,10 +55,17 @@ fun XyluneApp(viewModel: ChatViewModel, activity: Activity) {
     val linuxRun by viewModel.linuxRun.collectAsState()
     val developerSettings by viewModel.developerSettings.collectAsState()
     val providers by viewModel.providers.collectAsState()
+    val activeConversation by viewModel.conversation.collectAsState()
+    val activeModels by viewModel.models.collectAsState()
     val credentialRevision by viewModel.credentialRevision.collectAsState()
     val providerCatalogReady by viewModel.providerCatalogReady.collectAsState()
     val configuredProviders = remember(providers, credentialRevision) {
         viewModel.configuredProviders(providers)
+    }
+    val imageWorkspaceActive = remember(activeConversation, activeModels) {
+        activeConversation?.selectedModelId?.let { selectedModelId ->
+            activeModels.firstOrNull { it.modelId == selectedModelId }?.supportsImageGeneration == true
+        } == true
     }
     var providerCatalogGraceExpired by rememberSaveable { mutableStateOf(false) }
     val setupActive by viewModel.setupActive.collectAsState()
@@ -119,6 +126,7 @@ fun XyluneApp(viewModel: ChatViewModel, activity: Activity) {
         }
     }
     val latestSetupTemporarilyAway = rememberUpdatedState(setupTemporarilyAway)
+    val latestImageWorkspaceActive = rememberUpdatedState(imageWorkspaceActive)
     if (onboardingCatalogUsable && setupActive && !setupTemporarilyAway) {
         latestSetupContent.value()
         return
@@ -207,6 +215,8 @@ fun XyluneApp(viewModel: ChatViewModel, activity: Activity) {
                 when (destination) {
                     Screen.CHAT -> if (latestSetupTemporarilyAway.value) {
                         latestSetupContent.value()
+                    } else if (latestImageWorkspaceActive.value) {
+                        ImageGenerationScreen(viewModel, compactOpenDrawer)
                     } else {
                         ChatScreen(viewModel, compactOpenDrawer)
                     }
