@@ -83,8 +83,6 @@ class ModelDiscoveryService(
             val endpoint = "$baseUrl/models".toHttpUrl().newBuilder().apply {
                 when (kind) {
                     ProviderKind.OPENAI_COMPATIBLE -> if (ModelRequestPolicy.isOpenRouterBaseUrl(baseUrl)) {
-                        // The OpenRouter endpoint otherwise defaults to text output and
-                        // silently hides image-generation models from the catalog.
                         addQueryParameter("output_modalities", "all")
                         addQueryParameter("limit", MAX_MODELS.toString())
                     }
@@ -118,9 +116,6 @@ class ModelDiscoveryService(
             cursor = next
         }
         if (kind == ProviderKind.OPENAI_COMPATIBLE && ModelRequestPolicy.isOpenRouterBaseUrl(baseUrl)) {
-            // OpenRouter's dedicated Images API can contain image models that are
-            // absent from the general catalog. Fetch both authoritative catalogs
-            // and merge them so image output is discovered without name guessing.
             val imageEndpoint = "$baseUrl/images/models".toHttpUrl()
             val imageBody = try {
                 fetchPage(kind, imageEndpoint, apiKey, customHeaders)
@@ -136,9 +131,7 @@ class ModelDiscoveryService(
             val withOfficialOpenAi = ModelRequestPolicy.mergeOfficialOpenAiCatalog(baseUrl, distinct)
             if (providerId.equals("qwen-cloud", ignoreCase = true) || ModelRequestPolicy.isQwenCloudBaseUrl(baseUrl)) {
                 ModelRequestPolicy.mergeQwenCloudCatalog(providerId ?: "qwen-cloud", withOfficialOpenAi)
-            } else {
-                withOfficialOpenAi
-            }
+            } else withOfficialOpenAi
         } else distinct
         merged.ifEmpty { throw IllegalStateException("The provider returned no usable models") }
     }
@@ -204,11 +197,7 @@ class ModelDiscoveryService(
             }
             val responseBody = response.body ?: throw IllegalStateException("The provider returned an empty model list")
             val source = responseBody.source()
-            val limit = if (endpoint.host.equals("openrouter.ai", ignoreCase = true)) {
-                MAX_OPENROUTER_DISCOVERY_BYTES
-            } else {
-                MAX_DISCOVERY_BYTES
-            }
+            val limit = if (endpoint.host.equals("openrouter.ai", ignoreCase = true)) MAX_OPENROUTER_DISCOVERY_BYTES else MAX_DISCOVERY_BYTES
             source.request(limit + 1L)
             require(source.buffer.size <= limit) { "The provider's model list is unexpectedly large" }
             ProviderJson.parseToJsonElement(source.buffer.readUtf8()).jsonObject
@@ -227,40 +216,25 @@ class ModelDiscoveryService(
         val architecture = model["architecture"] as? JsonObject
         val inputModalities = architecture.stringSet("input_modalities")
         val outputModalities = architecture.stringSet("output_modalities")
-        if (openRouter && outputModalities.isNotEmpty() && outputModalities.none { it == "text" || it == "image" }) {
-            return@mapNotNull null
-        }
+        if (openRouter && outputModalities.isNotEmpty() && outputModalities.none { it == "text" || it == "image" }) return@mapNotNull null
         val supportedParameters = model.stringSet("supported_parameters")
         val topProvider = model["top_provider"] as? JsonObject
         val pricing = model["pricing"] as? JsonObject
         val reasoning = model["reasoning"] as? JsonObject
-        val efforts = reasoning?.stringSet("supported_efforts").orEmpty()
-            .mapNotNull(::parseThinkingEffort)
+        val efforts = reasoning?.stringSet("supported_efforts").orEmpty().mapNotNull(::parseThinkingEffort)
         DiscoveredModel(
             id = id,
             displayName = name,
-            contextWindow = model.int("context_length", "inputTokenLimit")
-                ?: topProvider?.int("context_length"),
-            maxOutputTokens = model.int("outputTokenLimit")
-                ?: topProvider?.int("max_completion_tokens"),
+            contextWindow = model.int("context_length", "inputTokenLimit") ?: topProvider?.int("context_length"),
+            maxOutputTokens = model.int("outputTokenLimit") ?: topProvider?.int("max_completion_tokens"),
             supportsThinking = when {
                 reasoning != null || "reasoning" in supportedParameters -> true
                 else -> model["thinking"]?.jsonPrimitive?.booleanOrNull
             },
-            supportsVision = if (openRouter) "image" in inputModalities else {
-                model.booleanCapability("supports_vision", "supportsVision", "vision")
-            },
-            supportsFiles = if (openRouter) "file" in inputModalities else {
-                model.booleanCapability("supports_files", "supportsFiles", "files")
-            },
-            supportsTools = if (openRouter) "tools" in supportedParameters else {
-                model.booleanCapability("supports_tools", "supportsTools", "tools")
-            },
-            supportsImageGeneration = model.booleanCapability(
-                "supports_image_generation",
-                "supportsImageGeneration",
-                "image_generation",
-            ) ?: when {
+            supportsVision = if (openRouter) "image" in inputModalities else model.booleanCapability("supports_vision", "supportsVision", "vision"),
+            supportsFiles = if (openRouter) "file" in inputModalities else model.booleanCapability("supports_files", "supportsFiles", "files"),
+            supportsTools = if (openRouter) "tools" in supportedParameters else model.booleanCapability("supports_tools", "supportsTools", "tools"),
+            supportsImageGeneration = model.booleanCapability("supports_image_generation", "supportsImageGeneration", "image_generation") ?: when {
                 openRouter -> "image" in outputModalities
                 ModelRequestPolicy.isOfficialOpenAiBaseUrl(baseUrlForParsing) -> imageGenerationModelHeuristic(id)
                 else -> null
@@ -272,8 +246,7 @@ class ModelDiscoveryService(
             outputUsdPerMillion = pricing.pricePerMillion("completion"),
             reasoningMetadataAvailable = reasoning != null,
             reasoningEfforts = efforts,
-            reasoningDefaultEffort = reasoning?.get("default_effort")?.jsonPrimitive?.contentOrNull
-                ?.let(::parseThinkingEffort),
+            reasoningDefaultEffort = reasoning?.get("default_effort")?.jsonPrimitive?.contentOrNull?.let(::parseThinkingEffort),
             reasoningDefaultEnabled = reasoning?.get("default_enabled")?.jsonPrimitive?.booleanOrNull ?: false,
             reasoningMandatory = reasoning?.get("mandatory")?.jsonPrimitive?.booleanOrNull ?: false,
             reasoningSupportsMaxTokens = reasoning?.get("supports_max_tokens")?.jsonPrimitive?.booleanOrNull ?: false,
@@ -281,7 +254,7 @@ class ModelDiscoveryService(
         )
     }
 
-    private fun parseGeminiModels(values: JsonArray?): List<DiscoveredModel> = values.orEmpty().mapNotNull { element ->
+    internal fun parseGeminiModels(values: JsonArray?): List<DiscoveredModel> = values.orEmpty().mapNotNull { element ->
         val model = element as? JsonObject ?: return@mapNotNull null
         val methods = (model["supportedGenerationMethods"] as? JsonArray)
             ?.mapNotNull { it.jsonPrimitive.contentOrNull }
@@ -290,15 +263,30 @@ class ModelDiscoveryService(
         val id = model["name"]?.jsonPrimitive?.contentOrNull?.removePrefix("models/")?.trim().orEmpty()
         if (id.isBlank()) return@mapNotNull null
         val name = model["displayName"]?.jsonPrimitive?.contentOrNull ?: humanize(id)
+        val imageGeneration = geminiImageGenerationModelHeuristic(id, name)
         DiscoveredModel(
             id = id,
             displayName = name,
             contextWindow = model["inputTokenLimit"]?.jsonPrimitive?.intOrNull,
             maxOutputTokens = model["outputTokenLimit"]?.jsonPrimitive?.intOrNull,
             supportsThinking = model["thinking"]?.jsonPrimitive?.booleanOrNull,
+            supportsVision = if (imageGeneration) true else model.booleanCapability("supports_vision", "supportsVision", "vision"),
+            supportsImageGeneration = imageGeneration,
+            description = model["description"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+            metadataSource = "Gemini API",
         )
     }
 
+    internal fun geminiImageGenerationModelHeuristic(id: String, displayName: String = ""): Boolean {
+        val normalized = id.substringAfterLast('/').lowercase()
+        val display = displayName.lowercase()
+        return normalized.startsWith("imagen-") ||
+            normalized.contains("image-generation") ||
+            normalized.endsWith("-image") ||
+            normalized.contains("-image-") ||
+            display.contains("image generation") ||
+            display.contains("nano banana")
+    }
 
     private fun JsonObject.booleanCapability(vararg names: String): Boolean? {
         names.forEach { name -> this[name]?.jsonPrimitive?.booleanOrNull?.let { return it } }
