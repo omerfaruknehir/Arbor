@@ -77,6 +77,15 @@ fun ChatConfigurationSheet(
             }
 
             HorizontalDivider()
+            Text("Usage", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Raw token totals recorded from provider calls. Use these with the provider's current pricing when you want to verify or calculate cost manually.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            ConversationUsageSection(conversation.id)
+
+            HorizontalDivider()
             Text("Token counting", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
