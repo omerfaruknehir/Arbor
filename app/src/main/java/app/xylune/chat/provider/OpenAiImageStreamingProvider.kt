@@ -186,8 +186,8 @@ internal class OpenAiImageStreamingProvider(
                                         displayName = if (edit) "edited-image.${imageExtension(root)}" else "generated-image.${imageExtension(root)}",
                                     ),
                                 ),
-                                inputTokens = usage.long("input_tokens"),
-                                outputTokens = usage.long("output_tokens"),
+                                inputTokens = usage?.long("input_tokens"),
+                                outputTokens = usage?.long("output_tokens"),
                                 finishReason = "stop",
                             ),
                         )
