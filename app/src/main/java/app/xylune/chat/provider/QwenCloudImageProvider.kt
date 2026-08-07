@@ -174,12 +174,12 @@ internal class QwenCloudImageProvider(
         val file = File(attachment.localPath)
         require(file.isFile) { "Could not read attached image: ${attachment.displayName}" }
         val size = file.length()
-        require(size in 1..MAX_INPUT_IMAGE_BYTES) {
-            "${attachment.displayName} exceeds Qwen-Image's 10 MB per-image input limit."
+        require(size in 1..MAX_LOCAL_BASE64_IMAGE_BYTES) {
+            "${attachment.displayName} is too large for Qwen-Image's Base64 HTTP input. Keep local images under 7 MB."
         }
         val bytes = file.readBytes()
-        require(bytes.size.toLong() <= MAX_INPUT_IMAGE_BYTES) {
-            "${attachment.displayName} exceeds Qwen-Image's 10 MB per-image input limit."
+        require(bytes.size.toLong() <= MAX_LOCAL_BASE64_IMAGE_BYTES) {
+            "${attachment.displayName} is too large for Qwen-Image's Base64 HTTP input. Keep local images under 7 MB."
         }
         return "data:$mimeType;base64,${Base64.getEncoder().encodeToString(bytes)}"
     }
@@ -227,7 +227,7 @@ internal class QwenCloudImageProvider(
             "image/gif",
         )
         const val MAX_INPUT_IMAGES = 3
-        const val MAX_INPUT_IMAGE_BYTES = 10L * 1024 * 1024
+        const val MAX_LOCAL_BASE64_IMAGE_BYTES = 7L * 1024 * 1024
         const val MAX_IMAGE_BYTES = 64L * 1024 * 1024
         const val MAX_IMAGES = 6
     }
