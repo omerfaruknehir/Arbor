@@ -70,6 +70,14 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
       - name: Verify third-party licenses
         run: ./ci/verify-third-party-licenses.sh
+      - name: Verify release notes are version scoped
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n1)"
+          test -n "$version"
+          notes="$(bash ci/resolve-release-notes.sh "$version")"
+          test -s "$notes"
       - name: Verify offline license catalog
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process :app:generateOfflineLicenseCatalog
       - name: Test, lint, and build public release
@@ -108,7 +116,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
@@ -130,8 +138,11 @@ jobs:
           published="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
             --jq ".[] | select(.tag_name == \"$tag\" and .draft == false) | .id" | head -n1)"
           if [[ -n "$published" ]]; then
+            notes="$(bash ci/resolve-release-notes.sh "$version")"
+            test -s "$notes"
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file "$notes"
             echo "should_release=false" >> "$GITHUB_OUTPUT"
-            echo "$tag is already published."
+            echo "$tag is already published; its body was synchronized to the version-specific release notes."
           else
             echo "should_release=true" >> "$GITHUB_OUTPUT"
             echo "$tag is unpublished and will use this verified build."
@@ -223,8 +234,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          notes="docs/releases/RELEASE_NOTES_${XYLUNE_VERSION}.md"
-          [[ -f "$notes" ]] || notes="CHANGELOG.md"
+          notes="$(bash ci/resolve-release-notes.sh "$XYLUNE_VERSION")"
+          test -s "$notes"
 
           mapfile -t draft_ids < <(
             gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
