@@ -396,15 +396,15 @@ class OpenAiCompatibleProvider(
     internal fun buildRequestBody(request: ChatRequest): JsonObject {
         val isDeepSeek = request.provider.id == "deepseek"
         val isOpenRouter = ModelRequestPolicy.isOpenRouter(request.provider)
-        val isQwenCloud = ModelRequestPolicy.isQwenCloud(request.provider, request.model)
+        val isAlibaba = ModelRequestPolicy.isAlibabaModelStudio(request.provider)
         return buildJsonObject {
             put("model", JsonPrimitive(request.model.modelId))
             put("stream", JsonPrimitive(true))
             put(
-                if (isQwenCloud) "max_completion_tokens" else "max_tokens",
+                if (isAlibaba) "max_completion_tokens" else "max_tokens",
                 JsonPrimitive(request.maxOutputTokens),
             )
-            if (request.provider.id in setOf("openai", "deepseek", "openrouter", "xai", "qwen-cloud") || isOpenRouter || isQwenCloud) {
+            if (request.provider.id in setOf("openai", "deepseek", "openrouter", "xai", "qwen-cloud") || isOpenRouter || isAlibaba) {
                 put("stream_options", buildJsonObject { put("include_usage", JsonPrimitive(true)) })
             }
             if (request.tools.isNotEmpty() && request.model.supportsTools) {
@@ -422,7 +422,7 @@ class OpenAiCompatibleProvider(
                 })
                 // Xylune executes one side effect at a time so interruption and replay remain deterministic.
                 put("parallel_tool_calls", JsonPrimitive(false))
-                if (isQwenCloud && (
+                if (isAlibaba && (
                         ModelRequestPolicy.isAlibabaGlmModel(request.model) ||
                             ModelRequestPolicy.isAlibabaQwenTextModel(request.model)
                     )
@@ -435,7 +435,15 @@ class OpenAiCompatibleProvider(
                 val enabled = effectiveThinkingEnabled(request.model, request.thinkingEnabled)
                 val effort = defaultThinkingEffort(request.model, request.thinkingEffort)
                 when {
-                    isQwenCloud -> {
+                    isAlibaba && ModelRequestPolicy.isAlibabaMiniMaxModel(request.model) -> {
+                        // Alibaba's MiniMax models do not accept enable_thinking. Their compatible
+                        // API uses a MiniMax-specific thinking object instead. Thinking-only M2.x
+                        // rows are marked mandatory, so this normally resolves to adaptive.
+                        put("thinking", buildJsonObject {
+                            put("type", JsonPrimitive(if (enabled) "adaptive" else "disabled"))
+                        })
+                    }
+                    isAlibaba -> {
                         put("enable_thinking", JsonPrimitive(enabled))
                         if (enabled && request.model.reasoningEffortsCsv.isNotBlank()) {
                             put("reasoning_effort", JsonPrimitive(effort.qwenCloudApiValue))
