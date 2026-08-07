@@ -1,5 +1,6 @@
 package app.xylune.chat.provider
 
+import app.xylune.chat.data.AttachmentEntity
 import app.xylune.chat.data.MessageRole
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -15,6 +16,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 /**
@@ -43,11 +46,7 @@ internal class QwenCloudImageProvider(
     private suspend fun generateImage(request: ChatRequest, emit: suspend (StreamChunk) -> Unit) =
         withContext(Dispatchers.IO) {
             val prompt = imagePrompt(request)
-            require(prompt.isNotBlank()) { "Enter a prompt for image generation" }
-            val latestUser = request.messages.lastOrNull { it.role == MessageRole.USER }
-            require(latestUser?.attachments.orEmpty().none { it.mimeType.startsWith("image/") }) {
-                "Qwen-Image supports image editing, but Xylune currently enables text-to-image generation only. Remove image attachments first."
-            }
+            require(prompt.isNotBlank()) { "Enter a prompt for image generation or editing" }
 
             val httpRequest = Request.Builder()
                 .url(endpointFor(request))
@@ -101,24 +100,31 @@ internal class QwenCloudImageProvider(
     internal fun buildRequestBody(
         request: ChatRequest,
         prompt: String = imagePrompt(request),
-    ): JsonObject = buildJsonObject {
-        put("model", JsonPrimitive(request.model.modelId))
-        put("input", buildJsonObject {
-            put("messages", buildJsonArray {
-                // Qwen-Image's synchronous native API accepts exactly one message.
-                add(buildJsonObject {
-                    put("role", JsonPrimitive("user"))
-                    put("content", buildJsonArray {
-                        add(buildJsonObject { put("text", JsonPrimitive(prompt)) })
+    ): JsonObject {
+        val inputImages = encodeInputImages(request)
+        return buildJsonObject {
+            put("model", JsonPrimitive(request.model.modelId))
+            put("input", buildJsonObject {
+                put("messages", buildJsonArray {
+                    // Qwen-Image's native API accepts exactly one user message. Fused/edit models
+                    // place up to three images in this same content array before the one text prompt.
+                    add(buildJsonObject {
+                        put("role", JsonPrimitive("user"))
+                        put("content", buildJsonArray {
+                            inputImages.forEach { imageData ->
+                                add(buildJsonObject { put("image", JsonPrimitive(imageData)) })
+                            }
+                            add(buildJsonObject { put("text", JsonPrimitive(prompt)) })
+                        })
                     })
                 })
             })
-        })
-        put("parameters", buildJsonObject {
-            put("n", JsonPrimitive(1))
-            put("prompt_extend", JsonPrimitive(true))
-            put("watermark", JsonPrimitive(false))
-        })
+            put("parameters", buildJsonObject {
+                put("n", JsonPrimitive(1))
+                put("prompt_extend", JsonPrimitive(true))
+                put("watermark", JsonPrimitive(false))
+            })
+        }
     }
 
     internal fun imageUrls(root: JsonObject): List<String> {
@@ -134,6 +140,55 @@ internal class QwenCloudImageProvider(
                     ?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
             }
         }.distinct()
+    }
+
+    private fun encodeInputImages(request: ChatRequest): List<String> {
+        val latestUser = request.messages.lastOrNull { it.role == MessageRole.USER }
+        val attachments = latestUser?.attachments.orEmpty()
+        require(attachments.all { it.mimeType.startsWith("image/") }) {
+            "Qwen-Image accepts image attachments only. Remove non-image attachments first."
+        }
+        require(attachments.size <= MAX_INPUT_IMAGES) {
+            "Qwen-Image accepts at most $MAX_INPUT_IMAGES input images per request."
+        }
+        val acceptsImages = ModelRequestPolicy.qwenCloudImageAcceptsInputImages(request.model)
+        if (!acceptsImages) {
+            require(attachments.isEmpty()) {
+                "${request.model.displayName} supports text-to-image generation but not image editing."
+            }
+            return emptyList()
+        }
+        if (ModelRequestPolicy.qwenCloudImageRequiresInputImage(request.model)) {
+            require(attachments.isNotEmpty()) {
+                "${request.model.displayName} is an image-editing model. Attach at least one image."
+            }
+        }
+        return attachments.map(::encodeAttachment)
+    }
+
+    private fun encodeAttachment(attachment: AttachmentEntity): String {
+        val mimeType = normalizedImageMimeType(attachment.mimeType)
+        require(mimeType in SUPPORTED_INPUT_MIME_TYPES) {
+            "Qwen-Image does not support ${attachment.mimeType.ifBlank { "this image format" }}."
+        }
+        val file = File(attachment.localPath)
+        require(file.isFile) { "Could not read attached image: ${attachment.displayName}" }
+        val size = file.length()
+        require(size in 1..MAX_INPUT_IMAGE_BYTES) {
+            "${attachment.displayName} exceeds Qwen-Image's 10 MB per-image input limit."
+        }
+        val bytes = file.readBytes()
+        require(bytes.size.toLong() <= MAX_INPUT_IMAGE_BYTES) {
+            "${attachment.displayName} exceeds Qwen-Image's 10 MB per-image input limit."
+        }
+        return "data:$mimeType;base64,${Base64.getEncoder().encodeToString(bytes)}"
+    }
+
+    private fun normalizedImageMimeType(raw: String): String = when (raw.lowercase()) {
+        "image/jpg" -> "image/jpeg"
+        "image/x-ms-bmp" -> "image/bmp"
+        "image/x-tiff" -> "image/tiff"
+        else -> raw.lowercase()
     }
 
     private fun imagePrompt(request: ChatRequest): String = request.messages
@@ -163,6 +218,16 @@ internal class QwenCloudImageProvider(
 
     private companion object {
         val JSON_MEDIA_TYPE = "application/json".toMediaType()
+        val SUPPORTED_INPUT_MIME_TYPES = setOf(
+            "image/jpeg",
+            "image/png",
+            "image/bmp",
+            "image/tiff",
+            "image/webp",
+            "image/gif",
+        )
+        const val MAX_INPUT_IMAGES = 3
+        const val MAX_INPUT_IMAGE_BYTES = 10L * 1024 * 1024
         const val MAX_IMAGE_BYTES = 64L * 1024 * 1024
         const val MAX_IMAGES = 6
     }
