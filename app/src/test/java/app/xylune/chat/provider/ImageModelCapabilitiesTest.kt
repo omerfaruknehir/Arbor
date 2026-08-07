@@ -18,7 +18,7 @@ class ImageModelCapabilitiesTest {
         val capabilities = requireNotNull(imageModelCapabilities(openAi, model))
 
         assertEquals(ImageInputMode.OPTIONAL, capabilities.inputMode)
-        assertEquals(12, capabilities.maxInputImages)
+        assertEquals(16, capabilities.maxInputImages)
         assertTrue(capabilities.supportsProgressivePreview)
         assertEquals(ModelRequestType.IMAGE_GENERATION, ModelRequestPolicy.requestType(openAi, model))
     }
