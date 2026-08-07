@@ -48,6 +48,38 @@ class AlibabaCloudModelPolicyTest {
     }
 
     @Test
+    fun qwenPlusAndFlashRegionalIdsKeepTheirDifferentToolCapabilities() {
+        val provider = DefaultCatalog.providers.single { it.id == "qwen-cloud" }
+        val globalPlus = AlibabaCloudModelPolicy.correct(model(provider.id, "qwen-plus"))
+        val usPlus = AlibabaCloudModelPolicy.correct(model(provider.id, "qwen-plus-us"))
+        val globalFlash = AlibabaCloudModelPolicy.correct(model(provider.id, "qwen-flash"))
+        val usFlash = AlibabaCloudModelPolicy.correct(model(provider.id, "qwen-flash-us"))
+
+        listOf(globalPlus, usPlus, globalFlash, usFlash).forEach { corrected ->
+            assertEquals(1_000_000, corrected.contextWindow)
+            assertEquals(32_768, corrected.maxOutputTokens)
+            assertTrue(corrected.supportsThinking)
+            assertFalse(corrected.supportsVision)
+        }
+        assertTrue(globalPlus.supportsTools)
+        assertTrue(globalFlash.supportsTools)
+        assertFalse(usPlus.supportsTools)
+        assertFalse(usFlash.supportsTools)
+    }
+
+    @Test
+    fun qwenRegionalSnapshotsDoNotInheritGlobalCapabilities() {
+        val provider = DefaultCatalog.providers.single { it.id == "qwen-cloud" }
+        val usPlus = AlibabaCloudModelPolicy.correct(model(provider.id, "qwen-plus-2025-12-01-us"))
+        val usFlash = AlibabaCloudModelPolicy.correct(model(provider.id, "qwen-flash-2025-07-28-us"))
+
+        assertFalse(usPlus.supportsTools)
+        assertFalse(usFlash.supportsTools)
+        assertEquals(1_000_000, usPlus.contextWindow)
+        assertEquals(1_000_000, usFlash.contextWindow)
+    }
+
+    @Test
     fun responsesSearchUsesExactSupportedIdsInsteadOfFamilyPrefixes() {
         assertTrue(AlibabaCloudModelPolicy.supportsResponsesWebSearch("qwen3.7-plus", true))
         assertTrue(AlibabaCloudModelPolicy.supportsResponsesWebSearch("qwen3.7-plus-2026-05-26", true))
@@ -55,6 +87,8 @@ class AlibabaCloudModelPolicyTest {
         assertTrue(AlibabaCloudModelPolicy.supportsResponsesWebSearch("qwen3.6-flash-2026-04-16", false))
         assertFalse(AlibabaCloudModelPolicy.supportsResponsesWebSearch("qwen3.7-plus-us", true))
         assertFalse(AlibabaCloudModelPolicy.supportsResponsesWebSearch("qwen3.7-plus-preview", true))
+        assertFalse(AlibabaCloudModelPolicy.supportsResponsesWebSearch("qwen-plus", true))
+        assertFalse(AlibabaCloudModelPolicy.supportsResponsesWebSearch("qwen-flash", true))
         assertFalse(AlibabaCloudModelPolicy.supportsResponsesWebSearch("glm-5.2", true))
         assertFalse(AlibabaCloudModelPolicy.supportsResponsesWebSearch("kimi-k2.6", true))
         assertFalse(AlibabaCloudModelPolicy.supportsResponsesWebSearch("qwen3-max", false))
