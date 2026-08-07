@@ -51,7 +51,8 @@ class KeyboardSearchDriveRegressionTest {
         assertFalse(chat.contains("ChatChromeScrollSample("))
         assertFalse(chat.contains("projectChatChromeFromScroll("))
         assertTrue(chat.contains("snapshot == null || snapshot.atLatest"))
-        assertTrue(chat.contains("Sending compacts the header"))
+        assertTrue(chat.contains("onImmediateSend = {"))
+        assertTrue(chat.contains("topAppBarState.heightOffset = limit"))
         assertTrue(chat.contains("val targetOffset = if (uiIndex <= 0) 0f else limit"))
         assertTrue(settings.contains("initialize the title once after measurement"))
     }
