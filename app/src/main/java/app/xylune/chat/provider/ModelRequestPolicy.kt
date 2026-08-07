@@ -4,6 +4,7 @@ import app.xylune.chat.data.DefaultCatalog
 import app.xylune.chat.data.ModelEntity
 import app.xylune.chat.data.ProviderEntity
 import app.xylune.chat.data.ProviderKind
+import app.xylune.chat.data.ThinkingEffort
 import java.net.URI
 
 enum class ModelRequestType { CHAT, IMAGE_GENERATION }
@@ -66,6 +67,14 @@ object ModelRequestPolicy {
 
     fun qwenCloudImageRequiresInputImage(model: ModelEntity): Boolean =
         qwenImageRequiresInputImage(model.modelId)
+
+    fun isAlibabaGlmModel(model: ModelEntity): Boolean =
+        model.modelId.substringAfterLast('/').lowercase().startsWith("glm-")
+
+    fun isAlibabaQwenTextModel(model: ModelEntity): Boolean {
+        val id = model.modelId.substringAfterLast('/').lowercase()
+        return id.startsWith("qwen") && !id.startsWith("qwen-image")
+    }
 
     fun qwenCloudImageEndpoint(provider: ProviderEntity): String {
         require(isQwenCloudBaseUrl(provider.baseUrl)) {
@@ -185,10 +194,10 @@ object ModelRequestPolicy {
             supportsVision = hint.supportsVision ?: model.supportsVision,
             supportsTools = hint.supportsTools ?: model.supportsTools,
             supportsImageGeneration = hint.supportsImageGeneration ?: model.supportsImageGeneration,
-            reasoningMetadataAvailable = model.reasoningMetadataAvailable || hint.supportsThinking == true,
-            reasoningDefaultEnabled = if (hint.supportsThinking == true) {
-                hint.reasoningDefaultEnabled
-            } else model.reasoningDefaultEnabled,
+            reasoningMetadataAvailable = hint.supportsThinking == true,
+            reasoningEffortsCsv = hint.reasoningEfforts.joinToString(",") { it.name },
+            reasoningDefaultEffort = hint.reasoningDefaultEffort?.name.orEmpty(),
+            reasoningDefaultEnabled = if (hint.supportsThinking == true) hint.reasoningDefaultEnabled else false,
             reasoningMandatory = if (hint.supportsThinking == true) hint.reasoningMandatory else false,
             metadataSource = model.metadataSource.ifBlank { "Alibaba Cloud Model Studio" },
         )
@@ -215,6 +224,8 @@ object ModelRequestPolicy {
         val supportsVision: Boolean? = null,
         val supportsTools: Boolean? = null,
         val supportsImageGeneration: Boolean? = null,
+        val reasoningEfforts: List<ThinkingEffort> = emptyList(),
+        val reasoningDefaultEffort: ThinkingEffort? = null,
         val reasoningDefaultEnabled: Boolean = false,
         val reasoningMandatory: Boolean = false,
     )
@@ -230,6 +241,8 @@ object ModelRequestPolicy {
             supportsTools = hint.supportsTools ?: model.supportsTools,
             supportsImageGeneration = hint.supportsImageGeneration ?: model.supportsImageGeneration,
             reasoningMetadataAvailable = model.reasoningMetadataAvailable || hasReasoningHint,
+            reasoningEfforts = if (model.reasoningMetadataAvailable) model.reasoningEfforts else hint.reasoningEfforts,
+            reasoningDefaultEffort = model.reasoningDefaultEffort ?: hint.reasoningDefaultEffort,
             reasoningDefaultEnabled = if (model.reasoningMetadataAvailable) {
                 model.reasoningDefaultEnabled
             } else hint.reasoningDefaultEnabled,
@@ -371,19 +384,54 @@ object ModelRequestPolicy {
                 reasoningMandatory = true,
             )
 
-            leaf.startsWith("glm-5.2") || leaf.startsWith("glm-5.1") || leaf == "glm-5" ||
-                leaf.startsWith("glm-4.7") || leaf.startsWith("glm-4.6") || leaf.startsWith("glm-4.5") -> AlibabaModelHint(
+            leaf.startsWith("glm-5.2") -> AlibabaModelHint(
                 supportsThinking = true,
                 supportsVision = false,
-                // GLM Function Calling needs Alibaba's tool_stream request option. Keep tools hidden until
-                // that transport option is wired so Xylune never advertises a control that cannot work.
-                supportsTools = false,
+                supportsTools = true,
+                reasoningEfforts = listOf(
+                    ThinkingEffort.MINIMAL,
+                    ThinkingEffort.LOW,
+                    ThinkingEffort.MEDIUM,
+                    ThinkingEffort.HIGH,
+                    ThinkingEffort.XHIGH,
+                    ThinkingEffort.MAX,
+                ),
+                reasoningDefaultEffort = ThinkingEffort.HIGH,
+                reasoningDefaultEnabled = true,
+            )
+            leaf.startsWith("glm-5.1") -> AlibabaModelHint(
+                supportsThinking = true,
+                supportsVision = false,
+                supportsTools = true,
+                reasoningEfforts = listOf(
+                    ThinkingEffort.MINIMAL,
+                    ThinkingEffort.LOW,
+                    ThinkingEffort.MEDIUM,
+                    ThinkingEffort.HIGH,
+                    ThinkingEffort.XHIGH,
+                ),
+                reasoningDefaultEffort = ThinkingEffort.HIGH,
+                reasoningDefaultEnabled = true,
+            )
+            leaf == "glm-5" || leaf.startsWith("glm-5-") -> AlibabaModelHint(
+                supportsThinking = true,
+                supportsVision = false,
+                supportsTools = true,
+                reasoningEfforts = listOf(ThinkingEffort.HIGH, ThinkingEffort.MAX),
+                reasoningDefaultEffort = ThinkingEffort.HIGH,
+                reasoningDefaultEnabled = true,
+            )
+            leaf.startsWith("glm-4.7") || leaf.startsWith("glm-4.6") || leaf.startsWith("glm-4.5") -> AlibabaModelHint(
+                supportsThinking = true,
+                supportsVision = false,
+                supportsTools = true,
                 reasoningDefaultEnabled = true,
             )
 
             leaf.startsWith("kimi-k2.7-code") -> AlibabaModelHint(
                 supportsThinking = true,
                 supportsVision = true,
+                supportsTools = true,
                 reasoningDefaultEnabled = true,
                 reasoningMandatory = true,
             )
@@ -397,7 +445,7 @@ object ModelRequestPolicy {
                 supportsThinking = true,
                 supportsVision = true,
                 supportsTools = true,
-                reasoningDefaultEnabled = id.startsWith("kimi/"),
+                reasoningDefaultEnabled = false,
             )
 
             leaf == "minimax-m2.5" || leaf.startsWith("minimax-m2.5-") -> AlibabaModelHint(
@@ -412,7 +460,15 @@ object ModelRequestPolicy {
                 reasoningMandatory = true,
             )
 
-            leaf.startsWith("deepseek-v4-") || leaf.startsWith("deepseek-v3.2") || leaf.startsWith("deepseek-v3.1") -> AlibabaModelHint(
+            leaf.startsWith("deepseek-v4-") -> AlibabaModelHint(
+                supportsThinking = true,
+                supportsVision = false,
+                supportsTools = true,
+                reasoningEfforts = listOf(ThinkingEffort.HIGH, ThinkingEffort.MAX),
+                reasoningDefaultEffort = ThinkingEffort.HIGH,
+                reasoningDefaultEnabled = false,
+            )
+            leaf.startsWith("deepseek-v3.2") || leaf.startsWith("deepseek-v3.1") -> AlibabaModelHint(
                 supportsThinking = true,
                 supportsVision = false,
                 supportsTools = true,
