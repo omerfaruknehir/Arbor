@@ -54,10 +54,7 @@ fun imageModelCapabilities(
         val editable = id.startsWith("gpt-image-") || id == "chatgpt-image-latest" || id == "dall-e-2"
         return ImageModelCapabilities(
             inputMode = if (editable) ImageInputMode.OPTIONAL else ImageInputMode.NONE,
-            // Android's multi-photo picker is already bounded to 12 items in Xylune.
-            // OpenAI accepts more for some models, but keeping one app-level cap makes
-            // the editing surface predictable and avoids huge multipart requests.
-            maxInputImages = if (editable) 12 else 0,
+            maxInputImages = if (editable) 16 else 0,
             supportsProgressivePreview = id.startsWith("gpt-image-") || id == "chatgpt-image-latest",
         )
     }
