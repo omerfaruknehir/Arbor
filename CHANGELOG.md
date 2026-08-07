@@ -1,3 +1,12 @@
+## 0.24.10 — 2026-08-06
+
+- Add first-class Qwen Cloud / Alibaba Cloud Model Studio support with a ready-to-edit international endpoint and bundled Qwen3.7/Qwen3.6 models.
+- Use Qwen-specific thinking and output-limit parameters, Model Studio Responses native search, web extraction, and returned search-source parsing.
+- Show provider-native and Xylune-managed search queries directly in the work timeline.
+- Show all returned search results in horizontally scrollable result cards instead of hiding results that were not followed by a page-fetch call.
+- Keep provider citations in Xylune source notation so native search results also feed inline pills and the response Sources bar.
+- Replace the opaque, non-dismissible stream failure notice with a closable summary, full error details, provider/model context, copy support, and Retry or Continue actions.
+
 ## 0.24.9 — 2026-08-06
 
 - Replace the vertical Markdown source list with a dedicated horizontal source bar at the bottom of completed responses.

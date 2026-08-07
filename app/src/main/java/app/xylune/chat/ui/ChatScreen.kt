@@ -154,6 +154,7 @@ import app.xylune.chat.data.ThinkingEffort
 import app.xylune.chat.agent.ToolTraceEvent
 import app.xylune.chat.agent.WebFetchResponse
 import app.xylune.chat.agent.WebSearchResponse
+import app.xylune.chat.agent.WebSearchResult
 import app.xylune.chat.provider.ThinkingLevelOption
 import app.xylune.chat.provider.defaultThinkingEffort
 import app.xylune.chat.provider.effectiveThinkingEnabled
@@ -370,6 +371,80 @@ internal fun workEventTitle(event: MessageTimelineEvent): String =
         else -> event.kind.replace('_', ' ').replaceFirstChar(Char::uppercase)
     }
 
+internal data class TimelineSourceLink(
+    val title: String,
+    val url: String,
+)
+
+private val TimelineLegacySourceLink = Regex(
+    """\[\[source\|([^|\]\n]{1,240})\|(https?://[^\]\s]+)]]""",
+    RegexOption.IGNORE_CASE,
+)
+private val TimelineCompactSourceLink = Regex(
+    """\[\[([^|\]\n]{1,240})\|(https?://[^\]\s]+)]]""",
+    RegexOption.IGNORE_CASE,
+)
+private val TimelineMarkdownSourceLink = Regex(
+    """\[([^\]\n]{1,240})]\((https?://[^)\s]+)\)""",
+    RegexOption.IGNORE_CASE,
+)
+private val TimelineRawUrl = Regex("""https?://[^\s<>()\[\]]+""", RegexOption.IGNORE_CASE)
+
+internal fun extractTimelineSourceLinks(text: String): List<TimelineSourceLink> {
+    data class LocatedLink(val offset: Int, val link: TimelineSourceLink)
+
+    val located = mutableListOf<LocatedLink>()
+    fun collect(regex: Regex) {
+        regex.findAll(text).forEach { match ->
+            val title = match.groupValues[1]
+                .replace("\\[", "[")
+                .replace("\\]", "]")
+                .replace('|', '·')
+                .trim()
+            val url = match.groupValues[2].trim().trimEnd('.', ',', ';')
+            if (url.startsWith("http://") || url.startsWith("https://")) {
+                located += LocatedLink(
+                    offset = match.range.first,
+                    link = TimelineSourceLink(title.ifBlank { url }, url),
+                )
+            }
+        }
+    }
+    collect(TimelineLegacySourceLink)
+    collect(TimelineCompactSourceLink)
+    collect(TimelineMarkdownSourceLink)
+
+    val alreadyLocated = located.mapTo(linkedSetOf()) { it.link.url }
+    TimelineRawUrl.findAll(text).forEach { match ->
+        val url = match.value.trimEnd('.', ',', ';')
+        if (alreadyLocated.add(url)) {
+            val host = runCatching { url.toUri().host }.getOrNull().orEmpty().removePrefix("www.")
+            located += LocatedLink(match.range.first, TimelineSourceLink(host.ifBlank { url }, url))
+        }
+    }
+
+    val seen = linkedSetOf<String>()
+    return located.sortedBy(LocatedLink::offset).mapNotNull { candidate ->
+        candidate.link.takeIf { seen.add(it.url) }
+    }
+}
+
+internal fun recoveryNoticeKey(message: MessageEntity): String =
+    "${message.nodeId}:${message.updatedAt}:${message.status}:${message.error.orEmpty()}"
+
+internal fun recoveryErrorSummary(message: MessageEntity): String = message.error
+    ?.lineSequence()
+    ?.map(String::trim)
+    ?.filter(String::isNotBlank)
+    ?.joinToString(" ")
+    ?.take(360)
+    ?.takeIf(String::isNotBlank)
+    ?: if (message.status == MessageStatus.ERROR) {
+        "The provider stream failed without returning additional diagnostic text."
+    } else {
+        "The response stopped before it completed."
+    }
+
 internal fun workEventStateLabel(event: MessageTimelineEvent): String = when (event.status) {
     "preparing" -> "Preparing"
     "prepared" -> "Ready"
@@ -512,6 +587,8 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     var showModelPicker by remember { mutableStateOf(false) }
     var chatMenu by remember { mutableStateOf(false) }
     var showChatConfiguration by remember { mutableStateOf(false) }
+    var dismissedRecoveryNoticeKey by rememberSaveable(conversation?.id) { mutableStateOf<String?>(null) }
+    var recoveryDetailsMessage by remember(conversation?.id) { mutableStateOf<MessageEntity?>(null) }
     val messageListState = rememberLazyListState()
     val savedScroll = remember(conversation?.id) {
         conversation?.id?.let(viewModel::chatScrollSnapshot)
@@ -746,6 +823,8 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     LaunchedEffect(conversation?.id) {
         showModelPicker = false
         chatMenu = false
+        recoveryDetailsMessage = null
+        dismissedRecoveryNoticeKey = null
         followMode = ChatFollowMode.FOLLOWING
         manualFollowHold = false
         initialPositioned = false
@@ -1215,9 +1294,10 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 }
             }
             val interrupted = recoverable.firstOrNull { candidate ->
-                candidate.status == MessageStatus.ERROR ||
+                val recoverableStatus = candidate.status == MessageStatus.ERROR ||
                     (candidate.status == MessageStatus.INTERRUPTED &&
                         candidate.error !in setOf("Steered by user", "Replaced by an edited message"))
+                recoverableStatus && recoveryNoticeKey(candidate) != dismissedRecoveryNoticeKey
             }
             AnimatedVisibility(
                 visible = interrupted != null && !generating,
@@ -1234,22 +1314,49 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         tonalElevation = 2.dp,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Row(
-                            Modifier.padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                        Column(
+                            Modifier.padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 6.dp),
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
                         ) {
-                            Icon(Icons.Outlined.WarningAmber, null, Modifier.size(18.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Outlined.WarningAmber, null, Modifier.size(18.dp))
+                                Text(
+                                    if (failed) "Request failed" else "Response paused",
+                                    Modifier.padding(start = 9.dp).weight(1f),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                )
+                                IconButton(
+                                    onClick = { dismissedRecoveryNoticeKey = recoveryNoticeKey(message) },
+                                    modifier = Modifier.size(34.dp),
+                                ) {
+                                    Icon(Icons.Outlined.Close, "Dismiss error", Modifier.size(18.dp))
+                                }
+                            }
                             Text(
-                                if (failed) "Request failed" else "Response paused",
-                                Modifier.padding(start = 9.dp).weight(1f),
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
+                                recoveryErrorSummary(message),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (failed) MaterialTheme.colorScheme.onErrorContainer
+                                else MaterialTheme.colorScheme.onSecondaryContainer,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(end = 8.dp),
                             )
-                            TextButton(onClick = {
-                                if (failed) viewModel.retryMessage(message) else viewModel.resume(message)
-                            }) {
-                                Text(if (failed) "Retry" else "Continue")
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                TextButton(onClick = { recoveryDetailsMessage = message }) {
+                                    Text("Details")
+                                }
+                                TextButton(onClick = {
+                                    dismissedRecoveryNoticeKey = recoveryNoticeKey(message)
+                                    if (failed) viewModel.retryMessage(message) else viewModel.resume(message)
+                                }) {
+                                    Text(if (failed) "Retry" else "Continue")
+                                }
                             }
                         }
                     }
@@ -1257,6 +1364,49 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             }
 
         }
+    }
+    recoveryDetailsMessage?.let { message ->
+        val dialogContext = LocalContext.current
+        val fullError = message.error?.trim().orEmpty().ifBlank {
+            "No additional diagnostic text was returned by the provider."
+        }
+        XyluneAlertDialog(
+            onDismissRequest = { recoveryDetailsMessage = null },
+            title = {
+                Text(if (message.status == MessageStatus.ERROR) "Request error" else "Interrupted response")
+            },
+            text = {
+                Column(
+                    Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        listOfNotNull(message.providerId, message.modelId).joinToString(" · ")
+                            .ifBlank { "Provider details unavailable" },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    CodeSourcePanel(
+                        language = "text",
+                        code = fullError,
+                        title = if (message.status == MessageStatus.ERROR) "ERROR" else "DETAILS",
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    dialogContext.getSystemService(android.content.ClipboardManager::class.java)
+                        .setPrimaryClip(android.content.ClipData.newPlainText("Xylune stream error", fullError))
+                }) {
+                    Icon(Icons.Outlined.ContentCopy, null, Modifier.size(17.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Copy")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { recoveryDetailsMessage = null }) { Text("Close") }
+            },
+        )
     }
     if (showChatConfiguration) {
         conversation?.let { current ->
@@ -1616,6 +1766,23 @@ private fun OrderedMessageTimeline(
                 ?: event.input.takeIf { it.startsWith("http://") || it.startsWith("https://") }
         }.toSet()
     }
+    val sourceLinks = remember(orderedEvents) {
+        buildList {
+            orderedEvents.forEach { event ->
+                addAll(extractTimelineSourceLinks(event.content))
+                if (event.kind == "fetch" && event.status == "complete") {
+                    val url = runCatching {
+                        ChatMessageJson.decodeFromString<WebFetchResponse>(event.output).url
+                    }.getOrNull()?.takeIf(String::isNotBlank)
+                        ?: event.input.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+                    url?.let { target ->
+                        val host = runCatching { target.toUri().host }.getOrNull().orEmpty().removePrefix("www.")
+                        add(TimelineSourceLink(host.ifBlank { target }, target))
+                    }
+                }
+            }
+        }.distinctBy(TimelineSourceLink::url)
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         segments.forEachIndexed { index, segment ->
             if (segment.working) {
@@ -1627,6 +1794,7 @@ private fun OrderedMessageTimeline(
                     animateStreaming = animateStreaming && activeBlock,
                     visibility = visibility,
                     usedSourceUrls = usedSourceUrls,
+                    sourceLinks = sourceLinks,
                     viewModel = viewModel,
                     workingCardViewport = workingCardViewport,
                 )
@@ -1675,6 +1843,7 @@ private fun TimelineWorkingBlock(
     animateStreaming: Boolean,
     visibility: ReasoningVisibility,
     usedSourceUrls: Set<String>,
+    sourceLinks: List<TimelineSourceLink>,
     viewModel: ChatViewModel,
     workingCardViewport: WorkingCardViewportController,
 ) {
@@ -1763,6 +1932,7 @@ private fun TimelineWorkingBlock(
                                 active = activeEvent,
                                 superseded = superseded,
                                 usedSourceUrls = usedSourceUrls,
+                                sourceLinks = sourceLinks,
                                 viewModel = viewModel,
                                 workingCardViewport = workingCardViewport,
                             )
@@ -1781,20 +1951,22 @@ private fun TimelineWorkStep(
     active: Boolean,
     superseded: Boolean,
     usedSourceUrls: Set<String>,
+    sourceLinks: List<TimelineSourceLink>,
     viewModel: ChatViewModel,
     workingCardViewport: WorkingCardViewportController,
 ) {
     val hasDetails = event.content.isNotBlank() || event.input.isNotBlank() ||
         event.output.isNotBlank() || active || superseded
+    val keepExpanded = event.kind in setOf("search", "native_search")
     var expanded by rememberSaveable("work-step-$stateKey") {
-        mutableStateOf(active)
+        mutableStateOf(active || keepExpanded)
     }
     var previouslyActive by rememberSaveable("work-step-active-$stateKey") {
         mutableStateOf(active)
     }
-    LaunchedEffect(active) {
+    LaunchedEffect(active, keepExpanded) {
         if (active != previouslyActive) {
-            expanded = active
+            expanded = active || keepExpanded
             previouslyActive = active
         }
     }
@@ -1863,13 +2035,14 @@ private fun TimelineWorkStep(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            event.kind in setOf("script", "python", "ubuntu", "search", "fetch") ->
+                            event.kind in setOf("script", "python", "ubuntu", "search", "native_search", "fetch") ->
                                 ToolStepDetails(
                                     event.kind,
                                     event.input,
                                     event.output,
                                     event.status,
                                     usedSourceUrls,
+                                    sourceLinks,
                                     viewModel,
                                     workingCardViewport,
                                 )
@@ -2038,6 +2211,7 @@ private fun ToolStepDetails(
     output: String,
     status: String,
     usedSourceUrls: Set<String>,
+    sourceLinks: List<TimelineSourceLink>,
     viewModel: ChatViewModel,
     workingCardViewport: WorkingCardViewportController,
 ) {
@@ -2045,7 +2219,14 @@ private fun ToolStepDetails(
     val showDiagnostics = developerSettings.enabled && developerSettings.toolDiagnosticsEnabled
     val language = if (kind == "python") "python" else if (kind == "ubuntu") "bash" else "text"
     when (kind) {
-        "search" -> CompactSearchToolCard(input, output, status, usedSourceUrls)
+        "search", "native_search" -> CompactSearchToolCard(
+            query = input,
+            output = output,
+            status = status,
+            usedSourceUrls = usedSourceUrls,
+            sourceLinks = sourceLinks,
+            nativeSearch = kind == "native_search",
+        )
         "fetch" -> CompactFetchToolCard(input, output, status)
         else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (showDiagnostics && input.isNotBlank()) CodeSourcePanel(
@@ -2332,50 +2513,134 @@ internal fun scriptRunSummary(result: ScriptRunResult): String {
 }
 
 @Composable
-private fun CompactSearchToolCard(query: String, output: String, status: String, usedSourceUrls: Set<String>) {
-    val parsed = remember(output) { runCatching { ChatMessageJson.decodeFromString<WebSearchResponse>(output) }.getOrNull() }
-    val usedHosts = remember(usedSourceUrls) { usedSourceUrls.mapNotNull { runCatching { it.toUri().host }.getOrNull() }.toSet() }
-    val sites = remember(parsed, usedHosts) {
-        parsed?.results.orEmpty()
-            .filter { result -> usedHosts.isNotEmpty() && runCatching { result.url.toUri().host }.getOrNull() in usedHosts }
-            .distinctBy { runCatching { it.url.toUri().host }.getOrNull() }
-            .take(8)
+private fun CompactSearchToolCard(
+    query: String,
+    output: String,
+    status: String,
+    usedSourceUrls: Set<String>,
+    sourceLinks: List<TimelineSourceLink>,
+    nativeSearch: Boolean,
+) {
+    val parsed = remember(output) {
+        runCatching { ChatMessageJson.decodeFromString<WebSearchResponse>(output) }.getOrNull()
+    }
+    val results = remember(parsed, sourceLinks, nativeSearch) {
+        val structured = parsed?.results.orEmpty()
+        val providerResults = if (nativeSearch) {
+            sourceLinks.map { source ->
+                WebSearchResult(
+                    title = source.title,
+                    url = source.url,
+                    snippet = "Result exposed by the model provider's search response.",
+                )
+            }
+        } else emptyList()
+        (structured.ifEmpty { providerResults })
+            .filter { it.url.startsWith("http://") || it.url.startsWith("https://") }
+            .distinctBy(WebSearchResult::url)
+            .take(12)
     }
     var selectedUrl by remember { mutableStateOf<String?>(null) }
+    val visibleQuery = parsed?.query?.takeIf(String::isNotBlank)
+        ?: query.takeIf(String::isNotBlank)
+        ?: "Query unavailable"
+    val engine = parsed?.engine?.takeIf(String::isNotBlank)
+        ?: if (nativeSearch) "Provider search" else "Web search"
+
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Search, null, Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
-                Text("Search", Modifier.padding(start = 7.dp), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.weight(1f))
-                Text(
-                    when (status) {
-                        "preparing" -> "Writing query…"
-                        "prepared" -> "Ready"
-                        "running" -> "Searching…"
-                        "error" -> "Search failed"
-                        else -> if (sites.isEmpty()) "No sources used" else "${sites.size} used"
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Column(Modifier.padding(start = 7.dp).weight(1f)) {
+                    Text(engine, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        when (status) {
+                            "preparing" -> "Preparing query"
+                            "prepared" -> "Query ready"
+                            "running" -> "Searching"
+                            "error" -> "Search failed"
+                            else -> if (results.isEmpty()) "No result details" else "${results.size} results"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (status == "error") MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
-            Text(parsed?.query ?: query, style = MaterialTheme.typography.bodyMedium)
-            if (sites.isNotEmpty()) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(sites.size) { index ->
-                        val result = sites[index]
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                    Text(
+                        "QUERY",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        visibleQuery,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 4,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            if (results.isNotEmpty()) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(results.size) { index ->
+                        val result = results[index]
                         val host = runCatching { result.url.toUri().host }.getOrNull().orEmpty().removePrefix("www.")
+                        val used = result.url in usedSourceUrls
                         Box {
-                            AssistChip(
+                            Surface(
                                 onClick = { selectedUrl = result.url },
-                                label = { Text(host.ifBlank { result.title }, maxLines = 1) },
-                                leadingIcon = { Icon(Icons.Outlined.TravelExplore, null, Modifier.size(15.dp)) },
-                            )
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                shape = MaterialTheme.shapes.large,
+                                modifier = Modifier.width(260.dp),
+                            ) {
+                                Column(
+                                    Modifier.padding(11.dp),
+                                    verticalArrangement = Arrangement.spacedBy(5.dp),
+                                ) {
+                                    Text(
+                                        "${index + 1}. ${result.title.ifBlank { host.ifBlank { result.url } }}",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        host.ifBlank { result.url },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    if (result.snippet.isNotBlank()) {
+                                        Text(
+                                            result.snippet,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 3,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                    if (used) {
+                                        Text(
+                                            "Opened by Xylune",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.tertiary,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                    }
+                                }
+                            }
                             XyluneDropdownMenu(
                                 expanded = selectedUrl == result.url,
                                 onDismissRequest = { selectedUrl = null },
@@ -2395,8 +2660,18 @@ private fun CompactSearchToolCard(query: String, output: String, status: String,
                         }
                     }
                 }
-            } else if (output.isNotBlank() && status == "error") {
-                Text(output.take(500), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            } else {
+                Text(
+                    when {
+                        status == "error" && output.isNotBlank() -> output.take(700)
+                        status in setOf("preparing", "prepared", "running") -> "Waiting for search results…"
+                        nativeSearch -> "The provider exposed the query but did not return result metadata or citations."
+                        else -> "No search results were returned."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (status == "error") MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

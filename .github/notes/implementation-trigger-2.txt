@@ -1,1 +1,0 @@
-Implementation is applied and tested by the pull request workflow before merge.
