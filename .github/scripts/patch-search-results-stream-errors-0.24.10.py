@@ -37,6 +37,16 @@ source = (
     + source[call_offset:].replace("chat = replace_once(", "chat = replace_first(", 1)
 )
 
+# CodeSourcePanel calls the heading parameter `title`, not `label`.
+panel_arg = '                        label = if (message.status == MessageStatus.ERROR) "ERROR" else "DETAILS",\n'
+if source.count(panel_arg) != 1:
+    raise SystemExit("error details CodeSourcePanel argument changed")
+source = source.replace(
+    panel_arg,
+    '                        title = if (message.status == MessageStatus.ERROR) "ERROR" else "DETAILS",\n',
+    1,
+)
+
 namespace = {
     "__name__": "__main__",
     "__file__": str(core_path),
