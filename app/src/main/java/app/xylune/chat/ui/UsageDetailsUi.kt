@@ -2,6 +2,7 @@ package app.xylune.chat.ui
 
 import android.content.ClipData
 import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -34,10 +36,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import app.xylune.chat.XyluneApplication
+import app.xylune.chat.data.AttachmentEntity
 import app.xylune.chat.data.GenerationUsageEntity
 import app.xylune.chat.data.MessageEntity
 import app.xylune.chat.data.MessageRole
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
@@ -57,6 +61,8 @@ internal fun MessageContextMenu(message: MessageEntity) {
     var open by remember(message.nodeId) { mutableStateOf(false) }
     var showUsage by remember(message.nodeId) { mutableStateOf(false) }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val container = remember(context) { (context.applicationContext as XyluneApplication).container }
 
     IconButton(onClick = { open = true }, modifier = Modifier.size(34.dp)) {
         Icon(Icons.Outlined.MoreVert, "Message actions", Modifier.size(18.dp))
@@ -77,7 +83,12 @@ internal fun MessageContextMenu(message: MessageEntity) {
             leadingIcon = { Icon(Icons.Outlined.Share, null) },
             onClick = {
                 open = false
-                shareMessage(context, message)
+                scope.launch {
+                    val attachments = withContext(Dispatchers.IO) {
+                        container.database.attachmentDao().forMessage(message.nodeId)
+                    }
+                    shareMessage(context, message, attachments)
+                }
             },
         )
     }
@@ -241,15 +252,11 @@ private fun UsageMetric(label: String, value: String) {
 private fun formatTokenCount(value: Long): String = "%,d".format(Locale.US, value)
 private fun formatCostMicros(value: Long): String = "$" + "%.6f".format(Locale.US, value / 1_000_000.0)
 
-private fun shareMessage(context: android.content.Context, message: MessageEntity) {
-    val app = context.applicationContext as? XyluneApplication
-    val attachments = runCatching {
-        // The share sheet is launched immediately. Attachment lookup is deliberately
-        // omitted here rather than blocking the main thread; generated/files already
-        // have their own attachment share actions. This action shares the message text.
-        app?.container
-    }.getOrNull()
-    @Suppress("UNUSED_VARIABLE") val keepContainerReference = attachments
+private fun shareMessage(
+    context: android.content.Context,
+    message: MessageEntity,
+    attachments: List<AttachmentEntity>,
+) {
     val role = when (message.role) {
         MessageRole.USER -> "You"
         MessageRole.ASSISTANT -> "Xylune"
@@ -259,10 +266,39 @@ private fun shareMessage(context: android.content.Context, message: MessageEntit
         append(role).append(":\n")
         append(message.content.ifBlank { message.reasoning })
     }
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, text)
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val shareable = attachments.mapNotNull { attachment ->
+        val file = File(attachment.localPath)
+        if (!file.isFile) return@mapNotNull null
+        runCatching {
+            attachment to FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+        }.getOrNull()
+    }
+    val intent = when (shareable.size) {
+        0 -> Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        1 -> Intent(Intent.ACTION_SEND).apply {
+            val (attachment, uri) = shareable.single()
+            type = attachment.mimeType.ifBlank { "application/octet-stream" }
+            putExtra(Intent.EXTRA_TEXT, text)
+            putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = ClipData.newUri(context.contentResolver, attachment.displayName, uri)
+        }
+        else -> Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            val mimeTypes = shareable.map { it.first.mimeType }.filter(String::isNotBlank).distinct()
+            type = mimeTypes.singleOrNull() ?: "*/*"
+            putExtra(Intent.EXTRA_TEXT, text)
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList<Uri>(shareable.map { it.second }))
+            val first = shareable.first()
+            clipData = ClipData.newUri(context.contentResolver, first.first.displayName, first.second).also { clips ->
+                shareable.drop(1).forEach { (attachment, uri) ->
+                    clips.addItem(ClipData.Item(uri))
+                }
+            }
+        }
+    }.apply {
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     runCatching {
         context.startActivity(Intent.createChooser(intent, "Share message").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
