@@ -27,7 +27,7 @@ class QwenCloudProviderTest {
     private val webFetch = NativeToolDefinition(
         name = "web_fetch",
         description = "Fetch a page",
-        parametersJson = """{"type":"object","properties":{"url":{"type":"string"},"selectors":{"type":"array","items":{"type":"string"}}}}}""",
+        parametersJson = """{"type":"object","properties":{"url":{"type":"string"},"selectors":{"type":"array","items":{"type":"string"}}}}""",
     )
 
     @Test
