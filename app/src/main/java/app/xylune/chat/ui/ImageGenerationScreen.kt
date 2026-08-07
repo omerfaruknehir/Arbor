@@ -117,16 +117,15 @@ internal fun ImageGenerationScreen(
     LaunchedEffect(conversation?.id, generating, pending.size) {
         val id = conversation?.id ?: return@LaunchedEffect
         generatedHistory = withContext(Dispatchers.IO) {
-            container.database.attachmentDao().forConversation(id)
-                .asSequence()
-                .filter { it.messageNodeId != null && it.mimeType.startsWith("image/") }
-                .filter { attachment ->
-                    val nodeId = attachment.messageNodeId ?: return@filter false
-                    container.repository.message(nodeId)?.role == MessageRole.ASSISTANT
+            val generated = mutableListOf<AttachmentEntity>()
+            for (attachment in container.database.attachmentDao().forConversation(id)) {
+                if (!attachment.mimeType.startsWith("image/")) continue
+                val nodeId = attachment.messageNodeId ?: continue
+                if (container.repository.message(nodeId)?.role == MessageRole.ASSISTANT) {
+                    generated += attachment
                 }
-                .sortedByDescending(AttachmentEntity::createdAt)
-                .take(30)
-                .toList()
+            }
+            generated.sortedByDescending(AttachmentEntity::createdAt).take(30)
         }
     }
 
@@ -147,7 +146,7 @@ internal fun ImageGenerationScreen(
 
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var pendingCameraFile by remember { mutableStateOf<File?>(null) }
-    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(12)) { uris ->
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(16)) { uris ->
         uris.forEach(viewModel::import)
     }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
@@ -187,7 +186,10 @@ internal fun ImageGenerationScreen(
                     }
                 },
                 actions = {
-                    TextButton(onClick = { showModelPicker = true }) {
+                    TextButton(
+                        onClick = { showModelPicker = true },
+                        enabled = !generating,
+                    ) {
                         Icon(Icons.Outlined.Image, null, Modifier.size(17.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(
