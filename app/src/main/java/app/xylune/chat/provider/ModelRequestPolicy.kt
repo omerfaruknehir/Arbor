@@ -59,7 +59,13 @@ object ModelRequestPolicy {
     fun isQwenCloudImageModel(provider: ProviderEntity, model: ModelEntity): Boolean =
         provider.kind == ProviderKind.OPENAI_COMPATIBLE &&
             isQwenCloudBaseUrl(provider.baseUrl) &&
-            isQwenImageGenerationModelId(model.modelId)
+            isQwenNativeImageModelId(model.modelId)
+
+    fun qwenCloudImageAcceptsInputImages(model: ModelEntity): Boolean =
+        qwenImageAcceptsInputImages(model.modelId)
+
+    fun qwenCloudImageRequiresInputImage(model: ModelEntity): Boolean =
+        qwenImageRequiresInputImage(model.modelId)
 
     fun qwenCloudImageEndpoint(provider: ProviderEntity): String {
         require(isQwenCloudBaseUrl(provider.baseUrl)) {
@@ -237,9 +243,9 @@ object ModelRequestPolicy {
         val id = rawId.trim().lowercase()
         val leaf = id.substringAfterLast('/')
         return when {
-            isQwenImageGenerationModelId(leaf) -> AlibabaModelHint(
+            isQwenNativeImageModelId(leaf) -> AlibabaModelHint(
                 supportsThinking = false,
-                supportsVision = false,
+                supportsVision = qwenImageAcceptsInputImages(leaf),
                 supportsTools = false,
                 supportsImageGeneration = true,
             )
@@ -440,8 +446,16 @@ object ModelRequestPolicy {
         return date >= threshold
     }
 
-    private fun isQwenImageGenerationModelId(rawId: String): Boolean {
-        val id = rawId.lowercase()
-        return id.startsWith("qwen-image") && !id.startsWith("qwen-image-edit")
+    private fun isQwenNativeImageModelId(rawId: String): Boolean =
+        rawId.substringAfterLast('/').lowercase().startsWith("qwen-image")
+
+    private fun qwenImageAcceptsInputImages(rawId: String): Boolean {
+        val id = rawId.substringAfterLast('/').lowercase()
+        return id.startsWith("qwen-image-2.0") ||
+            id.startsWith("qwen-image-3.0") ||
+            id.startsWith("qwen-image-edit")
     }
+
+    private fun qwenImageRequiresInputImage(rawId: String): Boolean =
+        rawId.substringAfterLast('/').lowercase().startsWith("qwen-image-edit")
 }
