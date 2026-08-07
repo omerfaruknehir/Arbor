@@ -15,7 +15,14 @@ enum class ModelRequestType { CHAT, IMAGE_GENERATION }
  * OpenAI-compatible endpoints; official OpenAI presets are authoritative.
  */
 object ModelRequestPolicy {
-    private val officialOpenAiImageIds = setOf("gpt-image-1", "gpt-image-1-mini")
+    private val officialOpenAiImageIds = setOf(
+        "gpt-image-2",
+        "gpt-image-2-2026-04-21",
+        "gpt-image-1.5",
+        "gpt-image-1.5-2025-12-16",
+        "gpt-image-1",
+        "gpt-image-1-mini",
+    )
     private val automaticOpenAiCompatiblePresetIds = setOf("openai", "deepseek", "openrouter", "xai", "qwen-cloud", "ollama")
     private val qwen3OpenSourceHybridModels = setOf(
         "qwen3-235b-a22b",
