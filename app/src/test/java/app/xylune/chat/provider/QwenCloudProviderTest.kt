@@ -6,6 +6,7 @@ import app.xylune.chat.data.MessageRole
 import app.xylune.chat.data.ModelEntity
 import app.xylune.chat.data.ProviderEntity
 import app.xylune.chat.data.ProviderKind
+import app.xylune.chat.data.ThinkingEffort
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -26,7 +27,7 @@ class QwenCloudProviderTest {
     private val webFetch = NativeToolDefinition(
         name = "web_fetch",
         description = "Fetch a page",
-        parametersJson = """{"type":"object","properties":{"url":{"type":"string"}}}""",
+        parametersJson = """{"type":"object","properties":{"url":{"type":"string"},"selectors":{"type":"array","items":{"type":"string"}}}}}""",
     )
 
     @Test
@@ -45,9 +46,46 @@ class QwenCloudProviderTest {
         val body = OpenAiCompatibleProvider().buildRequestBody(request)
 
         assertTrue(body["enable_thinking"]!!.jsonPrimitive.content.toBoolean())
+        assertFalse("reasoning_effort" in body)
         assertEquals("2048", body["max_completion_tokens"]!!.jsonPrimitive.content)
         assertFalse("max_tokens" in body)
         assertTrue(body["stream_options"]!!.jsonObject["include_usage"]!!.jsonPrimitive.content.toBoolean())
+    }
+
+    @Test
+    fun glm52UsesDocumentedEffortAndComplexToolStreamingParameters() {
+        val provider = DefaultCatalog.providers.single { it.id == "qwen-cloud" }
+        val model = ModelEntity(
+            providerId = provider.id,
+            modelId = "glm-5.2",
+            displayName = "GLM 5.2",
+            contextWindow = 198_000,
+            maxOutputTokens = 32_000,
+            inputCacheHitUsdPerMillion = 0.0,
+            inputCacheMissUsdPerMillion = 0.0,
+            outputUsdPerMillion = 0.0,
+            supportsThinking = true,
+            supportsTools = true,
+            reasoningMetadataAvailable = true,
+            reasoningEffortsCsv = "MINIMAL,LOW,MEDIUM,HIGH,XHIGH,MAX",
+            reasoningDefaultEffort = "HIGH",
+            reasoningDefaultEnabled = true,
+            metadataSource = "Alibaba Cloud Model Studio",
+        )
+        val body = OpenAiCompatibleProvider().buildRequestBody(
+            request().copy(
+                provider = provider,
+                model = model,
+                thinkingEnabled = true,
+                thinkingEffort = ThinkingEffort.MAX,
+                tools = listOf(webFetch),
+            ),
+        )
+
+        assertTrue(body["enable_thinking"]!!.jsonPrimitive.content.toBoolean())
+        assertEquals("max", body["reasoning_effort"]!!.jsonPrimitive.content)
+        assertTrue(body["tool_stream"]!!.jsonPrimitive.content.toBoolean())
+        assertTrue("tools" in body)
     }
 
     @Test
@@ -79,6 +117,7 @@ class QwenCloudProviderTest {
         val merged = ModelRequestPolicy.mergeQwenCloudCatalog(
             discovered = listOf(
                 DiscoveredModel(id = "glm-5.2", displayName = "GLM 5.2"),
+                DiscoveredModel(id = "glm-5.1", displayName = "GLM 5.1"),
                 DiscoveredModel(id = "kimi-k2.6", displayName = "Kimi K2.6"),
                 DiscoveredModel(id = "qwen3.6-plus", displayName = "Qwen3.6 Plus"),
                 DiscoveredModel(id = "qwen-image-2.0", displayName = "Qwen Image 2.0"),
@@ -91,14 +130,32 @@ class QwenCloudProviderTest {
         val glm = merged.single { it.id == "glm-5.2" }
         assertEquals(true, glm.supportsThinking)
         assertEquals(false, glm.supportsVision)
+        assertEquals(true, glm.supportsTools)
         assertTrue(glm.reasoningMetadataAvailable)
+        assertEquals(
+            listOf(
+                ThinkingEffort.MINIMAL,
+                ThinkingEffort.LOW,
+                ThinkingEffort.MEDIUM,
+                ThinkingEffort.HIGH,
+                ThinkingEffort.XHIGH,
+                ThinkingEffort.MAX,
+            ),
+            glm.reasoningEfforts,
+        )
+        assertEquals(ThinkingEffort.HIGH, glm.reasoningDefaultEffort)
         assertTrue(glm.reasoningDefaultEnabled)
+
+        val glm51 = merged.single { it.id == "glm-5.1" }
+        assertFalse(ThinkingEffort.MAX in glm51.reasoningEfforts)
+        assertEquals(ThinkingEffort.XHIGH, glm51.reasoningEfforts.last())
 
         val kimi = merged.single { it.id == "kimi-k2.6" }
         assertEquals(true, kimi.supportsThinking)
         assertEquals(true, kimi.supportsVision)
         assertEquals(true, kimi.supportsTools)
         assertFalse(kimi.reasoningDefaultEnabled)
+        assertTrue(kimi.reasoningEfforts.isEmpty())
 
         val qwen = merged.single { it.id == "qwen3.6-plus" }
         assertEquals(true, qwen.supportsThinking)
@@ -106,6 +163,7 @@ class QwenCloudProviderTest {
         assertEquals(true, qwen.supportsTools)
         assertEquals(1_000_000, qwen.contextWindow)
         assertEquals(65_536, qwen.maxOutputTokens)
+        assertTrue(qwen.reasoningEfforts.isEmpty())
 
         val image = merged.single { it.id == "qwen-image-2.0" }
         assertEquals(true, image.supportsImageGeneration)
@@ -125,6 +183,30 @@ class QwenCloudProviderTest {
         assertEquals(true, minimax.supportsThinking)
         assertTrue(minimax.reasoningMandatory)
         assertEquals(true, minimax.supportsTools)
+        assertTrue(minimax.reasoningEfforts.isEmpty())
+    }
+
+    @Test
+    fun providerManagedThinkingDoesNotInventReasoningEffortLevels() {
+        val provider = DefaultCatalog.providers.single { it.id == "qwen-cloud" }
+        val qwen = ModelRequestPolicy.enrichQwenCloudStoredModel(
+            ModelEntity(
+                providerId = provider.id,
+                modelId = "qwen3.7-plus",
+                displayName = "Qwen3.7 Plus",
+                contextWindow = 1_000_000,
+                maxOutputTokens = 65_536,
+                inputCacheHitUsdPerMillion = 0.0,
+                inputCacheMissUsdPerMillion = 0.0,
+                outputUsdPerMillion = 0.0,
+                supportsThinking = true,
+                metadataSource = "Alibaba Cloud Model Studio",
+            ),
+        )
+
+        val options = supportedThinkingLevels(provider, qwen)
+        assertEquals(listOf("Off", "On"), options.map { it.label })
+        assertTrue(options.filter { it.enabled }.all { it.effort == null })
     }
 
     @Test
@@ -174,6 +256,7 @@ class QwenCloudProviderTest {
             outputUsdPerMillion = 0.0,
             supportsThinking = false,
             supportsVision = true,
+            supportsTools = false,
             metadataSource = "Alibaba Cloud Model Studio",
         )
 
@@ -181,7 +264,10 @@ class QwenCloudProviderTest {
 
         assertTrue(repaired.supportsThinking)
         assertFalse(repaired.supportsVision)
+        assertTrue(repaired.supportsTools)
         assertTrue(repaired.reasoningMetadataAvailable)
+        assertEquals("MINIMAL,LOW,MEDIUM,HIGH,XHIGH,MAX", repaired.reasoningEffortsCsv)
+        assertEquals("HIGH", repaired.reasoningDefaultEffort)
         assertTrue(repaired.reasoningDefaultEnabled)
     }
 
