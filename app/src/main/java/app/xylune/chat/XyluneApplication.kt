@@ -72,9 +72,11 @@ class XyluneApplication : Application() {
             // Repair only Xylune-owned OpenAI image presets; user-defined models remain untouched.
             catalogDao.upsertModels(ModelRequestPolicy.officialOpenAiImageModels())
             // 0.24.10 stored Alibaba's intentionally sparse /models response verbatim. Repair
-            // documented capabilities immediately so an app update does not require the user to
-            // manually refresh Qwen Cloud before thinking/image controls become correct.
+            // documented capabilities for the built-in Qwen Cloud rows immediately so an app
+            // update does not require a manual refresh. Custom providers are corrected from
+            // their actual Alibaba endpoint during discovery/request routing instead.
             val qwenMetadataRepairs = catalogDao.allModels().mapNotNull { existing ->
+                if (!existing.providerId.equals("qwen-cloud", ignoreCase = true)) return@mapNotNull null
                 val enriched = AlibabaCloudModelPolicy.correct(
                     ModelRequestPolicy.enrichQwenCloudStoredModel(existing),
                 )
