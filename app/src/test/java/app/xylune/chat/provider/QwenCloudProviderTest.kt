@@ -1,5 +1,6 @@
 package app.xylune.chat.provider
 
+import app.xylune.chat.data.AttachmentEntity
 import app.xylune.chat.data.DefaultCatalog
 import app.xylune.chat.data.MessageRole
 import app.xylune.chat.data.ModelEntity
@@ -14,6 +15,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class QwenCloudProviderTest {
     private val webSearch = NativeToolDefinition(
@@ -80,6 +82,8 @@ class QwenCloudProviderTest {
                 DiscoveredModel(id = "kimi-k2.6", displayName = "Kimi K2.6"),
                 DiscoveredModel(id = "qwen3.6-plus", displayName = "Qwen3.6 Plus"),
                 DiscoveredModel(id = "qwen-image-2.0", displayName = "Qwen Image 2.0"),
+                DiscoveredModel(id = "qwen-image-plus", displayName = "Qwen Image Plus"),
+                DiscoveredModel(id = "qwen-image-edit-plus", displayName = "Qwen Image Edit Plus"),
                 DiscoveredModel(id = "MiniMax-M2.5", displayName = "MiniMax M2.5"),
             ),
         )
@@ -106,8 +110,16 @@ class QwenCloudProviderTest {
         val image = merged.single { it.id == "qwen-image-2.0" }
         assertEquals(true, image.supportsImageGeneration)
         assertEquals(false, image.supportsThinking)
-        assertEquals(false, image.supportsVision)
+        assertEquals(true, image.supportsVision)
         assertEquals(false, image.supportsTools)
+
+        val generationOnlyImage = merged.single { it.id == "qwen-image-plus" }
+        assertEquals(true, generationOnlyImage.supportsImageGeneration)
+        assertEquals(false, generationOnlyImage.supportsVision)
+
+        val editImage = merged.single { it.id == "qwen-image-edit-plus" }
+        assertEquals(true, editImage.supportsImageGeneration)
+        assertEquals(true, editImage.supportsVision)
 
         val minimax = merged.single { it.id == "MiniMax-M2.5" }
         assertEquals(true, minimax.supportsThinking)
@@ -176,17 +188,7 @@ class QwenCloudProviderTest {
     @Test
     fun qwenImageUsesDashScopeNativeSingleUserMessageSchema() {
         val provider = DefaultCatalog.providers.single { it.id == "qwen-cloud" }
-        val imageModel = ModelEntity(
-            providerId = provider.id,
-            modelId = "qwen-image-2.0",
-            displayName = "Qwen Image 2.0",
-            contextWindow = 0,
-            maxOutputTokens = 0,
-            inputCacheHitUsdPerMillion = 0.0,
-            inputCacheMissUsdPerMillion = 0.0,
-            outputUsdPerMillion = 0.0,
-            supportsImageGeneration = true,
-        )
+        val imageModel = imageModel(provider, "qwen-image-2.0", supportsVision = true)
         val imageRequest = request().copy(
             provider = provider,
             model = imageModel,
@@ -218,6 +220,48 @@ class QwenCloudProviderTest {
     }
 
     @Test
+    fun qwenImage20EncodesLocalAttachmentForEditing() {
+        val provider = DefaultCatalog.providers.single { it.id == "qwen-cloud" }
+        val imageModel = imageModel(provider, "qwen-image-2.0", supportsVision = true)
+        val file = File.createTempFile("qwen-image-input", ".png")
+        try {
+            file.writeBytes(byteArrayOf(0x01, 0x02, 0x03, 0x04))
+            val attachment = AttachmentEntity(
+                id = "image-1",
+                conversationId = "conversation",
+                messageNodeId = "message",
+                displayName = "input.png",
+                mimeType = "image/png",
+                sizeBytes = file.length(),
+                localPath = file.absolutePath,
+                createdAt = 0L,
+            )
+            val imageRequest = request().copy(
+                provider = provider,
+                model = imageModel,
+                messages = listOf(
+                    InputMessage(
+                        role = MessageRole.USER,
+                        content = "Make the sky purple",
+                        attachments = listOf(attachment),
+                    ),
+                ),
+                tools = emptyList(),
+            )
+
+            val body = QwenCloudImageProvider(OpenAiCompatibleProvider()).buildRequestBody(imageRequest)
+            val content = body["input"]!!.jsonObject["messages"]!!.jsonArray
+                .single().jsonObject["content"]!!.jsonArray
+
+            assertEquals(2, content.size)
+            assertTrue(content[0].jsonObject["image"]!!.jsonPrimitive.content.startsWith("data:image/png;base64,"))
+            assertEquals("Make the sky purple", content[1].jsonObject["text"]!!.jsonPrimitive.content)
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
     fun qwenImageNativeResponseUrlsAreExtracted() {
         val root = ProviderJson.parseToJsonElement(
             """{"output":{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":[{"image":"https://example.com/result-1.png"},{"image":"https://example.com/result-2.png"}]}}]},"usage":{"image_count":2}}""",
@@ -229,6 +273,19 @@ class QwenCloudProviderTest {
             transport.imageUrls(root),
         )
     }
+
+    private fun imageModel(provider: ProviderEntity, id: String, supportsVision: Boolean) = ModelEntity(
+        providerId = provider.id,
+        modelId = id,
+        displayName = id,
+        contextWindow = 0,
+        maxOutputTokens = 0,
+        inputCacheHitUsdPerMillion = 0.0,
+        inputCacheMissUsdPerMillion = 0.0,
+        outputUsdPerMillion = 0.0,
+        supportsVision = supportsVision,
+        supportsImageGeneration = true,
+    )
 
     private fun request() = ChatRequest(
         provider = ProviderEntity(
