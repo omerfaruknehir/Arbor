@@ -1,6 +1,7 @@
 package app.xylune.chat.ui
 
 import android.graphics.BitmapFactory
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,10 +27,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -37,6 +40,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.xylune.chat.generation.StreamingPreviewStore
 import app.xylune.chat.provider.ImageInputMode
 import app.xylune.chat.provider.ImageModelCapabilities
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun ImageRequestModeCard(
@@ -120,8 +125,9 @@ internal fun ImageGenerationProgressCard(
             .maxByOrNull { it.updatedAt }
     }
     val preview = current?.generatedImagePreview
-    val bitmap = remember(current?.updatedAt) {
-        preview?.bytes?.let { bytes ->
+    val bitmap by produceState<ImageBitmap?>(initialValue = null, current?.updatedAt) {
+        val bytes = preview?.bytes
+        value = if (bytes == null) null else withContext(Dispatchers.Default) {
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
         }
     }
@@ -154,15 +160,18 @@ internal fun ImageGenerationProgressCard(
                 }
             }
 
-            if (bitmap != null) {
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = "Current generated image preview",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f)
-                        .clip(RoundedCornerShape(18.dp)),
-                )
+            val decoded = bitmap
+            if (decoded != null) {
+                Crossfade(targetState = decoded, label = "ImagePreviewCrossfade") { frame ->
+                    Image(
+                        bitmap = frame,
+                        contentDescription = "Current generated image preview",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(18.dp)),
+                    )
+                }
                 val index = (current?.generatedImagePreviewIndex ?: 0) + 1
                 val count = current?.generatedImagePreviewCount
                 Text(
