@@ -13,11 +13,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -107,6 +109,7 @@ internal fun ImageGenerationProgressCard(
     providerName: String,
     modelName: String,
     supportsProgressivePreview: Boolean,
+    onStop: () -> Unit,
 ) {
     val previews by StreamingPreviewStore.previews.collectAsStateWithLifecycle()
     val current = remember(previews, conversationId) {
@@ -134,7 +137,7 @@ internal fun ImageGenerationProgressCard(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(19.dp), strokeWidth = 2.dp)
-                Column(Modifier.padding(start = 9.dp)) {
+                Column(Modifier.padding(start = 9.dp).weight(1f)) {
                     Text(
                         if (preview == null) "Generating image" else "Rendering image",
                         style = MaterialTheme.typography.labelLarge,
@@ -145,6 +148,9 @@ internal fun ImageGenerationProgressCard(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+                IconButton(onClick = onStop) {
+                    Icon(Icons.Filled.Stop, "Stop image generation")
                 }
             }
 
