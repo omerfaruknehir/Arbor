@@ -132,7 +132,7 @@ class NativeWebSearchProviderTest {
             """{"type":"response.completed","response":{"status":"completed","output":[{"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"Android 16"}},{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"Android result","annotations":[{"type":"url_citation","url":"https://example.com/android","title":"Android source"}]}]}],"usage":{"input_tokens":12,"output_tokens":5,"input_tokens_details":{"cached_tokens":2}}}}""",
         )!!
 
-        assertTrue(completed.text.contains("### Sources"))
+        assertTrue(completed.text.contains("[[Android source|https://example.com/android]]"))
         assertTrue(completed.text.contains("https://example.com/android"))
         assertTrue(completed.toolCalls.isEmpty())
         assertTrue(completed.nativeProviderPayloadJson.contains("web_search_call"))

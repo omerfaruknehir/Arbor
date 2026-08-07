@@ -49,6 +49,7 @@ internal object NativeWebSearch {
             providerId == "deepseek" || baseUrl.contains("api.deepseek.com") -> {
                 if (modelId == "deepseek-v4-flash") NativeWebSearchMode.RESPONSES else NativeWebSearchMode.NONE
             }
+            ModelRequestPolicy.isQwenCloud(request.provider, request.model) -> NativeWebSearchMode.RESPONSES
             providerId in setOf("openai", "openrouter", "xai") -> NativeWebSearchMode.RESPONSES
             baseUrl.contains("api.openai.com") ||
                 baseUrl.contains("openrouter.ai") ||
@@ -78,6 +79,7 @@ internal object NativeWebSearch {
             providerId == "openai" || baseUrl.contains("api.openai.com") -> "OpenAI native search"
             providerId == "openrouter" || baseUrl.contains("openrouter.ai") -> "OpenRouter native search"
             providerId == "xai" || baseUrl.contains("api.x.ai") -> "xAI native search"
+            ModelRequestPolicy.isQwenCloud(request.provider, request.model) -> "Qwen Cloud native search"
             baseUrl.contains("api.perplexity.ai") -> "Perplexity native search"
             request.provider.kind == ProviderKind.ANTHROPIC -> "Anthropic native search"
             request.provider.kind == ProviderKind.GEMINI -> "Google Search grounding"
@@ -140,6 +142,9 @@ internal class ResponsesApiTransport(private val client: OkHttpClient) {
         put("store", JsonPrimitive(false))
         put("max_output_tokens", JsonPrimitive(request.maxOutputTokens))
         put("parallel_tool_calls", JsonPrimitive(false))
+        if (ModelRequestPolicy.isQwenCloud(request.provider, request.model)) {
+            put("enable_thinking", JsonPrimitive(request.model.supportsThinking && request.thinkingEnabled))
+        }
         if (request.model.supportsThinking) {
             put("reasoning", buildJsonObject {
                 put(
@@ -161,6 +166,9 @@ internal class ResponsesApiTransport(private val client: OkHttpClient) {
                     })
                 }
             })
+            if (ModelRequestPolicy.isQwenCloud(request.provider, request.model) && NativeWebSearch.requestedFetch(request)) {
+                add(buildJsonObject { put("type", JsonPrimitive("web_extractor")) })
+            }
             clientTools.forEach { tool ->
                 add(buildJsonObject {
                     put("type", JsonPrimitive("function"))
@@ -305,6 +313,7 @@ internal class ResponsesApiStreamState(
                 val index = root.long("output_index")?.toInt() ?: outputItems.size
                 val item = root.obj("item") ?: return null
                 outputItems[index] = item
+                collectSearchSources(item)
                 collectCitations(item)
                 when (item.string("type")) {
                     "function_call" -> {
@@ -395,6 +404,7 @@ internal class ResponsesApiStreamState(
         response.array("output")?.forEachIndexed { index, element ->
             val item = element as? JsonObject ?: return@forEachIndexed
             outputItems[index] = item
+            collectSearchSources(item)
             collectCitations(item)
             if (item.string("type") == "function_call") {
                 calls.getOrPut(index) { CallAccumulator() }.read(item)
@@ -414,6 +424,18 @@ internal class ResponsesApiStreamState(
             "incomplete" -> response.obj("incomplete_details")?.string("reason") ?: "incomplete"
             "failed" -> "error"
             else -> response.string("status") ?: finishReason
+        }
+    }
+
+    private fun collectSearchSources(item: JsonObject?) {
+        if (item?.string("type") != "web_search_call") return
+        item.obj("action")?.array("sources").orEmpty().forEach { sourceElement ->
+            val source = sourceElement as? JsonObject ?: return@forEach
+            val url = source.string("url") ?: source.string("uri")
+            if (!url.isNullOrBlank() && url.startsWith("http")) {
+                val title = source.string("title") ?: source.string("name") ?: url
+                citations.putIfAbsent(url, title)
+            }
         }
     }
 
@@ -457,11 +479,17 @@ internal class ResponsesApiStreamState(
             .take(MAX_VISIBLE_SOURCES)
         if (entries.isEmpty()) return ""
         return buildString {
-            append("\n\n### Sources\n")
-            entries.forEach { (url, rawTitle) ->
-                val title = rawTitle.replace('\n', ' ').replace("[", "\\[").replace("]", "\\]").take(180)
-                append("- [").append(title).append("](").append(url).append(")\n")
+            append("\n\n")
+            entries.forEachIndexed { index, (url, rawTitle) ->
+                if (index > 0) append(' ')
+                val title = rawTitle.replace('\n', ' ')
+                    .replace('|', '·')
+                    .replace('[', '(')
+                    .replace(']', ')')
+                    .take(180)
+                append("[[").append(title.ifBlank { url }).append('|').append(url).append("]]" )
             }
+            append('\n')
         }
     }
 

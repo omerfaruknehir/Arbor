@@ -396,11 +396,15 @@ class OpenAiCompatibleProvider(
     internal fun buildRequestBody(request: ChatRequest): JsonObject {
         val isDeepSeek = request.provider.id == "deepseek"
         val isOpenRouter = ModelRequestPolicy.isOpenRouter(request.provider)
+        val isQwenCloud = ModelRequestPolicy.isQwenCloud(request.provider, request.model)
         return buildJsonObject {
             put("model", JsonPrimitive(request.model.modelId))
             put("stream", JsonPrimitive(true))
-            put("max_tokens", JsonPrimitive(request.maxOutputTokens))
-            if (request.provider.id in setOf("openai", "deepseek", "openrouter", "xai") || isOpenRouter) {
+            put(
+                if (isQwenCloud) "max_completion_tokens" else "max_tokens",
+                JsonPrimitive(request.maxOutputTokens),
+            )
+            if (request.provider.id in setOf("openai", "deepseek", "openrouter", "xai", "qwen-cloud") || isOpenRouter || isQwenCloud) {
                 put("stream_options", buildJsonObject { put("include_usage", JsonPrimitive(true)) })
             }
             if (request.tools.isNotEmpty() && request.model.supportsTools) {
@@ -423,6 +427,7 @@ class OpenAiCompatibleProvider(
                 val enabled = effectiveThinkingEnabled(request.model, request.thinkingEnabled)
                 val effort = defaultThinkingEffort(request.model, request.thinkingEffort)
                 when {
+                    isQwenCloud -> put("enable_thinking", JsonPrimitive(enabled))
                     isOpenRouter -> put("reasoning", buildJsonObject {
                         put("effort", JsonPrimitive(if (enabled) effort.apiValue else "none"))
                     })

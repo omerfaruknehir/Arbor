@@ -322,10 +322,16 @@ private class GeminiNativeWebSearchTransport(private val client: OkHttpClient) {
 private fun markdownSources(citations: Map<String, String>): String {
     if (citations.isEmpty()) return ""
     return buildString {
-        append("\n\n### Sources\n")
-        citations.entries.take(12).forEach { (url, rawTitle) ->
-            val title = rawTitle.replace('\n', ' ').replace("[", "\\[").replace("]", "\\]").take(180)
-            append("- [").append(title).append("](").append(url).append(")\n")
+        append("\n\n")
+        citations.entries.take(12).forEachIndexed { index, (url, rawTitle) ->
+            if (index > 0) append(' ')
+            val title = rawTitle.replace('\n', ' ')
+                .replace('|', '·')
+                .replace('[', '(')
+                .replace(']', ')')
+                .take(180)
+            append("[[").append(title.ifBlank { url }).append('|').append(url).append("]]" )
         }
+        append('\n')
     }
 }

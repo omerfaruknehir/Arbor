@@ -9,6 +9,7 @@ object DefaultCatalog {
         ProviderEntity("gemini", "Google Gemini", ProviderKind.GEMINI, "https://generativelanguage.googleapis.com/v1beta"),
         ProviderEntity("openrouter", "OpenRouter", ProviderKind.OPENAI_COMPATIBLE, "https://openrouter.ai/api/v1"),
         ProviderEntity("xai", "xAI", ProviderKind.OPENAI_COMPATIBLE, "https://api.x.ai/v1"),
+        ProviderEntity("qwen-cloud", "Qwen Cloud", ProviderKind.OPENAI_COMPATIBLE, "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"),
         ProviderEntity("generic", "OpenAI-compatible", ProviderKind.OPENAI_COMPATIBLE, "https://example.com/v1"),
         ProviderEntity("ollama", "Ollama / llama.cpp / LM Studio", ProviderKind.OPENAI_COMPATIBLE, "http://127.0.0.1:11434/v1", apiKeyRequired = false),
     )
@@ -24,6 +25,9 @@ object DefaultCatalog {
         ModelEntity("gemini", "gemini-2.5-pro", "Gemini 2.5 Pro", 1_000_000, 65_536, 0.0, 0.0, 0.0, supportsVision = true, supportsFiles = true, supportsThinking = true, supportsTools = true),
         ModelEntity("openrouter", "openrouter/auto", "OpenRouter Auto", 128_000, 32_768, 0.0, 0.0, 0.0, supportsVision = true, supportsFiles = true, supportsTools = true),
         ModelEntity("xai", "grok-3", "Grok 3", 131_072, 32_768, 0.0, 0.0, 0.0, supportsVision = true, supportsTools = true),
+        ModelEntity("qwen-cloud", "qwen3.7-max", "Qwen3.7 Max", 1_000_000, 65_536, 0.0, 0.0, 0.0, supportsVision = false, supportsFiles = false, supportsThinking = true, supportsTools = true),
+        ModelEntity("qwen-cloud", "qwen3.7-plus", "Qwen3.7 Plus", 1_000_000, 65_536, 0.0, 0.0, 0.0, supportsVision = true, supportsFiles = false, supportsThinking = true, supportsTools = true),
+        ModelEntity("qwen-cloud", "qwen3.6-flash", "Qwen3.6 Flash", 1_000_000, 65_536, 0.0, 0.0, 0.0, supportsVision = true, supportsFiles = false, supportsThinking = true, supportsTools = true),
         ModelEntity("generic", "custom-model", "Custom model", 128_000, 16_384, 0.0, 0.0, 0.0, supportsVision = true, supportsTools = true),
         ModelEntity("ollama", "local-model", "Local model", 128_000, 16_384, 0.0, 0.0, 0.0, supportsVision = true, supportsTools = true),
     )
