@@ -49,7 +49,11 @@ internal object NativeWebSearch {
             providerId == "deepseek" || baseUrl.contains("api.deepseek.com") -> {
                 if (modelId == "deepseek-v4-flash") NativeWebSearchMode.RESPONSES else NativeWebSearchMode.NONE
             }
-            ModelRequestPolicy.isQwenCloud(request.provider, request.model) -> NativeWebSearchMode.RESPONSES
+            ModelRequestPolicy.supportsAlibabaResponsesWebSearch(
+                request.provider,
+                request.model,
+                effectiveThinkingEnabled(request.model, request.thinkingEnabled),
+            ) -> NativeWebSearchMode.RESPONSES
             providerId in setOf("openai", "openrouter", "xai") -> NativeWebSearchMode.RESPONSES
             baseUrl.contains("api.openai.com") ||
                 baseUrl.contains("openrouter.ai") ||
@@ -79,7 +83,11 @@ internal object NativeWebSearch {
             providerId == "openai" || baseUrl.contains("api.openai.com") -> "OpenAI native search"
             providerId == "openrouter" || baseUrl.contains("openrouter.ai") -> "OpenRouter native search"
             providerId == "xai" || baseUrl.contains("api.x.ai") -> "xAI native search"
-            ModelRequestPolicy.isQwenCloud(request.provider, request.model) -> "Qwen Cloud native search"
+            ModelRequestPolicy.supportsAlibabaResponsesWebSearch(
+                request.provider,
+                request.model,
+                effectiveThinkingEnabled(request.model, request.thinkingEnabled),
+            ) -> "Qwen Cloud native search"
             baseUrl.contains("api.perplexity.ai") -> "Perplexity native search"
             request.provider.kind == ProviderKind.ANTHROPIC -> "Anthropic native search"
             request.provider.kind == ProviderKind.GEMINI -> "Google Search grounding"
@@ -137,15 +145,27 @@ internal class ResponsesApiTransport(private val client: OkHttpClient) {
     }
 
     internal fun buildRequestBody(request: ChatRequest): JsonObject = buildJsonObject {
+        val isAlibabaNativeSearch = ModelRequestPolicy.supportsAlibabaResponsesWebSearch(
+            request.provider,
+            request.model,
+            effectiveThinkingEnabled(request.model, request.thinkingEnabled),
+        )
         put("model", JsonPrimitive(request.model.modelId))
         put("stream", JsonPrimitive(true))
         put("store", JsonPrimitive(false))
         put("max_output_tokens", JsonPrimitive(request.maxOutputTokens))
         put("parallel_tool_calls", JsonPrimitive(false))
-        if (ModelRequestPolicy.isQwenCloud(request.provider, request.model)) {
-            put("enable_thinking", JsonPrimitive(request.model.supportsThinking && request.thinkingEnabled))
-        }
-        if (request.model.supportsThinking) {
+        if (isAlibabaNativeSearch && request.model.supportsThinking) {
+            // Alibaba accepts enable_thinking in Responses compatibility. Do not invent a
+            // reasoning effort for models whose metadata exposes only an on/off control.
+            val enabled = effectiveThinkingEnabled(request.model, request.thinkingEnabled)
+            put("enable_thinking", JsonPrimitive(enabled))
+            if (enabled && request.model.reasoningEffortsCsv.isNotBlank()) {
+                put("reasoning", buildJsonObject {
+                    put("effort", JsonPrimitive(request.thinkingEffort.responsesValue))
+                })
+            }
+        } else if (request.model.supportsThinking) {
             put("reasoning", buildJsonObject {
                 put(
                     "effort",
@@ -166,7 +186,7 @@ internal class ResponsesApiTransport(private val client: OkHttpClient) {
                     })
                 }
             })
-            if (ModelRequestPolicy.isQwenCloud(request.provider, request.model) && NativeWebSearch.requestedFetch(request)) {
+            if (isAlibabaNativeSearch && NativeWebSearch.requestedFetch(request)) {
                 add(buildJsonObject { put("type", JsonPrimitive("web_extractor")) })
             }
             clientTools.forEach { tool ->
