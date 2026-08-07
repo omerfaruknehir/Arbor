@@ -80,6 +80,7 @@ class QwenCloudProviderTest {
                 DiscoveredModel(id = "kimi-k2.6", displayName = "Kimi K2.6"),
                 DiscoveredModel(id = "qwen3.6-plus", displayName = "Qwen3.6 Plus"),
                 DiscoveredModel(id = "qwen-image-2.0", displayName = "Qwen Image 2.0"),
+                DiscoveredModel(id = "MiniMax-M2.5", displayName = "MiniMax M2.5"),
             ),
         )
 
@@ -105,7 +106,71 @@ class QwenCloudProviderTest {
         val image = merged.single { it.id == "qwen-image-2.0" }
         assertEquals(true, image.supportsImageGeneration)
         assertEquals(false, image.supportsThinking)
+        assertEquals(false, image.supportsVision)
         assertEquals(false, image.supportsTools)
+
+        val minimax = merged.single { it.id == "MiniMax-M2.5" }
+        assertEquals(true, minimax.supportsThinking)
+        assertTrue(minimax.reasoningMandatory)
+        assertEquals(true, minimax.supportsTools)
+    }
+
+    @Test
+    fun qwenVlAndMaxSnapshotsDoNotUseBroadFamilyGuesses() {
+        val merged = ModelRequestPolicy.mergeQwenCloudCatalog(
+            discovered = listOf(
+                DiscoveredModel(id = "qwen3-vl-30b-a3b-instruct", displayName = "VL Instruct"),
+                DiscoveredModel(id = "qwen3-vl-30b-a3b-thinking", displayName = "VL Thinking"),
+                DiscoveredModel(id = "qwen3-vl-plus", displayName = "VL Plus"),
+                DiscoveredModel(id = "qwen3.7-max", displayName = "Qwen3.7 Max"),
+                DiscoveredModel(id = "qwen3.7-max-2026-06-08", displayName = "Qwen3.7 Max Jun 8"),
+                DiscoveredModel(id = "qwen-plus", displayName = "Qwen Plus"),
+            ),
+        )
+
+        val instruct = merged.single { it.id == "qwen3-vl-30b-a3b-instruct" }
+        assertEquals(false, instruct.supportsThinking)
+        assertEquals(true, instruct.supportsVision)
+
+        val thinking = merged.single { it.id == "qwen3-vl-30b-a3b-thinking" }
+        assertEquals(true, thinking.supportsThinking)
+        assertTrue(thinking.reasoningMandatory)
+        assertEquals(true, thinking.supportsVision)
+
+        val vlPlus = merged.single { it.id == "qwen3-vl-plus" }
+        assertEquals(true, vlPlus.supportsThinking)
+        assertFalse(vlPlus.reasoningDefaultEnabled)
+
+        assertEquals(false, merged.single { it.id == "qwen3.7-max" }.supportsVision)
+        assertEquals(true, merged.single { it.id == "qwen3.7-max-2026-06-08" }.supportsVision)
+
+        val qwenPlus = merged.single { it.id == "qwen-plus" }
+        assertEquals(true, qwenPlus.supportsThinking)
+        assertFalse(qwenPlus.reasoningDefaultEnabled)
+    }
+
+    @Test
+    fun cachedQwenCloudRowsAreRepairedWithoutManualRefresh() {
+        val stale = ModelEntity(
+            providerId = "qwen-cloud",
+            modelId = "glm-5.2",
+            displayName = "GLM 5.2",
+            contextWindow = 198_000,
+            maxOutputTokens = 32_000,
+            inputCacheHitUsdPerMillion = 0.0,
+            inputCacheMissUsdPerMillion = 0.0,
+            outputUsdPerMillion = 0.0,
+            supportsThinking = false,
+            supportsVision = true,
+            metadataSource = "Alibaba Cloud Model Studio",
+        )
+
+        val repaired = ModelRequestPolicy.enrichQwenCloudStoredModel(stale)
+
+        assertTrue(repaired.supportsThinking)
+        assertFalse(repaired.supportsVision)
+        assertTrue(repaired.reasoningMetadataAvailable)
+        assertTrue(repaired.reasoningDefaultEnabled)
     }
 
     @Test
