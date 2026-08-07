@@ -49,6 +49,20 @@ object ModelRequestPolicy {
             (provider.id.equals("qwen-cloud", ignoreCase = true) ||
                 (isQwenCloudBaseUrl(provider.baseUrl) && model.modelId.startsWith("qwen", ignoreCase = true)))
 
+    /** Qwen-Image is served by DashScope native multimodal generation, not compatible-mode Images. */
+    fun isQwenCloudImageModel(provider: ProviderEntity, model: ModelEntity): Boolean =
+        provider.kind == ProviderKind.OPENAI_COMPATIBLE &&
+            isQwenCloudBaseUrl(provider.baseUrl) &&
+            isQwenImageGenerationModelId(model.modelId)
+
+    fun qwenCloudImageEndpoint(provider: ProviderEntity): String {
+        require(isQwenCloudBaseUrl(provider.baseUrl)) {
+            "Qwen-Image requires an Alibaba Cloud Model Studio compatible-mode base URL."
+        }
+        val uri = URI(provider.baseUrl.trim())
+        return "https://${uri.rawAuthority}/api/v1/services/aigc/multimodal-generation/generation"
+    }
+
     fun isOfficialOpenAi(provider: ProviderEntity): Boolean =
         provider.kind == ProviderKind.OPENAI_COMPATIBLE &&
             (provider.id == "openai" || isOfficialOpenAiBaseUrl(provider.baseUrl))
@@ -95,6 +109,11 @@ object ModelRequestPolicy {
         return byId.values.sortedBy { it.displayName.lowercase() }
     }
 
+    /**
+     * Model Studio's OpenAI-compatible /models response is intentionally sparse.
+     * Preserve explicit provider metadata, then fill documented capabilities for
+     * model families whose request protocol is stable enough for Xylune to use.
+     */
     fun mergeQwenCloudCatalog(
         providerId: String = "qwen-cloud",
         discovered: List<DiscoveredModel>,
@@ -127,19 +146,174 @@ object ModelRequestPolicy {
                     ?: "Alibaba Cloud Model Studio",
             )
         }
-        return byId.values.map { model ->
-            if (model.id in DefaultCatalog.models.filter { it.providerId == "qwen-cloud" }.map { it.modelId }.toSet()) model
-            else model.copy(metadataSource = model.metadataSource.ifBlank { "Alibaba Cloud Model Studio" })
-        }.sortedBy { it.displayName.lowercase() }
+        return byId.values
+            .map(::enrichAlibabaModelMetadata)
+            .map { model ->
+                model.copy(
+                    metadataSource = model.metadataSource.ifBlank {
+                        if (providerId.equals("qwen-cloud", ignoreCase = true)) {
+                            "Alibaba Cloud Model Studio"
+                        } else {
+                            "Alibaba Cloud Model Studio ($providerId)"
+                        }
+                    },
+                )
+            }
+            .sortedBy { it.displayName.lowercase() }
     }
 
     fun endpoint(provider: ProviderEntity, model: ModelEntity, continuation: Boolean = false): String {
         val root = provider.baseUrl.trimEnd('/')
         return when (requestType(provider, model)) {
-            ModelRequestType.IMAGE_GENERATION -> if (isOpenRouter(provider)) "$root/images" else "$root/images/generations"
+            ModelRequestType.IMAGE_GENERATION -> when {
+                isOpenRouter(provider) -> "$root/images"
+                isQwenCloudImageModel(provider, model) -> qwenCloudImageEndpoint(provider)
+                else -> "$root/images/generations"
+            }
             ModelRequestType.CHAT -> if (provider.id == "deepseek" && continuation) {
                 "$root/beta/chat/completions"
             } else "$root/chat/completions"
         }
+    }
+
+    private data class AlibabaModelHint(
+        val contextWindow: Int? = null,
+        val maxOutputTokens: Int? = null,
+        val supportsThinking: Boolean? = null,
+        val supportsVision: Boolean? = null,
+        val supportsTools: Boolean? = null,
+        val supportsImageGeneration: Boolean? = null,
+        val reasoningDefaultEnabled: Boolean = false,
+        val reasoningMandatory: Boolean = false,
+    )
+
+    private fun enrichAlibabaModelMetadata(model: DiscoveredModel): DiscoveredModel {
+        val hint = alibabaModelHint(model.id) ?: return model
+        val hasReasoningHint = hint.supportsThinking == true
+        return model.copy(
+            contextWindow = model.contextWindow ?: hint.contextWindow,
+            maxOutputTokens = model.maxOutputTokens ?: hint.maxOutputTokens,
+            supportsThinking = model.supportsThinking ?: hint.supportsThinking,
+            supportsVision = model.supportsVision ?: hint.supportsVision,
+            supportsTools = model.supportsTools ?: hint.supportsTools,
+            supportsImageGeneration = model.supportsImageGeneration ?: hint.supportsImageGeneration,
+            reasoningMetadataAvailable = model.reasoningMetadataAvailable || hasReasoningHint,
+            reasoningDefaultEnabled = if (model.reasoningMetadataAvailable) {
+                model.reasoningDefaultEnabled
+            } else hint.reasoningDefaultEnabled,
+            reasoningMandatory = if (model.reasoningMetadataAvailable) {
+                model.reasoningMandatory
+            } else hint.reasoningMandatory,
+        )
+    }
+
+    private fun alibabaModelHint(rawId: String): AlibabaModelHint? {
+        val id = rawId.lowercase()
+        return when {
+            isQwenImageGenerationModelId(id) -> AlibabaModelHint(
+                supportsThinking = false,
+                supportsTools = false,
+                supportsImageGeneration = true,
+            )
+            id.startsWith("qwen3.7-plus") -> AlibabaModelHint(
+                contextWindow = 1_000_000,
+                maxOutputTokens = 65_536,
+                supportsThinking = true,
+                supportsVision = true,
+                supportsTools = true,
+                reasoningDefaultEnabled = true,
+            )
+            id.startsWith("qwen3.7-max") -> AlibabaModelHint(
+                contextWindow = 1_000_000,
+                maxOutputTokens = 65_536,
+                supportsThinking = true,
+                supportsVision = false,
+                supportsTools = true,
+                reasoningDefaultEnabled = true,
+                reasoningMandatory = id.contains("max-preview") || id.contains("2026-05-17"),
+            )
+            id.startsWith("qwen3.6-plus") || id.startsWith("qwen3.6-flash") -> AlibabaModelHint(
+                contextWindow = 1_000_000,
+                maxOutputTokens = 65_536,
+                supportsThinking = true,
+                supportsVision = true,
+                supportsTools = true,
+                reasoningDefaultEnabled = true,
+            )
+            id.startsWith("qwen3.6-max-preview") -> AlibabaModelHint(
+                supportsThinking = true,
+                supportsTools = true,
+                reasoningDefaultEnabled = true,
+            )
+            id.startsWith("qwen3.6-") -> AlibabaModelHint(
+                supportsThinking = true,
+                supportsVision = true,
+                supportsTools = true,
+                reasoningDefaultEnabled = true,
+            )
+            id.startsWith("qwen3.5-") -> AlibabaModelHint(
+                contextWindow = if (id.startsWith("qwen3.5-plus") || id.startsWith("qwen3.5-flash")) 1_000_000 else null,
+                maxOutputTokens = if (id.startsWith("qwen3.5-plus") || id.startsWith("qwen3.5-flash")) 65_536 else null,
+                supportsThinking = true,
+                supportsVision = true,
+                supportsTools = true,
+                reasoningDefaultEnabled = true,
+            )
+            id.startsWith("qwen3-vl-") -> AlibabaModelHint(
+                supportsThinking = true,
+                supportsVision = true,
+                supportsTools = true,
+                reasoningDefaultEnabled = id.contains("thinking"),
+                reasoningMandatory = id.contains("thinking"),
+            )
+            id.startsWith("qvq-") -> AlibabaModelHint(
+                supportsThinking = true,
+                supportsVision = true,
+                reasoningDefaultEnabled = true,
+                reasoningMandatory = true,
+            )
+            id.startsWith("qwq-") -> AlibabaModelHint(
+                supportsThinking = true,
+                reasoningDefaultEnabled = true,
+                reasoningMandatory = true,
+            )
+            id.startsWith("glm-5.2") || id.startsWith("glm-5.1") || id == "glm-5" ||
+                id.startsWith("glm-4.7") || id.startsWith("glm-4.6") -> AlibabaModelHint(
+                supportsThinking = true,
+                supportsVision = false,
+                // GLM function calling additionally needs tool_stream; do not advertise it until that transport is enabled.
+                reasoningDefaultEnabled = true,
+            )
+            id.startsWith("kimi-k2.7-code") -> AlibabaModelHint(
+                supportsThinking = true,
+                supportsVision = true,
+                reasoningDefaultEnabled = true,
+                reasoningMandatory = true,
+            )
+            id.startsWith("kimi-k2.6") || id.startsWith("kimi-k2.5") -> AlibabaModelHint(
+                supportsThinking = true,
+                supportsVision = true,
+                supportsTools = true,
+                reasoningDefaultEnabled = false,
+            )
+            id.startsWith("deepseek-v4-") || id.startsWith("deepseek-v3.2") || id.startsWith("deepseek-v3.1") -> AlibabaModelHint(
+                supportsThinking = true,
+                supportsVision = false,
+                supportsTools = true,
+            )
+            id.startsWith("deepseek-r1") -> AlibabaModelHint(
+                supportsThinking = true,
+                supportsVision = false,
+                supportsTools = true,
+                reasoningDefaultEnabled = true,
+                reasoningMandatory = true,
+            )
+            else -> null
+        }
+    }
+
+    private fun isQwenImageGenerationModelId(rawId: String): Boolean {
+        val id = rawId.lowercase()
+        return id.startsWith("qwen-image") && !id.startsWith("qwen-image-edit")
     }
 }
