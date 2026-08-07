@@ -2,6 +2,7 @@ package app.xylune.chat.provider
 
 import app.xylune.chat.data.ModelEntity
 import app.xylune.chat.data.ProviderEntity
+import app.xylune.chat.data.ProviderKind
 
 enum class ImageInputMode {
     NONE,
@@ -47,6 +48,22 @@ fun imageModelCapabilities(
                 supportsProgressivePreview = false,
             )
         }
+    }
+
+    if (provider.kind == ProviderKind.GEMINI) {
+        val id = model.modelId.substringAfterLast('/').lowercase()
+        val maxReferences = when {
+            id.startsWith("gemini-2.5-flash-image") -> 3
+            id.contains("-image") || id.startsWith("imagen-") -> 14
+            else -> 0
+        }
+        return ImageModelCapabilities(
+            inputMode = if (maxReferences > 0) ImageInputMode.OPTIONAL else ImageInputMode.NONE,
+            maxInputImages = maxReferences,
+            // Gemini image generation currently returns the final image; do not
+            // turn internal/thought images into fabricated progressive previews.
+            supportsProgressivePreview = false,
+        )
     }
 
     if (ModelRequestPolicy.isOfficialOpenAi(provider)) {

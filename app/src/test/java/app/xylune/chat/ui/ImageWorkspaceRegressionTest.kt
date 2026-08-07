@@ -11,17 +11,19 @@ class ImageWorkspaceRegressionTest {
         ?: error("Could not locate repository file: $path")
 
     @Test
-    fun `image models use a dedicated workspace instead of chat composer controls`() {
+    fun `image models use a dedicated workspace with shared chat chrome`() {
         val app = repositoryFile("app/src/main/java/app/xylune/chat/ui/XyluneApp.kt").readText()
         val screen = repositoryFile("app/src/main/java/app/xylune/chat/ui/ImageGenerationScreen.kt").readText()
 
         assertTrue(app.contains("latestImageWorkspaceActive.value"))
         assertTrue(app.contains("ImageGenerationScreen(viewModel, compactOpenDrawer)"))
-        assertTrue(screen.contains("ImageRequestModeCard("))
+        assertTrue(screen.contains("ChatCollapsingTranslucentTopBar("))
+        assertTrue(screen.contains("xyluneBackdropBlur("))
         assertTrue(screen.contains("ImageGenerationProgressCard("))
         assertTrue(screen.contains("SendMode.QUEUE"))
         assertTrue(screen.contains("PickMultipleVisualMedia(16)"))
         assertTrue(screen.contains("TakePicture()"))
+        assertFalse(screen.contains("ImageRequestModeCard("))
         assertFalse(screen.contains("SearchComposerChip"))
         assertFalse(screen.contains("ThinkingComposerChip"))
     }

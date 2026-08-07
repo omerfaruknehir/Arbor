@@ -239,11 +239,6 @@ internal fun calculateAutoFollowSeekSpeedPxPerSecond(
         maxSpeedPxPerSecond < minSpeedPxPerSecond
     ) return 0f
 
-    // The off-screen phase cannot measure the exact pixel distance to the tail,
-    // so combine remaining-item distance with elapsed catch-up time. Both inputs
-    // use exponential curves and are then smooth-stepped: the scroll accelerates
-    // hard when far behind, but transitions continuously into the measured-tail
-    // correction once the last item enters the viewport.
     val itemFactor = 1f - exp(-0.65f * hiddenItemCount.toFloat())
     val timeFactor = 1f - exp(-5f * elapsedSeconds)
     val combined = 1f - ((1f - itemFactor) * (1f - timeFactor))
@@ -622,9 +617,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         models.firstOrNull { it.modelId == conversation?.selectedModelId }
     }
 
-    // Paging snapshots can contain hundreds of messages. Bookkeeping belongs to
-    // snapshot changes, not composition: doing this loop in Scaffold content made
-    // unrelated chrome or scroll-state recompositions O(loaded message count).
     LaunchedEffect(paging, conversation?.id) {
         snapshotFlow { paging.itemSnapshotList.items.map(MessageEntity::nodeId) }
             .distinctUntilChanged()
@@ -641,9 +633,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             }
     }
 
-    // Streaming haptics are intentionally sparse: one subtle pulse per visible
-    // text chunk, not per token/database update. Initial paging hydration only
-    // establishes a baseline and never vibrates.
     LaunchedEffect(paging, conversation?.id) {
         var activeNodeId: String? = null
         var lastLength = 0
@@ -836,9 +825,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     }
 
     LaunchedEffect(conversation?.id, paging.itemCount, initialPositioned, messageBottomInsetPx) {
-        // Do not lock the initial position until Scaffold has measured the live
-        // composer. Positioning with a zero inset is what briefly left the last
-        // response behind the input controls.
         if (!initialPositioned && paging.itemCount > 0 && messageBottomInsetPx > 0) {
             val snapshot = savedScroll
             if (snapshot != null && !snapshot.atLatest) {
@@ -855,14 +841,8 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 snapChatToBottom(messageListState, paging.itemCount - 1, messageBottomInsetPx)
             }
 
-            // Restore chrome once after the list anchor settles. Material nested
-            // scroll is the only live owner after this point; continuously deriving
-            // chrome from LazyColumn coordinates creates a feedback loop because
-            // the changing app-bar height also changes the list's top inset.
             val limit = snapshotFlow { topAppBarState.heightOffsetLimit }.first { it < 0f }
             val restoredHeightOffset = if (paging.itemCount > 0 && (snapshot == null || snapshot.atLatest)) {
-                // A non-empty chat opened at its latest message uses compact chrome,
-                // even when the short list has no physical scroll range.
                 limit
             } else {
                 chatTopBarHeightOffsetForScroll(
@@ -905,11 +885,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             }
     }
 
-    // Reattach follow mode when generation starts, but never hard-position the
-    // list here. paging.itemCount changes as tool/file/result cards are appended;
-    // snapping to lastIndex on each change briefly aligned that item at the top
-    // before the nonlinear follower moved back down. During generation, the
-    // frame-paced follower below is the sole owner of list movement.
     LaunchedEffect(generating, initialPositioned) {
         if (generating && initialPositioned) {
             manualFollowHold = false
@@ -919,11 +894,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         }
     }
 
-    // Follow the growing response from the rendered layout, not from database
-    // token events. A frame-paced loop remains active for the whole generation
-    // and briefly after completion so the final batched Markdown frame is not
-    // left under the composer. User input immediately switches followMode to
-    // DETACHED and cancels this effect.
     LaunchedEffect(
         messageListState,
         conversation?.id,
@@ -952,9 +922,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             previousFrameNanos = frameNanos
 
             if (followMode != ChatFollowMode.FOLLOWING || manualFollowHold) break
-            // Only a finger drag suspends follow. isScrollInProgress also becomes
-            // true for our own scrollBy/animate calls, which previously caused the
-            // loop to suppress itself and made auto-scroll stop altogether.
             if (userDraggingMessageList) continue
 
             val layout = messageListState.layoutInfo
@@ -963,11 +930,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             val firstVisible = layout.visibleItemsInfo.firstOrNull()
             val lastVisible = layout.visibleItemsInfo.lastOrNull()
 
-            // Room invalidates the PagingSource whenever the streamed message is
-            // updated. In a narrow refresh window LazyColumn can temporarily lose
-            // its key anchor and report item 0, even though neither the user nor
-            // the follower requested an upward scroll. Preserve the last visible
-            // message key and immediately restore it before continuing downward.
             val previousAnchor = streamingAnchorTracker.anchor
             val currentFirstIndex = firstVisible?.index ?: messageListState.firstVisibleItemIndex
             if (
@@ -1016,9 +978,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             }
 
             if (lastVisible == null || lastVisible.index < lastIndex) {
-                // Accelerate non-linearly while the tail is still off-screen. The
-                // old constant-speed seek was visibly slow after large tables,
-                // file cards, or tool groups appeared in one batch.
                 if (messageListState.canScrollForward) {
                     offscreenSeekElapsedSeconds =
                         (offscreenSeekElapsedSeconds + frameSeconds).coerceAtMost(2f)
@@ -1175,8 +1134,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     followMode = ChatFollowMode.FOLLOWING
                     val limit = topAppBarState.heightOffsetLimit
                     if (limit < 0f) {
-                        // Sending compacts the header even if this short conversation
-                        // cannot consume enough LazyColumn scroll to collapse it.
                         topAppBarState.heightOffset = limit
                         topAppBarState.contentOffset = limit
                     }
@@ -1362,7 +1319,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     }
                 }
             }
-
         }
     }
     recoveryDetailsMessage?.let { message ->
@@ -1427,7 +1383,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         )
     }
 }
-
 
 internal fun normalModelPickerModels(models: List<ModelEntity>): List<ModelEntity> =
     models.sortedBy { it.displayName.lowercase() }
@@ -1603,8 +1558,6 @@ private fun MessageCard(
                         viewModel = viewModel,
                         workingCardViewport = workingCardViewport,
                     )
-                    // Keep the renderer alive from the empty first frame so a
-                    // provider's first large chunk is revealed progressively too.
                     if (displayContent.isNotBlank() || animateStreaming) RichMessage(
                         operationScope = message.nodeId,
                         text = displayContent,
@@ -1677,6 +1630,7 @@ private fun MessageCard(
                             Icon(Icons.Outlined.Refresh, "Retry response", Modifier.size(18.dp))
                         }
                     }
+                    MessageContextMenu(message)
                 }
             }
         }
@@ -1875,72 +1829,72 @@ private fun TimelineWorkingBlock(
         }
     }
     Surface(
-            onClick = {
-                animateVisibility = true
-                workingCardViewport.applyMutation(
-                    if (expanded) WorkingCardMutation.MANUAL_COLLAPSE else WorkingCardMutation.MANUAL_EXPAND,
-                    { cardBounds },
-                ) {
-                    expanded = !expanded
+        onClick = {
+            animateVisibility = true
+            workingCardViewport.applyMutation(
+                if (expanded) WorkingCardMutation.MANUAL_COLLAPSE else WorkingCardMutation.MANUAL_EXPAND,
+                { cardBounds },
+            ) {
+                expanded = !expanded
+            }
+        },
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth().onGloballyPositioned { cardBounds = it.boundsInRoot() },
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (active) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                else if (events.any { it.status == "error" }) {
+                    Icon(Icons.Outlined.Close, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
+                } else {
+                    Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                 }
-            },
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            shape = MaterialTheme.shapes.medium,
-            modifier = Modifier.fillMaxWidth().onGloballyPositioned { cardBounds = it.boundsInRoot() },
-        ) {
-            Column(Modifier.padding(12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (active) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    else if (events.any { it.status == "error" }) {
-                        Icon(Icons.Outlined.Close, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
-                    } else {
-                        Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-                    }
-                    Column(Modifier.padding(start = 9.dp).weight(1f)) {
-                        Text(
-                            workingBlockHeadline(events, active),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            workingBlockSummary(events, active),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Icon(
-                        if (expanded) Icons.Filled.KeyboardArrowDown else Icons.Outlined.ChevronRight,
-                        if (expanded) "Collapse work details" else "Expand work details",
-                        Modifier.size(20.dp),
+                Column(Modifier.padding(start = 9.dp).weight(1f)) {
+                    Text(
+                        workingBlockHeadline(events, active),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        workingBlockSummary(events, active),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                AnimatedVisibility(
-                    visible = expanded,
-                    enter = if (animateVisibility) workingCardExpandIn() else EnterTransition.None,
-                    exit = if (animateVisibility) workingCardCollapseOut() else ExitTransition.None,
-                ) {
-                    Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        events.forEachIndexed { index, event ->
-                            val activeEvent = animateStreaming && index == events.lastIndex
-                            val runId = if (event.kind == "script") scriptRunId(event.output) else null
-                            val superseded = runId != null &&
-                                events.drop(index + 1).any { later -> scriptRunId(later.output) == runId }
-                            TimelineWorkStep(
-                                stateKey = "$stateKey:${event.id}",
-                                index = index,
-                                event = event,
-                                active = activeEvent,
-                                superseded = superseded,
-                                usedSourceUrls = usedSourceUrls,
-                                sourceLinks = sourceLinks,
-                                viewModel = viewModel,
-                                workingCardViewport = workingCardViewport,
-                            )
-                        }
+                Icon(
+                    if (expanded) Icons.Filled.KeyboardArrowDown else Icons.Outlined.ChevronRight,
+                    if (expanded) "Collapse work details" else "Expand work details",
+                    Modifier.size(20.dp),
+                )
+            }
+            AnimatedVisibility(
+                visible = expanded,
+                enter = if (animateVisibility) workingCardExpandIn() else EnterTransition.None,
+                exit = if (animateVisibility) workingCardCollapseOut() else ExitTransition.None,
+            ) {
+                Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    events.forEachIndexed { index, event ->
+                        val activeEvent = animateStreaming && index == events.lastIndex
+                        val runId = if (event.kind == "script") scriptRunId(event.output) else null
+                        val superseded = runId != null &&
+                            events.drop(index + 1).any { later -> scriptRunId(later.output) == runId }
+                        TimelineWorkStep(
+                            stateKey = "$stateKey:${event.id}",
+                            index = index,
+                            event = event,
+                            active = activeEvent,
+                            superseded = superseded,
+                            usedSourceUrls = usedSourceUrls,
+                            sourceLinks = sourceLinks,
+                            viewModel = viewModel,
+                            workingCardViewport = workingCardViewport,
+                        )
                     }
                 }
             }
         }
+    }
 }
 
 @Composable
@@ -2358,26 +2312,26 @@ private fun ScriptRunActivityCard(initial: ScriptRunResult, viewModel: ChatViewM
         ) {
             Button(
                 onClick = {
-                        error = ""
-                        rerunJob = scope.launch {
-                            runCatching { viewModel.rerunRecordedScript(initial.runId) }
-                                .onSuccess { completed ->
-                                    workingCardViewport.applyMutation(WorkingCardMutation.AUTO_EXPAND, { cardBounds }) {
-                                        results = results + completed
+                    error = ""
+                    rerunJob = scope.launch {
+                        runCatching { viewModel.rerunRecordedScript(initial.runId) }
+                            .onSuccess { completed ->
+                                workingCardViewport.applyMutation(WorkingCardMutation.AUTO_EXPAND, { cardBounds }) {
+                                    results = results + completed
+                                }
+                            }
+                            .onFailure { failure ->
+                                if (failure !is CancellationException) {
+                                    workingCardViewport.applyMutation(
+                                        WorkingCardMutation.AUTO_EXPAND,
+                                        { cardBounds },
+                                    ) {
+                                        error = failure.message.orEmpty()
                                     }
                                 }
-                                .onFailure { failure ->
-                                    if (failure !is CancellationException) {
-                                        workingCardViewport.applyMutation(
-                                            WorkingCardMutation.AUTO_EXPAND,
-                                            { cardBounds },
-                                        ) {
-                                            error = failure.message.orEmpty()
-                                        }
-                                    }
-                                }
-                        }
-                    },
+                            }
+                    }
+                },
                 enabled = rerunJob?.isActive != true,
                 modifier = Modifier.heightIn(min = 40.dp),
             ) {
@@ -2973,8 +2927,6 @@ private fun Composer(
                         .padding(bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    // Keep the first pill aligned while leaving the LazyRow's
-                    // gesture viewport edge-to-edge across the composer.
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
                         start = 36.dp,
                         end = 56.dp,
@@ -3670,6 +3622,5 @@ private fun ComposerToggleRow(
         }),
     )
 }
-
 
 private fun ChatViewModel.containerAttachments(nodeId: String) = observeAttachments(nodeId)
