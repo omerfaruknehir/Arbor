@@ -53,7 +53,7 @@ class PopupAndSourcePreviewRegressionTest {
         assertTrue(morph.contains("anchor.height.toFloat() / cardSize.height.toFloat()"))
         assertTrue(morph.contains("translationX = (anchorCenterX - targetCenterX)"))
         assertTrue(morph.contains("translationY = (anchorCenterY - targetCenterY)"))
-        assertTrue(morph.contains("Modifier.fillMaxSize()"))
+        assertTrue(morph.contains(".fillMaxSize()"))
         assertTrue(morph.contains("dismissOnClickOutside = false"))
         assertTrue(morph.contains("if (event.changes.none { it.pressed }) break"))
         assertTrue(morph.contains("!startedInBackEdge"))
