@@ -1,0 +1,88 @@
+name: Localization audit
+
+on:
+  push:
+    branches:
+      - agent/turkish-localization
+    paths:
+      - 'app/src/**/*.kt'
+      - '.github/workflows/localization-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Collect UI string literals
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast
+          import re
+
+          roots = [Path('app/src/main/java'), Path('app/src/debug/java')]
+          files = []
+          for root in roots:
+              if root.exists():
+                  files.extend(sorted(root.rglob('*.kt')))
+
+          literal_re = re.compile(r'"(?:\\.|[^"\\])*"')
+          likely_ui_names = (
+              'Text(', 'title =', 'subtitle =', 'label =', 'placeholder =',
+              'contentDescription =', 'supportingText =', 'headlineContent =',
+              'showSnackbar(', 'Toast.makeText(', 'error(', 'notice', 'message =',
+              'description =', 'emptyText =', 'buttonText =',
+          )
+          excluded_prefixes = (
+              'http://', 'https://', 'app.', 'com.', 'android.', 'xylune_',
+              'application/', 'text/', 'image/', 'model/', 'provider/',
+          )
+
+          rows = []
+          for path in files:
+              rel = path.as_posix()
+              # UI/source-facing application code only; omit generated/vendor runtime internals.
+              if '/python/' in rel or '/schemas/' in rel:
+                  continue
+              for lineno, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+                  stripped = line.strip()
+                  if stripped.startswith(('package ', 'import ', '//', '*')):
+                      continue
+                  if not any(marker in line for marker in likely_ui_names) and '/ui/' not in rel and not rel.endswith('/MainActivity.kt'):
+                      continue
+                  for match in literal_re.finditer(line):
+                      token = match.group(0)
+                      try:
+                          value = ast.literal_eval(token)
+                      except Exception:
+                          value = token[1:-1]
+                      clean = value.strip()
+                      if not clean or not re.search(r'[A-Za-z]', clean):
+                          continue
+                      if clean.startswith(excluded_prefixes):
+                          continue
+                      if re.fullmatch(r'[A-Za-z0-9_.:/+-]+', clean) and (' ' not in clean) and clean.lower() not in {
+                          'Back','Close','Cancel','Save','Delete','Edit','Retry','Search','Settings','Appearance','Privacy','About','Open','Copy','Share','Stop','Send','Images','Files','Camera','Tools','Thinking','Research','Off','On','Auto','System','Light','Dark','Refresh','Done','Next','Skip','Continue','Remove','Add','Download','Restore','Import','Export','Archive','Rename','Move','Unarchive','Install','Uninstall','Enable','Disable','Default','English','Turkish','Language'
+                      }:
+                          continue
+                      rows.append((rel, lineno, clean))
+
+          # Preserve locations, and also emit a unique list for translation work.
+          Path('build').mkdir(exist_ok=True)
+          with Path('build/localization-audit.txt').open('w', encoding='utf-8') as out:
+              out.write('=== LOCATIONS ===\n')
+              for rel, lineno, value in rows:
+                  out.write(f'{rel}:{lineno}\t{value}\n')
+              out.write('\n=== UNIQUE ===\n')
+              for value in sorted({value for _, _, value in rows}, key=lambda s: s.casefold()):
+                  out.write(value.replace('\n', r'\n') + '\n')
+          print(f'Collected {len(rows)} occurrences / {len({v for _,_,v in rows})} unique strings')
+      - uses: actions/upload-artifact@v7
+        with:
+          name: localization-audit
+          path: build/localization-audit.txt
+          retention-days: 2
