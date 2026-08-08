@@ -1,6 +1,8 @@
 ---
 layout: default
 title: Data Deletion / Veri Silme
+browser_title: Delete Xylune Data — Android BYOK AI Chat App
+description: How to delete local Xylune data, cloud backups, OAuth access, and provider-held data for the open-source Android BYOK AI chat app.
 ---
 
 # Xylune data deletion

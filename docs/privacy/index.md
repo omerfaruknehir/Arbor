@@ -1,6 +1,8 @@
 ---
 layout: default
 title: Privacy Policy / Gizlilik Politikası
+browser_title: Xylune Privacy Policy — Android BYOK AI Chat App
+description: Privacy policy for Xylune, the open-source Android BYOK AI chat app. Learn what stays on-device, what providers receive, and how cloud backups work.
 ---
 
 # Xylune Privacy Policy

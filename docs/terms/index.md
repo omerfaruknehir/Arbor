@@ -1,6 +1,8 @@
 ---
 layout: default
 title: Terms and Disclaimer / Koşullar ve Sorumluluk Reddi
+browser_title: Xylune Terms and Disclaimer — Android BYOK AI Chat App
+description: Terms and disclaimer for Xylune, the open-source Android BYOK AI chat app, including third-party providers, AI output, local execution, backups, and liability.
 ---
 
 # Xylune Terms and Disclaimer
