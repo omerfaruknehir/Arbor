@@ -7,76 +7,117 @@ browser_title: Xylune — BYOK AI Chat App for Android
 description: Xylune is an open-source BYOK AI chat app for Android that connects directly to OpenAI, Anthropic, Gemini, DeepSeek, OpenRouter, xAI, ChatGPT, and local model servers.
 ---
 
-<div class="home-banner" aria-label="Xylune BYOK AI chat app for Android banner">
-  <img src="https://raw.githubusercontent.com/omerfaruknehir/Xylune/main/branding/xylune-banner.png" alt="Xylune, an open-source BYOK AI chat app for Android">
-</div>
+<div class="home-landing">
+  <section class="home-hero" aria-labelledby="home-headline">
+    <div class="home-hero__copy">
+      <p class="home-hero__eyebrow">Open-source BYOK AI chat for Android</p>
+      <h2 class="home-hero__title" id="home-headline">Your AI. Your providers. One native app.</h2>
+      <p class="home-hero__lede"><strong>Xylune</strong> (pronounced “Zy-loon”) is a native, local-first Android chat client. Bring your own API keys, supported provider accounts, or local model servers and keep one workspace instead of being locked into a single AI service.</p>
 
-<section class="home-content" aria-labelledby="home-headline">
-  <p class="eyebrow">Open-source Android AI client</p>
-  <h2 class="headline" id="home-headline">A BYOK AI chat app for Android</h2>
-  <p class="intro"><strong>Xylune</strong> (pronounced “Zy-loon”) is a native, local-first Android chat client for people who want to bring their own API keys, provider accounts, or local model servers instead of being locked into one AI service.</p>
+      <div class="home-hero__actions">
+        <a class="button button-primary" href="https://github.com/omerfaruknehir/Xylune/releases/latest">
+          <span class="material-symbols-rounded" aria-hidden="true">download</span>
+          <span>Download for Android</span>
+        </a>
+        <a class="button button-text" href="{{ '/releases/' | relative_url }}">
+          <span>View releases</span>
+          <span class="material-symbols-rounded" aria-hidden="true">chevron_right</span>
+        </a>
+      </div>
 
-  <div class="primary-actions">
-    <a class="button button-primary" href="https://github.com/omerfaruknehir/Xylune/releases/latest">
-      <span class="material-symbols-rounded" aria-hidden="true">download</span>
-      <span>Download Xylune for Android</span>
-    </a>
-    <a class="button button-text" href="{{ '/releases/' | relative_url }}">
-      <span>All releases</span>
-      <span class="material-symbols-rounded" aria-hidden="true">chevron_right</span>
-    </a>
-  </div>
+      <div class="home-hero__meta" aria-label="Xylune highlights">
+        <span><span class="material-symbols-rounded" aria-hidden="true">lock</span>Local-first</span>
+        <span><span class="material-symbols-rounded" aria-hidden="true">android</span>Android 8+</span>
+        <span><span class="material-symbols-rounded" aria-hidden="true">code</span>Open source</span>
+      </div>
+    </div>
 
-  <section class="home-search-summary" aria-labelledby="byok-heading">
-    <p class="eyebrow">Bring your own key</p>
-    <h2 id="byok-heading">Use your own AI providers from one Android app</h2>
-    <p>Connect OpenAI, Anthropic, Gemini, DeepSeek, OpenRouter, xAI, ChatGPT, OpenAI-compatible endpoints, or a compatible local model server. Xylune sends requests directly from your Android device to the provider or server you select, without a Xylune relay backend.</p>
-    <ul class="feature-points">
-      <li><strong>BYOK multi-provider chat:</strong> use your own API access and switch between supported providers and models.</li>
-      <li><strong>Local-first storage:</strong> encrypted credentials, a local SQLCipher chat database, app-private files, and portable backups.</li>
-      <li><strong>Native Android tools:</strong> streaming chat, search, files, Markdown, LaTeX, Python, optional Linux tools, and programmable widgets.</li>
-    </ul>
+    <div class="home-hero__visual" aria-label="Xylune banner">
+      <img src="https://raw.githubusercontent.com/omerfaruknehir/Xylune/main/branding/xylune-banner.png" alt="Xylune, an open-source BYOK AI chat app for Android">
+    </div>
   </section>
 
-  <section class="home-search-summary" aria-labelledby="byok-explained-heading">
-    <h2 id="byok-explained-heading">What does BYOK mean?</h2>
-    <p>BYOK means <strong>bring your own key</strong>. Instead of buying AI access from Xylune, you connect credentials for a provider you already use. The provider remains responsible for its own model access and billing, while Xylune provides the Android chat interface and local workspace.</p>
+  <section class="home-feature-grid" aria-label="Why use Xylune">
+    <article class="home-feature">
+      <div class="home-feature__icon"><span class="material-symbols-rounded" aria-hidden="true">hub</span></div>
+      <h3>Connect what you already use</h3>
+      <p>OpenAI, Anthropic, Gemini, DeepSeek, OpenRouter, xAI, ChatGPT, OpenAI-compatible endpoints, and compatible local model servers.</p>
+    </article>
+
+    <article class="home-feature">
+      <div class="home-feature__icon"><span class="material-symbols-rounded" aria-hidden="true">shield</span></div>
+      <h3>Private by design</h3>
+      <p>Chats and credentials stay on your device. Requests go directly to the provider or server you choose—there is no Xylune relay backend.</p>
+    </article>
+
+    <article class="home-feature">
+      <div class="home-feature__icon"><span class="material-symbols-rounded" aria-hidden="true">phone_android</span></div>
+      <h3>Actually native Android</h3>
+      <p>Built with Kotlin, Jetpack Compose, and Material 3, with streaming chat, search, files, Markdown, LaTeX, Python, and optional Linux tools.</p>
+    </article>
   </section>
 
-  <aside class="privacy-note">
-    <span class="note-icon material-symbols-rounded" aria-hidden="true">shield</span>
-    <p>Cloud backups move directly between the user’s device and the destination they select. Xylune does not operate a central backup service.</p>
-  </aside>
+  <section class="home-byok" aria-labelledby="byok-heading">
+    <div>
+      <p class="home-section__eyebrow">Bring your own key</p>
+      <h2 class="home-section__title" id="byok-heading">BYOK without the friction</h2>
+      <p class="home-section__copy">BYOK means <strong>bring your own key</strong>. Xylune does not sell model access: connect a provider you already use, choose your models, and keep the Android interface and local workspace separate from the provider.</p>
+    </div>
 
-  <ul class="destination-list" aria-label="Xylune resources">
-    <li><a href="{{ '/releases/' | relative_url }}">Xylune releases and Android APK downloads</a></li>
-    <li><a href="https://github.com/omerfaruknehir/Xylune">Xylune source code on GitHub</a></li>
-    <li><a href="https://github.com/omerfaruknehir/Xylune/issues">Xylune support and issues</a></li>
-    <li><a href="{{ '/privacy/' | relative_url }}">Privacy Policy <span>/ Gizlilik ve KVKK Aydınlatma Metni</span></a></li>
-    <li><a href="{{ '/terms/' | relative_url }}">Terms and Disclaimer <span>/ Koşullar ve Sorumluluk Reddi</span></a></li>
-    <li><a href="{{ '/data-deletion/' | relative_url }}">Data Deletion <span>/ Veri Silme</span></a></li>
-  </ul>
+    <div class="home-byok__list">
+      <div class="home-byok__item">
+        <span class="material-symbols-rounded" aria-hidden="true">key</span>
+        <div><strong>Your access</strong><span>Use your own API credentials, a supported account connection, or a local endpoint.</span></div>
+      </div>
+      <div class="home-byok__item">
+        <span class="material-symbols-rounded" aria-hidden="true">swap_horiz</span>
+        <div><strong>Your choice of provider</strong><span>Switch providers and models without moving to a different chat app.</span></div>
+      </div>
+      <div class="home-byok__item">
+        <span class="material-symbols-rounded" aria-hidden="true">database</span>
+        <div><strong>Your local workspace</strong><span>Keep conversations, attachments, projects, and settings in Xylune's app-private storage.</span></div>
+      </div>
+    </div>
+  </section>
 
-  <div class="resource-card" aria-label="Legal and privacy documents">
-    <a class="resource-row" href="{{ '/privacy/' | relative_url }}">
-      <span class="material-symbols-rounded resource-icon" aria-hidden="true">shield</span>
-      <span><strong>Privacy Policy</strong><small>What Xylune can—and cannot—access.</small></span>
-      <span class="material-symbols-rounded row-arrow" aria-hidden="true">chevron_right</span>
-    </a>
-    <a class="resource-row" href="{{ '/terms/' | relative_url }}">
-      <span class="material-symbols-rounded resource-icon" aria-hidden="true">description</span>
-      <span><strong>Terms and Disclaimer</strong><small>Short terms for local open-source software.</small></span>
-      <span class="material-symbols-rounded row-arrow" aria-hidden="true">chevron_right</span>
-    </a>
-    <a class="resource-row" href="{{ '/data-deletion/' | relative_url }}">
-      <span class="material-symbols-rounded resource-icon" aria-hidden="true">person_remove</span>
-      <span><strong>Data Deletion</strong><small>Delete local data or contact the provider that holds it.</small></span>
-      <span class="material-symbols-rounded row-arrow" aria-hidden="true">chevron_right</span>
-    </a>
-  </div>
+  <section class="home-download-strip" aria-labelledby="get-xylune-heading">
+    <div>
+      <h2 id="get-xylune-heading">Get Xylune</h2>
+      <p>Download the current Android APK or inspect the project before installing it.</p>
+    </div>
+    <div class="home-download-strip__links">
+      <a href="https://github.com/omerfaruknehir/Xylune/releases/latest"><span class="material-symbols-rounded" aria-hidden="true">download</span>Latest APK</a>
+      <a href="https://github.com/omerfaruknehir/Xylune"><span class="material-symbols-rounded" aria-hidden="true">code</span>Source code</a>
+    </div>
+  </section>
+
+  <section class="home-legal" aria-labelledby="resources-heading">
+    <div class="home-legal__heading">
+      <p class="home-section__eyebrow">Project information</p>
+      <h2 class="home-section__title" id="resources-heading">Privacy, terms, and data</h2>
+    </div>
+
+    <div class="resource-card" aria-label="Legal and privacy documents">
+      <a class="resource-row" href="{{ '/privacy/' | relative_url }}">
+        <span class="material-symbols-rounded resource-icon" aria-hidden="true">shield</span>
+        <span><strong>Privacy Policy</strong><small>What Xylune can—and cannot—access.</small></span>
+        <span class="material-symbols-rounded row-arrow" aria-hidden="true">chevron_right</span>
+      </a>
+      <a class="resource-row" href="{{ '/terms/' | relative_url }}">
+        <span class="material-symbols-rounded resource-icon" aria-hidden="true">description</span>
+        <span><strong>Terms and Disclaimer</strong><small>Terms for the downloadable open-source software.</small></span>
+        <span class="material-symbols-rounded row-arrow" aria-hidden="true">chevron_right</span>
+      </a>
+      <a class="resource-row" href="{{ '/data-deletion/' | relative_url }}">
+        <span class="material-symbols-rounded resource-icon" aria-hidden="true">person_remove</span>
+        <span><strong>Data Deletion</strong><small>Remove local data or data held by a selected provider.</small></span>
+        <span class="material-symbols-rounded row-arrow" aria-hidden="true">chevron_right</span>
+      </a>
+    </div>
+  </section>
 
   <footer class="site-footer">
-    <p>This project is maintained by <a href="https://github.com/omerfaruknehir">omerfaruknehir</a>.</p>
-    <p>Open source on <a href="https://github.com/omerfaruknehir/Xylune">GitHub</a>.</p>
+    <p>Xylune is maintained by <a href="https://github.com/omerfaruknehir">omerfaruknehir</a>.</p>
+    <p><a href="https://github.com/omerfaruknehir/Xylune">Open source on GitHub</a>.</p>
   </footer>
-</section>
+</div>
