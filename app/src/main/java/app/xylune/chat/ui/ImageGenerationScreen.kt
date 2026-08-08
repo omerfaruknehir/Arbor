@@ -256,7 +256,8 @@ internal fun ImageGenerationScreen(
                             overlayOpacity = chromeOverlayOpacity,
                             tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.46f),
                             edge = XyluneBlurEdge.BOTTOM,
-                            panelHeight = 240.dp,
+                            panelHeight = CHAT_COMPOSER_MIN_PANEL_HEIGHT_DP.dp,
+                            expandToMeasuredHeight = true,
                         ),
                 ) {
                     Column(
