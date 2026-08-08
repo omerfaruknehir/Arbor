@@ -1,5 +1,13 @@
 package app.xylune.chat.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -19,19 +28,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
-import kotlin.math.roundToInt
 
 /**
- * A compact bottom-of-response source strip. It stays one horizontal lane and
- * scrolls when the pills do not fit, so citations never turn into a tall list
- * that competes with the answer itself.
+ * A compact bottom-of-response source strip. Pills expand in place into their
+ * preview instead of spawning a detached popup, preserving the spatial link
+ * between the source the user tapped and the details that appear.
  */
 @Composable
 internal fun SourceReferenceBar(
@@ -40,7 +45,7 @@ internal fun SourceReferenceBar(
 ) {
     if (sources.isEmpty()) return
 
-    var pendingReference by remember { mutableStateOf<LinkReferencePreview?>(null) }
+    var expandedTarget by remember { mutableStateOf<String?>(null) }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(7.dp),
@@ -58,32 +63,21 @@ internal fun SourceReferenceBar(
             Row(
                 modifier = Modifier.padding(end = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
             ) {
                 sources.forEachIndexed { index, source ->
+                    val expanded = expandedTarget == source.target
                     SourceReferencePill(
                         index = index + 1,
                         source = source,
-                        onClick = { anchor ->
-                            pendingReference = LinkReferencePreview(
-                                kind = LinkReferenceKind.SOURCE,
-                                label = source.label,
-                                target = source.target,
-                                description = "A source used to support this response.",
-                                anchorBoundsInWindow = anchor,
-                            )
+                        expanded = expanded,
+                        onToggle = {
+                            expandedTarget = if (expanded) null else source.target
                         },
                     )
                 }
             }
         }
-    }
-
-    pendingReference?.let { reference ->
-        AnchoredLinkPreview(
-            reference = reference,
-            onDismiss = { pendingReference = null },
-        )
     }
 }
 
@@ -91,9 +85,9 @@ internal fun SourceReferenceBar(
 private fun SourceReferencePill(
     index: Int,
     source: XyluneSourceReference,
-    onClick: (IntRect) -> Unit,
+    expanded: Boolean,
+    onToggle: () -> Unit,
 ) {
-    var anchorBounds by remember(source.target) { mutableStateOf(IntRect.Zero) }
     val host = remember(source.target) {
         runCatching { source.target.toUri().host }
             .getOrNull()
@@ -101,62 +95,87 @@ private fun SourceReferencePill(
             .removePrefix("www.")
     }
     val label = source.label.ifBlank { host.ifBlank { "Source $index" } }
+    val reference = remember(source.target, label) {
+        LinkReferencePreview(
+            kind = LinkReferenceKind.SOURCE,
+            label = label,
+            target = source.target,
+            description = "A source used to support this response.",
+        )
+    }
 
     Surface(
         modifier = Modifier
-            .widthIn(max = 230.dp)
-            .onGloballyPositioned { coordinates ->
-                val bounds = coordinates.boundsInWindow()
-                anchorBounds = IntRect(
-                    left = bounds.left.roundToInt(),
-                    top = bounds.top.roundToInt(),
-                    right = bounds.right.roundToInt(),
-                    bottom = bounds.bottom.roundToInt(),
-                )
-            }
-            .clickable { onClick(anchorBounds) },
+            .widthIn(max = if (expanded) 340.dp else 230.dp)
+            .animateContentSize(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            ),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,
-        shape = MaterialTheme.shapes.large,
-        tonalElevation = 1.dp,
+        shape = if (expanded) MaterialTheme.shapes.extraLarge else MaterialTheme.shapes.large,
+        tonalElevation = if (expanded) 3.dp else 1.dp,
+        shadowElevation = if (expanded) 6.dp else 0.dp,
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(
-                modifier = Modifier.size(24.dp),
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.tertiaryContainer,
-                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        Column {
+            Row(
+                modifier = Modifier
+                    .clickable(onClick = onToggle)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
+                Surface(
+                    modifier = Modifier.size(24.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                 ) {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = index.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+                Column(modifier = Modifier.widthIn(min = 56.dp, max = if (expanded) 268.dp else 176.dp)) {
                     Text(
-                        text = index.toString(),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
+                        text = label,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = if (expanded) 2 else 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
+                    if (host.isNotBlank() && !label.contains(host, ignoreCase = true)) {
+                        Text(
+                            text = host,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
-            Column(modifier = Modifier.widthIn(min = 56.dp, max = 176.dp)) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (host.isNotBlank() && !label.contains(host, ignoreCase = true)) {
-                    Text(
-                        text = host,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+                exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+            ) {
+                Column {
+                    HorizontalDivider(Modifier.padding(horizontal = 10.dp))
+                    LinkPreviewDetails(
+                        reference = reference,
+                        onDismiss = onToggle,
+                        modifier = Modifier.padding(12.dp),
+                        showHeader = false,
                     )
                 }
             }
