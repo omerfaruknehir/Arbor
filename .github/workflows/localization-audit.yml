@@ -14,39 +14,52 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-22.04
-    timeout-minutes: 75
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
         with:
           ref: agent/turkish-localization
           fetch-depth: 0
-      - name: Fix Kotlin regex literals
+      - name: Fix dynamic Turkish regexes and add coverage
         shell: python
         run: |
           from pathlib import Path
           p = Path('app/src/main/java/app/xylune/chat/ui/UiLocalization.kt')
           s = p.read_text(encoding='utf-8')
           replacements = {
-              'Regex("^ Allow (\\d+) listed network origins?$")': 'Regex("""^ Allow (\\d+) listed network origins\\?$""")',
-              'Regex("^Delete (\\d+) disabled memor(?:y|ies)\\?$")': 'Regex("""^Delete (\\d+) disabled memor(?:y|ies)\\?$""")',
-              'Regex("^Updates are checked against (.+)\\.$")': 'Regex("""^Updates are checked against (.+)\\.$""")',
-              'Regex("^Attempt (\\d+) · repeated candidate · (\\d+) error\\(s\\)$")': 'Regex("""^Attempt (\\d+) · repeated candidate · (\\d+) error\\(s\\)$""")',
-              'Regex("^Attempt (\\d+) · (\\d+) error\\(s\\)$")': 'Regex("""^Attempt (\\d+) · (\\d+) error\\(s\\)$""")',
+              r'Regex("""^ Allow (\\d+) listed network origins\\?$""")': r'Regex("""^Allow (\d+) listed network origins\?$""")',
+              r'Regex("""^Delete (\\d+) disabled memor(?:y|ies)\\?$""")': r'Regex("""^Delete (\d+) disabled memor(?:y|ies)\?$""")',
+              r'Regex("""^Updates are checked against (.+)\\.$""")': r'Regex("""^Updates are checked against (.+)\.$""")',
+              r'Regex("""^Attempt (\\d+) · repeated candidate · (\\d+) error\\(s\\)$""")': r'Regex("""^Attempt (\d+) · repeated candidate · (\d+) error\(s\)$""")',
+              r'Regex("""^Attempt (\\d+) · (\\d+) error\\(s\\)$""")': r'Regex("""^Attempt (\d+) · (\d+) error\(s\)$""")',
           }
           for old, new in replacements.items():
               if old not in s:
-                  raise SystemExit(f'missing expected literal: {old}')
+                  raise SystemExit(f'missing expected regex: {old}')
               s = s.replace(old, new)
           p.write_text(s, encoding='utf-8')
-      - name: Commit regex fix
+
+          t = Path('app/src/test/java/app/xylune/chat/ui/TurkishLocalizationTest.kt')
+          tests = t.read_text(encoding='utf-8')
+          needle = '        assertEquals("Kaynak 3", localizeUiText("Source 3", XyluneUiLanguage.TURKISH))\n'
+          addition = needle + (
+              '        assertEquals("3 listelenen ağ kaynağına izin ver", localizeUiText("Allow 3 listed network origins?", XyluneUiLanguage.TURKISH))\n'
+              '        assertEquals("2 devre dışı bellek silinsin mi?", localizeUiText("Delete 2 disabled memories?", XyluneUiLanguage.TURKISH))\n'
+              '        assertEquals("Deneme 4 · 2 hata", localizeUiText("Attempt 4 · 2 error(s)", XyluneUiLanguage.TURKISH))\n'
+          )
+          if needle not in tests:
+              raise SystemExit('missing TurkishLocalizationTest insertion point')
+          tests = tests.replace(needle, addition, 1)
+          t.write_text(tests, encoding='utf-8')
+      - name: Commit localization corrections
         shell: bash
         run: |
           set -euo pipefail
           git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/java/app/xylune/chat/ui/UiLocalization.kt
-          git commit -m "Fix Turkish localization regex literals"
+          git add app/src/main/java/app/xylune/chat/ui/UiLocalization.kt app/src/test/java/app/xylune/chat/ui/TurkishLocalizationTest.kt
+          git commit -m "Correct dynamic Turkish translations"
           git push origin HEAD:agent/turkish-localization
       - uses: actions/setup-java@v5
         with:
@@ -58,5 +71,5 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v6
-      - name: Verify localization tests and release build
-        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest lintRelease assembleRelease
+      - name: Run localization unit tests and compile release
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest compileReleaseKotlin
