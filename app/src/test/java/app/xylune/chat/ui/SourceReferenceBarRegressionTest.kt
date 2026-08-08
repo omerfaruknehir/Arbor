@@ -11,7 +11,7 @@ class SourceReferenceBarRegressionTest {
         ?: error("Could not locate repository file: $path")
 
     @Test
-    fun `bottom source bar stays horizontal scrollable and opens anchored previews`() {
+    fun `bottom source bar stays horizontal and source pills expand inline`() {
         val source = repositoryFile(
             "app/src/main/java/app/xylune/chat/ui/SourceReferenceBar.kt",
         ).readText()
@@ -24,11 +24,17 @@ class SourceReferenceBarRegressionTest {
 
         assertTrue(source.contains("LowSensitivityHorizontalScroll"))
         assertTrue(source.contains("horizontalArrangement = Arrangement.spacedBy(8.dp)"))
-        assertTrue(source.contains("AnchoredLinkPreview"))
-        assertTrue(source.contains("anchorBoundsInWindow = anchor"))
-        assertTrue(source.contains("widthIn(max = 230.dp)"))
+        assertTrue(source.contains("var expandedTarget"))
+        assertTrue(source.contains("animateContentSize("))
+        assertTrue(source.contains("AnimatedVisibility("))
+        assertTrue(source.contains("LinkPreviewDetails("))
+        assertTrue(source.contains("showHeader = false"))
+        assertTrue(source.contains("widthIn(max = if (expanded) 340.dp else 230.dp)"))
+        assertFalse(source.contains("AnchoredLinkPreview("))
+        assertFalse(source.contains("anchorBoundsInWindow = anchor"))
         assertTrue(richMessage.contains("SourceReferenceBar("))
         assertTrue(!richMessage.contains("sourceReferencesFooterMarkdown"))
+        assertTrue(preview.contains("showHeader: Boolean = true"))
         assertTrue(preview.contains("onDismissRequest = onDismiss"))
         assertTrue(preview.contains("focusable = true"))
         assertTrue(preview.contains("dismissOnClickOutside = true"))

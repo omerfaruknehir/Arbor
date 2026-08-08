@@ -101,6 +101,7 @@ internal fun LinkPreviewDetails(
     reference: LinkReferencePreview,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    showHeader: Boolean = true,
 ) {
     val context = LocalContext.current
     val openable = reference.kind != LinkReferenceKind.FILE &&
@@ -132,30 +133,40 @@ internal fun LinkPreviewDetails(
         }
 
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Surface(
-                color = when (reference.kind) {
-                    LinkReferenceKind.FILE -> MaterialTheme.colorScheme.secondaryContainer
-                    LinkReferenceKind.SOURCE -> MaterialTheme.colorScheme.tertiaryContainer
-                    LinkReferenceKind.LINK -> MaterialTheme.colorScheme.primaryContainer
-                },
-                shape = MaterialTheme.shapes.large,
-            ) {
-                Icon(
-                    imageVector = when (reference.kind) {
-                        LinkReferenceKind.FILE -> Icons.AutoMirrored.Outlined.InsertDriveFile
-                        LinkReferenceKind.SOURCE -> Icons.Outlined.TravelExplore
-                        LinkReferenceKind.LINK -> Icons.AutoMirrored.Outlined.OpenInNew
+        if (showHeader) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    color = when (reference.kind) {
+                        LinkReferenceKind.FILE -> MaterialTheme.colorScheme.secondaryContainer
+                        LinkReferenceKind.SOURCE -> MaterialTheme.colorScheme.tertiaryContainer
+                        LinkReferenceKind.LINK -> MaterialTheme.colorScheme.primaryContainer
                     },
-                    contentDescription = null,
-                    modifier = Modifier.padding(9.dp).size(20.dp),
-                )
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    Icon(
+                        imageVector = when (reference.kind) {
+                            LinkReferenceKind.FILE -> Icons.AutoMirrored.Outlined.InsertDriveFile
+                            LinkReferenceKind.SOURCE -> Icons.Outlined.TravelExplore
+                            LinkReferenceKind.LINK -> Icons.AutoMirrored.Outlined.OpenInNew
+                        },
+                        contentDescription = null,
+                        modifier = Modifier.padding(9.dp).size(20.dp),
+                    )
+                }
+                Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                    Text(title, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (host.isNotBlank()) Text(host, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                }
+                if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
             }
-            Column(Modifier.padding(start = 10.dp).weight(1f)) {
-                Text(title, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                if (host.isNotBlank()) Text(host, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        } else if (loading) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
             }
-            if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
         }
 
         Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 5, overflow = TextOverflow.Ellipsis)

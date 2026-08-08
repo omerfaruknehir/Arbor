@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.Dp
@@ -42,11 +43,19 @@ private fun XylunePopupBackHandler(
 ) {
     val density = LocalDensity.current
     val keyboard = LocalSoftwareKeyboardController.current
-    val imeVisible = WindowInsets.ime.getBottom(density) > 0
+    val focusManager = LocalFocusManager.current
+    val imeInsets = WindowInsets.ime
     PredictiveBackHandler(enabled = true) { events ->
-        if (imeVisible) {
+        // Read IME visibility when the gesture actually starts. In particular,
+        // dialogs live in their own window, so checking this outside the dialog
+        // composition observes the activity window and can incorrectly report
+        // the keyboard as hidden.
+        val imeVisibleAtGestureStart = imeInsets.getBottom(density) > 0
+        if (imeVisibleAtGestureStart) {
             events.collect { }
             keyboard?.hide()
+            focusManager.clearFocus(force = true)
+            onProgress(0f)
             return@PredictiveBackHandler
         }
         try {
@@ -110,8 +119,10 @@ internal fun ReleaseDismissOutsideLayer(
 }
 
 /**
- * Xylune's keyboard-safe dialog. Outside taps dismiss normally. Predictive Back
- * still gets Xylune's progress animation and hides the IME before dismissing.
+ * Xylune's keyboard-safe dialog. The Back handler is installed *inside* the
+ * dialog window, so a first Back gesture while an editor has the IME open only
+ * hides the keyboard. A subsequent Back gesture dismisses the dialog with the
+ * normal predictive animation. Outside taps still dismiss normally.
  */
 @Composable
 fun XyluneAlertDialog(
@@ -130,13 +141,18 @@ fun XyluneAlertDialog(
     tonalElevation: Dp = AlertDialogDefaults.TonalElevation,
 ) {
     var backProgress by remember { mutableFloatStateOf(0f) }
-    XylunePopupBackHandler(
-        onDismissRequest = onDismissRequest,
-        onProgress = { backProgress = it },
-    )
     MaterialAlertDialog(
         onDismissRequest = onDismissRequest,
-        confirmButton = confirmButton,
+        confirmButton = {
+            // MaterialAlertDialog composes this slot in the dialog's own window.
+            // Registering here makes WindowInsets.ime refer to the same window as
+            // the focused text field instead of the activity behind the dialog.
+            XylunePopupBackHandler(
+                onDismissRequest = onDismissRequest,
+                onProgress = { backProgress = it },
+            )
+            confirmButton()
+        },
         modifier = modifier.graphicsLayer {
             val progress = backProgress.coerceIn(0f, 1f)
             val scale = 1f - 0.04f * progress
