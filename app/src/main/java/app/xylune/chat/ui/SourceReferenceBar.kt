@@ -116,7 +116,11 @@ private fun SourceReferencePill(
                     bottom = bounds.bottom.roundToInt(),
                 )
             }
-            .clickable { onClick(anchorBounds) },
+            .clickable {
+                if (anchorBounds.width > 0 && anchorBounds.height > 0) {
+                    onClick(anchorBounds)
+                }
+            },
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,
         shape = MaterialTheme.shapes.large,
