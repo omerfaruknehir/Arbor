@@ -1,0 +1,90 @@
+name: Agent image composer blur height
+
+on:
+  push:
+    branches: [agent/image-composer-blur-height]
+    paths:
+      - '.github/workflows/agent-image-composer-blur-height.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/image-composer-blur-height
+      - name: Match image blur to measured composer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {count}")
+              p.write_text(text.replace(old, new, 1))
+
+          image = "app/src/main/java/app/xylune/chat/ui/ImageGenerationScreen.kt"
+          replace_once(
+              image,
+              "                            panelHeight = 240.dp,\n",
+              "                            panelHeight = CHAT_COMPOSER_MIN_PANEL_HEIGHT_DP.dp,\n"
+              "                            expandToMeasuredHeight = true,\n",
+          )
+
+          test = "app/src/test/java/app/xylune/chat/ui/BlurCompatibilityTest.kt"
+          replace_once(
+              test,
+              '        val chat = java.io.File("src/main/java/app/xylune/chat/ui/ChatScreen.kt").readText()\n'
+              '        val blur = java.io.File("src/main/java/app/xylune/chat/ui/BackdropBlur.kt").readText()\n',
+              '        val chat = java.io.File("src/main/java/app/xylune/chat/ui/ChatScreen.kt").readText()\n'
+              '        val images = java.io.File("src/main/java/app/xylune/chat/ui/ImageGenerationScreen.kt").readText()\n'
+              '        val blur = java.io.File("src/main/java/app/xylune/chat/ui/BackdropBlur.kt").readText()\n',
+          )
+          replace_once(
+              test,
+              '        assertTrue(chat.contains("expandToMeasuredHeight = true"))\n'
+              '        assertTrue(settings.contains("blurArea = STANDARD_TOP_PANEL_HEIGHT_DP.dp"))\n',
+              '        assertTrue(chat.contains("expandToMeasuredHeight = true"))\n'
+              '        assertTrue(images.contains("panelHeight = CHAT_COMPOSER_MIN_PANEL_HEIGHT_DP.dp"))\n'
+              '        assertTrue(images.contains("expandToMeasuredHeight = true"))\n'
+              '        assertFalse(images.contains("panelHeight = 240.dp"))\n'
+              '        assertTrue(settings.contains("blurArea = STANDARD_TOP_PANEL_HEIGHT_DP.dp"))\n',
+          )
+
+          gradle = "app/build.gradle.kts"
+          replace_once(
+              gradle,
+              '        versionCode = 204\n        versionName = "0.24.15"',
+              '        versionCode = 205\n        versionName = "0.24.16"',
+          )
+
+          Path("docs/releases/RELEASE_NOTES_0.24.16.md").write_text('''# Xylune 0.24.16
+
+## Correct image composer blur height
+
+The Images workspace no longer reserves a fixed 240 dp blurred panel at the bottom. Its backdrop blur now uses the same minimum composer height as normal chat and expands only to the input area's actual measured height when references, validation text, queue state, or a multiline prompt make the composer taller.
+
+This keeps the translucent bottom chrome aligned with the visible image input area instead of covering an unnecessarily large portion of the image history.
+''')
+          PY
+
+          rm -f .github/workflows/agent-image-composer-blur-height.yml
+          git diff --check
+          git status --short
+      - name: Commit patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Match image blur to composer height and prepare 0.24.16'
+          git push origin HEAD:agent/image-composer-blur-height
