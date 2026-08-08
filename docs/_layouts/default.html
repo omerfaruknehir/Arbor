@@ -158,6 +158,7 @@
     <link rel="stylesheet" href="{{ '/assets/css/app-bar.css' | relative_url }}?v=81">
     <link rel="stylesheet" href="{{ '/assets/css/motion.css' | relative_url }}?v=81">
     <link rel="stylesheet" href="{{ '/assets/css/interaction-fix.css' | relative_url }}?v=81">
+    {% if page.home %}<link rel="stylesheet" href="{{ '/assets/css/home.css' | relative_url }}?v=1">{% endif %}
   </head>
   <body class="page-with-collapsing-title preload{% if page.home %} home-page{% endif %}">
     <div class="nav-scrim" data-menu-dismiss></div>

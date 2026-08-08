@@ -1,4 +1,4 @@
-name: Deploy Xylune legal site
+name: Deploy Xylune site
 
 on:
   push:
@@ -37,11 +37,36 @@ jobs:
           node --check docs/assets/js/logo-motion.js
           node --check docs/assets/js/popup-motion.js
           node --check docs/assets/js/releases.js
+      - name: Validate source sitemap
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from urllib.parse import urlparse
+
+          path = "docs/sitemap.xml"
+          root = ET.parse(path).getroot()
+          ns = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
+          assert root.tag == f"{ns}urlset", root.tag
+          locations = [node.text for node in root.findall(f"{ns}url/{ns}loc")]
+          assert locations, "sitemap contains no URLs"
+          for location in locations:
+              parsed = urlparse(location)
+              assert parsed.scheme == "https", location
+              assert parsed.netloc == "omerfaruknehir.github.io", location
+              assert parsed.path.startswith("/Xylune/"), location
+          PY
       - uses: actions/configure-pages@v5
       - uses: actions/jekyll-build-pages@v1
         with:
           source: ./docs
           destination: ./_site
+      - name: Verify built sitemap remains static XML
+        run: |
+          cmp docs/sitemap.xml _site/sitemap.xml
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          ET.parse("_site/sitemap.xml")
+          PY
       - uses: actions/upload-pages-artifact@v4
         with:
           path: ./_site
@@ -60,3 +85,28 @@ jobs:
         uses: actions/deploy-pages@v4
         with:
           timeout: 600000
+      - name: Verify live sitemap
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${{ steps.deployment.outputs.page_url }}"
+          url="${base%/}/sitemap.xml"
+
+          for attempt in 1 2 3 4 5; do
+            code="$(curl --silent --show-error --location --output /tmp/sitemap.xml --dump-header /tmp/sitemap.headers --write-out '%{http_code}' "$url" || true)"
+            if [[ "$code" == "200" ]] && python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          ET.parse('/tmp/sitemap.xml')
+          PY
+            then
+              content_type="$(awk 'BEGIN{IGNORECASE=1} /^content-type:/ {sub(/\r$/, ""); print $2}' /tmp/sitemap.headers | tail -n1)"
+              case "$content_type" in
+                application/xml*|text/xml*) exit 0 ;;
+              esac
+            fi
+            sleep $((attempt * 3))
+          done
+
+          echo "Live sitemap verification failed for $url" >&2
+          cat /tmp/sitemap.headers >&2 || true
+          exit 1
