@@ -56,9 +56,9 @@ fun ChatConfigurationSheet(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("Chat configuration", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text(uiText("Chat configuration"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
             Text(
-                "Advanced limits and prompt behavior for this conversation. Thinking, effort, tools, files, and Deep Research live beside the message box.",
+                uiText("Advanced limits and prompt behavior for this conversation. Thinking, effort, tools, files, and Deep Research live beside the message box."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -77,21 +77,21 @@ fun ChatConfigurationSheet(
             }
 
             HorizontalDivider()
-            Text("Usage", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(uiText("Usage"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(
-                "Raw token totals recorded from provider calls. Use these with the provider's current pricing when you want to verify or calculate cost manually.",
+                uiText("Raw token totals recorded from provider calls. Use these with the provider's current pricing when you want to verify or calculate cost manually."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             ConversationUsageSection(conversation.id)
 
             HorizontalDivider()
-            Text("Token counting", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(uiText("Token counting"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Hybrid preflight counting")
+                    Text(uiText("Hybrid preflight counting"))
                     Text(
-                        "Exact provider counters where available, then local family and generic fallbacks.",
+                        uiText("Exact provider counters where available, then local family and generic fallbacks."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -103,12 +103,12 @@ fun ChatConfigurationSheet(
             }
 
             HorizontalDivider()
-            Text("Working display", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(uiText("Working display"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ReasoningVisibility.entries.forEach { option ->
                     AssistChip(
                         onClick = { viewModel.updateConversation { it.copy(reasoningVisibility = option) } },
-                        label = { Text(option.chatLabel) },
+                        label = { Text(uiText(option.chatLabel)) },
                         leadingIcon = if (conversation.reasoningVisibility == option) ({
                             androidx.compose.material3.Icon(Icons.Outlined.CheckCircle, null)
                         }) else null,
@@ -117,22 +117,22 @@ fun ChatConfigurationSheet(
             }
 
             HorizontalDivider()
-            Text("Custom instructions", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(uiText("Custom instructions"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             val promptProfiles by viewModel.systemPromptProfiles.collectAsStateWithLifecycle()
             var promptMenu by remember { mutableStateOf(false) }
             val activePrompt = promptProfiles.firstOrNull { it.id == conversation.systemPromptProfileId }
             androidx.compose.foundation.layout.Box {
                 OutlinedButton(onClick = { promptMenu = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(activePrompt?.let { "${it.name} · ${it.mode.name.lowercase()}" } ?: "$appName core prompt only", Modifier.weight(1f))
+                    Text(uiText(activePrompt?.let { "${it.name} · ${it.mode.name.lowercase()}" } ?: "$appName core prompt only"), Modifier.weight(1f))
                 }
                 XyluneDropdownMenu(expanded = promptMenu, onDismissRequest = { promptMenu = false }) {
                     DropdownMenuItem(
-                        text = { Text("$appName core prompt only") },
+                        text = { Text(uiText("$appName core prompt only")) },
                         onClick = { viewModel.selectSystemPromptProfileForCurrent(null); promptMenu = false },
                     )
                     promptProfiles.forEach { profile ->
                         DropdownMenuItem(
-                            text = { Text("${profile.name} · ${profile.mode.name.lowercase()}") },
+                            text = { Text(uiText("${profile.name} · ${profile.mode.name.lowercase()}")) },
                             onClick = { viewModel.selectSystemPromptProfileForCurrent(profile.id); promptMenu = false },
                         )
                     }
@@ -144,7 +144,7 @@ fun ChatConfigurationSheet(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             ) else Text(
-                "$appName's built-in core prompt is versioned with the app and cannot be edited. Create reusable custom profiles in Settings.",
+                uiText("$appName's built-in core prompt is versioned with the app and cannot be edited. Create reusable custom profiles in Settings."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -153,20 +153,20 @@ fun ChatConfigurationSheet(
                 HorizontalDivider()
                 Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
                     Column(Modifier.fillMaxWidth().padding(14.dp)) {
-                        Text("Compressed context active", fontWeight = FontWeight.SemiBold)
+                        Text(uiText("Compressed context active"), fontWeight = FontWeight.SemiBold)
                         Text(
-                            "${summary.sourceMessageCount} older messages • about ${summary.tokenEstimate} tokens",
+                            uiText("${summary.sourceMessageCount} older messages • about ${summary.tokenEstimate} tokens"),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = viewModel::compressContextNow, modifier = Modifier.weight(1f)) { Text("Compress") }
-                OutlinedButton(onClick = viewModel::clearContextSummary, modifier = Modifier.weight(1f)) { Text("Clear summary") }
+                Button(onClick = viewModel::compressContextNow, modifier = Modifier.weight(1f)) { Text(uiText("Compress")) }
+                OutlinedButton(onClick = viewModel::clearContextSummary, modifier = Modifier.weight(1f)) { Text(uiText("Clear summary")) }
             }
             OutlinedButton(onClick = viewModel::applyNewChatDefaultsToCurrent, modifier = Modifier.fillMaxWidth()) {
-                Text("Reset advanced values to defaults")
+                Text(uiText("Reset advanced values to defaults"))
             }
             Spacer(Modifier.height(28.dp))
         }
@@ -178,7 +178,7 @@ private fun ChatNumberSetting(label: String, value: Int, range: IntRange, onValu
     OutlinedTextField(
         value = value.toString(),
         onValueChange = { raw -> raw.toIntOrNull()?.coerceIn(range)?.let(onValue) },
-        label = { Text(label) },
+        label = { Text(uiText(label)) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),

@@ -206,6 +206,7 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     val developerSettings: StateFlow<app.xylune.chat.settings.DeveloperSettings> = container.appPreferences.developerSettings
     val palette = container.appPreferences.palette
     val themeMode = container.appPreferences.themeMode
+    val appLanguage = container.appPreferences.appLanguage
     val matchLauncherIconToPalette = container.appPreferences.matchLauncherIconToPalette
     val newChatDefaults: StateFlow<NewChatDefaults> = container.appPreferences.newChatDefaults
     val favoriteModels: StateFlow<Set<String>> = container.appPreferences.favoriteModels
@@ -292,6 +293,8 @@ class ChatViewModel(private val container: AppContainer, savedStateHandle: Saved
     fun setRenderSafeMode(enabled: Boolean) = container.crashReporter.setRenderSafeMode(enabled)
 
     fun setLessEmojiEnabled(enabled: Boolean) = container.appPreferences.setLessEmojiEnabled(enabled)
+
+    fun setAppLanguage(value: app.xylune.chat.settings.AppLanguage) = container.appPreferences.setAppLanguage(value)
 
     fun setAutomaticUpdateChecks(enabled: Boolean) {
         container.appPreferences.setAutomaticUpdateChecks(enabled)

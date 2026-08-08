@@ -106,13 +106,13 @@ internal fun RepairableGeneratedContent(
                 Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.Build, null, tint = MaterialTheme.colorScheme.primary)
                     Text(
-                        if (current.attemptCount == 0) "Compiled and tested ${type.displayLabel}" else "AI rebuilt and compiled ${type.displayLabel} · ${current.attemptCount} attempt${if (current.attemptCount == 1) "" else "s"}",
+                        uiText(if (current.attemptCount == 0) "Compiled and tested ${type.displayLabel}" else "AI rebuilt and compiled ${type.displayLabel} · ${current.attemptCount} attempt${if (current.attemptCount == 1) "" else "s"}"),
                         Modifier.weight(1f).padding(start = 7.dp),
                         style = MaterialTheme.typography.labelMedium,
                     )
                     IconButton(onClick = {
                         workingCardViewport.applyMutation(WorkingCardMutation.AUTO_EXPAND, { cardBounds }) { details = !details }
-                    }) { Icon(Icons.Outlined.Edit, "Inspect repair") }
+                    }) { Icon(Icons.Outlined.Edit, uiText("Inspect repair")) }
                 }
             }
             AnimatedVisibility(details) { RepairDetails(current) }
@@ -136,7 +136,7 @@ internal fun RepairableGeneratedContent(
 
     if (editing && current != null) XyluneAlertDialog(
         onDismissRequest = { editing = false },
-        title = { Text("Edit ${type.displayLabel} source") },
+        title = { Text(uiText("Edit ${type.displayLabel} source")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
@@ -146,11 +146,11 @@ internal fun RepairableGeneratedContent(
                     maxLines = 20,
                     modifier = Modifier.fillMaxWidth(),
                     isError = editError.isNotBlank(),
-                    supportingText = { Text(editError.ifBlank { "The edited source is compiled, executed in the bounded runtime, and rendered before use." }) },
+                    supportingText = { Text(uiText(editError.ifBlank { "The edited source is compiled, executed in the bounded runtime, and rendered before use." })) },
                 )
             }
         },
-        dismissButton = { OutlinedButton(onClick = { editing = false }) { Text("Cancel") } },
+        dismissButton = { OutlinedButton(onClick = { editing = false }) { Text(uiText("Cancel")) } },
         confirmButton = {
             Button(onClick = {
                 scope.launch {
@@ -161,7 +161,7 @@ internal fun RepairableGeneratedContent(
                         }
                         .onFailure { editError = it.message.orEmpty() }
                 }
-            }) { Text("Compile & use") }
+            }) { Text(uiText("Compile & use")) }
         },
     )
 }
@@ -197,21 +197,21 @@ private fun RepairStatusCard(
             Text(title, fontWeight = FontWeight.SemiBold)
             state?.providerError?.takeIf(String::isNotBlank)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             if (!repairing) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedButton(onClick = onRetry) { Icon(Icons.Outlined.Refresh, null); Text("Ask AI to retry") }
-                OutlinedButton(onClick = onEdit) { Icon(Icons.Outlined.Edit, null); Text("Edit source") }
+                OutlinedButton(onClick = onRetry) { Icon(Icons.Outlined.Refresh, null); Text(uiText("Ask AI to retry")) }
+                OutlinedButton(onClick = onEdit) { Icon(Icons.Outlined.Edit, null); Text(uiText("Edit source")) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 OutlinedButton(onClick = {
                     context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("generated source", source))
-                }) { Icon(Icons.Outlined.ContentCopy, null); Text("Copy source") }
-                if (state != null) OutlinedButton(onClick = onToggleDetails) { Text(if (details) "Hide attempts" else "View attempts") }
+                }) { Icon(Icons.Outlined.ContentCopy, null); Text(uiText("Copy source")) }
+                if (state != null) OutlinedButton(onClick = onToggleDetails) { Text(uiText(if (details) "Hide attempts" else "View attempts")) }
             }
             if (!repairing) OutlinedButton(onClick = {
                 val errors = (state.errors + state.attempts.flatMap { it.errors }).distinct()
                     .joinToString("\n") { "${it.phase} ${it.path}: ${it.message}" }
                 context.getSystemService(ClipboardManager::class.java)
                     .setPrimaryClip(ClipData.newPlainText("generated content errors", errors))
-            }) { Text("Copy errors") }
+            }) { Text(uiText("Copy errors")) }
             AnimatedVisibility(details && state != null) { state?.let { RepairDetails(it) } }
         }
     }
@@ -222,13 +222,13 @@ private fun RepairDetails(state: GeneratedBlockRepairState) {
     val context = LocalContext.current
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         state.attempts.forEach { attempt ->
-            Text("Attempt ${attempt.number} · ${if (attempt.repeatedCandidate) "repeated candidate · " else ""}${attempt.errors.size} error(s)", style = MaterialTheme.typography.labelMedium)
-            attempt.errors.take(6).forEach { Text("${it.path}: ${it.message}", style = MaterialTheme.typography.bodySmall) }
+            Text(uiText("Attempt ${attempt.number} · ${if (attempt.repeatedCandidate) "repeated candidate · " else ""}${attempt.errors.size} error(s)"), style = MaterialTheme.typography.labelMedium)
+            attempt.errors.take(6).forEach { Text(uiText("${it.path}: ${it.message}"), style = MaterialTheme.typography.bodySmall) }
         }
         OutlinedButton(onClick = {
             val errors = state.attempts.flatMap { it.errors }.joinToString("\n") { "${it.phase} ${it.path}: ${it.message}" }
             context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("generated content errors", errors))
-        }) { Text("Copy errors") }
+        }) { Text(uiText("Copy errors")) }
     }
 }
 

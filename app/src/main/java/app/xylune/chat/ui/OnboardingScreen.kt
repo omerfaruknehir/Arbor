@@ -85,7 +85,7 @@ internal fun XyluneStartupScreen() {
         ) {
             CircularProgressIndicator()
             Spacer(Modifier.height(16.dp))
-            Text("Preparing Xylune…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(uiText("Preparing Xylune…"), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -247,7 +247,7 @@ private fun OnboardingStepActions(
                         onFinish()
                     },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Enter Xylune") }
+                ) { Text(uiText("Enter Xylune")) }
             }
         }
     }
@@ -267,14 +267,14 @@ private fun ProviderStepActions(
                 onContinue()
             },
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Continue") }
+        ) { Text(uiText("Continue")) }
         OutlinedButton(
             onClick = {
                 haptics.selection()
                 onOpenProviderSetup()
             },
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Manage providers") }
+        ) { Text(uiText("Manage providers")) }
     } else {
         Button(
             onClick = {
@@ -282,14 +282,14 @@ private fun ProviderStepActions(
                 onOpenProviderSetup()
             },
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Connect a provider") }
+        ) { Text(uiText("Connect a provider")) }
         OutlinedButton(
             onClick = {
                 haptics.selection()
                 onContinue()
             },
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Continue without one") }
+        ) { Text(uiText("Continue without one")) }
     }
 }
 
@@ -302,7 +302,7 @@ private fun PrimaryNextButton(label: String, onClick: () -> Unit) {
             onClick()
         },
         modifier = Modifier.fillMaxWidth(),
-    ) { Text(label) }
+    ) { Text(uiText(label)) }
 }
 
 internal fun setupProgressForSegment(pagePosition: Float, segmentIndex: Int): Float =
@@ -340,21 +340,21 @@ private fun OnboardingProgressHeader(
         ) {
             if (showBack) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Previous setup step")
+                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, uiText("Previous setup step"))
                 }
             } else {
                 XyluneMark(modifier = Modifier.size(40.dp), contentDescription = null)
             }
             Column(Modifier.weight(1f)) {
-                Text(stepTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(uiText(stepTitle), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Step ${currentStepIndex + 1} of $stepCount",
+                    uiText("Step ${currentStepIndex + 1} of $stepCount"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             if (showLater) {
-                TextButton(onClick = onSkipForNow) { Text("Skip for now") }
+                TextButton(onClick = onSkipForNow) { Text(uiText("Skip for now")) }
             } else {
                 Spacer(Modifier.size(48.dp))
             }
@@ -384,16 +384,16 @@ private fun OnboardingProgressHeader(
 @Composable
 private fun WelcomeStep(viewModel: ChatViewModel) {
     Spacer(Modifier.height(2.dp))
-    XyluneMark(modifier = Modifier.size(72.dp), contentDescription = "Xylune")
+    XyluneMark(modifier = Modifier.size(72.dp), contentDescription = uiText("Xylune"))
     Text(
-        "Set up Xylune",
+        uiText("Set up Xylune"),
         style = MaterialTheme.typography.headlineMedium,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onBackground,
         textAlign = TextAlign.Center,
     )
     Text(
-        "Restore a backup if you have one, then connect the model provider you actually want to use. Everything optional stays out of your way.",
+        uiText("Restore a backup if you have one, then connect the model provider you actually want to use. Everything optional stays out of your way."),
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
@@ -412,7 +412,7 @@ private fun WelcomeStep(viewModel: ChatViewModel) {
     }
     SetupRestoreActions(viewModel)
     Text(
-        "Starting fresh? Ignore the restore card and tap Continue.",
+        uiText("Starting fresh? Ignore the restore card and tap Continue."),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
@@ -447,9 +447,9 @@ private fun ProviderStep(
             ) {
                 Icon(Icons.Outlined.CheckCircle, null, Modifier.size(28.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("${providerCountLabel(configuredProviderCount)} ready", fontWeight = FontWeight.SemiBold)
+                    Text(uiText("${providerCountLabel(configuredProviderCount)} ready"), fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Credentials were found and this step is complete.",
+                        uiText("Credentials were found and this step is complete."),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -464,7 +464,7 @@ private fun ProviderStep(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
-                "The built-in provider catalog is delayed. Setup remains usable and Xylune will keep retrying in the background.",
+                uiText("The built-in provider catalog is delayed. Setup remains usable and Xylune will keep retrying in the background."),
                 modifier = Modifier.padding(14.dp),
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -490,7 +490,7 @@ private fun ProviderStep(
     ) {
         Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Lock, null)
-            Text("Credentials are encrypted with Android Keystore and sent only to the provider you choose.", style = MaterialTheme.typography.bodySmall)
+            Text(uiText("Credentials are encrypted with Android Keystore and sent only to the provider you choose."), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -517,7 +517,7 @@ private fun ReadyStep(configuredProviderCount: Int) {
         }
     }
     Text(
-        "Enter Xylune now. You can return to Providers & models from Settings at any time.",
+        uiText("Enter Xylune now. You can return to Providers & models from Settings at any time."),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
     )
@@ -532,13 +532,13 @@ private fun SetupHeading(title: String, subtitle: String) {
         color = MaterialTheme.colorScheme.onBackground,
         modifier = Modifier.fillMaxWidth(),
     )
-    Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
+    Text(uiText(subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
 }
 
 @Composable
 private fun OnboardingValueRow(icon: ImageVector, title: String, subtitle: String) {
     ListItem(
-        headlineContent = { Text(title, fontWeight = FontWeight.SemiBold) },
+        headlineContent = { Text(uiText(title), fontWeight = FontWeight.SemiBold) },
         supportingContent = { Text(subtitle) },
         leadingContent = {
             Surface(

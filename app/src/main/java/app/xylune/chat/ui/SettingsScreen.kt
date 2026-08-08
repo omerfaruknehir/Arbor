@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.DeveloperMode
@@ -135,6 +136,7 @@ import app.xylune.chat.provider.effectiveThinkingEnabled
 import app.xylune.chat.settings.CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT
 import app.xylune.chat.settings.CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT
 import app.xylune.chat.settings.ColorPalette
+import app.xylune.chat.settings.AppLanguage
 import app.xylune.chat.settings.DeveloperSettings
 import app.xylune.chat.settings.PerformanceOverlayPosition
 import app.xylune.chat.settings.NewChatDefaults
@@ -177,6 +179,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     val amoled by viewModel.amoled.collectAsState()
     val palette by viewModel.palette.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
+    val appLanguage by viewModel.appLanguage.collectAsState()
     val matchLauncherIconToPalette by viewModel.matchLauncherIconToPalette.collectAsState()
     val chromeBlurStrength by viewModel.chromeBlurStrength.collectAsState()
     val chromeEdgeSoftness by viewModel.chromeEdgeSoftness.collectAsState()
@@ -233,7 +236,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
             contentWindowInsets = WindowInsets(0),
             topBar = {
                 CollapsingTranslucentTopBar(
-                    title = currentRoute.title,
+                    title = uiText(currentRoute.title),
                     scrollBehavior = scrollBehavior,
                     blurState = blurState,
                     blurStrength = chromeBlurStrength,
@@ -275,6 +278,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             setupDeferred = setupDismissed && setupStepIndex < 2,
                             setupStepIndex = setupStepIndex,
                             onFinishSetup = { viewModel.startSetup(setupStepIndex) },
+                            appLanguage = appLanguage,
                             onOpen = viewModel::openSettingsRoute,
                         )
                         SettingsRoute.DEFAULTS -> NewChatDefaultsSettings(defaults, configuredProviders, viewModel)
@@ -282,6 +286,7 @@ fun SettingsScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         SettingsRoute.SEARCH -> SearchSettingsPage()
                         SettingsRoute.AUTOMATION -> AutomationSettingsPage(automation, configuredProviders, viewModel)
                         SettingsRoute.MEMORY -> MemorySettingsPage(automation, memories, viewModel)
+                        SettingsRoute.LANGUAGE -> LanguageSettingsPage(appLanguage, viewModel)
                         SettingsRoute.APPEARANCE -> AppearanceSettingsPage(
                             themeMode = themeMode,
                             amoled = amoled,
@@ -332,6 +337,7 @@ private fun SettingsHome(
     setupDeferred: Boolean,
     setupStepIndex: Int,
     onFinishSetup: () -> Unit,
+    appLanguage: AppLanguage,
     onOpen: (SettingsRoute) -> Unit,
 ) = SettingsPage {
     if (setupDeferred) {
@@ -419,6 +425,16 @@ private fun SettingsHome(
             subtitle = "Theme, palette, launcher icon, and AMOLED black",
             onClick = { onOpen(SettingsRoute.APPEARANCE) },
         )
+        SettingsDestination(
+            icon = Icons.Outlined.Language,
+            title = "Language",
+            subtitle = when (appLanguage) {
+                AppLanguage.SYSTEM -> "System default"
+                AppLanguage.ENGLISH -> "English"
+                AppLanguage.TURKISH -> "Türkçe"
+            },
+            onClick = { onOpen(SettingsRoute.LANGUAGE) },
+        )
     }
     SettingsGroup("About") {
         SettingsDestination(
@@ -433,7 +449,7 @@ private fun SettingsHome(
 
 @Composable
 private fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 6.dp))
+    Text(uiText(title), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 6.dp))
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = MaterialTheme.shapes.extraLarge,
@@ -452,8 +468,8 @@ private fun SettingsDestination(
 ) {
     val haptics = rememberXyluneHaptics()
     ListItem(
-        headlineContent = { Text(title, fontWeight = FontWeight.SemiBold) },
-        supportingContent = { Text(subtitle) },
+        headlineContent = { Text(uiText(title), fontWeight = FontWeight.SemiBold) },
+        supportingContent = { Text(uiText(subtitle)) },
         leadingContent = { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) },
         trailingContent = { Icon(Icons.Outlined.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
         modifier = Modifier.clickable {
@@ -509,6 +525,41 @@ internal fun SettingsPage(content: @Composable ColumnScope.() -> Unit) {
     }
 }
 
+
+@Composable
+private fun LanguageSettingsPage(
+    selected: AppLanguage,
+    viewModel: ChatViewModel,
+) = SettingsPage {
+    SectionTitle(
+        "Language",
+        "Choose the language Xylune uses. System default follows Android.",
+    )
+    SettingsGroup("App language") {
+        listOf(
+            AppLanguage.SYSTEM to "System default",
+            AppLanguage.ENGLISH to "English",
+            AppLanguage.TURKISH to "Türkçe",
+        ).forEach { (language, label) ->
+            ListItem(
+                headlineContent = { Text(uiText(label), fontWeight = FontWeight.SemiBold) },
+                supportingContent = {
+                    if (language == AppLanguage.SYSTEM) Text(uiText("Follow Android language"))
+                },
+                leadingContent = {
+                    RadioButton(selected = selected == language, onClick = null)
+                },
+                modifier = Modifier.clickable {
+                    viewModel.setAppLanguage(language)
+                },
+                colors = androidx.compose.material3.ListItemDefaults.colors(
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                ),
+            )
+        }
+    }
+}
+
 @Composable
 private fun NewChatDefaultsSettings(
     defaults: NewChatDefaults,
@@ -560,9 +611,9 @@ private fun ResponseStyleSettingsPage(
     )
     SettingsGroup("Assistant responses") {
         ListItem(
-            headlineContent = { Text("Less emoji", fontWeight = FontWeight.SemiBold) },
+            headlineContent = { Text(uiText("Less emoji"), fontWeight = FontWeight.SemiBold) },
             supportingContent = {
-                Text("Avoid decorative emoji and use them only when they add meaning")
+                Text(uiText("Avoid decorative emoji and use them only when they add meaning"))
             },
             trailingContent = {
                 Switch(
@@ -576,7 +627,7 @@ private fun ResponseStyleSettingsPage(
         )
     }
     Text(
-        "Enabled by default. Technical symbols and emoji requested by the user are not blocked.",
+        uiText("Enabled by default. Technical symbols and emoji requested by the user are not blocked."),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 6.dp),
@@ -592,7 +643,7 @@ private fun AutomationSettingsPage(
 ) = SettingsPage {
     SectionTitle("Background task models", "Choose how Xylune names chats and compresses older context.")
     if (providers.isEmpty()) {
-        Text("Configure a usable provider to enable model-based automation.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        Text(uiText("Configure a usable provider to enable model-based automation."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
     AutomationPolicyEditor(
         title = "Chat naming",
@@ -684,8 +735,8 @@ private fun MemorySettingsPage(
         "Xylune stores memories in its encrypted local database and selects only relevant items under a strict context budget. Disabled memories remain stored but are not supplied to models.",
     )
     ListItem(
-        headlineContent = { Text("Use memory") },
-        supportingContent = { Text("Expose selected enabled memories to chats and allow memory tools") },
+        headlineContent = { Text(uiText("Use memory")) },
+        supportingContent = { Text(uiText("Expose selected enabled memories to chats and allow memory tools")) },
         trailingContent = {
             Switch(
                 checked = automation.memoryEnabled,
@@ -694,8 +745,8 @@ private fun MemorySettingsPage(
         },
     )
     ListItem(
-        headlineContent = { Text("Automatic memory") },
-        supportingContent = { Text("Allow models to save stable, non-sensitive details; duplicate items are merged") },
+        headlineContent = { Text(uiText("Automatic memory")) },
+        supportingContent = { Text(uiText("Allow models to save stable, non-sensitive details; duplicate items are merged")) },
         trailingContent = {
             Switch(
                 checked = automation.memoryAutoSave,
@@ -709,7 +760,7 @@ private fun MemorySettingsPage(
     OutlinedTextField(
         value = draft,
         onValueChange = { draft = it },
-        label = { Text("Memory") },
+        label = { Text(uiText("Memory")) },
         minLines = 2,
         maxLines = 5,
         modifier = Modifier.fillMaxWidth(),
@@ -717,7 +768,7 @@ private fun MemorySettingsPage(
     OutlinedTextField(
         value = category,
         onValueChange = { category = it },
-        label = { Text("Category") },
+        label = { Text(uiText("Category")) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )
@@ -727,7 +778,7 @@ private fun MemorySettingsPage(
             viewModel.addMemory(draft, category)
             draft = ""
         },
-    ) { Text("Save memory") }
+    ) { Text(uiText("Save memory")) }
 
     HorizontalDivider()
     SectionTitle(
@@ -738,7 +789,7 @@ private fun MemorySettingsPage(
     OutlinedTextField(
         value = memorySearch,
         onValueChange = { memorySearch = it },
-        label = { Text("Search memories") },
+        label = { Text(uiText("Search memories")) },
         leadingIcon = { Icon(Icons.Outlined.Search, null) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
@@ -748,18 +799,18 @@ private fun MemorySettingsPage(
             FilterChip(
                 selected = statusFilter == option,
                 onClick = { statusFilter = option },
-                label = { Text(option.label) },
+                label = { Text(uiText(option.label)) },
             )
         }
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Box(Modifier.weight(1f)) {
             OutlinedButton(onClick = { categoryMenu = true }, modifier = Modifier.fillMaxWidth()) {
-                Text(categoryFilter ?: "All categories", maxLines = 1)
+                Text(uiText(categoryFilter ?: "All categories"), maxLines = 1)
                 Icon(Icons.Outlined.ExpandMore, null, Modifier.size(18.dp))
             }
             XyluneDropdownMenu(expanded = categoryMenu, onDismissRequest = { categoryMenu = false }) {
-                DropdownMenuItem(text = { Text("All categories") }, onClick = { categoryFilter = null; categoryMenu = false })
+                DropdownMenuItem(text = { Text(uiText("All categories")) }, onClick = { categoryFilter = null; categoryMenu = false })
                 categories.forEach { value ->
                     DropdownMenuItem(text = { Text(value) }, onClick = { categoryFilter = value; categoryMenu = false })
                 }
@@ -767,12 +818,12 @@ private fun MemorySettingsPage(
         }
         Box(Modifier.weight(1f)) {
             OutlinedButton(onClick = { sortMenu = true }, modifier = Modifier.fillMaxWidth()) {
-                Text(sortOrder.label, maxLines = 1)
+                Text(uiText(sortOrder.label), maxLines = 1)
                 Icon(Icons.Outlined.ExpandMore, null, Modifier.size(18.dp))
             }
             XyluneDropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
                 MemorySortOrder.entries.forEach { option ->
-                    DropdownMenuItem(text = { Text(option.label) }, onClick = { sortOrder = option; sortMenu = false })
+                    DropdownMenuItem(text = { Text(uiText(option.label)) }, onClick = { sortOrder = option; sortMenu = false })
                 }
             }
         }
@@ -785,12 +836,12 @@ private fun MemorySettingsPage(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("${selectedIds.size} selected", fontWeight = FontWeight.SemiBold)
+                Text(uiText("${selectedIds.size} selected"), fontWeight = FontWeight.SemiBold)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(onClick = { viewModel.setMemoriesEnabled(selectedIds, true); selectedIds = emptySet() }) { Text("Enable") }
-                    TextButton(onClick = { viewModel.setMemoriesEnabled(selectedIds, false); selectedIds = emptySet() }) { Text("Disable") }
-                    TextButton(onClick = { pendingDeleteIds = selectedIds }) { Text("Delete") }
-                    TextButton(onClick = { selectedIds = emptySet() }) { Text("Clear") }
+                    TextButton(onClick = { viewModel.setMemoriesEnabled(selectedIds, true); selectedIds = emptySet() }) { Text(uiText("Enable")) }
+                    TextButton(onClick = { viewModel.setMemoriesEnabled(selectedIds, false); selectedIds = emptySet() }) { Text(uiText("Disable")) }
+                    TextButton(onClick = { pendingDeleteIds = selectedIds }) { Text(uiText("Delete")) }
+                    TextButton(onClick = { selectedIds = emptySet() }) { Text(uiText("Clear")) }
                 }
             }
         }
@@ -803,24 +854,24 @@ private fun MemorySettingsPage(
             TextButton(
                 enabled = visibleMemories.isNotEmpty(),
                 onClick = { selectedIds = visibleMemories.mapTo(linkedSetOf(), MemoryEntity::id) },
-            ) { Text("Select shown") }
+            ) { Text(uiText("Select shown")) }
             TextButton(
                 enabled = memories.any { !it.enabled },
                 onClick = { deleteDisabledPending = true },
-            ) { Text("Delete disabled") }
+            ) { Text(uiText("Delete disabled")) }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            TextButton(enabled = memories.any { !it.enabled }, onClick = { viewModel.setAllMemoriesEnabled(true) }) { Text("Enable all") }
-            TextButton(enabled = memories.any { it.enabled }, onClick = { viewModel.setAllMemoriesEnabled(false) }) { Text("Disable all") }
+            TextButton(enabled = memories.any { !it.enabled }, onClick = { viewModel.setAllMemoriesEnabled(true) }) { Text(uiText("Enable all")) }
+            TextButton(enabled = memories.any { it.enabled }, onClick = { viewModel.setAllMemoriesEnabled(false) }) { Text(uiText("Disable all")) }
         }
     }
 
     if (visibleMemories.isEmpty()) {
         Text(
-            if (memories.isEmpty()) "No memories saved yet." else "No memories match the current filters.",
+            uiText(if (memories.isEmpty()) "No memories saved yet." else "No memories match the current filters."),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -835,7 +886,7 @@ private fun MemorySettingsPage(
                     OutlinedTextField(
                         value = editText,
                         onValueChange = { editText = it },
-                        label = { Text("Memory") },
+                        label = { Text(uiText("Memory")) },
                         minLines = 2,
                         maxLines = 8,
                         modifier = Modifier.fillMaxWidth(),
@@ -843,7 +894,7 @@ private fun MemorySettingsPage(
                     OutlinedTextField(
                         value = editCategory,
                         onValueChange = { editCategory = it },
-                        label = { Text("Category") },
+                        label = { Text(uiText("Category")) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -854,8 +905,8 @@ private fun MemorySettingsPage(
                                 viewModel.updateMemory(memory.id, editText, editCategory)
                                 editingId = null
                             },
-                        ) { Text("Save") }
-                        TextButton(onClick = { editingId = null }) { Text("Cancel") }
+                        ) { Text(uiText("Save")) }
+                        TextButton(onClick = { editingId = null }) { Text(uiText("Cancel")) }
                     }
                 }
             } else {
@@ -879,7 +930,7 @@ private fun MemorySettingsPage(
                                 maxLines = 1,
                             )
                             Text(
-                                "${if (memory.sourceConversationId == null) "Manual" else "From chat"} · ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(memory.updatedAt))}",
+                                uiText("${if (memory.sourceConversationId == null) "Manual" else "From chat"} · ${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(memory.updatedAt))}"),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
@@ -889,13 +940,13 @@ private fun MemorySettingsPage(
                             editingId = memory.id
                             editText = memory.content
                             editCategory = memory.category
-                        }) { Icon(Icons.Outlined.Edit, "Edit memory") }
+                        }) { Icon(Icons.Outlined.Edit, uiText("Edit memory")) }
                         Switch(
                             checked = memory.enabled,
                             onCheckedChange = { viewModel.setMemoryEnabled(memory.id, it) },
                         )
                         IconButton(onClick = { pendingDeleteIds = setOf(memory.id) }) {
-                            Icon(Icons.Outlined.DeleteOutline, "Delete memory")
+                            Icon(Icons.Outlined.DeleteOutline, uiText("Delete memory"))
                         }
                     }
                 }
@@ -906,28 +957,28 @@ private fun MemorySettingsPage(
     pendingDeleteIds?.let { ids ->
         XyluneAlertDialog(
             onDismissRequest = { pendingDeleteIds = null },
-            title = { Text(if (ids.size == 1) "Delete memory?" else "Delete ${ids.size} memories?") },
-            text = { Text("This permanently removes the selected memory data from Xylune.") },
+            title = { Text(uiText(if (ids.size == 1) "Delete memory?" else "Delete ${ids.size} memories?")) },
+            text = { Text(uiText("This permanently removes the selected memory data from Xylune.")) },
             confirmButton = {
                 Button(onClick = {
                     viewModel.deleteMemories(ids)
                     selectedIds = selectedIds - ids
                     pendingDeleteIds = null
-                }) { Text("Delete") }
+                }) { Text(uiText("Delete")) }
             },
-            dismissButton = { TextButton(onClick = { pendingDeleteIds = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { pendingDeleteIds = null }) { Text(uiText("Cancel")) } },
         )
     }
     if (deleteDisabledPending) {
         val count = memories.count { !it.enabled }
         XyluneAlertDialog(
             onDismissRequest = { deleteDisabledPending = false },
-            title = { Text("Delete $count disabled memor${if (count == 1) "y" else "ies"}?") },
-            text = { Text("Disabled memories are currently excluded from chats. This cleanup permanently removes them.") },
+            title = { Text(uiText("Delete $count disabled memor${if (count == 1) "y" else "ies"}?")) },
+            text = { Text(uiText("Disabled memories are currently excluded from chats. This cleanup permanently removes them.")) },
             confirmButton = {
-                Button(onClick = { viewModel.deleteDisabledMemories(); deleteDisabledPending = false }) { Text("Delete") }
+                Button(onClick = { viewModel.deleteDisabledMemories(); deleteDisabledPending = false }) { Text(uiText("Delete")) }
             },
-            dismissButton = { TextButton(onClick = { deleteDisabledPending = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { deleteDisabledPending = false }) { Text(uiText("Cancel")) } },
         )
     }
     Spacer(Modifier.padding(bottom = 24.dp))
@@ -952,7 +1003,7 @@ private fun AppearanceSettingsPage(
             FilterChip(
                 selected = themeMode == option,
                 onClick = { viewModel.setThemeMode(option) },
-                label = { Text(option.displayName) },
+                label = { Text(uiText(option.displayName)) },
                 leadingIcon = if (themeMode == option) ({ Icon(Icons.Outlined.CheckCircle, null, Modifier.size(18.dp)) }) else null,
             )
         }
@@ -972,10 +1023,10 @@ private fun AppearanceSettingsPage(
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     PaletteSwatch(preview, Modifier.width(58.dp))
                     Column(Modifier.weight(1f).padding(start = 8.dp)) {
-                        Text(if (option == ColorPalette.XYLUNE) appName else option.displayName, fontWeight = FontWeight.SemiBold)
-                        Text(if (option == ColorPalette.XYLUNE) "$appNamePossessive green Material palette" else option.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(if (option == ColorPalette.XYLUNE) appName else uiText(option.displayName), fontWeight = FontWeight.SemiBold)
+                        Text(uiText(if (option == ColorPalette.XYLUNE) "$appNamePossessive green Material palette" else option.description), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    if (palette == option) Icon(Icons.Outlined.CheckCircle, "Selected", tint = MaterialTheme.colorScheme.primary)
+                    if (palette == option) Icon(Icons.Outlined.CheckCircle, uiText("Selected"), tint = MaterialTheme.colorScheme.primary)
                 }
             }
         }
@@ -996,13 +1047,13 @@ private fun AppearanceSettingsPage(
         ) {
             LauncherIconPreview(if (matchLauncherIconToPalette) palette else ColorPalette.XYLUNE)
             Column(Modifier.weight(1f)) {
-                Text("Match launcher icon to palette", fontWeight = FontWeight.SemiBold)
+                Text(uiText("Match launcher icon to palette"), fontWeight = FontWeight.SemiBold)
                 Text(
-                    if (matchLauncherIconToPalette) {
+                    uiText(if (matchLauncherIconToPalette) {
                         "Changing the launcher icon briefly restarts Xylune after saving the open page, chat drafts and files, and current scroll positions. Android themed icons can still override app-selected colors."
                     } else {
                         "Keep the classic Xylune green icon regardless of the selected palette."
-                    },
+                    }),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1014,13 +1065,13 @@ private fun AppearanceSettingsPage(
         }
     }
     Text(
-        "Android themed icons can recolor Xylune's monochrome layer. Dynamic uses the live wallpaper-derived Material You palette when themed icons are off.",
+        uiText("Android themed icons can recolor Xylune's monochrome layer. Dynamic uses the live wallpaper-derived Material You palette when themed icons are off."),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
     SettingsSwitch("AMOLED black", amoled, viewModel::setAmoled, enabled = themeMode != ThemeMode.LIGHT)
-    Text("AMOLED black only changes dark mode surfaces.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(uiText("AMOLED black only changes dark mode surfaces."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
     HorizontalDivider()
     SectionTitle("Interface panels", "Panel shape is a choice. Blur, softness, and tint remain continuous controls.")
@@ -1040,11 +1091,11 @@ private fun AppearanceSettingsPage(
 
     val displayedSoftness = displayedChromeEdgeSoftness(chromeEdgeSoftness)
     val flatEdges = chromeEdgeSoftness >= CHROME_EDGE_SOFTNESS_FLAT_SNAP_POINT / 2f
-    Text("Panel shape", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+    Text(uiText("Panel shape"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         AssistChip(
             onClick = { viewModel.setChromeEdgeSoftness(CHROME_EDGE_SOFTNESS_ROUNDED_SNAP_POINT) },
-            label = { Text("Rounded") },
+            label = { Text(uiText("Rounded")) },
             leadingIcon = if (!flatEdges) {
                 { Icon(Icons.Outlined.CheckCircle, null, Modifier.size(18.dp)) }
             } else null,
@@ -1055,7 +1106,7 @@ private fun AppearanceSettingsPage(
                     chromeEdgeControlPositionForSoftness(displayedSoftness),
                 )
             },
-            label = { Text("Flat") },
+            label = { Text(uiText("Flat")) },
             leadingIcon = if (flatEdges) {
                 { Icon(Icons.Outlined.CheckCircle, null, Modifier.size(18.dp)) }
             } else null,
@@ -1115,7 +1166,7 @@ private fun PrivacySettingsPage(
     SectionTitle("Generated content", "Controls how Xylune handles AI-generated interactive UI.")
     SettingsSwitch("Safe generated rendering", renderSafeMode, viewModel::setRenderSafeMode)
     Text(
-        if (renderSafeMode) "Generated widgets are paused and shown as safe fallback content." else "Generated widgets may render, but Xylune still applies its capability checks and crash recovery.",
+        uiText(if (renderSafeMode) "Generated widgets are paused and shown as safe fallback content." else "Generated widgets may render, but Xylune still applies its capability checks and crash recovery."),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -1135,28 +1186,28 @@ private fun PrivacySettingsPage(
         "Xylune is a client, not an AI model host. Responses come from the provider or local server selected by the user.",
     )
     Text(
-        "The Xylune maintainer does not create, train, host, pre-review, or endorse individual model outputs. AI output can be wrong, unsafe, biased, or unsuitable; verify it before relying on it. Provider terms, fees, retention, and content rules apply independently.",
+        uiText("The Xylune maintainer does not create, train, host, pre-review, or endorse individual model outputs. AI output can be wrong, unsafe, biased, or unsuitable; verify it before relying on it. Provider terms, fees, retention, and content rules apply independently."),
         style = MaterialTheme.typography.bodyMedium,
     )
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(
             onClick = { uriHandler.openUri(privacyUrl) },
             modifier = Modifier.weight(1f),
-        ) { Text("Privacy") }
+        ) { Text(uiText("Privacy")) }
         OutlinedButton(
             onClick = { uriHandler.openUri(termsUrl) },
             modifier = Modifier.weight(1f),
-        ) { Text("Terms") }
+        ) { Text(uiText("Terms")) }
     }
     OutlinedButton(
         onClick = { uriHandler.openUri(deletionUrl) },
         modifier = Modifier.fillMaxWidth(),
-    ) { Text("Data deletion") }
+    ) { Text(uiText("Data deletion")) }
     Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Security, null)
             Text(
-                "No Xylune account, ads, analytics, or Xylune cloud. Chat history and API keys remain on this device; traffic goes to endpoints and web tools you explicitly enable.",
+                uiText("No Xylune account, ads, analytics, or Xylune cloud. Chat history and API keys remain on this device; traffic goes to endpoints and web tools you explicitly enable."),
                 Modifier.padding(start = 12.dp),
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -1179,10 +1230,10 @@ private fun SystemPromptProfilesPage(
     )
     FilledTonalButton(onClick = { creating = true }, modifier = Modifier.fillMaxWidth()) {
         Icon(Icons.Outlined.Add, null)
-        Text("New custom profile", Modifier.padding(start = 8.dp))
+        Text(uiText("New custom profile"), Modifier.padding(start = 8.dp))
     }
     if (profiles.isEmpty()) {
-        Text("No saved prompts yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(uiText("No saved prompts yet."), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     profiles.forEach { profile ->
         Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
@@ -1191,18 +1242,18 @@ private fun SystemPromptProfilesPage(
                     Column(Modifier.weight(1f)) {
                         Text(profile.name, fontWeight = FontWeight.SemiBold)
                         Text(
-                            if (profile.mode == SystemPromptMode.OVERRIDE) "Override default tone/persona" else "Additional instructions",
+                            uiText(if (profile.mode == SystemPromptMode.OVERRIDE) "Override default tone/persona" else "Additional instructions"),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                         )
                     }
-                    if (selectedDefaultId == profile.id) Text("Default", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    if (selectedDefaultId == profile.id) Text(uiText("Default"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 }
                 Text(profile.prompt, maxLines = 4, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { viewModel.updateNewChatDefaults { it.copy(systemPromptProfileId = profile.id) } }) { Text("Use for new chats") }
-                    IconButton(onClick = { editing = profile }) { Icon(Icons.Outlined.Edit, "Edit ${profile.name}") }
-                    IconButton(onClick = { viewModel.deleteSystemPromptProfile(profile.id) }) { Icon(Icons.Outlined.DeleteOutline, "Delete ${profile.name}") }
+                    OutlinedButton(onClick = { viewModel.updateNewChatDefaults { it.copy(systemPromptProfileId = profile.id) } }) { Text(uiText("Use for new chats")) }
+                    IconButton(onClick = { editing = profile }) { Icon(Icons.Outlined.Edit, uiText("Edit ${profile.name}")) }
+                    IconButton(onClick = { viewModel.deleteSystemPromptProfile(profile.id) }) { Icon(Icons.Outlined.DeleteOutline, uiText("Delete ${profile.name}")) }
                 }
             }
         }
@@ -1210,7 +1261,7 @@ private fun SystemPromptProfilesPage(
     if (selectedDefaultId != null) OutlinedButton(
         onClick = { viewModel.updateNewChatDefaults { it.copy(systemPromptProfileId = null) } },
         modifier = Modifier.fillMaxWidth(),
-    ) { Text("Use Xylune default for new chats") }
+    ) { Text(uiText("Use Xylune default for new chats")) }
     if (creating) SystemPromptEditorDialog(
         title = "New custom profile",
         initial = null,
@@ -1242,16 +1293,16 @@ private fun SystemPromptEditorDialog(
         title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(name, { name = it.take(80) }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(name, { name = it.take(80) }, label = { Text(uiText("Name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = mode == SystemPromptMode.PREPEND, onClick = { mode = SystemPromptMode.PREPEND }, label = { Text("Prepend") })
-                    FilterChip(selected = mode == SystemPromptMode.OVERRIDE, onClick = { mode = SystemPromptMode.OVERRIDE }, label = { Text("Override") })
+                    FilterChip(selected = mode == SystemPromptMode.PREPEND, onClick = { mode = SystemPromptMode.PREPEND }, label = { Text(uiText("Prepend")) })
+                    FilterChip(selected = mode == SystemPromptMode.OVERRIDE, onClick = { mode = SystemPromptMode.OVERRIDE }, label = { Text(uiText("Override")) })
                 }
-                OutlinedTextField(prompt, { prompt = it.take(64_000) }, label = { Text("Instructions") }, minLines = 8, maxLines = 16, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(prompt, { prompt = it.take(64_000) }, label = { Text(uiText("Instructions")) }, minLines = 8, maxLines = 16, modifier = Modifier.fillMaxWidth())
             }
         },
-        confirmButton = { Button(onClick = { onSave(name, prompt, mode) }, enabled = name.isNotBlank() && prompt.isNotBlank()) { Text("Save") } },
-        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { Button(onClick = { onSave(name, prompt, mode) }, enabled = name.isNotBlank() && prompt.isNotBlank()) { Text(uiText("Save")) } },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text(uiText("Cancel")) } },
     )
 }
 
@@ -1270,8 +1321,8 @@ private fun LocalCodeExecutionSettingsPage(
         )
         SettingsGroup("Tool defaults") {
             ListItem(
-                headlineContent = { Text("Python", fontWeight = FontWeight.SemiBold) },
-                supportingContent = { Text("Bundled Python 3.12 · no Linux download required") },
+                headlineContent = { Text(uiText("Python"), fontWeight = FontWeight.SemiBold) },
+                supportingContent = { Text(uiText("Bundled Python 3.12 · no Linux download required")) },
                 leadingContent = { Icon(Icons.Outlined.Code, null, tint = MaterialTheme.colorScheme.primary) },
                 trailingContent = {
                     Switch(
@@ -1284,9 +1335,9 @@ private fun LocalCodeExecutionSettingsPage(
                 colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
             )
             ListItem(
-                headlineContent = { Text("Linux commands", fontWeight = FontWeight.SemiBold) },
+                headlineContent = { Text(uiText("Linux commands"), fontWeight = FontWeight.SemiBold) },
                 supportingContent = {
-                    Text(if (linuxStatus.installed) "${linuxStatus.distribution.displayName} ${linuxStatus.release} installed" else "Requires a separate distribution download")
+                    Text(uiText(if (linuxStatus.installed) "${linuxStatus.distribution.displayName} ${linuxStatus.release} installed" else "Requires a separate distribution download"))
                 },
                 leadingContent = { Icon(Icons.Outlined.Terminal, null, tint = MaterialTheme.colorScheme.primary) },
                 trailingContent = {
@@ -1310,7 +1361,7 @@ private fun LocalCodeExecutionSettingsPage(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Icon(Icons.Outlined.Code, null)
-            Text("Open runtime manager", Modifier.padding(start = 8.dp))
+            Text(uiText("Open runtime manager"), Modifier.padding(start = 8.dp))
         }
         SectionTitle(
             "Package approval",
@@ -1350,7 +1401,7 @@ private fun DeveloperSettingsPage(
         enabled = settings.enabled,
     )
     Text(
-        "Off by default. Normal chats show only a concise failure summary and Retry.",
+        uiText("Off by default. Normal chats show only a concise failure summary and Retry."),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -1388,7 +1439,7 @@ private fun DeveloperSettingsPage(
         enabled = settings.enabled,
     )
     Text(
-        "Attributes slow frames to Android frame stages, Xylune blur work, Compose recomposition pressure, allocations, and blocking GC. It adds some diagnostic overhead, so use it while reproducing an issue.",
+        uiText("Attributes slow frames to Android frame stages, Xylune blur work, Compose recomposition pressure, allocations, and blocking GC. It adds some diagnostic overhead, so use it while reproducing an issue."),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -1424,12 +1475,12 @@ private fun DeveloperSettingsPage(
         enabled = settings.enabled && settings.performanceOverlayEnabled,
     )
     Text(
-        "The overlay explicitly shares pointer input with the content underneath and never consumes it. Taps, scrolling, drawer gestures, and back navigation continue through the panel.",
+        uiText("The overlay explicitly shares pointer input with the content underneath and never consumes it. Taps, scrolling, drawer gestures, and back navigation continue through the panel."),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
-    Text("Update interval", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+    Text(uiText("Update interval"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf(
             listOf(250 to "250 ms", 500 to "500 ms"),
@@ -1450,7 +1501,7 @@ private fun DeveloperSettingsPage(
         }
     }
 
-    Text("Overlay position", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+    Text(uiText("Overlay position"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PerformanceOverlayPosition.entries.take(2).forEach { position ->
@@ -1458,7 +1509,7 @@ private fun DeveloperSettingsPage(
                     selected = settings.performanceOverlayPosition == position,
                     onClick = { viewModel.updateDeveloperSettings { it.copy(performanceOverlayPosition = position) } },
                     enabled = settings.enabled && settings.performanceOverlayEnabled,
-                    label = { Text(position.displayName) },
+                    label = { Text(uiText(position.displayName)) },
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -1469,7 +1520,7 @@ private fun DeveloperSettingsPage(
                     selected = settings.performanceOverlayPosition == position,
                     onClick = { viewModel.updateDeveloperSettings { it.copy(performanceOverlayPosition = position) } },
                     enabled = settings.enabled && settings.performanceOverlayEnabled,
-                    label = { Text(position.displayName) },
+                    label = { Text(uiText(position.displayName)) },
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -1477,11 +1528,11 @@ private fun DeveloperSettingsPage(
     }
 
     Text(
-        if (settings.detailedPerformanceOverlay) {
+        uiText(if (settings.detailedPerformanceOverlay) {
             "Detailed mode shows Choreographer FPS, average/p95/p99 frame interval, jank against the current refresh budget, app CPU, PSS, Java heap, GPU duration when Android reports it, missed vsyncs per second, and total observed frames. Cause profiler ranks primary and secondary causes, reports confidence and severity, and shows the evidence used for attribution alongside FrameMetrics, blur, recomposition, allocation, and GC counters."
         } else {
             "Compact mode shows FPS, average frame time, and jank percentage."
-        },
+        }),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -1506,7 +1557,7 @@ private fun DeveloperSettingsPage(
         enabled = settings.enabled && settings.blurBoundaryDebugEnabled,
     )
     Text(
-        "Guides are bright red and diagnostic-only. They are never shown unless both Developer settings and this toggle are enabled.",
+        uiText("Guides are bright red and diagnostic-only. They are never shown unless both Developer settings and this toggle are enabled."),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -1550,8 +1601,8 @@ private fun AboutSettingsPage(
 
     SettingsGroup("Project") {
         ListItem(
-            headlineContent = { Text("Created by @omerfaruknehir", fontWeight = FontWeight.SemiBold) },
-            supportingContent = { Text("Open the creator's GitHub profile") },
+            headlineContent = { Text(uiText("Created by @omerfaruknehir"), fontWeight = FontWeight.SemiBold) },
+            supportingContent = { Text(uiText("Open the creator's GitHub profile")) },
             leadingContent = { Icon(Icons.Outlined.AccountCircle, null, tint = MaterialTheme.colorScheme.primary) },
             trailingContent = { Icon(Icons.Outlined.ChevronRight, null) },
             modifier = Modifier.clickable {
@@ -1612,8 +1663,8 @@ private fun AboutSettingsPage(
 
     SettingsGroup("Updates") {
         ListItem(
-            headlineContent = { Text("Check automatically", fontWeight = FontWeight.SemiBold) },
-            supportingContent = { Text("Check the source repository once per day when Xylune starts") },
+            headlineContent = { Text(uiText("Check automatically"), fontWeight = FontWeight.SemiBold) },
+            supportingContent = { Text(uiText("Check the source repository once per day when Xylune starts")) },
             leadingContent = { Icon(Icons.Outlined.Refresh, null, tint = MaterialTheme.colorScheme.primary) },
             trailingContent = {
                 Switch(
@@ -1628,43 +1679,43 @@ private fun AboutSettingsPage(
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             when (val state = updateState) {
                 RepositoryUpdateState.Unsupported -> {
-                    Text("Automatic checks are unavailable because this build has no embedded GitHub repository origin.")
+                    Text(uiText("Automatic checks are unavailable because this build has no embedded GitHub repository origin."))
                     Text(
-                        "GitHub release workflows embed their own owner/repository. Fork builds therefore follow the fork they came from.",
+                        uiText("GitHub release workflows embed their own owner/repository. Fork builds therefore follow the fork they came from."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 RepositoryUpdateState.Idle -> {
-                    Text("Updates are checked against ${sourceRepository ?: "the build repository"}.")
+                    Text(uiText("Updates are checked against ${sourceRepository ?: "the build repository"}."))
                     OutlinedButton(onClick = viewModel::checkForUpdates, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Outlined.Refresh, null)
-                        Text(" Check for updates")
+                        Text(uiText(" Check for updates"))
                     }
                 }
                 RepositoryUpdateState.Checking -> {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-                        Text("Checking ${sourceRepository ?: "the source repository"}…")
+                        Text(uiText("Checking ${sourceRepository ?: "the source repository"}…"))
                     }
                 }
                 is RepositoryUpdateState.UpToDate -> {
-                    Text("Xylune is up to date", fontWeight = FontWeight.SemiBold)
+                    Text(uiText("Xylune is up to date"), fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Latest release: ${state.latestVersion} · checked ${DateFormat.getDateTimeInstance().format(Date(state.checkedAt))}",
+                        uiText("Latest release: ${state.latestVersion} · checked ${DateFormat.getDateTimeInstance().format(Date(state.checkedAt))}"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     OutlinedButton(onClick = viewModel::checkForUpdates, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Outlined.Refresh, null)
-                        Text(" Check again")
+                        Text(uiText(" Check again"))
                     }
                 }
                 is RepositoryUpdateState.Available -> {
                     val release = state.release
-                    Text("Xylune ${release.versionName} is available", fontWeight = FontWeight.SemiBold)
+                    Text(uiText("Xylune ${release.versionName} is available"), fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Source: ${release.repository}" + (release.publishedAt?.let { " · $it" } ?: ""),
+                        uiText("Source: ${release.repository}" + (release.publishedAt?.let { " · $it" } ?: "")),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1681,19 +1732,19 @@ private fun AboutSettingsPage(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Icon(Icons.Outlined.Cloud, null)
-                        Text(if (release.directInstallCompatible) " Download update" else " Open release page")
+                        Text(uiText(if (release.directInstallCompatible) " Download update" else " Open release page"))
                     }
                     OutlinedButton(onClick = viewModel::checkForUpdates, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Outlined.Refresh, null)
-                        Text(" Check again")
+                        Text(uiText(" Check again"))
                     }
                 }
                 is RepositoryUpdateState.Failed -> {
-                    Text("Update check failed", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error)
+                    Text(uiText("Update check failed"), fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error)
                     Text(state.message, style = MaterialTheme.typography.bodySmall)
                     OutlinedButton(onClick = viewModel::checkForUpdates, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Outlined.Refresh, null)
-                        Text(" Retry")
+                        Text(uiText(" Retry"))
                     }
                 }
             }
@@ -1723,15 +1774,15 @@ private fun AboutSettingsPage(
         shape = MaterialTheme.shapes.extraLarge,
     ) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Private by design", fontWeight = FontWeight.SemiBold)
+            Text(uiText("Private by design"), fontWeight = FontWeight.SemiBold)
             Text(
-                "Chats, credentials, and workspaces stay on your device. Xylune connects directly to providers you configure and has no application backend, ads, or telemetry.",
+                uiText("Chats, credentials, and workspaces stay on your device. Xylune connects directly to providers you configure and has no application backend, ads, or telemetry."),
                 style = MaterialTheme.typography.bodySmall,
             )
             if (BuildConfig.DEBUG) {
                 HorizontalDivider()
                 Text(
-                    "This is a debug-signed development build.",
+                    uiText("This is a debug-signed development build."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1742,7 +1793,7 @@ private fun AboutSettingsPage(
     TextButton(onClick = onOpenDeveloper) {
         Icon(Icons.Outlined.DeveloperMode, null, Modifier.size(18.dp))
         Text(
-            if (developerEnabled) "Developer options · enabled" else "Developer options",
+            uiText(if (developerEnabled) "Developer options · enabled" else "Developer options"),
             Modifier.padding(start = 8.dp),
         )
     }
@@ -1757,7 +1808,7 @@ private fun AboutInfoRow(label: String, value: String) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            label,
+            uiText(label),
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
@@ -1879,10 +1930,10 @@ private fun ChatOptionsEditor(
         onEffort = onThinkingEffort,
     )
 
-    Text("Tools and modes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    Text(uiText("Tools and modes"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
     SettingsSwitch("Web search", webEnabled, onWeb)
     SettingsSwitch("Deep Research", deepResearchEnabled, onDeepResearch, enabled = webEnabled || !deepResearchEnabled)
-    Text("Deep Research plans, searches iteratively, verifies sources, and produces a cited report. Enabling it also enables web search.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(uiText("Deep Research plans, searches iteratively, verifies sources, and produces a cited report. Enabling it also enables web search."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
     HorizontalDivider()
     SectionTitle("Token counting", "Optional hybrid preflight counting. Provider count endpoints are preferred; local model-family estimates and the generic estimator are fallbacks.")
@@ -1924,9 +1975,9 @@ private fun ChatOptionsEditor(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Security, null, tint = MaterialTheme.colorScheme.primary)
                 Column(Modifier.padding(start = 12.dp)) {
-                    Text("Managed by Xylune · revision $XYLUNE_CORE_PROMPT_REVISION", fontWeight = FontWeight.SemiBold)
+                    Text(uiText("Managed by Xylune · revision $XYLUNE_CORE_PROMPT_REVISION"), fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Use custom instruction profiles for additional tone and workflow preferences.",
+                        uiText("Use custom instruction profiles for additional tone and workflow preferences."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1947,7 +1998,7 @@ private fun ChatOptionsEditor(
                 }
             }
             Text(
-                "Xylune adds request-specific date, enabled-tool, research, memory, attachment, and generated-content instructions at runtime. Those dynamic layers are not editable either and are not presented as one misleading static block.",
+                uiText("Xylune adds request-specific date, enabled-tool, research, memory, attachment, and generated-content instructions at runtime. Those dynamic layers are not editable either and are not presented as one misleading static block."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1983,9 +2034,9 @@ private fun ThinkingDefaultsControl(
         Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.SmartToy, null, tint = MaterialTheme.colorScheme.primary)
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                Text("Thinking", fontWeight = FontWeight.SemiBold)
+                Text(uiText("Thinking"), fontWeight = FontWeight.SemiBold)
                 Text(
-                    if (!supported) "Not supported by this model" else if (effectiveEnabled) "${effectiveEffort.displayName} effort" else "Off",
+                    uiText(if (!supported) "Not supported by this model" else if (effectiveEnabled) "${effectiveEffort.displayName} effort" else "Off"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1996,11 +2047,11 @@ private fun ThinkingDefaultsControl(
                 enabled = supported && options.any { !it.enabled },
             )
             Box {
-                IconButton(onClick = { menu = true }, enabled = supported) { Icon(Icons.Outlined.ExpandMore, "Thinking effort") }
+                IconButton(onClick = { menu = true }, enabled = supported) { Icon(Icons.Outlined.ExpandMore, uiText("Thinking effort")) }
                 XyluneDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     options.filter { it.enabled }.forEach { option ->
                         DropdownMenuItem(
-                            text = { Text(option.label) },
+                            text = { Text(uiText(option.label)) },
                             leadingIcon = if (effectiveEnabled && effectiveEffort == option.effort) ({ Icon(Icons.Outlined.CheckCircle, null) }) else null,
                             onClick = {
                                 option.effort?.let(onEffort)
@@ -2013,7 +2064,7 @@ private fun ThinkingDefaultsControl(
             }
         }
     }
-    Text("Available levels follow the selected model. Some models cannot fully disable reasoning.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(uiText("Available levels follow the selected model. Some models cannot fully disable reasoning."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
@@ -2039,9 +2090,9 @@ private fun ProviderModelSelector(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
-            Text(selectedModel?.displayName ?: modelId.ifBlank { "Choose a model" }, maxLines = 1)
+            Text(selectedModel?.displayName ?: modelId.ifBlank { uiText("Choose a model") }, maxLines = 1)
             Text(
-                provider?.displayName ?: "No provider selected",
+                uiText(provider?.displayName ?: "No provider selected"),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -2061,14 +2112,14 @@ private fun ProviderModelSelector(
             onDismiss = { showPicker = false },
         )
     }
-    if (providers.isEmpty()) Text("Add a usable provider in the Providers tab.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+    if (providers.isEmpty()) Text(uiText("Add a usable provider in the Providers tab."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
 }
 
 @Composable
 private fun SettingsSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, enabled: Boolean = true) {
     val haptics = rememberXyluneHaptics()
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f))
+        Text(uiText(label), Modifier.weight(1f))
         Switch(
             checked = checked,
             onCheckedChange = { next ->
@@ -2085,7 +2136,7 @@ private fun NumberSetting(label: String, value: Int, range: IntRange, onValue: (
     OutlinedTextField(
         value = value.toString(),
         onValueChange = { raw -> raw.toIntOrNull()?.coerceIn(range)?.let(onValue) },
-        label = { Text(label) },
+        label = { Text(uiText(label)) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth(),
     )
@@ -2185,11 +2236,11 @@ private fun ProviderSettings(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { addingChatGpt = true }) {
                     Icon(Icons.Outlined.AccountCircle, null)
-                    Text(" ChatGPT")
+                    Text(uiText(" ChatGPT"))
                 }
                 FilledTonalButton(onClick = { addingProvider = true }) {
                     Icon(Icons.Outlined.Add, null)
-                    Text(" API", Modifier.padding(start = 2.dp))
+                    Text(uiText(" API"), Modifier.padding(start = 2.dp))
                 }
             }
         }
@@ -2198,11 +2249,11 @@ private fun ProviderSettings(
             Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Outlined.Cloud, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp))
-                    Text("No providers yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("Add a ChatGPT account or configure an API-compatible provider.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(uiText("No providers yet"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(uiText("Add a ChatGPT account or configure an API-compatible provider."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { addingChatGpt = true }) { Text("Add ChatGPT") }
-                        OutlinedButton(onClick = { addingProvider = true }) { Text("Add API") }
+                        Button(onClick = { addingChatGpt = true }) { Text(uiText("Add ChatGPT")) }
+                        OutlinedButton(onClick = { addingProvider = true }) { Text(uiText("Add API")) }
                     }
                 }
             }
@@ -2225,20 +2276,20 @@ private fun ProviderSettings(
                             Column(Modifier.weight(1f).padding(start = 12.dp)) {
                                 Text(provider.displayName, fontWeight = FontWeight.SemiBold)
                                 Text(
-                                    if (provider.kind == ProviderKind.OPENAI_OAUTH) {
+                                    uiText(if (provider.kind == ProviderKind.OPENAI_OAUTH) {
                                         when (openAiOAuthStates[provider.id]) {
                                             is OpenAiOAuthState.SignedIn -> "ChatGPT OAuth • Connected"
                                             OpenAiOAuthState.SigningIn -> "ChatGPT OAuth • Signing in"
                                             is OpenAiOAuthState.Error -> "ChatGPT OAuth • Needs attention"
                                             else -> "ChatGPT OAuth • Disconnected"
                                         }
-                                    } else providerKindLabel(provider.kind),
+                                    } else providerKindLabel(provider.kind)),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                            if (provider.id == conversationProviderId) Text("In use", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            if (provider.id == selected?.id) Icon(Icons.Outlined.CheckCircle, "Selected", tint = MaterialTheme.colorScheme.primary)
+                            if (provider.id == conversationProviderId) Text(uiText("In use"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            if (provider.id == selected?.id) Icon(Icons.Outlined.CheckCircle, uiText("Selected"), tint = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -2254,12 +2305,12 @@ private fun ProviderSettings(
                         Column(Modifier.weight(1f)) {
                             Text(provider.baseUrl, maxLines = 1, style = MaterialTheme.typography.bodyMedium)
                             Text(
-                                if (!provider.apiKeyRequired) "Keyless endpoint" else if (apiKey.isNotBlank()) "API key saved securely" else "API key missing",
+                                uiText(if (!provider.apiKeyRequired) "Keyless endpoint" else if (apiKey.isNotBlank()) "API key saved securely" else "API key missing"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (provider.apiKeyRequired && apiKey.isBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        OutlinedButton(onClick = { editingConnection = true }) { Text("Edit") }
+                        OutlinedButton(onClick = { editingConnection = true }) { Text(uiText("Edit")) }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
@@ -2280,10 +2331,10 @@ private fun ProviderSettings(
                             modifier = Modifier.weight(1f),
                         ) {
                             if (syncingModels) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.Refresh, null)
-                            Text(if (syncingModels) " Refreshing…" else " Refresh models")
+                            Text(uiText(if (syncingModels) " Refreshing…" else " Refresh models"))
                         }
                         OutlinedButton(onClick = { removingProvider = provider }) {
-                            Icon(Icons.Outlined.DeleteOutline, "Remove", tint = MaterialTheme.colorScheme.error)
+                            Icon(Icons.Outlined.DeleteOutline, uiText("Remove"), tint = MaterialTheme.colorScheme.error)
                         }
                     }
                     modelSyncStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -2316,7 +2367,7 @@ private fun ProviderSettings(
     if (editingConnection) {
         ModalBottomSheet(onDismissRequest = { editingConnection = false }) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp).verticalScroll(rememberScrollState())) {
-                Text("Edit connection", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                Text(uiText("Edit connection"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                 Text(selected?.displayName.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.size(16.dp))
                 selected?.let { provider ->
@@ -2345,10 +2396,10 @@ private fun ProviderSettings(
     removingProvider?.let { provider ->
         XyluneAlertDialog(
             onDismissRequest = { removingProvider = null },
-            title = { Text("Remove ${provider.displayName}?") },
-            text = { Text(if (provider.kind == ProviderKind.OPENAI_OAUTH) "Its encrypted OAuth session and models will be disconnected. Chats and usage history are kept." else "Its saved API key will be erased and it will disappear from model selectors. Chats and usage history are kept.") },
-            dismissButton = { OutlinedButton(onClick = { removingProvider = null }) { Text("Cancel") } },
-            confirmButton = { Button(onClick = { viewModel.removeProvider(provider); removingProvider = null }) { Text("Remove provider") } },
+            title = { Text(uiText("Remove ${provider.displayName}?")) },
+            text = { Text(uiText(if (provider.kind == ProviderKind.OPENAI_OAUTH) "Its encrypted OAuth session and models will be disconnected. Chats and usage history are kept." else "Its saved API key will be erased and it will disappear from model selectors. Chats and usage history are kept.")) },
+            dismissButton = { OutlinedButton(onClick = { removingProvider = null }) { Text(uiText("Cancel")) } },
+            confirmButton = { Button(onClick = { viewModel.removeProvider(provider); removingProvider = null }) { Text(uiText("Remove provider")) } },
         )
     }
 
@@ -2449,23 +2500,23 @@ private fun AddChatGptProviderDialog(
     var name by remember { mutableStateOf(if (existingCount == 0) "ChatGPT account" else "ChatGPT account ${existingCount + 1}") }
     XyluneAlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add ChatGPT provider") },
+        title = { Text(uiText("Add ChatGPT provider")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Each provider keeps its OAuth session, models, usage limits, and refresh state separate. Xylune requests a fresh sign-in page so you can add a different ChatGPT account.")
+                Text(uiText("Each provider keeps its OAuth session, models, usage limits, and refresh state separate. Xylune requests a fresh sign-in page so you can add a different ChatGPT account."))
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Provider name") },
-                    placeholder = { Text("Work ChatGPT") },
+                    label = { Text(uiText("Provider name")) },
+                    placeholder = { Text(uiText("Work ChatGPT")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
         },
-        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text(uiText("Cancel")) } },
         confirmButton = {
-            Button(onClick = { onAdd(name.trim()) }, enabled = name.isNotBlank()) { Text("Add") }
+            Button(onClick = { onAdd(name.trim()) }, enabled = name.isNotBlank()) { Text(uiText("Add")) }
         },
     )
 }
@@ -2479,18 +2530,18 @@ private fun RenameChatGptProviderDialog(
     var name by remember(provider.id) { mutableStateOf(provider.displayName) }
     XyluneAlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Rename ChatGPT provider") },
+        title = { Text(uiText("Rename ChatGPT provider")) },
         text = {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Provider name") },
+                label = { Text(uiText("Provider name")) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
         },
-        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } },
-        confirmButton = { Button(onClick = { onRename(name.trim()) }, enabled = name.isNotBlank()) { Text("Save") } },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text(uiText("Cancel")) } },
+        confirmButton = { Button(onClick = { onRename(name.trim()) }, enabled = name.isNotBlank()) { Text(uiText("Save")) } },
     )
 }
 
@@ -2524,26 +2575,26 @@ private fun ChatGptOAuthCard(
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
                     Text(providerName, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        when (state) {
+                        uiText(when (state) {
                             OpenAiOAuthState.SignedOut -> "Use your ChatGPT plan without an API key"
                             OpenAiOAuthState.SigningIn -> "Complete sign-in in your browser…"
                             is OpenAiOAuthState.SignedIn -> state.email?.let { "Connected • $it" } ?: "Connected"
                             is OpenAiOAuthState.Error -> state.message
-                        },
+                        }),
                         style = MaterialTheme.typography.bodySmall,
                         color = if (state is OpenAiOAuthState.Error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 IconButton(onClick = onRename, enabled = state !is OpenAiOAuthState.SigningIn) {
-                    Icon(Icons.Outlined.Edit, "Rename provider")
+                    Icon(Icons.Outlined.Edit, uiText("Rename provider"))
                 }
                 if (state is OpenAiOAuthState.SigningIn) {
                     CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-                    TextButton(onClick = onCancel) { Text("Cancel") }
+                    TextButton(onClick = onCancel) { Text(uiText("Cancel")) }
                 }
             }
             Text(
-                "One-tap native OAuth. Xylune opens the system browser, receives the localhost callback itself, encrypts the session on this device, and refreshes it automatically. No extension or local proxy is required.",
+                uiText("One-tap native OAuth. Xylune opens the system browser, receives the localhost callback itself, encrypts the session on this device, and refreshes it automatically. No extension or local proxy is required."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -2552,11 +2603,11 @@ private fun ChatGptOAuthCard(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = onRefreshModels, modifier = Modifier.weight(1f)) {
                         Icon(Icons.Outlined.Refresh, null)
-                        Text(" Refresh models")
+                        Text(uiText(" Refresh models"))
                     }
                     OutlinedButton(onClick = onSignOut) {
                         Icon(Icons.AutoMirrored.Outlined.Logout, null)
-                        Text(" Disconnect")
+                        Text(uiText(" Disconnect"))
                     }
                 }
             } else {
@@ -2566,12 +2617,12 @@ private fun ChatGptOAuthCard(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Icon(Icons.AutoMirrored.Outlined.Login, null)
-                    Text(if (state is OpenAiOAuthState.Error) " Sign in again" else " Sign in with ChatGPT")
+                    Text(uiText(if (state is OpenAiOAuthState.Error) " Sign in again" else " Sign in with ChatGPT"))
                 }
             }
             TextButton(onClick = onRemove, enabled = state !is OpenAiOAuthState.SigningIn, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Outlined.DeleteOutline, null, tint = MaterialTheme.colorScheme.error)
-                Text(" Remove provider", color = MaterialTheme.colorScheme.error)
+                Text(uiText(" Remove provider"), color = MaterialTheme.colorScheme.error)
             }
         }
     }
@@ -2596,10 +2647,10 @@ private fun ChatGptUsagePanel(
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Usage & limits", fontWeight = FontWeight.SemiBold)
+                    Text(uiText("Usage & limits"), fontWeight = FontWeight.SemiBold)
                     Text(
-                        snapshot?.planType?.let { "${humanizeUsageName(it)} plan • reported by ChatGPT" }
-                            ?: "Current account quota windows",
+                        uiText(snapshot?.planType?.let { "${humanizeUsageName(it)} plan • reported by ChatGPT" }
+                            ?: "Current account quota windows"),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -2608,7 +2659,7 @@ private fun ChatGptUsagePanel(
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 }
                 IconButton(onClick = onRefresh, enabled = state !is OpenAiOAuthUsageState.Loading) {
-                    Icon(Icons.Outlined.Refresh, "Refresh usage")
+                    Icon(Icons.Outlined.Refresh, uiText("Refresh usage"))
                 }
             }
 
@@ -2643,8 +2694,8 @@ private fun ChatGptUsagePanel(
                 }
                 if (snapshot.limitReached == true || snapshot.allowed == false) {
                     Text(
-                        snapshot.rateLimitReachedType?.let { "Limit reached: ${humanizeUsageName(it)}" }
-                            ?: "A ChatGPT usage limit has been reached.",
+                        uiText(snapshot.rateLimitReachedType?.let { "Limit reached: ${humanizeUsageName(it)}" }
+                            ?: "A ChatGPT usage limit has been reached."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                         fontWeight = FontWeight.SemiBold,
@@ -2652,7 +2703,7 @@ private fun ChatGptUsagePanel(
                 }
                 if (state is OpenAiOAuthUsageState.Error) {
                     Text(
-                        "Refresh failed • ${state.message}",
+                        uiText("Refresh failed • ${state.message}"),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -2673,7 +2724,7 @@ private fun UsageWindowRow(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
             Text(
-                "${left.roundToInt()}% left",
+                uiText("${left.roundToInt()}% left"),
                 style = MaterialTheme.typography.bodySmall,
                 color = if (left <= 10.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
             )
@@ -2694,10 +2745,10 @@ private fun UsageWindowRow(
         }
         val reset = resetAt?.let { usageResetText(it, nowEpochSeconds) }
         Text(
-            buildString {
+            uiText(buildString {
                 append("${used.roundToInt()}% used")
                 if (reset != null) append(" • $reset")
-            },
+            }),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -2758,19 +2809,19 @@ private fun ProviderEditor(
     var advanced by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(providerKindLabel(provider.kind), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-        OutlinedTextField(name, onName, label = { Text("Provider name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(baseUrl, onBaseUrl, label = { Text("API base URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(name, onName, label = { Text(uiText("Provider name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(baseUrl, onBaseUrl, label = { Text(uiText("API base URL")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(
             key, onKey,
-            label = { Text(if (apiKeyRequired) "API key" else "API key (optional)") },
+            label = { Text(uiText(if (apiKeyRequired) "API key" else "API key (optional)")) },
             visualTransformation = PasswordVisualTransformation(),
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Require API key", fontWeight = FontWeight.Medium)
-                Text("Disable only for a trusted local or keyless endpoint", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(uiText("Require API key"), fontWeight = FontWeight.Medium)
+                Text(uiText("Disable only for a trusted local or keyless endpoint"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Switch(checked = apiKeyRequired, onCheckedChange = onApiKeyRequired)
         }
@@ -2783,8 +2834,8 @@ private fun ProviderEditor(
             Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Tune, null)
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text("Advanced headers", fontWeight = FontWeight.Medium)
-                    Text("Usually unnecessary", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(uiText("Advanced headers"), fontWeight = FontWeight.Medium)
+                    Text(uiText("Usually unnecessary"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Icon(Icons.Outlined.ExpandMore, null)
             }
@@ -2792,7 +2843,7 @@ private fun ProviderEditor(
         if (advanced) OutlinedTextField(
             headers,
             onHeaders,
-            label = { Text("Custom headers JSON") },
+            label = { Text(uiText("Custom headers JSON")) },
             minLines = 3,
             visualTransformation = rememberCodeVisualTransformation("json"),
             textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
@@ -2802,7 +2853,7 @@ private fun ProviderEditor(
             onClick = onSave,
             enabled = name.isNotBlank() && baseUrl.isNotBlank() && (!apiKeyRequired || key.isNotBlank()),
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Save connection") }
+        ) { Text(uiText("Save connection")) }
     }
 }
 
@@ -2864,7 +2915,7 @@ private fun AddProviderDialog(
 
     XyluneAlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add provider") },
+        title = { Text(uiText("Add provider")) },
         text = {
             Column(
                 Modifier.heightIn(max = 590.dp).verticalScroll(rememberScrollState()),
@@ -2872,10 +2923,10 @@ private fun AddProviderDialog(
             ) {
                 Box {
                     OutlinedButton(onClick = { templateMenu = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text(templates.firstOrNull { it.id == templateId }?.let { "Preset: ${it.displayName}" } ?: "Preset: Custom", Modifier.weight(1f))
+                        Text(uiText(templates.firstOrNull { it.id == templateId }?.let { "Preset: ${it.displayName}" } ?: "Preset: Custom"), Modifier.weight(1f))
                     }
                     XyluneDropdownMenu(expanded = templateMenu, onDismissRequest = { templateMenu = false }) {
-                        DropdownMenuItem(text = { Text("Custom provider") }, onClick = {
+                        DropdownMenuItem(text = { Text(uiText("Custom provider")) }, onClick = {
                             templateId = null
                             name = ""
                             kind = ProviderKind.OPENAI_COMPATIBLE
@@ -2897,10 +2948,10 @@ private fun AddProviderDialog(
                         }
                     }
                 }
-                OutlinedTextField(name, { name = it }, label = { Text("Provider name") }, placeholder = { Text("My DeepSeek account") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(name, { name = it }, label = { Text(uiText("Provider name")) }, placeholder = { Text(uiText("My DeepSeek account")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Box {
                     OutlinedButton(onClick = { typeMenu = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Protocol: ${providerKindLabel(kind)}", Modifier.weight(1f))
+                        Text(uiText("Protocol: ${providerKindLabel(kind)}"), Modifier.weight(1f))
                     }
                     XyluneDropdownMenu(expanded = typeMenu, onDismissRequest = { typeMenu = false }) {
                         ProviderKind.entries.filter { it != ProviderKind.OPENAI_OAUTH }.forEach { option ->
@@ -2917,19 +2968,19 @@ private fun AddProviderDialog(
                         }
                     }
                 }
-                OutlinedTextField(baseUrl, { baseUrl = it; invalidateDiscovery() }, label = { Text("Base URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(baseUrl, { baseUrl = it; invalidateDiscovery() }, label = { Text(uiText("Base URL")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(
                     apiKey,
                     { apiKey = it; invalidateDiscovery() },
-                    label = { Text(if (apiKeyRequired) "API key" else "API key (optional)") },
+                    label = { Text(uiText(if (apiKeyRequired) "API key" else "API key (optional)")) },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Require API key")
-                        Text("Disable only for your own local/keyless endpoint", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(uiText("Require API key"))
+                        Text(uiText("Disable only for your own local/keyless endpoint"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Switch(checked = apiKeyRequired, onCheckedChange = { apiKeyRequired = it; invalidateDiscovery() })
                 }
@@ -2937,7 +2988,7 @@ private fun AddProviderDialog(
                 OutlinedTextField(
                     headers,
                     { headers = it; invalidateDiscovery() },
-                    label = { Text("Custom headers JSON") },
+                    label = { Text(uiText("Custom headers JSON")) },
                     minLines = 2,
                     visualTransformation = rememberCodeVisualTransformation("json"),
                     textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
@@ -2968,7 +3019,7 @@ private fun AddProviderDialog(
                 ) {
                     if (discovering) CircularProgressIndicator(Modifier.width(18.dp), strokeWidth = 2.dp)
                     else Icon(if (discoveryAttempted) Icons.Outlined.Refresh else Icons.Outlined.Search, null)
-                    Text(if (discovering) " Connecting…" else if (discoveryAttempted) " Fetch models again" else " Connect & fetch models")
+                    Text(uiText(if (discovering) " Connecting…" else if (discoveryAttempted) " Fetch models again" else " Connect & fetch models"))
                 }
                 discoveryError?.let { message ->
                     Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
@@ -2976,25 +3027,25 @@ private fun AddProviderDialog(
                     }
                 }
                 if (discoveredModels.isNotEmpty()) {
-                    Text("Models from provider", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(uiText("Models from provider"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(
                         modelSearch,
                         { modelSearch = it },
-                        label = { Text("Search ${discoveredModels.size} models") },
+                        label = { Text(uiText("Search ${discoveredModels.size} models")) },
                         leadingIcon = { Icon(Icons.Outlined.Search, null) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("${selectedModelIds.size} of ${discoveredModels.size} selected", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                        Text(uiText("${selectedModelIds.size} of ${discoveredModels.size} selected"), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                         Row {
-                            TextButton(onClick = { selectedModelIds = discoveredModels.mapTo(linkedSetOf()) { it.id } }) { Text("Select all") }
-                            TextButton(onClick = { selectedModelIds = emptySet() }) { Text("Clear") }
+                            TextButton(onClick = { selectedModelIds = discoveredModels.mapTo(linkedSetOf()) { it.id } }) { Text(uiText("Select all")) }
+                            TextButton(onClick = { selectedModelIds = emptySet() }) { Text(uiText("Clear")) }
                         }
                     }
                     if (visibleModels.size > MODEL_MANAGER_RENDER_LIMIT) {
                         Text(
-                            "Showing the first $MODEL_MANAGER_RENDER_LIMIT matches. Search to find a specific model; all selected models will still be saved.",
+                            uiText("Showing the first $MODEL_MANAGER_RENDER_LIMIT matches. Search to find a specific model; all selected models will still be saved."),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -3014,12 +3065,12 @@ private fun AddProviderDialog(
                                     Text(model.displayName, fontWeight = FontWeight.Medium)
                                     Text(model.id, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text(
-                                        buildList {
+                                        uiText(buildList {
                                             model.contextWindow?.let { add("${it / 1_000}K context") }
                                             if (model.supportsThinking == true) add("Thinking")
                                             if (model.supportsTools == true) add("Tools")
                                             if (model.supportsVision == true) add("Vision")
-                                        }.joinToString(" · "),
+                                        }.joinToString(" · ")),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -3030,24 +3081,24 @@ private fun AddProviderDialog(
                 }
                 OutlinedButton(onClick = { showManualModel = !showManualModel }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Outlined.ExpandMore, null)
-                    Text(if (showManualModel) "Hide manual model entry" else "Provider has no model list? Enter manually")
+                    Text(uiText(if (showManualModel) "Hide manual model entry" else "Provider has no model list? Enter manually"))
                 }
                 if (showManualModel) {
                     val bundled = DefaultCatalog.models.filter { it.providerId == templateId }
                     if (bundled.isNotEmpty()) {
-                        Text("Bundled suggestions", style = MaterialTheme.typography.labelLarge)
+                        Text(uiText("Bundled suggestions"), style = MaterialTheme.typography.labelLarge)
                         bundled.forEach { model ->
                             AssistChip(onClick = { manualModelId = model.modelId; manualModelName = model.displayName }, label = { Text(model.displayName) })
                         }
                     }
-                    OutlinedTextField(manualModelId, { manualModelId = it.trim() }, label = { Text("API model ID") }, placeholder = { Text("deepseek-chat") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(manualModelName, { manualModelName = it }, label = { Text("Model display name") }, placeholder = { Text("DeepSeek Chat") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    if (manualModelReady) Text("Manual model will also be included", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    OutlinedTextField(manualModelId, { manualModelId = it.trim() }, label = { Text(uiText("API model ID")) }, placeholder = { Text(uiText("deepseek-chat")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(manualModelName, { manualModelName = it }, label = { Text(uiText("Model display name")) }, placeholder = { Text(uiText("DeepSeek Chat")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    if (manualModelReady) Text(uiText("Manual model will also be included"), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 }
-                if (selectedModelIds.isNotEmpty()) Text("Only the selected provider models will be saved.", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                if (selectedModelIds.isNotEmpty()) Text(uiText("Only the selected provider models will be saved."), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             }
         },
-        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text(uiText("Cancel")) } },
         confirmButton = {
             Button(
                 enabled = valid,
@@ -3067,7 +3118,7 @@ private fun AddProviderDialog(
                         ),
                     )
                 },
-            ) { Text("Add provider") }
+            ) { Text(uiText("Add provider")) }
         },
     )
 }
@@ -3088,7 +3139,7 @@ private fun defaultBaseUrl(kind: ProviderKind): String = when (kind) {
 
 @Composable
 private fun SectionTitle(title: String, subtitle: String) {
-    Column { Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold); Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    Column { Text(uiText(title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold); Text(uiText(subtitle), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
 }
 
 @Composable
@@ -3132,7 +3183,7 @@ private fun SettingSlider(
         )
         if (supportingText.isNotBlank()) {
             Text(
-                supportingText,
+                uiText(supportingText),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -3158,7 +3209,7 @@ private fun AutomationPolicyEditor(
 
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(uiText(title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             listOf(
                 AuxiliaryMode.OFF to "Off",
@@ -3211,7 +3262,7 @@ private fun SettingsModelPickerButton(
     val model = allModels.firstOrNull { it.providerId == providerId && it.modelId == modelId }
     OutlinedButton(onClick = { showPicker = true }, enabled = providers.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
-            Text(model?.displayName ?: emptyLabel, maxLines = 1)
+            Text(model?.displayName ?: uiText(emptyLabel), maxLines = 1)
             provider?.let { Text(it.displayName, style = MaterialTheme.typography.labelSmall) }
         }
         Icon(Icons.Outlined.ChevronRight, null)
@@ -3288,23 +3339,23 @@ private fun PackageApprovalEditor(
                 OutlinedTextField(
                     settings.trustedPythonPackages,
                     { value -> viewModel.updateAutomationSettings { it.copy(trustedPythonPackages = value) } },
-                    label = { Text("Trusted pip packages") },
-                    supportingText = { Text("Comma, space, or newline separated") },
+                    label = { Text(uiText("Trusted pip packages")) },
+                    supportingText = { Text(uiText("Comma, space, or newline separated")) },
                     minLines = 2,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
                     settings.trustedUbuntuPackages,
                     { value -> viewModel.updateAutomationSettings { it.copy(trustedUbuntuPackages = value) } },
-                    label = { Text("Trusted Linux packages (apt/apk)") },
+                    label = { Text(uiText("Trusted Linux packages (apt/apk)")) },
                     minLines = 2,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Advanced package sources")
-                    Text("Allow pip direct references and relaxed apt names; command-line options remain blocked", style = MaterialTheme.typography.labelSmall)
+                    Text(uiText("Advanced package sources"))
+                    Text(uiText("Allow pip direct references and relaxed apt names; command-line options remain blocked"), style = MaterialTheme.typography.labelSmall)
                 }
                 Switch(
                     checked = !settings.packageRestrictionsEnabled,
@@ -3313,13 +3364,13 @@ private fun PackageApprovalEditor(
             }
             if (settings.packageApprovalMode == PackageApprovalMode.AUTO_APPROVE || !settings.packageRestrictionsEnabled) {
                 Text(
-                    "Packages and their installers run with Xylune's app permissions. Ubuntu is for compatibility, not containment; these settings intentionally reduce confirmation barriers.",
+                    uiText("Packages and their installers run with Xylune's app permissions. Ubuntu is for compatibility, not containment; these settings intentionally reduce confirmation barriers."),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
             if (settings.packageApprovalMode == PackageApprovalMode.MODEL_REVIEW) Text(
-                "Model review is advisory and can be wrong. Xylune records the selected model's allow/deny reason, but this is not malware analysis or a security guarantee.",
+                uiText("Model review is advisory and can be wrong. Xylune records the selected model's allow/deny reason, but this is not malware analysis or a security guarantee."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -3358,19 +3409,19 @@ private fun ModelCatalogEditor(provider: ProviderEntity, viewModel: ChatViewMode
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Models", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                Text("${models.size} available for ${provider.displayName} · metadata refreshes with the catalog", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(uiText("Models"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text(uiText("${models.size} available for ${provider.displayName} · metadata refreshes with the catalog"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             FilledTonalButton(onClick = { creating = true }) {
                 Icon(Icons.Outlined.Add, null)
-                Text("Add", Modifier.padding(start = 6.dp))
+                Text(uiText("Add"), Modifier.padding(start = 6.dp))
             }
         }
         if (models.size > 8) {
             OutlinedTextField(
                 value = search,
                 onValueChange = { search = it },
-                label = { Text("Search models") },
+                label = { Text(uiText("Search models")) },
                 leadingIcon = { Icon(Icons.Outlined.Search, null) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
@@ -3389,12 +3440,12 @@ private fun ModelCatalogEditor(provider: ProviderEntity, viewModel: ChatViewMode
                 ModelPickerFilter.IMAGE,
                 ModelPickerFilter.FREE,
             ).forEach { option ->
-                FilterChip(selected = capabilityFilter == option, onClick = { capabilityFilter = option }, label = { Text(option.label) })
+                FilterChip(selected = capabilityFilter == option, onClick = { capabilityFilter = option }, label = { Text(uiText(option.label)) })
             }
         }
         if (visibleModels.size > displayedModels.size) {
             Text(
-                "Showing ${displayedModels.size} of ${visibleModels.size}. Search or filter to narrow the catalog.",
+                uiText("Showing ${displayedModels.size} of ${visibleModels.size}. Search or filter to narrow the catalog."),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -3416,7 +3467,7 @@ private fun ModelCatalogEditor(provider: ProviderEntity, viewModel: ChatViewMode
                     )
                     if (index != displayedModels.lastIndex) HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                 }
-                if (displayedModels.isEmpty()) Text("No matching models.", Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (displayedModels.isEmpty()) Text(uiText("No matching models."), Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -3493,45 +3544,45 @@ private fun ModelEditorSheet(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            Text("Only the essentials are shown. Pricing is optional.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(uiText("Only the essentials are shown. Pricing is optional."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-            OutlinedTextField(id, { id = it.trim() }, label = { Text("API model ID") }, enabled = allowIdEdit, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(name, { name = it }, label = { Text("Display name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(id, { id = it.trim() }, label = { Text(uiText("API model ID")) }, enabled = allowIdEdit, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(name, { name = it }, label = { Text(uiText("Display name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(context, { context = it.filter(Char::isDigit) }, label = { Text("Context tokens") }, modifier = Modifier.weight(1f), singleLine = true)
-                OutlinedTextField(output, { output = it.filter(Char::isDigit) }, label = { Text("Max output") }, modifier = Modifier.weight(1f), singleLine = true)
+                OutlinedTextField(context, { context = it.filter(Char::isDigit) }, label = { Text(uiText("Context tokens")) }, modifier = Modifier.weight(1f), singleLine = true)
+                OutlinedTextField(output, { output = it.filter(Char::isDigit) }, label = { Text(uiText("Max output")) }, modifier = Modifier.weight(1f), singleLine = true)
             }
 
             if (manualRequestType) {
-                Text("Request type", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(uiText("Request type"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
                         selected = requestType == ModelRequestType.CHAT,
                         onClick = { requestType = ModelRequestType.CHAT },
-                        label = { Text("Chat") },
+                        label = { Text(uiText("Chat")) },
                         modifier = Modifier.weight(1f),
                     )
                     FilterChip(
                         selected = requestType == ModelRequestType.IMAGE_GENERATION,
                         onClick = { requestType = ModelRequestType.IMAGE_GENERATION },
-                        label = { Text("Image generation") },
+                        label = { Text(uiText("Image generation")) },
                         modifier = Modifier.weight(1f),
                     )
                 }
-                Text("Controls whether this custom endpoint uses chat/completions or images/generations.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(uiText("Controls whether this custom endpoint uses chat/completions or images/generations."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else if (automaticPreset) {
-                Text("Model capabilities and request transport are selected automatically by this provider preset.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(uiText("Model capabilities and request transport are selected automatically by this provider preset."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             if (!automaticPreset) {
-                Text("Advanced compatibility", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(uiText("Advanced compatibility"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = thinking, onClick = { thinking = !thinking }, label = { Text("Thinking") }, modifier = Modifier.weight(1f))
-                    FilterChip(selected = tools, onClick = { tools = !tools }, label = { Text("Tools") }, modifier = Modifier.weight(1f))
+                    FilterChip(selected = thinking, onClick = { thinking = !thinking }, label = { Text(uiText("Thinking")) }, modifier = Modifier.weight(1f))
+                    FilterChip(selected = tools, onClick = { tools = !tools }, label = { Text(uiText("Tools")) }, modifier = Modifier.weight(1f))
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = vision, onClick = { vision = !vision }, label = { Text("Vision") }, modifier = Modifier.weight(1f))
-                    FilterChip(selected = files, onClick = { files = !files }, label = { Text("Files") }, modifier = Modifier.weight(1f))
+                    FilterChip(selected = vision, onClick = { vision = !vision }, label = { Text(uiText("Vision")) }, modifier = Modifier.weight(1f))
+                    FilterChip(selected = files, onClick = { files = !files }, label = { Text(uiText("Files")) }, modifier = Modifier.weight(1f))
                 }
             }
 
@@ -3543,21 +3594,21 @@ private fun ModelEditorSheet(
             ) {
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Pricing", fontWeight = FontWeight.SemiBold)
-                        Text(if (pricingConfigured) "Configured in USD per million tokens" else "Optional · cost will show as unavailable", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(uiText("Pricing"), fontWeight = FontWeight.SemiBold)
+                        Text(uiText(if (pricingConfigured) "Configured in USD per million tokens" else "Optional · cost will show as unavailable"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Icon(Icons.Outlined.ExpandMore, null)
                 }
             }
             if (showPricing) {
                 SettingsSwitch("Pricing configured", pricingConfigured, { pricingConfigured = it })
-                OutlinedTextField(cacheHit, { cacheHit = it }, label = { Text("Cached input") }, enabled = pricingConfigured, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(cacheMiss, { cacheMiss = it }, label = { Text("Input") }, enabled = pricingConfigured, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(outputPrice, { outputPrice = it }, label = { Text("Output") }, enabled = pricingConfigured, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(cacheHit, { cacheHit = it }, label = { Text(uiText("Cached input")) }, enabled = pricingConfigured, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(cacheMiss, { cacheMiss = it }, label = { Text(uiText("Input")) }, enabled = pricingConfigured, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(outputPrice, { outputPrice = it }, label = { Text(uiText("Output")) }, enabled = pricingConfigured, modifier = Modifier.fillMaxWidth(), singleLine = true)
             }
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text(uiText("Cancel")) }
                 Button(
                     enabled = valid,
                     modifier = Modifier.weight(1f),
@@ -3578,7 +3629,7 @@ private fun ModelEditorSheet(
                             supportsImageGeneration = requestType == ModelRequestType.IMAGE_GENERATION,
                         ))
                     },
-                ) { Text("Save") }
+                ) { Text(uiText("Save")) }
             }
             Spacer(Modifier.size(28.dp))
         }
@@ -3601,8 +3652,8 @@ private fun SearchSettingsPage() = SettingsPage {
     SettingsGroup("Routing") {
         app.xylune.chat.settings.WebSearchRoute.entries.forEach { route ->
             ListItem(
-                headlineContent = { Text(route.title) },
-                supportingContent = { Text(route.description) },
+                headlineContent = { Text(uiText(route.title)) },
+                supportingContent = { Text(uiText(route.description)) },
                 leadingContent = {
                     RadioButton(
                         selected = settings.route == route,
@@ -3619,8 +3670,8 @@ private fun SearchSettingsPage() = SettingsPage {
     SettingsGroup("Fallback search engine") {
         app.xylune.chat.settings.WebSearchEngine.entries.forEach { engine ->
             ListItem(
-                headlineContent = { Text(engine.title) },
-                supportingContent = { Text(engine.description) },
+                headlineContent = { Text(uiText(engine.title)) },
+                supportingContent = { Text(uiText(engine.description)) },
                 leadingContent = {
                     RadioButton(
                         selected = settings.engine == engine,
@@ -3643,7 +3694,7 @@ private fun SearchSettingsPage() = SettingsPage {
                     apiKey = it
                     keySaved = false
                 },
-                label = { Text("API key") },
+                label = { Text(uiText("API key")) },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -3656,7 +3707,7 @@ private fun SearchSettingsPage() = SettingsPage {
                     container.secureStore.setSearchApiKey(settings.engine.name, apiKey)
                     keySaved = true
                 }) {
-                    Text(if (keySaved) "Saved" else "Save key")
+                    Text(uiText(if (keySaved) "Saved" else "Save key"))
                 }
             }
         }
@@ -3671,8 +3722,8 @@ private fun SearchSettingsPage() = SettingsPage {
                         it.copy(searxngEndpoint = value)
                     }
                 },
-                label = { Text("Public HTTPS base URL") },
-                supportingText = { Text("The instance must enable JSON search output.") },
+                label = { Text(uiText("Public HTTPS base URL")) },
+                supportingText = { Text(uiText("The instance must enable JSON search output.")) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
             )
@@ -3693,16 +3744,16 @@ private fun SearchSettingsPage() = SettingsPage {
                     }
                 }
             },
-            label = { Text("Maximum search results") },
-            supportingText = { Text("3–20 results per search call") },
+            label = { Text(uiText("Maximum search results")) },
+            supportingText = { Text(uiText("3–20 results per search call")) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine = true,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         )
         ListItem(
-            headlineContent = { Text("Allow page fetching") },
+            headlineContent = { Text(uiText("Allow page fetching")) },
             supportingContent = {
-                Text("Expose web_fetch so the model can read public HTTPS pages after searching.")
+                Text(uiText("Expose web_fetch so the model can read public HTTPS pages after searching."))
             },
             trailingContent = {
                 Switch(
@@ -3718,7 +3769,7 @@ private fun SearchSettingsPage() = SettingsPage {
     }
 
     Text(
-        "API keys are stored in Android encrypted preferences. Native-only mode never silently switches to a Xylune engine; Automatic mode does.",
+        uiText("API keys are stored in Android encrypted preferences. Native-only mode never silently switches to a Xylune engine; Automatic mode does."),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 6.dp),

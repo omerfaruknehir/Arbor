@@ -97,7 +97,7 @@ fun CollapsingTranslucentTopBar(
             contentAlignment = Alignment.CenterStart,
         ) {
             Text(
-                text = title,
+                text = uiText(title),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,

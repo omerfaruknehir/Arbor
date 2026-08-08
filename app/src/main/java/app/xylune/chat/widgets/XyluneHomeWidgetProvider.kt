@@ -1,5 +1,7 @@
 package app.xylune.chat.widgets
 
+import app.xylune.chat.settings.withStoredXyluneLanguage
+
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -234,7 +236,7 @@ class XyluneHomeWidgetProvider : AppWidgetProvider() {
         }
 
         private fun emptyViews(context: Context) = RemoteViews(context.packageName, R.layout.xylune_home_widget_program).apply {
-            setTextViewText(R.id.widget_title, context.getString(R.string.app_name))
+            setTextViewText(R.id.widget_title, context.withStoredXyluneLanguage().getString(R.string.app_name))
             setTextViewText(R.id.widget_subtitle, "Add an xylune-widget/1 program from a conversation")
             setTextViewText(R.id.widget_status, "Create and add a configured widget from a conversation")
             setImageViewResource(R.id.widget_program_image, R.drawable.ic_xylune_mark)

@@ -1,10 +1,10 @@
 <resources>
-    <string name="app_name">Arbour</string>
-    <string name="app_name_possessive">Arbour\'s</string>
+    <string name="app_name">Xylune</string>
+    <string name="app_name_possessive">Xylune\'s</string>
     <string name="generation_channel_name">AI responses</string>
-    <string name="generation_channel_description">Responses which continue while Arbour is in the background</string>
-    <string name="home_widget_name">Arbour generated widget</string>
-    <string name="home_widget_description">A native home-screen widget generated in an Arbour conversation</string>
+    <string name="generation_channel_description">Responses which continue while Xylune is in the background</string>
+    <string name="home_widget_name">Xylune programmable widget</string>
+    <string name="home_widget_description">A permissioned programmable Home-screen widget created by Xylune</string>
     <string name="home_widget_program_content">Programmable widget content</string>
     <string name="home_widget_refresh">Refresh widget</string>
 </resources>

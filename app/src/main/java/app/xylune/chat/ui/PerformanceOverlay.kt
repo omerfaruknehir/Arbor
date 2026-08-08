@@ -770,35 +770,35 @@ internal fun XylunePerformanceOverlay(
                 .padding(horizontal = (9f * uiScale).dp, vertical = (7f * uiScale).dp),
         ) {
             Text(
-                "Render ${snapshot.appRenderedFrameRate.f0()} fps  ${snapshot.averageFrameMs.f1()} ms  J ${snapshot.jankPercent.f1()}%",
+                uiText("Render ${snapshot.appRenderedFrameRate.f0()} fps  ${snapshot.averageFrameMs.f1()} ms  J ${snapshot.jankPercent.f1()}%"),
                 fontFamily = FontFamily.Monospace,
                 fontSize = (11f * uiScale).sp,
                 maxLines = 1,
             )
             if (detailed) {
                 Text(
-                    "Display ${snapshot.displayRefreshRateHz.toDouble().f0()} Hz  Callback ${snapshot.choreographerCallbackRate.f0()}/s  Present ${snapshot.presentedFrameRate?.f0() ?: "n/a"}",
+                    uiText("Display ${snapshot.displayRefreshRateHz.toDouble().f0()} Hz  Callback ${snapshot.choreographerCallbackRate.f0()}/s  Present ${snapshot.presentedFrameRate?.f0() ?: "n/a"}"),
                     fontFamily = FontFamily.Monospace,
                     fontSize = (10f * uiScale).sp,
                     color = secondaryText,
                     maxLines = 1,
                 )
                 Text(
-                    "FM avg ${snapshot.frameMetricsTotalMs.f1()} ms  p95 ${snapshot.p95FrameMs.f1()}  p99 ${snapshot.p99FrameMs.f1()}",
+                    uiText("FM avg ${snapshot.frameMetricsTotalMs.f1()} ms  p95 ${snapshot.p95FrameMs.f1()}  p99 ${snapshot.p99FrameMs.f1()}"),
                     fontFamily = FontFamily.Monospace,
                     fontSize = (10f * uiScale).sp,
                     color = secondaryText,
                     maxLines = 1,
                 )
                 Text(
-                    "CPU ${snapshot.cpuPercent.f1()}%  PSS ${snapshot.pssMb.f0()} MB  Heap ${snapshot.javaHeapMb.f0()} MB",
+                    uiText("CPU ${snapshot.cpuPercent.f1()}%  PSS ${snapshot.pssMb.f0()} MB  Heap ${snapshot.javaHeapMb.f0()} MB"),
                     fontFamily = FontFamily.Monospace,
                     fontSize = (10f * uiScale).sp,
                     color = secondaryText,
                     maxLines = 1,
                 )
                 Text(
-                    "GPU ${snapshot.gpuAverageMs?.f1() ?: "n/a"} ms  Miss/s ${snapshot.missedFramesPerSecond.f1()}  Reports ${snapshot.droppedMetricReports}",
+                    uiText("GPU ${snapshot.gpuAverageMs?.f1() ?: "n/a"} ms  Miss/s ${snapshot.missedFramesPerSecond.f1()}  Reports ${snapshot.droppedMetricReports}"),
                     fontFamily = FontFamily.Monospace,
                     fontSize = (10f * uiScale).sp,
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.95f),
@@ -807,14 +807,14 @@ internal fun XylunePerformanceOverlay(
                 if (snapshot.diagnosticProfilerActive) {
                     val profile = snapshot.causeProfile
                     Text(
-                        "Cause ${profile.confidencePercent}% · ${profile.severity.displayName}: ${profile.primaryCause}",
+                        uiText("Cause ${profile.confidencePercent}% · ${profile.severity.displayName}: ${profile.primaryCause}"),
                         fontFamily = FontFamily.Monospace,
                         fontSize = (10f * uiScale).sp,
                         color = Color(0xFFFFD180),
                         maxLines = 1,
                     )
                     Text(
-                        "Evidence: ${profile.evidence}",
+                        uiText("Evidence: ${profile.evidence}"),
                         fontFamily = FontFamily.Monospace,
                         fontSize = (9f * uiScale).sp,
                         color = Color(0xFFFFE0B2),
@@ -822,7 +822,7 @@ internal fun XylunePerformanceOverlay(
                     )
                     profile.secondaryCause?.let { secondary ->
                         Text(
-                            "Secondary: $secondary",
+                            uiText("Secondary: $secondary"),
                             fontFamily = FontFamily.Monospace,
                             fontSize = (9f * uiScale).sp,
                             color = Color.White.copy(alpha = 0.76f),
@@ -830,35 +830,35 @@ internal fun XylunePerformanceOverlay(
                         )
                     }
                     Text(
-                        "FM ${snapshot.frameMetricsTotalMs.f1()}  L ${snapshot.layoutMeasureMs.f1()}  D ${snapshot.drawMs.f1()}  Cmd ${snapshot.commandIssueMs.f1()}  Sw ${snapshot.swapBuffersMs.f1()}",
+                        uiText("FM ${snapshot.frameMetricsTotalMs.f1()}  L ${snapshot.layoutMeasureMs.f1()}  D ${snapshot.drawMs.f1()}  Cmd ${snapshot.commandIssueMs.f1()}  Sw ${snapshot.swapBuffersMs.f1()}"),
                         fontFamily = FontFamily.Monospace,
                         fontSize = (9f * uiScale).sp,
                         color = diagnosticText,
                         maxLines = 1,
                     )
                     Text(
-                        "BlurCPU ${snapshot.blurCpuMsPerFrame.f2()}  ${snapshot.blurFilteredMegapixelsPerSecond.f0()} MP/s  srcTrav×${snapshot.blurSourceDrawsPerFrame.f1()} replay×${snapshot.blurLayerReplaysPerFrame.f1()}",
+                        uiText("BlurCPU ${snapshot.blurCpuMsPerFrame.f2()}  ${snapshot.blurFilteredMegapixelsPerSecond.f0()} MP/s  srcTrav×${snapshot.blurSourceDrawsPerFrame.f1()} replay×${snapshot.blurLayerReplaysPerFrame.f1()}"),
                         fontFamily = FontFamily.Monospace,
                         fontSize = (9f * uiScale).sp,
                         color = diagnosticText,
                         maxLines = 1,
                     )
                     Text(
-                        "cap/s ${snapshot.blurCaptureUpdatesPerSecond.f1()} fx/s ${snapshot.blurEffectBuildsPerSecond.f1()}  levels D${snapshot.blurDownsampleLevels.f1()}/U${snapshot.blurUpsampleLevels.f1()}",
+                        uiText("cap/s ${snapshot.blurCaptureUpdatesPerSecond.f1()} fx/s ${snapshot.blurEffectBuildsPerSecond.f1()}  levels D${snapshot.blurDownsampleLevels.f1()}/U${snapshot.blurUpsampleLevels.f1()}"),
                         fontFamily = FontFamily.Monospace,
                         fontSize = (9f * uiScale).sp,
                         color = diagnosticText,
                         maxLines = 1,
                     )
                     Text(
-                        "Recomp/s app ${snapshot.appRecompositionsPerSecond.f1()} chat ${snapshot.chatRecompositionsPerSecond.f1()}",
+                        uiText("Recomp/s app ${snapshot.appRecompositionsPerSecond.f1()} chat ${snapshot.chatRecompositionsPerSecond.f1()}"),
                         fontFamily = FontFamily.Monospace,
                         fontSize = (9f * uiScale).sp,
                         color = diagnosticText,
                         maxLines = 1,
                     )
                     Text(
-                        "Alloc ${snapshot.allocationMbPerSecond.f1()} MB/s  bGC ${snapshot.blockingGcPerSecond.f1()}  Screen ${snapshot.screenName}",
+                        uiText("Alloc ${snapshot.allocationMbPerSecond.f1()} MB/s  bGC ${snapshot.blockingGcPerSecond.f1()}  Screen ${snapshot.screenName}"),
                         fontFamily = FontFamily.Monospace,
                         fontSize = (9f * uiScale).sp,
                         color = Color.White.copy(alpha = 0.68f),

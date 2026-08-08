@@ -59,7 +59,7 @@ fun SearchScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
-                title = { Text("Search history") },
+                title = { Text(uiText("Search history")) },
                 navigationIcon = {
                     IconButton(
                         onClick = {
@@ -92,11 +92,11 @@ fun SearchScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 trailingIcon = if (query.isNotEmpty()) {
                     {
                         IconButton(onClick = { viewModel.searchQuery.value = "" }) {
-                            Icon(Icons.Outlined.Clear, "Clear search")
+                            Icon(Icons.Outlined.Clear, uiText("Clear search"))
                         }
                     }
                 } else null,
-                placeholder = { Text("Search messages, code, and reasoning") },
+                placeholder = { Text(uiText("Search messages, code, and reasoning")) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
@@ -127,7 +127,7 @@ fun SearchScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         ListItem(
                             headlineContent = {
                                 Text(
-                                    result.snippet.replace("[", "").replace("]", ""),
+                                    uiText(result.snippet.replace("[", "").replace("]", "")),
                                     maxLines = 3,
                                 )
                             },

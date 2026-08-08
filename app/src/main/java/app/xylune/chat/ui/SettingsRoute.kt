@@ -8,6 +8,7 @@ enum class SettingsRoute(val title: String) {
     AUTOMATION("Background tasks"),
     MEMORY("Memory"),
     APPEARANCE("Appearance"),
+    LANGUAGE("Language"),
     PRIVACY("Privacy & safety"),
     BACKUP("Backup & transfer"),
     LOCAL_EXECUTION("Local execution"),

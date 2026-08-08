@@ -70,12 +70,12 @@ internal fun MessageContextMenu(message: MessageEntity) {
 
     Box {
         IconButton(onClick = { open = true }, modifier = Modifier.size(34.dp)) {
-            Icon(Icons.Outlined.MoreVert, "Message actions", Modifier.size(18.dp))
+            Icon(Icons.Outlined.MoreVert, uiText("Message actions"), Modifier.size(18.dp))
         }
         XyluneDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             if (message.role == MessageRole.ASSISTANT) {
                 DropdownMenuItem(
-                    text = { Text("Usage details") },
+                    text = { Text(uiText("Usage details")) },
                     leadingIcon = { Icon(Icons.Outlined.DataUsage, null) },
                     onClick = {
                         open = false
@@ -84,7 +84,7 @@ internal fun MessageContextMenu(message: MessageEntity) {
                 )
             }
             DropdownMenuItem(
-                text = { Text("Share message") },
+                text = { Text(uiText("Share message")) },
                 leadingIcon = { Icon(Icons.Outlined.Share, null) },
                 onClick = {
                     open = false
@@ -115,7 +115,7 @@ internal fun MessageUsageDialog(
     }
     XyluneAlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Usage details") },
+        title = { Text(uiText("Usage details")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 UsageMetric("Provider", message.providerId ?: "—")
@@ -132,7 +132,7 @@ internal fun MessageUsageDialog(
                 val rows = calls
                 if (!rows.isNullOrEmpty()) {
                     HorizontalDivider()
-                    Text("Provider calls", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(uiText("Provider calls"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -148,28 +148,28 @@ internal fun MessageUsageDialog(
                             ) {
                                 Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                     Text(
-                                        "Call ${index + 1} · round ${call.roundIndex + 1}",
+                                        uiText("Call ${index + 1} · round ${call.roundIndex + 1}"),
                                         style = MaterialTheme.typography.labelLarge,
                                         fontWeight = FontWeight.Medium,
                                     )
                                     Text(
-                                        "input ${call.inputTokens} · cached ${call.cachedInputTokens} · output ${call.outputTokens}",
+                                        uiText("input ${call.inputTokens} · cached ${call.cachedInputTokens} · output ${call.outputTokens}"),
                                         style = MaterialTheme.typography.bodySmall,
                                         fontFamily = FontFamily.Monospace,
                                     )
                                     val nonCached = (call.inputTokens - call.cachedInputTokens).coerceAtLeast(0)
                                     Text(
-                                        "non-cached $nonCached · total ${call.inputTokens + call.outputTokens}",
+                                        uiText("non-cached $nonCached · total ${call.inputTokens + call.outputTokens}"),
                                         style = MaterialTheme.typography.bodySmall,
                                         fontFamily = FontFamily.Monospace,
                                     )
                                     Text(
-                                        buildString {
+                                        uiText(buildString {
                                             append(call.status.lowercase(Locale.ROOT))
                                             call.finishReason?.takeIf(String::isNotBlank)?.let { append(" · ").append(it) }
                                             append(" · ")
                                             append(if (call.costKnown) formatCostMicros(call.costMicros) else "cost unavailable")
-                                        },
+                                        }),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -182,19 +182,19 @@ internal fun MessageUsageDialog(
                     }
                 } else if (calls != null) {
                     Text(
-                        "No per-call usage rows were recorded for this response. The aggregate values above are still available.",
+                        uiText("No per-call usage rows were recorded for this response. The aggregate values above are still available."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Text(
-                    "Token fields are stored from provider usage metadata when the provider reports them. Otherwise Xylune may fall back to its local counter/estimator. Use the raw token counts above with your provider's current pricing table for manual calculation.",
+                    uiText("Token fields are stored from provider usage metadata when the provider reports them. Otherwise Xylune may fall back to its local counter/estimator. Use the raw token counts above with your provider's current pricing table for manual calculation."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(uiText("Close")) } },
     )
 }
 
@@ -228,7 +228,7 @@ internal fun ConversationUsageSection(conversationId: String) {
     }
     val usage = snapshot
     if (usage == null) {
-        Text("Loading usage…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(uiText("Loading usage…"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
     val nonCached = (usage.inputTokens - usage.cachedInputTokens).coerceAtLeast(0)
@@ -247,7 +247,7 @@ internal fun ConversationUsageSection(conversationId: String) {
             },
         )
         Text(
-            "Per-response call breakdowns are available from each assistant message's ⋮ menu.",
+            uiText("Per-response call breakdowns are available from each assistant message's ⋮ menu."),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

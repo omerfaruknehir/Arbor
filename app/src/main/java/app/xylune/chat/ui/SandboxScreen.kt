@@ -218,35 +218,35 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                 ),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("Runtime manager", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(uiText("Runtime manager"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Text(
-                "Python and Linux share this chat's private /workspace. Runtime setup, packages, health, tests, and removal have one owner here.",
+                uiText("Python and Linux share this chat's private /workspace. Runtime setup, packages, health, tests, and removal have one owner here."),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = workspaceSection == WorkspaceSection.OVERVIEW,
                     onClick = { workspaceSection = WorkspaceSection.OVERVIEW },
-                    label = { Text("Overview") },
+                    label = { Text(uiText("Overview")) },
                     modifier = Modifier.weight(1f),
                 )
                 FilterChip(
                     selected = workspaceSection == WorkspaceSection.PYTHON,
                     onClick = { workspaceSection = WorkspaceSection.PYTHON },
-                    label = { Text("Python") },
+                    label = { Text(uiText("Python")) },
                     modifier = Modifier.weight(1f),
                 )
                 FilterChip(
                     selected = workspaceSection == WorkspaceSection.LINUX,
                     onClick = { workspaceSection = WorkspaceSection.LINUX },
-                    label = { Text("Linux") },
+                    label = { Text(uiText("Linux")) },
                     modifier = Modifier.weight(1f),
                 )
             }
             if (workspaceSection == WorkspaceSection.OVERVIEW) {
-                Text("Runtimes", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text(uiText("Runtimes"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Python is built in. Linux is an optional compatibility layer with a separate download. Pick a runtime only when you need to inspect or change it.",
+                    uiText("Python is built in. Linux is an optional compatibility layer with a separate download. Pick a runtime only when you need to inspect or change it."),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Surface(
@@ -258,10 +258,10 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                     Row(Modifier.padding(16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Icon(Icons.Outlined.Code, null)
                         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                            Text("Python · Ready", fontWeight = FontWeight.SemiBold)
+                            Text(uiText("Python · Ready"), fontWeight = FontWeight.SemiBold)
                             Text(
-                                environment?.let { "Python ${it.pythonVersion} · ${it.packages.size} packages · ${Formatter.formatShortFileSize(androidx.compose.ui.platform.LocalContext.current, it.sizeBytes)}" }
-                                    ?: "Bundled runtime · loading this chat's environment…",
+                                uiText(environment?.let { "Python ${it.pythonVersion} · ${it.packages.size} packages · ${Formatter.formatShortFileSize(androidx.compose.ui.platform.LocalContext.current, it.sizeBytes)}" }
+                                    ?: "Bundled runtime · loading this chat's environment…"),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -278,12 +278,12 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                         Icon(Icons.Outlined.Storage, null)
                         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                             Text(
-                                if (ubuntuStatus.installed) "${ubuntuStatus.distribution.displayName} ${ubuntuStatus.release} · Ready" else "Linux · Not installed",
+                                uiText(if (ubuntuStatus.installed) "${ubuntuStatus.distribution.displayName} ${ubuntuStatus.release} · Ready" else "Linux · Not installed"),
                                 fontWeight = FontWeight.SemiBold,
                             )
                             Text(
-                                if (ubuntuStatus.installed) "Terminal, native CLI tools, and Linux packages"
-                                else "Optional download for tools that cannot run in bundled Python",
+                                uiText(if (ubuntuStatus.installed) "Terminal, native CLI tools, and Linux packages"
+                                else "Optional download for tools that cannot run in bundled Python"),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -296,54 +296,54 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Text("What this screen manages", fontWeight = FontWeight.SemiBold)
-                        Text("• Runtime health and per-chat Python packages", style = MaterialTheme.typography.bodySmall)
-                        Text("• Linux installation, packages, terminal, and removal", style = MaterialTheme.typography.bodySmall)
-                        Text("• Test runs only; chat tool permissions are controlled per chat", style = MaterialTheme.typography.bodySmall)
+                        Text(uiText("What this screen manages"), fontWeight = FontWeight.SemiBold)
+                        Text(uiText("• Runtime health and per-chat Python packages"), style = MaterialTheme.typography.bodySmall)
+                        Text(uiText("• Linux installation, packages, terminal, and removal"), style = MaterialTheme.typography.bodySmall)
+                        Text(uiText("• Test runs only; chat tool permissions are controlled per chat"), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             } else if (workspaceSection == WorkspaceSection.PYTHON) {
-            Text("Python workspace", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Text("Each chat has a persistent bundled-Python session and isolated .packages directory. It works without installing Linux and remains confined by Android's app sandbox.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(uiText("Python workspace"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(uiText("Each chat has a persistent bundled-Python session and isolated .packages directory. It works without installing Linux and remains confined by Android's app sandbox."), color = MaterialTheme.colorScheme.onSurfaceVariant)
             environment?.let { info ->
                 Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Environment ${info.environmentId}", fontWeight = FontWeight.SemiBold)
-                        Text("Python ${info.pythonVersion} • ${info.packages.size} packages • ${Formatter.formatShortFileSize(androidx.compose.ui.platform.LocalContext.current, info.sizeBytes)}", style = MaterialTheme.typography.bodySmall)
+                        Text(uiText("Environment ${info.environmentId}"), fontWeight = FontWeight.SemiBold)
+                        Text(uiText("Python ${info.pythonVersion} • ${info.packages.size} packages • ${Formatter.formatShortFileSize(androidx.compose.ui.platform.LocalContext.current, info.sizeBytes)}"), style = MaterialTheme.typography.bodySmall)
                         if (info.nativeErrors.isNotEmpty()) Text(
-                            "Native compatibility warning: " + info.nativeErrors.entries.joinToString { "${it.key}: ${it.value}" },
+                            uiText("Native compatibility warning: " + info.nativeErrors.entries.joinToString { "${it.key}: ${it.value}" }),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.error,
                         )
                         info.packages.forEach { pkg ->
                             Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                                Text("${pkg.name} ${pkg.version}", Modifier.weight(1f), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-                                IconButton(onClick = { removePackage = pkg.name }) { Icon(Icons.Outlined.Delete, "Remove ${pkg.name}") }
+                                Text(uiText("${pkg.name} ${pkg.version}"), Modifier.weight(1f), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                                IconButton(onClick = { removePackage = pkg.name }) { Icon(Icons.Outlined.Delete, uiText("Remove ${pkg.name}")) }
                             }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(
                                 onClick = { scope.launch { environmentBusy = true; environment = viewModel.repairPythonEnvironment(); environmentBusy = false } },
                                 enabled = !environmentBusy,
-                            ) { Icon(Icons.Outlined.Refresh, null); Text("Repair", Modifier.padding(start = 6.dp)) }
+                            ) { Icon(Icons.Outlined.Refresh, null); Text(uiText("Repair"), Modifier.padding(start = 6.dp)) }
                             OutlinedButton(
                                 onClick = { scope.launch { viewModel.resetPythonSession(); viewModel.clearPythonRun() } },
                                 enabled = !environmentBusy,
-                            ) { Icon(Icons.Outlined.RestartAlt, null); Text("Clear run state", Modifier.padding(start = 6.dp)) }
+                            ) { Icon(Icons.Outlined.RestartAlt, null); Text(uiText("Clear run state"), Modifier.padding(start = 6.dp)) }
                         }
                     }
                 }
             }
             Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Install packages", fontWeight = FontWeight.SemiBold)
-                    Text("One package requirement per line. Xylune resolves Android-compatible Python 3.12 wheels before applying your approval policy.", style = MaterialTheme.typography.bodySmall)
+                    Text(uiText("Install packages"), fontWeight = FontWeight.SemiBold)
+                    Text(uiText("One package requirement per line. Xylune resolves Android-compatible Python 3.12 wheels before applying your approval policy."), style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(
                         value = packageQuery,
                         onValueChange = { packageQuery = it.take(100) },
-                        label = { Text("Search PyPI") },
+                        label = { Text(uiText("Search PyPI")) },
                         leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                        supportingText = { Text(if (packageSearching) "Searching…" else "Tap a result to add it to the install list") },
+                        supportingText = { Text(uiText(if (packageSearching) "Searching…" else "Tap a result to add it to the install list")) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -358,14 +358,14 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                             },
                         ) {
                             Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
-                                Text("${result.name} ${result.version}", fontWeight = FontWeight.SemiBold)
+                                Text(uiText("${result.name} ${result.version}"), fontWeight = FontWeight.SemiBold)
                                 if (result.summary.isNotBlank()) Text(result.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
                     OutlinedTextField(
                         packages, { packages = it },
-                        label = { Text("requests==2.32.4\nnumpy==1.26.2") },
+                        label = { Text(uiText("requests==2.32.4\nnumpy==1.26.2")) },
                         minLines = 2,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -385,7 +385,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                             }
                         }
                     }, enabled = packages.isNotBlank() && !installing) {
-                        Text(if (installing && packageReview?.state == PackageApprovalState.APPROVED) "Installing…" else if (installing) "Checking…" else "Preflight & review")
+                        Text(uiText(if (installing && packageReview?.state == PackageApprovalState.APPROVED) "Installing…" else if (installing) "Checking…" else "Preflight & review"))
                     }
                     Surface(
                         color = if (installResult?.success == false || installResult?.importErrors?.isNotEmpty() == true) MaterialTheme.colorScheme.errorContainer.copy(alpha = .16f) else MaterialTheme.colorScheme.surfaceContainerLowest,
@@ -393,7 +393,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(
-                            when {
+                            uiText(when {
                                 installing && packageReview?.state == PackageApprovalState.APPROVED -> "Approved automatically • installing and verifying imports…"
                                 installing -> "Checking the current Python environment…"
                                 installResult?.success == true && installResult?.importErrors?.isEmpty() == true -> "Installation and import verification completed."
@@ -403,7 +403,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                                 packageReview?.state == PackageApprovalState.REQUIRED -> "Plan ready for your confirmation."
                                 packageReview?.state == PackageApprovalState.DENIED -> "Installation blocked • ${packageReview?.reason.orEmpty()}"
                                 else -> "No package transaction running."
-                            },
+                            }),
                             Modifier.padding(10.dp),
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium,
@@ -411,39 +411,39 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                     }
                     packageReview?.let { review ->
                         val changes = review.plan.items.count { it.action == PackageAction.INSTALL || it.action == PackageAction.UPDATE }
-                        Text("${review.plan.items.size} packages resolved • $changes changes", style = MaterialTheme.typography.labelMedium)
-                        Text("${review.decidedBy}: ${review.reason}", style = MaterialTheme.typography.labelSmall)
-                        OutlinedButton(onClick = { showPythonPlan = !showPythonPlan }) { Text(if (showPythonPlan) "Collapse plan" else "Show package plan") }
+                        Text(uiText("${review.plan.items.size} packages resolved • $changes changes"), style = MaterialTheme.typography.labelMedium)
+                        Text(uiText("${review.decidedBy}: ${review.reason}"), style = MaterialTheme.typography.labelSmall)
+                        OutlinedButton(onClick = { showPythonPlan = !showPythonPlan }) { Text(uiText(if (showPythonPlan) "Collapse plan" else "Show package plan")) }
                         if (showPythonPlan) review.plan.items.forEach { item ->
-                            Text("${item.name} • ${item.action.name.lowercase().replace('_', ' ')}${item.installedVersion?.let { " • installed $it" }.orEmpty()}${item.candidateVersion?.let { " → $it" }.orEmpty()}", style = MaterialTheme.typography.labelSmall)
+                            Text(uiText("${item.name} • ${item.action.name.lowercase().replace('_', ' ')}${item.installedVersion?.let { " • installed $it" }.orEmpty()}${item.candidateVersion?.let { " → $it" }.orEmpty()}"), style = MaterialTheme.typography.labelSmall)
                         }
                     }
                     installResult?.let { install ->
                         Text(
-                            if (install.success && install.importErrors.isEmpty()) "Installed and import-verified ${install.packages.joinToString()}"
+                            uiText(if (install.success && install.importErrors.isEmpty()) "Installed and import-verified ${install.packages.joinToString()}"
                             else if (install.success) "Installed, but import verification found a problem"
-                            else "Installation failed",
+                            else "Installation failed"),
                             color = if (install.success && install.importErrors.isEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                         )
                         if (install.success && install.importNames.isNotEmpty()) Text(
-                            install.importNames.entries.joinToString("\n") { (distribution, names) -> "$distribution → import ${names.joinToString().ifBlank { "name unavailable" }}" },
+                            uiText(install.importNames.entries.joinToString("\n") { (distribution, names) -> "$distribution → import ${names.joinToString().ifBlank { "name unavailable" }}" }),
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.labelSmall,
                         )
                         if (install.importErrors.isNotEmpty()) Text(
-                            "Import verification warning:\n" + install.importErrors.entries.joinToString("\n") { "${it.key}: ${it.value}" },
+                            uiText("Import verification warning:\n" + install.importErrors.entries.joinToString("\n") { "${it.key}: ${it.value}" }),
                             color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.labelSmall,
                         )
-                        if (!install.success && install.stderr.isNotBlank()) Text(install.stderr.lines().takeLast(12).joinToString("\n").takeLast(1_200), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall)
+                        if (!install.success && install.stderr.isNotBlank()) Text(uiText(install.stderr.lines().takeLast(12).joinToString("\n").takeLast(1_200)), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
             OutlinedTextField(
                 timeoutSeconds,
                 { timeoutSeconds = it.filter(Char::isDigit).take(3) },
-                label = { Text("Execution deadline (seconds)") },
-                supportingText = { Text("1–600 seconds. Pure Python is interrupted at the deadline; a blocking native extension may return later.") },
+                label = { Text(uiText("Execution deadline (seconds)")) },
+                supportingText = { Text(uiText("1–600 seconds. Pure Python is interrupted at the deadline; a blocking native extension may return later.")) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -452,16 +452,16 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                 textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                 visualTransformation = rememberCodeVisualTransformation("python"),
                 minLines = 12,
-                label = { Text("Python script") },
+                label = { Text(uiText("Python script")) },
                 modifier = Modifier.fillMaxWidth(),
             )
             Button(
                 onClick = { viewModel.startPythonRun(code, timeoutSeconds.toIntOrNull()?.coerceIn(1, 600) ?: 90) },
                 enabled = code.isNotBlank() && !running,
-            ) { Icon(Icons.Outlined.PlayArrow, null); Text(if (running) "Running…" else "Run", Modifier.padding(start = 8.dp)) }
+            ) { Icon(Icons.Outlined.PlayArrow, null); Text(uiText(if (running) "Running…" else "Run"), Modifier.padding(start = 8.dp)) }
             if (running) {
                 Text(
-                    "Running in the background • ${(clock - (pythonRun?.startedAt ?: clock)) / 1_000}s • you can browse other chats",
+                    uiText("Running in the background • ${(clock - (pythonRun?.startedAt ?: clock)) / 1_000}s • you can browse other chats"),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -472,16 +472,16 @@ fun SandboxScreen(viewModel: ChatViewModel) {
             }
 
             } else {
-            Text("Linux workspace", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Text("Choose a rootless user-space distribution for broader third-party CLIs and libraries. Each distribution keeps its own packages, shares this chat's files at /workspace, and is a compatibility layer—not a security boundary.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(uiText("Linux workspace"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(uiText("Choose a rootless user-space distribution for broader third-party CLIs and libraries. Each distribution keeps its own packages, shares this chat's files at /workspace, and is a compatibility layer—not a security boundary."), color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (!ubuntuStatus.installed) {
                 Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Text("Before the first install", fontWeight = FontWeight.SemiBold)
-                        Text("• Requires a network download and app-private storage.", style = MaterialTheme.typography.bodySmall)
-                        Text("• Xylune verifies the archive before extraction and exposes progress for every stage.", style = MaterialTheme.typography.bodySmall)
-                        Text("• A failed or interrupted setup can be retried; /workspace chat files are not deleted.", style = MaterialTheme.typography.bodySmall)
-                        Text("• No Android root access is used or requested.", style = MaterialTheme.typography.bodySmall)
+                        Text(uiText("Before the first install"), fontWeight = FontWeight.SemiBold)
+                        Text(uiText("• Requires a network download and app-private storage."), style = MaterialTheme.typography.bodySmall)
+                        Text(uiText("• Xylune verifies the archive before extraction and exposes progress for every stage."), style = MaterialTheme.typography.bodySmall)
+                        Text(uiText("• A failed or interrupted setup can be retried; /workspace chat files are not deleted."), style = MaterialTheme.typography.bodySmall)
+                        Text(uiText("• No Android root access is used or requested."), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -496,21 +496,21 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                             ubuntuPackageResult = null
                         },
                         enabled = ubuntuStatus.stage !in setOf(UbuntuStage.DOWNLOADING, UbuntuStage.VERIFYING, UbuntuStage.EXTRACTING, UbuntuStage.CONFIGURING),
-                        label = { Text(option.displayName) },
+                        label = { Text(uiText(option.displayName)) },
                         modifier = Modifier.weight(1f),
                     )
                 }
             }
-            Text("${ubuntuStatus.distribution.description} • ${ubuntuStatus.distribution.release} • ${ubuntuStatus.distribution.packageManager.command}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(uiText("${ubuntuStatus.distribution.description} • ${ubuntuStatus.distribution.release} • ${ubuntuStatus.distribution.packageManager.command}"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("${ubuntuStatus.distribution.displayName} • ${ubuntuStatus.stage.name.lowercase().replace('_', ' ')} • ${ubuntuStatus.architecture}", fontWeight = FontWeight.SemiBold)
+                    Text(uiText("${ubuntuStatus.distribution.displayName} • ${ubuntuStatus.stage.name.lowercase().replace('_', ' ')} • ${ubuntuStatus.architecture}"), fontWeight = FontWeight.SemiBold)
                     if (!linuxSetupActive) {
                         Text(ubuntuStatus.detail, style = MaterialTheme.typography.bodySmall)
                     }
                     if (ubuntuStatus.sizeBytes > 0) {
                         Text(
-                            "Linux data on disk: ${Formatter.formatShortFileSize(androidx.compose.ui.platform.LocalContext.current, ubuntuStatus.sizeBytes)}",
+                            uiText("Linux data on disk: ${Formatter.formatShortFileSize(androidx.compose.ui.platform.LocalContext.current, ubuntuStatus.sizeBytes)}"),
                             style = MaterialTheme.typography.labelSmall,
                         )
                     }
@@ -539,12 +539,12 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                             ) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text(
-                                        "Step $step of $total",
+                                        uiText("Step $step of $total"),
                                         style = MaterialTheme.typography.labelLarge,
                                         fontWeight = FontWeight.SemiBold,
                                     )
                                     Text(
-                                        measuredProgress?.let { "${(it * 100).toInt()}%" } ?: "Working…",
+                                        uiText(measuredProgress?.let { "${(it * 100).toInt()}%" } ?: "Working…"),
                                         style = MaterialTheme.typography.labelLarge,
                                         fontWeight = FontWeight.SemiBold,
                                         color = MaterialTheme.colorScheme.primary,
@@ -593,12 +593,12 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                                 )
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text(
-                                        "Elapsed ${formatSetupDuration(elapsedMs)}",
+                                        uiText("Elapsed ${formatSetupDuration(elapsedMs)}"),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                     Text(
-                                        "Keep Xylune open",
+                                        uiText("Keep Xylune open"),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -610,9 +610,9 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                         if (!ubuntuStatus.installed) Button(
                             onClick = { scope.launch { viewModel.installUbuntu() } },
                             enabled = !linuxSetupActive,
-                        ) { Text(if (ubuntuStatus.stage == UbuntuStage.ERROR) "Retry setup" else "Install ${ubuntuStatus.distribution.displayName}") }
-                        else OutlinedButton(onClick = { scope.launch { viewModel.refreshUbuntu() } }) { Icon(Icons.Outlined.Refresh, null); Text("Refresh", Modifier.padding(start = 6.dp)) }
-                        if (ubuntuStatus.installed) OutlinedButton(onClick = { confirmLinuxRemoval = true }) { Icon(Icons.Outlined.Delete, null); Text("Remove", Modifier.padding(start = 6.dp)) }
+                        ) { Text(uiText(if (ubuntuStatus.stage == UbuntuStage.ERROR) "Retry setup" else "Install ${ubuntuStatus.distribution.displayName}")) }
+                        else OutlinedButton(onClick = { scope.launch { viewModel.refreshUbuntu() } }) { Icon(Icons.Outlined.Refresh, null); Text(uiText("Refresh"), Modifier.padding(start = 6.dp)) }
+                        if (ubuntuStatus.installed) OutlinedButton(onClick = { confirmLinuxRemoval = true }) { Icon(Icons.Outlined.Delete, null); Text(uiText("Remove"), Modifier.padding(start = 6.dp)) }
                     }
                 }
             }
@@ -622,13 +622,13 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Icon(Icons.Outlined.Terminal, null)
-                    Text("Open ${ubuntuStatus.distribution.displayName} terminal", Modifier.padding(start = 8.dp))
+                    Text(uiText("Open ${ubuntuStatus.distribution.displayName} terminal"), Modifier.padding(start = 8.dp))
                 }
                 Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Install ${ubuntuStatus.distribution.displayName} packages", fontWeight = FontWeight.SemiBold)
-                        Text("${ubuntuStatus.distribution.packageManager.command} simulates the complete transaction first and checks what is already installed before approval.", style = MaterialTheme.typography.bodySmall)
-                        OutlinedTextField(ubuntuPackages, { ubuntuPackages = it }, label = { Text("ripgrep\nffmpeg") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+                        Text(uiText("Install ${ubuntuStatus.distribution.displayName} packages"), fontWeight = FontWeight.SemiBold)
+                        Text(uiText("${ubuntuStatus.distribution.packageManager.command} simulates the complete transaction first and checks what is already installed before approval."), style = MaterialTheme.typography.bodySmall)
+                        OutlinedTextField(ubuntuPackages, { ubuntuPackages = it }, label = { Text(uiText("ripgrep\nffmpeg")) }, minLines = 2, modifier = Modifier.fillMaxWidth())
                         OutlinedButton(
                             onClick = {
                                 scope.launch {
@@ -647,14 +647,14 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                                 }
                             },
                             enabled = ubuntuPackages.isNotBlank() && !ubuntuInstalling,
-                        ) { Text(if (ubuntuInstalling && ubuntuReview?.state == PackageApprovalState.APPROVED) "Installing…" else if (ubuntuInstalling) "Checking…" else "Preflight & review") }
+                        ) { Text(uiText(if (ubuntuInstalling && ubuntuReview?.state == PackageApprovalState.APPROVED) "Installing…" else if (ubuntuInstalling) "Checking…" else "Preflight & review")) }
                         Surface(
                             color = if (ubuntuPackageResult?.success == false) MaterialTheme.colorScheme.errorContainer.copy(alpha = .16f) else MaterialTheme.colorScheme.surfaceContainerLowest,
                             shape = MaterialTheme.shapes.small,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(
-                                when {
+                                uiText(when {
                                     ubuntuInstalling && ubuntuReview?.state == PackageApprovalState.APPROVED -> "Approved automatically • repairing package state and installing…"
                                     ubuntuInstalling -> "Simulating ${ubuntuStatus.distribution.packageManager.command} transaction…"
                                     ubuntuPackageResult?.success == true -> "Installation completed successfully."
@@ -664,7 +664,7 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                                     ubuntuReview?.state == PackageApprovalState.REQUIRED -> "Plan ready for your confirmation."
                                     ubuntuReview?.state == PackageApprovalState.DENIED -> "Installation blocked • ${ubuntuReview?.reason.orEmpty()}"
                                     else -> "No package transaction running."
-                                },
+                                }),
                                 Modifier.padding(10.dp),
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Medium,
@@ -681,14 +681,14 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                                 }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(progress.phase, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                                    progress.percent?.let { Text("${(it.coerceIn(0f, 1f) * 100).toInt()}%", style = MaterialTheme.typography.labelMedium) }
+                                    Text(uiText(progress.phase), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                                    progress.percent?.let { Text(uiText("${(it.coerceIn(0f, 1f) * 100).toInt()}%"), style = MaterialTheme.typography.labelMedium) }
                                 }
                                 progress.currentPackage?.let {
                                     Text(it, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall)
                                 }
                                 if (progress.detail.isNotBlank()) {
-                                    Text(progress.detail, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(uiText(progress.detail), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 val liveLog = listOf(progress.stdoutTail, progress.stderrTail)
                                     .filter(String::isNotBlank)
@@ -700,15 +700,15 @@ fun SandboxScreen(viewModel: ChatViewModel) {
                         ubuntuReview?.let { review ->
                             val changes = review.plan.items.count { it.action == PackageAction.INSTALL || it.action == PackageAction.UPDATE }
                             val dependencies = review.plan.items.count { it.detail == "Dependency" }
-                            Text("${review.plan.items.size} packages resolved • $changes changes • $dependencies dependencies", style = MaterialTheme.typography.labelMedium)
-                            if (review.plan.downloadSummary.isNotBlank()) Text("Download: ${review.plan.downloadSummary}", style = MaterialTheme.typography.labelSmall)
-                            if (review.plan.diskSummary.isNotBlank()) Text("Disk: ${review.plan.diskSummary}", style = MaterialTheme.typography.labelSmall)
-                            Text("${review.decidedBy}: ${review.reason}", style = MaterialTheme.typography.labelSmall)
-                            OutlinedButton(onClick = { showUbuntuPlan = !showUbuntuPlan }) { Text(if (showUbuntuPlan) "Collapse complete plan" else "Show complete package plan") }
-                            if (showUbuntuPlan) review.plan.items.forEach { item -> Text("${item.name} • ${item.action.name.lowercase().replace('_', ' ')}${item.candidateVersion?.let { " → $it" }.orEmpty()}${item.detail.takeIf(String::isNotBlank)?.let { " • $it" }.orEmpty()}", style = MaterialTheme.typography.labelSmall) }
+                            Text(uiText("${review.plan.items.size} packages resolved • $changes changes • $dependencies dependencies"), style = MaterialTheme.typography.labelMedium)
+                            if (review.plan.downloadSummary.isNotBlank()) Text(uiText("Download: ${review.plan.downloadSummary}"), style = MaterialTheme.typography.labelSmall)
+                            if (review.plan.diskSummary.isNotBlank()) Text(uiText("Disk: ${review.plan.diskSummary}"), style = MaterialTheme.typography.labelSmall)
+                            Text(uiText("${review.decidedBy}: ${review.reason}"), style = MaterialTheme.typography.labelSmall)
+                            OutlinedButton(onClick = { showUbuntuPlan = !showUbuntuPlan }) { Text(uiText(if (showUbuntuPlan) "Collapse complete plan" else "Show complete package plan")) }
+                            if (showUbuntuPlan) review.plan.items.forEach { item -> Text(uiText("${item.name} • ${item.action.name.lowercase().replace('_', ' ')}${item.candidateVersion?.let { " → $it" }.orEmpty()}${item.detail.takeIf(String::isNotBlank)?.let { " • $it" }.orEmpty()}"), style = MaterialTheme.typography.labelSmall) }
                         }
                         ubuntuPackageResult?.let { installed ->
-                            Text(if (installed.success) "Installed ${installed.packages.joinToString()}" else "${ubuntuStatus.distribution.packageManager.command} install failed", color = if (installed.success) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                            Text(uiText(if (installed.success) "Installed ${installed.packages.joinToString()}" else "${ubuntuStatus.distribution.packageManager.command} install failed"), color = if (installed.success) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                             val log = installed.stderr.ifBlank { installed.stdout }.takeLast(12_000)
                             if (log.isNotBlank()) GenericToolOutputCard(log, failed = !installed.success)
                         }
@@ -720,73 +720,73 @@ fun SandboxScreen(viewModel: ChatViewModel) {
     }
     if (confirmInstall) XyluneAlertDialog(
         onDismissRequest = { confirmInstall = false },
-        title = { Text("Allow package installation?") },
+        title = { Text(uiText("Allow package installation?")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Only missing or outdated packages will change. Install scripts run with Xylune's app permissions.")
+                Text(uiText("Only missing or outdated packages will change. Install scripts run with Xylune's app permissions."))
                 packageReview?.plan?.items?.filter { it.action != PackageAction.ALREADY_INSTALLED }?.forEach { item ->
-                    Text("• ${item.name}: ${item.action.name.lowercase()}${item.candidateVersion?.let { " $it" }.orEmpty()}", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                    Text(uiText("• ${item.name}: ${item.action.name.lowercase()}${item.candidateVersion?.let { " $it" }.orEmpty()}"), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                 }
             }
         },
-        dismissButton = { OutlinedButton(onClick = { confirmInstall = false }) { Text("Cancel") } },
+        dismissButton = { OutlinedButton(onClick = { confirmInstall = false }) { Text(uiText("Cancel")) } },
         confirmButton = {
             Button(onClick = {
                 confirmInstall = false
                 scope.launch { installPythonNow() }
-            }, enabled = packageReview?.plan?.hasChanges == true) { Text("Allow and install") }
+            }, enabled = packageReview?.plan?.hasChanges == true) { Text(uiText("Allow and install")) }
         },
     )
     if (confirmUbuntuInstall) XyluneAlertDialog(
         onDismissRequest = { confirmUbuntuInstall = false },
-        title = { Text("Allow ${ubuntuStatus.distribution.packageManager.command} package changes?") },
+        title = { Text(uiText("Allow ${ubuntuStatus.distribution.packageManager.command} package changes?")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("This is the complete ${ubuntuStatus.distribution.packageManager.command} simulation, including dependencies:")
+                Text(uiText("This is the complete ${ubuntuStatus.distribution.packageManager.command} simulation, including dependencies:"))
                 ubuntuReview?.plan?.items?.filter { it.action != PackageAction.ALREADY_INSTALLED }?.forEach { item ->
-                    Text("• ${item.name}: ${item.action.name.lowercase()}${item.candidateVersion?.let { " $it" }.orEmpty()}${item.detail.takeIf(String::isNotBlank)?.let { " • $it" }.orEmpty()}", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                    Text(uiText("• ${item.name}: ${item.action.name.lowercase()}${item.candidateVersion?.let { " $it" }.orEmpty()}${item.detail.takeIf(String::isNotBlank)?.let { " • $it" }.orEmpty()}"), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                 }
-                ubuntuReview?.plan?.downloadSummary?.takeIf(String::isNotBlank)?.let { Text("Download: $it") }
-                ubuntuReview?.plan?.diskSummary?.takeIf(String::isNotBlank)?.let { Text("Disk: $it") }
+                ubuntuReview?.plan?.downloadSummary?.takeIf(String::isNotBlank)?.let { Text(uiText("Download: $it")) }
+                ubuntuReview?.plan?.diskSummary?.takeIf(String::isNotBlank)?.let { Text(uiText("Disk: $it")) }
             }
         },
-        dismissButton = { OutlinedButton(onClick = { confirmUbuntuInstall = false }) { Text("Cancel") } },
+        dismissButton = { OutlinedButton(onClick = { confirmUbuntuInstall = false }) { Text(uiText("Cancel")) } },
         confirmButton = {
             Button(onClick = {
                 confirmUbuntuInstall = false
                 scope.launch { installUbuntuPackagesNow() }
-            }, enabled = ubuntuReview?.plan?.hasChanges == true) { Text("Allow and install") }
+            }, enabled = ubuntuReview?.plan?.hasChanges == true) { Text(uiText("Allow and install")) }
         },
     )
     removePackage?.let { name ->
         XyluneAlertDialog(
             onDismissRequest = { removePackage = null },
-            title = { Text("Remove $name?") },
-            text = { Text("$appName will remove this Python package from the current chat environment. Other packages and the optional Linux runtime are kept.") },
-            dismissButton = { OutlinedButton(onClick = { removePackage = null }) { Text("Cancel") } },
+            title = { Text(uiText("Remove $name?")) },
+            text = { Text(uiText("$appName will remove this Python package from the current chat environment. Other packages and the optional Linux runtime are kept.")) },
+            dismissButton = { OutlinedButton(onClick = { removePackage = null }) { Text(uiText("Cancel")) } },
             confirmButton = {
                 Button(onClick = {
                     removePackage = null
                     scope.launch { environmentBusy = true; environment = viewModel.removePythonPackages(listOf(name)); environmentBusy = false }
-                }) { Text("Remove") }
+                }) { Text(uiText("Remove")) }
             },
         )
     }
     if (confirmLinuxRemoval) {
         XyluneAlertDialog(
             onDismissRequest = { confirmLinuxRemoval = false },
-            title = { Text("Remove ${ubuntuStatus.distribution.displayName}?") },
+            title = { Text(uiText("Remove ${ubuntuStatus.distribution.displayName}?")) },
             text = {
-                Text("This removes the selected Linux root filesystem and its installed packages for all chats. Chat files in /workspace and bundled Python packages are kept.")
+                Text(uiText("This removes the selected Linux root filesystem and its installed packages for all chats. Chat files in /workspace and bundled Python packages are kept."))
             },
             dismissButton = {
-                OutlinedButton(onClick = { confirmLinuxRemoval = false }) { Text("Cancel") }
+                OutlinedButton(onClick = { confirmLinuxRemoval = false }) { Text(uiText("Cancel")) }
             },
             confirmButton = {
                 Button(onClick = {
                     confirmLinuxRemoval = false
                     scope.launch { viewModel.removeUbuntu() }
-                }) { Text("Remove Linux runtime") }
+                }) { Text(uiText("Remove Linux runtime")) }
             },
         )
     }
@@ -796,16 +796,16 @@ fun SandboxScreen(viewModel: ChatViewModel) {
         val seconds = ((clock - startedAt) / 1_000).coerceAtLeast(10)
         XyluneAlertDialog(
             onDismissRequest = { dismissedLongRun = startedAt },
-            title = { Text("Python is still running") },
+            title = { Text(uiText("Python is still running")) },
             text = {
-                Text("This has taken $seconds seconds. It will keep running while you browse Xylune, up to its hard deadline. You can leave it in the background or stop it now. A blocking native Python extension may take a moment to return after Stop.")
+                Text(uiText("This has taken $seconds seconds. It will keep running while you browse Xylune, up to its hard deadline. You can leave it in the background or stop it now. A blocking native Python extension may take a moment to return after Stop."))
             },
-            dismissButton = { OutlinedButton(onClick = { dismissedLongRun = startedAt }) { Text("Keep in background") } },
+            dismissButton = { OutlinedButton(onClick = { dismissedLongRun = startedAt }) { Text(uiText("Keep in background")) } },
             confirmButton = {
                 Button(onClick = {
                     viewModel.stopPythonRun()
                     dismissedLongRun = startedAt
-                }) { Text("Stop") }
+                }) { Text(uiText("Stop")) }
             },
         )
     }

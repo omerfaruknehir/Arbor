@@ -1,5 +1,7 @@
 package app.xylune.chat.widgets
 
+import app.xylune.chat.ui.uiText
+
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -175,9 +177,9 @@ fun WidgetInstallBlock(
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Interactive preview", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                        Text(uiText("Interactive preview"), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                         Text(
-                            "This is the compiled launcher program. Local controls run here; live HTTP data and JSON bindings were preflighted before this card appeared.",
+                            uiText("This is the compiled launcher program. Local controls run here; live HTTP data and JSON bindings were preflighted before this card appeared."),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -188,7 +190,7 @@ fun WidgetInstallBlock(
                         previewStatus = "Preview reset"
                     }) {
                         Icon(Icons.Outlined.RestartAlt, null, modifier = Modifier.size(18.dp))
-                        Text(" Reset")
+                        Text(uiText(" Reset"))
                     }
                 }
                 ProgramNodeView(
@@ -230,13 +232,13 @@ fun WidgetInstallBlock(
                         tint = if (capabilityReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                        Text("Permissions and data access", fontWeight = FontWeight.SemiBold)
+                        Text(uiText("Permissions and data access"), fontWeight = FontWeight.SemiBold)
                         Text(
-                            when {
+                            uiText(when {
                                 definition.capabilities.isEmpty() -> "Nothing extra is required"
                                 capabilityReady -> "All $grantedCount requested grants are ready"
                                 else -> "$grantedCount of ${definition.capabilities.size} grants ready"
-                            },
+                            }),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -251,7 +253,7 @@ fun WidgetInstallBlock(
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (definition.capabilities.isEmpty()) {
                             Text(
-                                "This widget stays on-device and requests no network, location, folder, or scheduled-refresh access.",
+                                uiText("This widget stays on-device and requests no network, location, folder, or scheduled-refresh access."),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -261,7 +263,7 @@ fun WidgetInstallBlock(
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Icon(Icons.Outlined.Public, null, modifier = Modifier.size(18.dp))
-                                Text(" Allow ${requiredOrigins.size} listed network origin${if (requiredOrigins.size == 1) "" else "s"}")
+                                Text(uiText(" Allow ${requiredOrigins.size} listed network origin${if (requiredOrigins.size == 1) "" else "s"}"))
                             }
                         }
                         definition.capabilities.forEach { capability ->
@@ -285,7 +287,7 @@ fun WidgetInstallBlock(
                             )
                         }
                         Text(
-                            "Every grant belongs only to this pinned copy. Network access is limited to the listed HTTPS origins, and folder access cannot leave the selected document tree.",
+                            uiText("Every grant belongs only to this pinned copy. Network access is limited to the listed HTTPS origins, and folder access cannot leave the selected document tree."),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -326,7 +328,7 @@ fun WidgetInstallBlock(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Icon(Icons.Outlined.AddToHomeScreen, null)
-            Text(if (capabilityReady) " Add configured widget" else " Review required permissions")
+            Text(uiText(if (capabilityReady) " Add configured widget" else " Review required permissions"))
         }
         if (!capabilityReady && missing.isNotEmpty()) {
             Row(verticalAlignment = Alignment.Top) {
@@ -337,7 +339,7 @@ fun WidgetInstallBlock(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    " Still needed: ${missing.joinToString { capabilityShortTitle(it) }}",
+                    uiText(" Still needed: ${missing.joinToString { capabilityShortTitle(it) }}"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -404,23 +406,23 @@ private fun CapabilityGrantRow(
                         Checkbox(checked = networkOrigins[origin] == true, onCheckedChange = { onNetworkChange(origin, it) })
                         Column(Modifier.weight(1f)) {
                             Text(origin, style = MaterialTheme.typography.bodySmall)
-                            Text("HTTPS GET only", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(uiText("HTTPS GET only"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
             }
             "location" -> OutlinedButton(onClick = onLocation, modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    when {
+                    uiText(when {
                         capability.accuracy == "precise" && preciseLocationGranted -> "Precise location allowed"
                         locationGranted -> "Approximate location allowed"
                         else -> "Allow ${capability.accuracy} location"
-                    },
+                    }),
                 )
             }
             "folder" -> OutlinedButton(onClick = onFolder, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Outlined.FolderOpen, null, modifier = Modifier.size(18.dp))
-                Text(folderUri?.lastPathSegment?.let { " ${it.takeLast(44)}" } ?: " Choose one folder")
+                Text(uiText(folderUri?.lastPathSegment?.let { " ${it.takeLast(44)}" } ?: " Choose one folder"))
             }
             "background_refresh" -> Surface(
                 color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -429,8 +431,8 @@ private fun CapabilityGrantRow(
             ) {
                 Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Keep data current", fontWeight = FontWeight.Medium)
-                        Text("Android may delay work to protect battery.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(uiText("Keep data current"), fontWeight = FontWeight.Medium)
+                        Text(uiText("Android may delay work to protect battery."), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Switch(checked = backgroundGranted, onCheckedChange = onBackgroundChange)
                 }
@@ -547,7 +549,7 @@ private fun ProgramNodeView(
         )
         "slider" -> Column(modifier) {
             val raw = state[node.value]?.toDoubleOrNull()?.coerceIn(node.min, node.max) ?: node.min
-            Text("${XyluneProgramRuntime.render(node.label.ifBlank { node.value }, state)}: ${formatNumber(raw, node.decimals)}", style = MaterialTheme.typography.bodyMedium)
+            Text(uiText("${XyluneProgramRuntime.render(node.label.ifBlank { node.value }, state)}: ${formatNumber(raw, node.decimals)}"), style = MaterialTheme.typography.bodyMedium)
             Slider(
                 value = raw.toFloat(),
                 onValueChange = { value ->
@@ -612,7 +614,7 @@ private fun InvalidProgramBlock(title: String, message: String?) {
     Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp)) {
             Text(title, fontWeight = FontWeight.SemiBold)
-            Text(message ?: "The generated program could not be read.", style = MaterialTheme.typography.bodySmall)
+            Text(uiText(message ?: "The generated program could not be read."), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -639,7 +641,7 @@ private fun WidgetGrantBadge(granted: Boolean) {
         shape = RoundedCornerShape(100.dp),
     ) {
         Text(
-            if (granted) "Ready" else "Required",
+            uiText(if (granted) "Ready" else "Required"),
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelSmall,
             color = if (granted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,

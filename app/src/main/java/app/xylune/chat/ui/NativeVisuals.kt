@@ -334,7 +334,7 @@ fun NativeChartBlock(source: String) {
     val chart = remember(source) { parseChart(source) }
     var expanded by remember(source) { mutableStateOf(false) }
     VisualFrame(listOfNotNull("CHART • ${chart.type.lowercase()} • native", chart.title.takeIf(String::isNotBlank)).joinToString(" — "), onExpand = { expanded = true }) {
-        if (chart.series.all { it.points.isEmpty() }) Text("Use chart JSON or `label: value` lines.", style = MaterialTheme.typography.bodySmall)
+        if (chart.series.all { it.points.isEmpty() }) Text(uiText("Use chart JSON or `label: value` lines."), style = MaterialTheme.typography.bodySmall)
         else ChartCanvas(chart, if (chart.type == "pie") 270.dp else 250.dp, large = false)
     }
     if (expanded) VisualDialog(chart.title.ifBlank { "Chart" }, onDismiss = { expanded = false }) { ChartCanvas(chart, 520.dp, large = true) }
@@ -420,7 +420,7 @@ private fun VisualFrame(title: String, onExpand: () -> Unit, content: @Composabl
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row {
                 Text(title, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                IconButton(onClick = onExpand) { Icon(Icons.Outlined.OpenInFull, "Open full-screen preview") }
+                IconButton(onClick = onExpand) { Icon(Icons.Outlined.OpenInFull, uiText("Open full-screen preview")) }
             }
             content()
         }
@@ -432,7 +432,7 @@ private fun VisualDialog(title: String, onDismiss: () -> Unit, content: @Composa
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxSize().padding(10.dp)) {
             Column(Modifier.padding(12.dp)) {
-                Row { Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, "Close") } }
+                Row { Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, uiText("Close")) } }
                 content()
             }
         }
