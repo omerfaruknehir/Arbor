@@ -224,8 +224,8 @@ android {
         applicationId = "app.xylune.chat"
         minSdk = 26
         targetSdk = 36
-        versionCode = 204
-        versionName = "0.24.15"
+        versionCode = 205
+        versionName = "0.24.16"
         buildConfigField("String", "SOURCE_REPOSITORY", "\"$sourceRepository\"")
         buildConfigField("String", "SOURCE_COMMIT", "\"$sourceCommit\"")
         buildConfigField("String", "MICROSOFT_CLIENT_ID", "\"$microsoftClientId\"")
