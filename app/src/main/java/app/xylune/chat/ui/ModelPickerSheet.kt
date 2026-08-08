@@ -204,21 +204,21 @@ internal fun ModelPickerSheet(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            if (mode == ModelPickerMode.IMAGE) "Choose an image model" else "Choose a chat model",
+                            uiText(if (mode == ModelPickerMode.IMAGE) "Choose an image model" else "Choose a chat model"),
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            if (mode == ModelPickerMode.IMAGE) {
+                            uiText(if (mode == ModelPickerMode.IMAGE) {
                                 "Image generation and editing models are kept separate from chat models"
                             } else {
                                 "Search chat models by name, ID, provider, or description"
-                            },
+                            }),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, "Close model picker") }
+                    IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, uiText("Close model picker")) }
                 }
 
                 Row(
@@ -231,7 +231,7 @@ internal fun ModelPickerSheet(
                             mode = ModelPickerMode.CHAT
                             filters = filters - setOf(ModelPickerFilter.VISION, ModelPickerFilter.FILES, ModelPickerFilter.IMAGE)
                         },
-                        label = { Text("Chat · $chatModelCount") },
+                        label = { Text(uiText("Chat · $chatModelCount")) },
                         leadingIcon = { Icon(Icons.Outlined.Psychology, null) },
                     )
                     FilterChip(
@@ -242,7 +242,7 @@ internal fun ModelPickerSheet(
                                 it in setOf(ModelPickerFilter.FAVORITES, ModelPickerFilter.RECENT)
                             }
                         },
-                        label = { Text("Images · $imageModelCount") },
+                        label = { Text(uiText("Images · $imageModelCount")) },
                         leadingIcon = { Icon(Icons.Outlined.Image, null) },
                     )
                 }
@@ -251,7 +251,7 @@ internal fun ModelPickerSheet(
                     value = query,
                     onValueChange = { query = it },
                     leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                    placeholder = { Text(if (mode == ModelPickerMode.IMAGE) "Search image models" else "Search models") },
+                    placeholder = { Text(uiText(if (mode == ModelPickerMode.IMAGE) "Search image models" else "Search models")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -259,7 +259,7 @@ internal fun ModelPickerSheet(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    FilterChip(selected = providerId == null, onClick = { providerId = null }, label = { Text("All providers") })
+                    FilterChip(selected = providerId == null, onClick = { providerId = null }, label = { Text(uiText("All providers")) })
                     providers.forEach { provider ->
                         FilterChip(
                             selected = providerId == provider.id,
@@ -275,7 +275,7 @@ internal fun ModelPickerSheet(
                     FilterChip(
                         selected = filters.isEmpty(),
                         onClick = { filters = emptySet() },
-                        label = { Text(if (filters.isEmpty()) "All" else "Clear") },
+                        label = { Text(uiText(if (filters.isEmpty()) "All" else "Clear")) },
                     )
                     val visibleFilters = if (mode == ModelPickerMode.IMAGE) {
                         listOf(ModelPickerFilter.FAVORITES, ModelPickerFilter.RECENT)
@@ -288,16 +288,16 @@ internal fun ModelPickerSheet(
                             onClick = {
                                 filters = if (option in filters) filters - option else filters + option
                             },
-                            label = { Text(option.label) },
+                            label = { Text(uiText(option.label)) },
                         )
                     }
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        buildString {
+                        uiText(buildString {
                             append(choices.size).append(" result").append(if (choices.size == 1) "" else "s")
                             if (filters.isNotEmpty()) append(" · ").append(filters.size).append(" filters")
-                        },
+                        }),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -305,7 +305,7 @@ internal fun ModelPickerSheet(
                     if (favoriteKeys.isNotEmpty() && ModelPickerFilter.FAVORITES !in filters) {
                         AssistChip(
                             onClick = { filters = filters + ModelPickerFilter.FAVORITES },
-                            label = { Text("${favoriteKeys.size} starred") },
+                            label = { Text(uiText("${favoriteKeys.size} starred")) },
                         )
                     }
                 }
@@ -329,7 +329,7 @@ internal fun ModelPickerSheet(
                             supportingContent = {
                                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text(
-                                        "${choice.provider.displayName} · ${choice.model.modelId}",
+                                        uiText("${choice.provider.displayName} · ${choice.model.modelId}"),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         style = MaterialTheme.typography.bodySmall,
@@ -377,15 +377,15 @@ internal fun ModelPickerSheet(
                             ) {
                                 Column(Modifier.padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
-                                        if (mode == ModelPickerMode.IMAGE) "No matching image models" else "No matching chat models",
+                                        uiText(if (mode == ModelPickerMode.IMAGE) "No matching image models" else "No matching chat models"),
                                         fontWeight = FontWeight.SemiBold,
                                     )
                                     Text(
-                                        if (mode == ModelPickerMode.IMAGE) {
+                                        uiText(if (mode == ModelPickerMode.IMAGE) {
                                             "Try another provider or clear the current filters."
                                         } else {
                                             "Clear a filter or try a model name, author, or capability."
-                                        },
+                                        }),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )

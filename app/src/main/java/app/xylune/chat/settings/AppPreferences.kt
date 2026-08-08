@@ -159,10 +159,11 @@ data class NewChatDefaults(
 
 class AppPreferences(context: Context) {
     private val appContext = context.applicationContext
-    private val preferences = appContext.getSharedPreferences("xylune_app_settings", Context.MODE_PRIVATE)
+    private val preferences = appContext.getSharedPreferences(XYLUNE_APP_SETTINGS_PREFERENCES, Context.MODE_PRIVATE)
     private val _amoled = MutableStateFlow(preferences.getBoolean(KEY_AMOLED, false))
     private val _palette = MutableStateFlow(enumValue(KEY_PALETTE, ColorPalette.XYLUNE))
     private val _themeMode = MutableStateFlow(enumValue(KEY_THEME_MODE, ThemeMode.SYSTEM))
+    private val _appLanguage = MutableStateFlow(enumValue(KEY_APP_LANGUAGE, AppLanguage.SYSTEM))
     private val _matchLauncherIconToPalette = MutableStateFlow(
         preferences.getBoolean(KEY_MATCH_LAUNCHER_ICON_TO_PALETTE, false),
     )
@@ -186,6 +187,7 @@ class AppPreferences(context: Context) {
     val amoled: StateFlow<Boolean> = _amoled.asStateFlow()
     val palette: StateFlow<ColorPalette> = _palette.asStateFlow()
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
+    val appLanguage: StateFlow<AppLanguage> = _appLanguage.asStateFlow()
     val matchLauncherIconToPalette: StateFlow<Boolean> = _matchLauncherIconToPalette.asStateFlow()
     val chromeBlurStrength: StateFlow<Float> = _chromeBlurStrength.asStateFlow()
     val chromeEdgeSoftness: StateFlow<Float> = _chromeEdgeSoftness.asStateFlow()
@@ -265,6 +267,11 @@ class AppPreferences(context: Context) {
     fun setThemeMode(value: ThemeMode) {
         _themeMode.value = value
         preferences.edit { putString(KEY_THEME_MODE, value.name) }
+    }
+
+    fun setAppLanguage(value: AppLanguage) {
+        _appLanguage.value = value
+        preferences.edit { putString(KEY_APP_LANGUAGE, value.name) }
     }
 
 

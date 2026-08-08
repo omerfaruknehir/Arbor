@@ -306,17 +306,17 @@ internal fun CloudBackupTargets(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.FolderOpen, null, tint = MaterialTheme.colorScheme.primary)
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text("Selected cloud folder", fontWeight = FontWeight.SemiBold)
+                    Text(uiText("Selected cloud folder"), fontWeight = FontWeight.SemiBold)
                     Text(
-                        folderLabel?.let { "Connected: $it" }
-                            ?: "Works with Drive, OneDrive, Dropbox, Nextcloud, USB, local storage, and other Android document providers.",
+                        uiText(folderLabel?.let { "Connected: $it" }
+                            ?: "Works with Drive, OneDrive, Dropbox, Nextcloud, USB, local storage, and other Android document providers."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
             Text(
-                "Android grants Xylune persistent access only to the folder you select. Create or choose a dedicated Xylune folder; no account-wide permission is requested.",
+                uiText("Android grants Xylune persistent access only to the folder you select. Create or choose a dedicated Xylune folder; no account-wide permission is requested."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -327,7 +327,7 @@ internal fun CloudBackupTargets(
                     modifier = Modifier.weight(1f),
                 ) {
                     Icon(Icons.Outlined.FolderOpen, null)
-                    Text(if (folderLabel == null) " Connect folder" else " Change folder")
+                    Text(uiText(if (folderLabel == null) " Connect folder" else " Change folder"))
                 }
                 if (folderLabel != null) {
                     OutlinedButton(
@@ -359,11 +359,11 @@ internal fun CloudBackupTargets(
                 ) {
                     if (busy == "folder-save") CircularProgressIndicator(Modifier.padding(end = 8.dp), strokeWidth = 2.dp)
                     else Icon(Icons.Outlined.CloudDone, null)
-                    Text(" Back up now")
+                    Text(uiText(" Back up now"))
                 }
                 OutlinedButton(onClick = { refreshFolderBackups() }, enabled = busy == null, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Outlined.Refresh, null)
-                    Text(" Show backups")
+                    Text(uiText(" Show backups"))
                 }
                 CloudBackupList(
                     entries = folderBackups,
@@ -388,9 +388,9 @@ internal fun CloudBackupTargets(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Cloud, null, tint = MaterialTheme.colorScheme.primary)
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text("Google Drive", fontWeight = FontWeight.SemiBold)
+                    Text(uiText("Google Drive"), fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Uses only Drive's hidden appDataFolder. Connect once, then create, browse, preview, and restore backups without repeating the consent flow.",
+                        uiText("Uses only Drive's hidden appDataFolder. Connect once, then create, browse, preview, and restore backups without repeating the consent flow."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -405,10 +405,10 @@ internal fun CloudBackupTargets(
                 ) {
                     if (pendingGoogleAction != null) CircularProgressIndicator(Modifier.padding(end = 8.dp), strokeWidth = 2.dp)
                     else Icon(Icons.Outlined.Person, null)
-                    Text(" Connect Google Drive")
+                    Text(uiText(" Connect Google Drive"))
                 }
                 Text(
-                    "Xylune asks for the non-sensitive drive.appdata scope only. The backup files remain hidden from normal Drive browsing and from other apps.",
+                    uiText("Xylune asks for the non-sensitive drive.appdata scope only. The backup files remain hidden from normal Drive browsing and from other apps."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -421,9 +421,9 @@ internal fun CloudBackupTargets(
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.CloudDone, null, tint = MaterialTheme.colorScheme.primary)
                         Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                            Text("Connected", fontWeight = FontWeight.SemiBold)
+                            Text(uiText("Connected"), fontWeight = FontWeight.SemiBold)
                             Text(
-                                googleAccountLabel ?: "Google account selected",
+                                uiText(googleAccountLabel ?: "Google account selected"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -437,7 +437,7 @@ internal fun CloudBackupTargets(
                 ) {
                     if (busy == "drive-save") CircularProgressIndicator(Modifier.padding(end = 8.dp), strokeWidth = 2.dp)
                     else Icon(Icons.Outlined.Backup, null)
-                    Text(if (busy == "drive-save") " Creating and uploading…" else " Back up now")
+                    Text(uiText(if (busy == "drive-save") " Creating and uploading…" else " Back up now"))
                 }
                 OutlinedButton(
                     onClick = { authorizeGoogle(GoogleBackupAction.List) },
@@ -445,21 +445,21 @@ internal fun CloudBackupTargets(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Icon(Icons.Outlined.Refresh, null)
-                    Text(" Refresh backup list")
+                    Text(uiText(" Refresh backup list"))
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
                         onClick = { authorizeGoogle(GoogleBackupAction.Connect, selectAccount = true) },
                         enabled = busy == null && pendingGoogleAction == null,
                         modifier = Modifier.weight(1f),
-                    ) { Text("Switch account") }
+                    ) { Text(uiText("Switch account")) }
                     OutlinedButton(
                         onClick = ::disconnectGoogle,
                         enabled = busy == null,
                         modifier = Modifier.weight(1f),
                     ) {
                         Icon(Icons.Outlined.Logout, null)
-                        Text(" Disconnect")
+                        Text(uiText(" Disconnect"))
                     }
                 }
                 CloudBackupList(
@@ -479,7 +479,7 @@ internal fun CloudBackupTargets(
                 ) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            failure?.title ?: "Google Drive error",
+                            uiText(failure?.title ?: "Google Drive error"),
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onErrorContainer,
                         )
@@ -491,9 +491,9 @@ internal fun CloudBackupTargets(
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text("Package", style = MaterialTheme.typography.labelSmall)
+                                    Text(uiText("Package"), style = MaterialTheme.typography.labelSmall)
                                     Text(failure.identity.packageName, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-                                    Text("Signing SHA-1", style = MaterialTheme.typography.labelSmall)
+                                    Text(uiText("Signing SHA-1"), style = MaterialTheme.typography.labelSmall)
                                     Text(failure.identity.signingSha1, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
                                 }
                             }
@@ -505,18 +505,18 @@ internal fun CloudBackupTargets(
                                     viewModel.postNotice("Google Drive registration details copied")
                                 },
                                 modifier = Modifier.fillMaxWidth(),
-                            ) { Text("Copy setup details") }
+                            ) { Text(uiText("Copy setup details")) }
                             failure.setupGuideUrl?.let { guide ->
                                 OutlinedButton(
                                     onClick = { uriHandler.openUri(guide) },
                                     modifier = Modifier.fillMaxWidth(),
-                                ) { Text("Open setup guide") }
+                                ) { Text(uiText("Open setup guide")) }
                             }
                         }
                         OutlinedButton(
                             onClick = { authorizeGoogle(GoogleBackupAction.Connect, selectAccount = true) },
                             modifier = Modifier.fillMaxWidth(),
-                        ) { Text("Reconnect") }
+                        ) { Text(uiText("Reconnect")) }
                     }
                 }
             }
@@ -526,10 +526,10 @@ internal fun CloudBackupTargets(
     deleteTarget?.let { entry ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("Delete cloud backup?") },
-            text = { Text("${entry.name} will be permanently removed from its cloud provider.") },
+            title = { Text(uiText("Delete cloud backup?")) },
+            text = { Text(uiText("${entry.name} will be permanently removed from its cloud provider.")) },
             dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) { Text("Cancel") }
+                TextButton(onClick = { deleteTarget = null }) { Text(uiText("Cancel")) }
             },
             confirmButton = {
                 Button(onClick = {
@@ -546,7 +546,7 @@ internal fun CloudBackupTargets(
                             authorizeGoogle(GoogleBackupAction.Delete(entry))
                         else -> Unit
                     }
-                }) { Text("Delete") }
+                }) { Text(uiText("Delete")) }
             },
         )
     }
@@ -564,7 +564,7 @@ internal fun CloudBackupTargets(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(
-            "Portable cloud backups can include chats, app settings, organization, and optional Linux root filesystems. Passwordless backups are allowed after an explicit warning; API keys, OAuth sessions, provider authorization headers, cloud grants, and database encryption keys are excluded.",
+            uiText("Portable cloud backups can include chats, app settings, organization, and optional Linux root filesystems. Passwordless backups are allowed after an explicit warning; API keys, OAuth sessions, provider authorization headers, cloud grants, and database encryption keys are excluded."),
             modifier = Modifier.padding(14.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -590,21 +590,21 @@ private fun CloudBackupList(
             Column(Modifier.weight(1f)) {
                 Text(entry.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                 Text(
-                    buildString {
+                    uiText(buildString {
                         if (entry.modifiedAt > 0L) append(DateFormat.getDateTimeInstance().format(Date(entry.modifiedAt)))
                         if (entry.sizeBytes > 0L) {
                             if (isNotEmpty()) append(" • ")
                             append(readableBytes(entry.sizeBytes))
                         }
-                    }.ifBlank { "Portable Xylune backup" },
+                    }.ifBlank { "Portable Xylune backup" }),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            OutlinedButton(onClick = { onOpen(entry) }, enabled = busy == null) { Text("Preview") }
+            OutlinedButton(onClick = { onOpen(entry) }, enabled = busy == null) { Text(uiText("Preview")) }
             onDelete?.let { delete ->
                 IconButton(onClick = { delete(entry) }, enabled = busy == null) {
-                    Icon(Icons.Outlined.DeleteOutline, "Delete backup")
+                    Icon(Icons.Outlined.DeleteOutline, uiText("Delete backup"))
                 }
             }
         }

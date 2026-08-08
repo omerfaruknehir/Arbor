@@ -1,5 +1,7 @@
 package app.xylune.chat.generation
 
+import app.xylune.chat.settings.withStoredXyluneLanguage
+
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -1127,7 +1129,7 @@ class GenerationWorker(
         )
         return NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_xylune_monochrome)
-            .setContentTitle("${applicationContext.getString(R.string.app_name)} • ${repositoryTitle()}")
+            .setContentTitle("${applicationContext.withStoredXyluneLanguage().getString(R.string.app_name)} • ${repositoryTitle()}")
             .setContentText(text)
             .setContentIntent(openIntent)
             .setOngoing(indeterminate)

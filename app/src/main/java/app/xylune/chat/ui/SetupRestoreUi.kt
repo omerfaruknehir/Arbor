@@ -325,9 +325,9 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                     }
                 }
                 Column(Modifier.weight(1f)) {
-                    Text("Restore an existing setup", fontWeight = FontWeight.SemiBold)
+                    Text(uiText("Restore an existing setup"), fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Optional. Preview a local or cloud backup before importing anything.",
+                        uiText("Optional. Preview a local or cloud backup before importing anything."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -344,7 +344,7 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                     modifier = Modifier.weight(1f),
                 ) {
                     Icon(Icons.Outlined.FileOpen, null, Modifier.size(20.dp))
-                    Text("File", Modifier.padding(start = 7.dp))
+                    Text(uiText("File"), Modifier.padding(start = 7.dp))
                 }
                 Button(
                     onClick = {
@@ -357,7 +357,7 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                     modifier = Modifier.weight(1f),
                 ) {
                     Icon(Icons.Outlined.Cloud, null, Modifier.size(20.dp))
-                    Text("Cloud", Modifier.padding(start = 7.dp))
+                    Text(uiText("Cloud"), Modifier.padding(start = 7.dp))
                 }
             }
             compactStatus?.let {
@@ -374,7 +374,7 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
         XyluneAlertDialog(
             onDismissRequest = { if (!busy) cloudDialogOpen = false },
             title = {
-                Text(if (cloudSource == SetupCloudSource.CHOOSE) "Restore a backup" else "Choose a backup")
+                Text(uiText(if (cloudSource == SetupCloudSource.CHOOSE) "Restore a backup" else "Choose a backup"))
             },
             text = {
                 Column(
@@ -383,7 +383,7 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                 ) {
                     if (cloudSource == SetupCloudSource.CHOOSE) {
                         Text(
-                            "Choose where Xylune should look. Every option is limited to app-only storage or a folder you explicitly select.",
+                            uiText("Choose where Xylune should look. Every option is limited to app-only storage or a folder you explicitly select."),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -393,28 +393,28 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                             filled = true,
                             enabled = !busy,
                             onClick = ::authorizeGoogleDrive,
-                            icon = { SetupProviderIcon(R.drawable.ic_google_drive, "Google Drive") },
+                            icon = { SetupProviderIcon(R.drawable.ic_google_drive, uiText("Google Drive")) },
                         )
                         SetupCloudAction(
                             title = "Choose a backup folder",
                             subtitle = "Google Drive, OneDrive, Nextcloud, USB, or local storage through Android",
                             enabled = !busy,
                             onClick = ::openFolderPicker,
-                            icon = { SetupVectorIcon(Icons.Outlined.FolderOpen, "Choose folder") },
+                            icon = { SetupVectorIcon(Icons.Outlined.FolderOpen, uiText("Choose folder")) },
                         )
                         SetupCloudAction(
                             title = "OneDrive",
                             subtitle = oauthActionSubtitle(CloudOAuthProvider.ONEDRIVE, oauthStates[CloudOAuthProvider.ONEDRIVE]),
                             enabled = !busy,
                             onClick = { connectDirectOAuth(CloudOAuthProvider.ONEDRIVE) },
-                            icon = { SetupProviderIcon(R.drawable.ic_onedrive, "OneDrive") },
+                            icon = { SetupProviderIcon(R.drawable.ic_onedrive, uiText("OneDrive")) },
                         )
                         SetupCloudAction(
                             title = "Dropbox",
                             subtitle = oauthActionSubtitle(CloudOAuthProvider.DROPBOX, oauthStates[CloudOAuthProvider.DROPBOX]),
                             enabled = !busy,
                             onClick = { connectDirectOAuth(CloudOAuthProvider.DROPBOX) },
-                            icon = { SetupProviderIcon(R.drawable.ic_dropbox, "Dropbox") },
+                            icon = { SetupProviderIcon(R.drawable.ic_dropbox, uiText("Dropbox")) },
                         )
                         SetupCloudAction(
                             title = "Nextcloud / WebDAV",
@@ -429,7 +429,7 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                                     loadDirectBackups(DirectCloudProvider.WEBDAV, SetupCloudSource.WEBDAV)
                                 }
                             },
-                            icon = { SetupProviderIcon(R.drawable.ic_nextcloud, "Nextcloud / WebDAV") },
+                            icon = { SetupProviderIcon(R.drawable.ic_nextcloud, uiText("Nextcloud / WebDAV")) },
                         )
                         SetupCloudAction(
                             title = "S3-compatible storage",
@@ -444,7 +444,7 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                                     loadDirectBackups(DirectCloudProvider.S3, SetupCloudSource.S3)
                                 }
                             },
-                            icon = { SetupVectorIcon(Icons.Outlined.Storage, "S3-compatible storage") },
+                            icon = { SetupVectorIcon(Icons.Outlined.Storage, uiText("S3-compatible storage")) },
                         )
                         if (viewModel.connectedCloudFolderUri() != null) {
                             SetupCloudAction(
@@ -455,7 +455,7 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                                     cloudSource = SetupCloudSource.FOLDER
                                     refreshCurrentSource()
                                 },
-                                icon = { SetupVectorIcon(Icons.Outlined.Refresh, "Use connected folder") },
+                                icon = { SetupVectorIcon(Icons.Outlined.Refresh, uiText("Use connected folder")) },
                             )
                         }
                     } else {
@@ -471,7 +471,7 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Text(
-                                    "This location is connected, but it does not contain a Xylune backup yet.",
+                                    uiText("This location is connected, but it does not contain a Xylune backup yet."),
                                     modifier = Modifier.padding(14.dp),
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
@@ -482,7 +482,7 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Icon(Icons.Outlined.Refresh, null, Modifier.size(20.dp))
-                                Text("Check again", Modifier.padding(start = 8.dp))
+                                Text(uiText("Check again"), Modifier.padding(start = 8.dp))
                             }
                         }
                         entries.forEachIndexed { index, entry ->
@@ -534,7 +534,7 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                                         }
                                     },
                                     enabled = !busy,
-                                ) { Text("Review") }
+                                ) { Text(uiText("Review")) }
                             }
                         }
                     }
@@ -551,7 +551,7 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
                                 CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-                                Text(operationMessage ?: "Working…", style = MaterialTheme.typography.bodySmall)
+                                Text(uiText(operationMessage ?: "Working…"), style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     } else {
@@ -588,11 +588,11 @@ internal fun SetupRestoreActions(viewModel: ChatViewModel) {
                             error = null
                         },
                         enabled = !busy,
-                    ) { Text("Back") }
+                    ) { Text(uiText("Back")) }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { cloudDialogOpen = false }, enabled = !busy) { Text("Close") }
+                TextButton(onClick = { cloudDialogOpen = false }, enabled = !busy) { Text(uiText("Close")) }
             },
         )
     }

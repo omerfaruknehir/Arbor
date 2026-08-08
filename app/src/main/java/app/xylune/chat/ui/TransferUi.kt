@@ -116,9 +116,9 @@ internal fun BackupSettingsPage(viewModel: ChatViewModel) = SettingsPage {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.CloudUpload, null, tint = MaterialTheme.colorScheme.primary)
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text("Portable Xylune backup", fontWeight = FontWeight.SemiBold)
+                    Text(uiText("Portable Xylune backup"), fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Chats, branches, app configuration, organization, metadata, and optional attachments. API keys and OAuth sessions are deliberately excluded.",
+                        uiText("Chats, branches, app configuration, organization, metadata, and optional attachments. API keys and OAuth sessions are deliberately excluded."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -127,7 +127,7 @@ internal fun BackupSettingsPage(viewModel: ChatViewModel) = SettingsPage {
             TransferSwitch("Include app settings and configuration", includeAppSettings) { includeAppSettings = it }
             if (includeAppSettings) {
                 Text(
-                    "Includes theme, UI behavior, new-chat defaults, provider endpoints/models, projects, prompt profiles, and automation settings. Credentials, OAuth sessions, provider authorization headers, cloud grants, drafts, and navigation state stay excluded.",
+                    uiText("Includes theme, UI behavior, new-chat defaults, provider endpoints/models, projects, prompt profiles, and automation settings. Credentials, OAuth sessions, provider authorization headers, cloud grants, drafts, and navigation state stay excluded."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -138,7 +138,7 @@ internal fun BackupSettingsPage(viewModel: ChatViewModel) = SettingsPage {
             TransferSwitch("Include installed Linux environments", includeLinuxEnvironments) { includeLinuxEnvironments = it }
             if (includeLinuxEnvironments) {
                 Text(
-                    "Xylune includes each installed root filesystem, packages, and configuration. Permissions, symbolic links, and hard links are preserved. This can make the backup several gigabytes.",
+                    uiText("Xylune includes each installed root filesystem, packages, and configuration. Permissions, symbolic links, and hard links are preserved. This can make the backup several gigabytes."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -172,7 +172,7 @@ internal fun BackupSettingsPage(viewModel: ChatViewModel) = SettingsPage {
     ) {
         if (busy) CircularProgressIndicator(Modifier.padding(end = 8.dp), strokeWidth = 2.dp)
         else Icon(Icons.Outlined.CloudUpload, null)
-        Text(" Save backup", Modifier.padding(start = 4.dp))
+        Text(uiText(" Save backup"), Modifier.padding(start = 4.dp))
     }
 
     OutlinedButton(
@@ -183,7 +183,7 @@ internal fun BackupSettingsPage(viewModel: ChatViewModel) = SettingsPage {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Icon(Icons.Outlined.FileOpen, null)
-        Text(" Preview and import a backup", Modifier.padding(start = 6.dp))
+        Text(uiText(" Preview and import a backup"), Modifier.padding(start = 6.dp))
     }
 
     Surface(
@@ -192,7 +192,7 @@ internal fun BackupSettingsPage(viewModel: ChatViewModel) = SettingsPage {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(
-            "Imports are non-destructive: every chat is created as a separate copy. Existing chats are never overwritten. Provider credentials are not imported, so reconnect the required provider before continuing an imported chat.",
+            uiText("Imports are non-destructive: every chat is created as a separate copy. Existing chats are never overwritten. Provider credentials are not imported, so reconnect the required provider before continuing an imported chat."),
             modifier = Modifier.padding(14.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -221,7 +221,7 @@ internal fun ChatShareDialog(
 
     XyluneAlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("Share portable chat") },
+        title = { Text(uiText("Share portable chat")) },
         text = {
             Column(
                 Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
@@ -235,7 +235,7 @@ internal fun ChatShareDialog(
                     Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.CheckCircle, null)
                         Text(
-                            "Safe defaults share visible messages and attachments. Hidden reasoning, tool diagnostics, prompts, and request snapshots stay excluded until you enable them.",
+                            uiText("Safe defaults share visible messages and attachments. Hidden reasoning, tool diagnostics, prompts, and request snapshots stay excluded until you enable them."),
                             Modifier.padding(start = 10.dp),
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -261,7 +261,7 @@ internal fun ChatShareDialog(
             }
         },
         dismissButton = {
-            OutlinedButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") }
+            OutlinedButton(onClick = onDismiss, enabled = !busy) { Text(uiText("Cancel")) }
         },
         confirmButton = {
             Button(
@@ -300,7 +300,7 @@ internal fun ChatShareDialog(
             ) {
                 if (busy) CircularProgressIndicator(Modifier.padding(end = 6.dp), strokeWidth = 2.dp)
                 else Icon(Icons.Outlined.Share, null)
-                Text(" Share")
+                Text(uiText(" Share"))
             }
         },
     )
@@ -317,11 +317,11 @@ internal fun IncomingArchiveDialog(
         onDismissRequest = { if (!state.importing) viewModel.dismissIncomingArchive() },
         title = {
             Text(
-                when {
+                uiText(when {
                     preview?.kind == ArchiveKind.BACKUP -> "Import Xylune backup"
                     preview?.kind == ArchiveKind.CHAT -> "Open shared Xylune chat"
                     else -> "Open Xylune archive"
-                },
+                }),
             )
         },
         text = {
@@ -332,12 +332,12 @@ internal fun IncomingArchiveDialog(
                 if (state.passwordRequired && preview == null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.Lock, null, tint = MaterialTheme.colorScheme.primary)
-                        Text("This file is encrypted. Enter its password to inspect it.", Modifier.padding(start = 10.dp))
+                        Text(uiText("This file is encrypted. Enter its password to inspect it."), Modifier.padding(start = 10.dp))
                     }
                     OutlinedTextField(
                         value = password,
                         onValueChange = { password = it },
-                        label = { Text("Archive password") },
+                        label = { Text(uiText("Archive password")) },
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -348,7 +348,7 @@ internal fun IncomingArchiveDialog(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Icon(Icons.Outlined.LockOpen, null)
-                        Text(" Unlock preview", Modifier.padding(start = 6.dp))
+                        Text(uiText(" Unlock preview"), Modifier.padding(start = 6.dp))
                     }
                 }
                 preview?.let { value ->
@@ -360,21 +360,21 @@ internal fun IncomingArchiveDialog(
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(value.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text(
-                                buildString {
+                                uiText(buildString {
                                     append("${value.conversationCount} chat${if (value.conversationCount == 1) "" else "s"} • ${value.messageCount} messages • ${value.attachmentCount} attachments")
                                     if (value.linuxEnvironmentCount > 0) {
                                         append(" • ${value.linuxEnvironmentCount} Linux environment${if (value.linuxEnvironmentCount == 1) "" else "s"}")
                                     }
-                                },
+                                }),
                             )
                             Text(
-                                "Created by Xylune ${value.appVersion} • ${if (value.encrypted) "Password protected" else "Not encrypted"}",
+                                uiText("Created by Xylune ${value.appVersion} • ${if (value.encrypted) "Password protected" else "Not encrypted"}"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
-                    Text("Included content", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(uiText("Included content"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     IncludedRow("Attachments", value.options.includeAttachments)
                     IncludedRow("Reasoning", value.options.includeReasoning)
                     IncludedRow("Tool traces", value.options.includeToolData)
@@ -388,11 +388,11 @@ internal fun IncomingArchiveDialog(
                         shape = MaterialTheme.shapes.large,
                     ) {
                         Text(
-                            if (value.appSettingsIncluded) {
+                            uiText(if (value.appSettingsIncluded) {
                                 "Chats are imported as separate copies. Included app settings and organization are applied, but API keys, OAuth sessions, provider authorization headers, and cloud grants are never imported."
                             } else {
                                 "Import creates separate local copies. It never replaces an existing chat and does not import API keys or OAuth sessions."
-                            },
+                            }),
                             Modifier.fillMaxWidth().padding(12.dp),
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -413,7 +413,7 @@ internal fun IncomingArchiveDialog(
             }
         },
         dismissButton = {
-            OutlinedButton(onClick = viewModel::dismissIncomingArchive, enabled = !state.importing) { Text("Cancel") }
+            OutlinedButton(onClick = viewModel::dismissIncomingArchive, enabled = !state.importing) { Text(uiText("Cancel")) }
         },
         confirmButton = {
             if (preview != null) {
@@ -423,7 +423,7 @@ internal fun IncomingArchiveDialog(
                 ) {
                     if (state.importing) CircularProgressIndicator(Modifier.padding(end = 6.dp), strokeWidth = 2.dp)
                     else Icon(Icons.Outlined.FileOpen, null)
-                    Text(if (preview.kind == ArchiveKind.CHAT) " Import and continue" else " Import backup")
+                    Text(uiText(if (preview.kind == ArchiveKind.CHAT) " Import and continue" else " Import backup"))
                 }
             }
         },
@@ -440,11 +440,11 @@ private fun PasswordSection(
     unencryptedLabel: String,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Encryption password (optional)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        Text(uiText("Encryption password (optional)"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         OutlinedTextField(
             value = password,
             onValueChange = onPassword,
-            label = { Text("Password — leave blank for none") },
+            label = { Text(uiText("Password — leave blank for none")) },
             visualTransformation = PasswordVisualTransformation(),
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -453,10 +453,10 @@ private fun PasswordSection(
             OutlinedTextField(
                 value = confirmPassword,
                 onValueChange = onConfirmPassword,
-                label = { Text("Confirm password") },
+                label = { Text(uiText("Confirm password")) },
                 visualTransformation = PasswordVisualTransformation(),
                 isError = !passwordsMatch,
-                supportingText = if (!passwordsMatch) ({ Text("Passwords do not match") }) else null,
+                supportingText = if (!passwordsMatch) ({ Text(uiText("Passwords do not match")) }) else null,
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -491,7 +491,7 @@ private fun IncludedRow(label: String, included: Boolean) {
             null,
             tint = if (included) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(if (included) "$label included" else "$label excluded", Modifier.padding(start = 8.dp))
+        Text(uiText(if (included) "$label included" else "$label excluded"), Modifier.padding(start = 8.dp))
     }
 }
 

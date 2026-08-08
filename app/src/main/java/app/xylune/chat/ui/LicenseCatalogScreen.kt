@@ -101,7 +101,7 @@ internal fun LicenseCatalogSettingsPage() {
 
     SettingsPage {
         Text(
-            "Everything listed here is embedded in this build and available without a network connection.",
+            uiText("Everything listed here is embedded in this build and available without a network connection."),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -117,7 +117,7 @@ internal fun LicenseCatalogSettingsPage() {
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                placeholder = { Text("Search libraries or licenses") },
+                placeholder = { Text(uiText("Search libraries or licenses")) },
                 shape = RoundedCornerShape(22.dp),
             )
 
@@ -143,7 +143,7 @@ internal fun LicenseCatalogSettingsPage() {
             }
 
             Text(
-                "${filtered.size} of ${catalog.components.size} components",
+                uiText("${filtered.size} of ${catalog.components.size} components"),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -189,17 +189,17 @@ private fun DevelopmentDisclosureCard() {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                "Development disclosure & disclaimer",
+                uiText("Development disclosure & disclaimer"),
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
             Text(
-                "Xylune was made with full vibe coding: features and changes were primarily directed in natural language and implemented with AI-assisted coding tools. It may contain serious defects.",
+                uiText("Xylune was made with full vibe coding: features and changes were primarily directed in natural language and implemented with AI-assisted coding tools. It may contain serious defects."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
             Text(
-                "The app is provided “AS IS”, without warranties. Use it at your own risk. To the maximum extent permitted by applicable law, the author and contributors are not responsible for data loss, device damage, account loss, charges, security incidents, or other consequences arising from its use, modification, or distribution. Review the source and keep backups before relying on it.",
+                uiText("The app is provided “AS IS”, without warranties. Use it at your own risk. To the maximum extent permitted by applicable law, the author and contributors are not responsible for data loss, device damage, account loss, charges, security incidents, or other consequences arising from its use, modification, or distribution. Review the source and keep backups before relying on it."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
@@ -231,7 +231,7 @@ private fun LicenseComponentRow(
         ) {
             Text(component.name, fontWeight = FontWeight.SemiBold)
             Text(
-                "${component.category} · ${component.version}",
+                uiText("${component.category} · ${component.version}"),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -242,14 +242,14 @@ private fun LicenseComponentRow(
                 maxLines = 2,
             )
             Text(
-                component.licenses.joinToString(" · ") { it.spdx ?: it.name },
+                uiText(component.licenses.joinToString(" · ") { it.spdx ?: it.name }),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Icon(
             Icons.Outlined.Description,
-            contentDescription = "Read license",
+            contentDescription = uiText("Read license"),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -291,7 +291,7 @@ private fun LicenseIcon(component: OfflineLicenseComponent, modifier: Modifier =
         if (component.id == "xylune") {
             XyluneMark(
                 modifier = Modifier.fillMaxSize().padding(4.dp),
-                contentDescription = "Xylune",
+                contentDescription = uiText("Xylune"),
             )
         } else {
             when {
@@ -322,7 +322,7 @@ private fun LicenseIconFallback(componentName: String) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = componentName.firstOrNull()?.uppercase() ?: "?",
+            text = uiText(componentName.firstOrNull()?.uppercase() ?: "?"),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary,
@@ -395,14 +395,14 @@ private fun LicenseDetailSheet(
 
             OutlinedButton(onClick = { uriHandler.openUri(component.projectUrl) }) {
                 Icon(Icons.AutoMirrored.Outlined.OpenInNew, null, Modifier.size(18.dp))
-                Text("Project website", Modifier.padding(start = 8.dp))
+                Text(uiText("Project website"), Modifier.padding(start = 8.dp))
             }
 
             if (component.coordinates.isNotEmpty()) {
-                Text("Included modules", fontWeight = FontWeight.SemiBold)
+                Text(uiText("Included modules"), fontWeight = FontWeight.SemiBold)
                 SelectionContainer {
                     Text(
-                        component.coordinates.joinToString("\n"),
+                        uiText(component.coordinates.joinToString("\n")),
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -444,7 +444,7 @@ private fun LicenseDetailSheet(
                     },
                     onFailure = {
                         Text(
-                            "The embedded license document could not be opened.",
+                            uiText("The embedded license document could not be opened."),
                             color = MaterialTheme.colorScheme.error,
                         )
                     },
@@ -467,9 +467,9 @@ private fun EmptyLicenseSearch() {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Icon(Icons.Outlined.Search, null)
-            Text("No matching components", fontWeight = FontWeight.SemiBold)
+            Text(uiText("No matching components"), fontWeight = FontWeight.SemiBold)
             Text(
-                "Try a library name such as SQLCipher or a license such as Apache-2.0.",
+                uiText("Try a library name such as SQLCipher or a license such as Apache-2.0."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -492,12 +492,12 @@ private fun LicenseCatalogError() {
             Icon(Icons.Outlined.ErrorOutline, null, tint = MaterialTheme.colorScheme.onErrorContainer)
             Column {
                 Text(
-                    "License catalog unavailable",
+                    uiText("License catalog unavailable"),
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                 )
                 Text(
-                    "This build is missing its generated offline notices.",
+                    uiText("This build is missing its generated offline notices."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                 )

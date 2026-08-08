@@ -114,7 +114,7 @@ fun ConversationSidebar(
                 onNew()
             }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 4.dp)) {
                 Icon(Icons.Outlined.Add, null)
-                Text("New chat", Modifier.padding(start = 8.dp))
+                Text(uiText("New chat"), Modifier.padding(start = 8.dp))
             }
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -133,7 +133,7 @@ fun ConversationSidebar(
                 ) {
                     Icon(Icons.Outlined.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
-                        "Search chats and messages",
+                        uiText("Search chats and messages"),
                         Modifier.padding(start = 11.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -149,7 +149,7 @@ fun ConversationSidebar(
             ) {
                 item("all-chats") {
                     NavigationDrawerItem(
-                        label = { Text("All chats") },
+                        label = { Text(uiText("All chats")) },
                         icon = { Icon(Icons.Outlined.Inbox, null) },
                         selected = !showArchived && selectedProjectId == null,
                         onClick = { haptics.selection(); onShowArchived(false); onProjectFilter(null) },
@@ -157,7 +157,7 @@ fun ConversationSidebar(
                 }
                 item("archived") {
                     NavigationDrawerItem(
-                        label = { Text("Archived") },
+                        label = { Text(uiText("Archived")) },
                         icon = { Icon(Icons.Outlined.Archive, null) },
                         selected = showArchived,
                         onClick = { haptics.selection(); onShowArchived(true); onProjectFilter(null) },
@@ -168,9 +168,9 @@ fun ConversationSidebar(
                         Modifier.fillMaxWidth().padding(start = 12.dp, top = 8.dp, bottom = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("PROJECTS", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(uiText("PROJECTS"), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         IconButton(onClick = { haptics.tap(); createProjectForChat = null; creatingProject = true }, modifier = Modifier.size(34.dp)) {
-                            Icon(Icons.Outlined.Add, "New project", Modifier.size(18.dp))
+                            Icon(Icons.Outlined.Add, uiText("New project"), Modifier.size(18.dp))
                         }
                     }
                 }
@@ -188,7 +188,7 @@ fun ConversationSidebar(
                 }
                 item("chats-header") {
                     Text(
-                        if (showArchived) "ARCHIVED CHATS" else if (selectedProjectId == null) "RECENT CHATS" else "PROJECT CHATS",
+                        uiText(if (showArchived) "ARCHIVED CHATS" else if (selectedProjectId == null) "RECENT CHATS" else "PROJECT CHATS"),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(12.dp, 10.dp, 12.dp, 4.dp),
@@ -205,7 +205,7 @@ fun ConversationSidebar(
                 if (visible.isEmpty()) {
                     item("empty-chats") {
                         Text(
-                            if (showArchived) "Archived chats will appear here." else "No chats in this project yet.",
+                            uiText(if (showArchived) "Archived chats will appear here." else "No chats in this project yet."),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(16.dp),
@@ -215,12 +215,12 @@ fun ConversationSidebar(
             }
             HorizontalDivider(Modifier.padding(top = 8.dp, bottom = 4.dp))
             NavigationDrawerItem(
-                label = { Text("Settings") },
+                label = { Text(uiText("Settings")) },
                 icon = { Icon(Icons.Outlined.Settings, null) },
                 selected = false,
                 onClick = { haptics.selection(); onScreen(Screen.SETTINGS) },
             )
-            Text("On-device history • BYOK", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(12.dp, 4.dp, 12.dp, 0.dp))
+            Text(uiText("On-device history • BYOK"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(12.dp, 4.dp, 12.dp, 0.dp))
         }
     }
 
@@ -306,7 +306,7 @@ private fun ConversationRow(item: ConversationListItem, selected: Boolean, onCli
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (conversation.pinned) Icon(Icons.Filled.PushPin, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
                     Text(
-                        conversation.title,
+                        if (conversation.title == "New conversation") uiText(conversation.title) else conversation.title,
                         modifier = if (conversation.pinned) Modifier.padding(start = 5.dp) else Modifier,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -314,12 +314,12 @@ private fun ConversationRow(item: ConversationListItem, selected: Boolean, onCli
                     )
                 }
                 Text(
-                    buildString {
+                    uiText(buildString {
                         item.projectName?.let { append(it).append(" • ") }
                         append(conversation.totalInputTokens + conversation.totalOutputTokens).append(" tokens")
                         if (conversation.totalCostMicros > 0) append(" • $").append("%.4f".format(conversation.totalCostMicros / 1_000_000.0))
                         if (conversation.hasUnknownCost) append(" • partial cost")
-                    },
+                    }),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.labelSmall,
@@ -342,7 +342,7 @@ private fun ConversationRow(item: ConversationListItem, selected: Boolean, onCli
 private fun SidebarAction(icon: ImageVector, label: String, onClick: () -> Unit) {
     Column(Modifier.combinedClickable(onClick = onClick, onLongClick = onClick).padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(icon, label)
-        Text(label, style = MaterialTheme.typography.labelSmall)
+        Text(uiText(label), style = MaterialTheme.typography.labelSmall)
     }
 }
 
@@ -358,7 +358,7 @@ private fun SheetHeader(title: String, subtitle: String) {
 @Composable
 private fun SheetAction(icon: ImageVector, label: String, destructive: Boolean = false, tint: Color? = null, onClick: () -> Unit) {
     ListItem(
-        headlineContent = { Text(label, color = if (destructive) MaterialTheme.colorScheme.error else Color.Unspecified) },
+        headlineContent = { Text(uiText(label), color = if (destructive) MaterialTheme.colorScheme.error else Color.Unspecified) },
         leadingContent = { Icon(icon, null, tint = tint ?: if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) },
         modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onClick),
     )
@@ -369,10 +369,10 @@ private fun NameDialog(title: String, initial: String, confirm: String, onDismis
     var value by remember(initial) { mutableStateOf(initial) }
     XyluneAlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
+        title = { Text(uiText(title)) },
         text = { OutlinedTextField(value, { value = it }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
-        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } },
-        confirmButton = { Button(onClick = { onConfirm(value) }, enabled = value.isNotBlank()) { Text(confirm) } },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text(uiText("Cancel")) } },
+        confirmButton = { Button(onClick = { onConfirm(value) }, enabled = value.isNotBlank()) { Text(uiText(confirm)) } },
     )
 }
 
@@ -380,9 +380,9 @@ private fun NameDialog(title: String, initial: String, confirm: String, onDismis
 private fun ConfirmDeleteDialog(title: String, body: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
     XyluneAlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(body) },
-        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } },
-        confirmButton = { Button(onClick = onConfirm) { Text("Delete") } },
+        title = { Text(uiText(title)) },
+        text = { Text(uiText(body)) },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text(uiText("Cancel")) } },
+        confirmButton = { Button(onClick = onConfirm) { Text(uiText("Delete")) } },
     )
 }

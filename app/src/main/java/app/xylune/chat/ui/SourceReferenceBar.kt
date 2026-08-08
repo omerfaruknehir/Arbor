@@ -46,7 +46,7 @@ internal fun SourceReferenceBar(
         verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         Text(
-            text = "Sources",
+            text = uiText("Sources"),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontWeight = FontWeight.SemiBold,

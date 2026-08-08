@@ -72,7 +72,7 @@ internal fun ImageRequestModeCard(
                     Modifier.size(18.dp),
                 )
                 Text(
-                    if (editing) "Edit image" else "Create image",
+                    uiText(if (editing) "Edit image" else "Create image"),
                     Modifier.padding(start = 8.dp).weight(1f),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
@@ -82,12 +82,12 @@ internal fun ImageRequestModeCard(
                 ) {
                     TextButton(onClick = onAddReferenceImage) {
                         Icon(Icons.Outlined.AddPhotoAlternate, null, Modifier.size(17.dp))
-                        Text(if (referenceImageCount == 0) "Add image" else "Add another")
+                        Text(uiText(if (referenceImageCount == 0) "Add image" else "Add another"))
                     }
                 }
             }
             Text(
-                blockedReason ?: when {
+                uiText(blockedReason ?: when {
                     capabilities.inputMode == ImageInputMode.REQUIRED && referenceImageCount == 0 ->
                         "$modelName requires at least one reference image."
                     referenceImageCount > 0 ->
@@ -95,12 +95,12 @@ internal fun ImageRequestModeCard(
                     capabilities.inputMode == ImageInputMode.OPTIONAL ->
                         "Describe what to create, or add up to ${capabilities.maxInputImages} reference images to edit."
                     else -> "Describe the image you want to create."
-                },
+                }),
                 style = MaterialTheme.typography.bodySmall,
             )
             if (invalidAttachmentCount > 0 && blockedReason == null) {
                 Text(
-                    "Image requests cannot include ordinary files. Remove the non-image attachment${if (invalidAttachmentCount == 1) "" else "s"} first.",
+                    uiText("Image requests cannot include ordinary files. Remove the non-image attachment${if (invalidAttachmentCount == 1) "" else "s"} first."),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -145,18 +145,18 @@ internal fun ImageGenerationProgressCard(
                 CircularProgressIndicator(Modifier.size(19.dp), strokeWidth = 2.dp)
                 Column(Modifier.padding(start = 9.dp).weight(1f)) {
                     Text(
-                        if (preview == null) "Generating image" else "Rendering image",
+                        uiText(if (preview == null) "Generating image" else "Rendering image"),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        "$providerName · $modelName",
+                        uiText("$providerName · $modelName"),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 IconButton(onClick = onStop) {
-                    Icon(Icons.Filled.Stop, "Stop image generation")
+                    Icon(Icons.Filled.Stop, uiText("Stop image generation"))
                 }
             }
 
@@ -165,7 +165,7 @@ internal fun ImageGenerationProgressCard(
                 Crossfade(targetState = decoded, label = "ImagePreviewCrossfade") { frame ->
                     Image(
                         bitmap = frame,
-                        contentDescription = "Current generated image preview",
+                        contentDescription = uiText("Current generated image preview"),
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(1f)
@@ -175,11 +175,11 @@ internal fun ImageGenerationProgressCard(
                 val index = (current?.generatedImagePreviewIndex ?: 0) + 1
                 val count = current?.generatedImagePreviewCount
                 Text(
-                    buildString {
+                    uiText(buildString {
                         append("Provider preview ").append(index)
                         if (count != null && count > 0) append(" of ").append(count)
                         append(" · the final image may still change.")
-                    },
+                    }),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -199,11 +199,11 @@ internal fun ImageGenerationProgressCard(
                     }
                 }
                 Text(
-                    if (supportsProgressivePreview) {
+                    uiText(if (supportsProgressivePreview) {
                         "Waiting for the first provider-rendered preview…"
                     } else {
                         "This provider returns the final image when generation finishes."
-                    },
+                    }),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

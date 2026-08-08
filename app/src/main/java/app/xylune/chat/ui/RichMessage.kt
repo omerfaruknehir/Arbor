@@ -447,11 +447,11 @@ private fun SafeGeneratedBlock(label: String, source: String, retry: () -> Unit)
     var expanded by remember(source) { mutableStateOf(false) }
     Surface(color = MaterialTheme.colorScheme.errorContainer.copy(alpha = .35f), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            Text("$label paused for crash recovery", fontWeight = FontWeight.SemiBold)
-            Text("The source and conversation are intact.", style = MaterialTheme.typography.bodySmall)
+            Text(uiText("$label paused for crash recovery"), fontWeight = FontWeight.SemiBold)
+            Text(uiText("The source and conversation are intact."), style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Collapse source" else "Show source") }
-                Button(onClick = retry) { Text("Try full rendering") }
+                OutlinedButton(onClick = { expanded = !expanded }) { Text(uiText(if (expanded) "Collapse source" else "Show source")) }
+                Button(onClick = retry) { Text(uiText("Try full rendering")) }
             }
             AnimatedVisibility(expanded, enter = workingCardExpandIn(), exit = workingCardCollapseOut()) {
                 HighlightedCodeText(
@@ -526,7 +526,7 @@ private fun PackageRequestBlock(
                 Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (reviewing || installing) CircularProgressIndicator(Modifier.width(18.dp).height(18.dp), strokeWidth = 2.dp)
                     Text(
-                        when {
+                        uiText(when {
                             reviewing -> "Checking installed packages and resolving dependencies…"
                             installing -> if (review?.state == PackageApprovalState.APPROVED) "Approved automatically • installing now…" else "Installing approved changes…"
                             result != null -> result!!.message
@@ -535,7 +535,7 @@ private fun PackageRequestBlock(
                             review?.state == PackageApprovalState.APPROVED -> "Approved automatically • waiting to start"
                             review?.state == PackageApprovalState.REQUIRED -> "Ready for your review"
                             else -> "Preparing package plan…"
-                        },
+                        }),
                         Modifier.padding(start = if (reviewing || installing) 8.dp else 0.dp),
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Medium,
@@ -554,14 +554,14 @@ private fun PackageRequestBlock(
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(progress.phase, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                        progress.percent?.let { Text("${(it.coerceIn(0f, 1f) * 100).toInt()}%", style = MaterialTheme.typography.labelMedium) }
+                        Text(uiText(progress.phase), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                        progress.percent?.let { Text(uiText("${(it.coerceIn(0f, 1f) * 100).toInt()}%"), style = MaterialTheme.typography.labelMedium) }
                     }
                     progress.currentPackage?.let {
                         Text(it, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall)
                     }
                     if (progress.detail.isNotBlank()) {
-                        Text(progress.detail, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(uiText(progress.detail), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     val liveLog = listOf(progress.stdoutTail, progress.stderrTail)
                         .filter(String::isNotBlank)
@@ -573,12 +573,12 @@ private fun PackageRequestBlock(
             review?.let { current ->
                 val changed = current.plan.items.count { it.action == PackageAction.INSTALL || it.action == PackageAction.UPDATE }
                 val dependencies = current.plan.items.count { it.detail == "Dependency" }
-                Text("${current.plan.items.size} packages resolved • $changed changes${if (dependencies > 0) " • $dependencies dependencies" else ""}", style = MaterialTheme.typography.labelMedium)
+                Text(uiText("${current.plan.items.size} packages resolved • $changed changes${if (dependencies > 0) " • $dependencies dependencies" else ""}"), style = MaterialTheme.typography.labelMedium)
                 if (current.plan.downloadSummary.isNotBlank() || current.plan.diskSummary.isNotBlank()) {
-                    Text(listOf(current.plan.downloadSummary, current.plan.diskSummary).filter(String::isNotBlank).joinToString(" • "), style = MaterialTheme.typography.labelMedium)
+                    Text(uiText(listOf(current.plan.downloadSummary, current.plan.diskSummary).filter(String::isNotBlank).joinToString(" • ")), style = MaterialTheme.typography.labelMedium)
                 }
-                Text("${current.decidedBy}: ${current.reason}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "Collapse package plan" else "Show complete package plan") }
+                Text(uiText("${current.decidedBy}: ${current.reason}"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(onClick = { showDetails = !showDetails }) { Text(uiText(if (showDetails) "Collapse package plan" else "Show complete package plan")) }
                 AnimatedVisibility(showDetails, enter = workingCardExpandIn(), exit = workingCardCollapseOut()) {
                     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         current.plan.items.forEach { item ->
@@ -588,12 +588,12 @@ private fun PackageRequestBlock(
                                 PackageAction.UPDATE -> "Update ${item.installedVersion.orEmpty()} → ${item.candidateVersion ?: "candidate"}"
                                 PackageAction.INVALID -> "Invalid"
                             }
-                            Text("${item.name} • $status${item.detail.takeIf(String::isNotBlank)?.let { " • $it" }.orEmpty()}", style = MaterialTheme.typography.labelSmall)
+                            Text(uiText("${item.name} • $status${item.detail.takeIf(String::isNotBlank)?.let { " • $it" }.orEmpty()}"), style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
             }
-            if (review?.state == PackageApprovalState.REQUIRED) OutlinedButton(onClick = { confirm = true }, enabled = !installing && !reviewing) { Text("Review and install changes") }
+            if (review?.state == PackageApprovalState.REQUIRED) OutlinedButton(onClick = { confirm = true }, enabled = !installing && !reviewing) { Text(uiText("Review and install changes")) }
             result?.let { installed ->
                 if (installed.detail.isNotBlank()) GenericToolOutputCard(installed.detail, failed = !installed.success)
             }
@@ -601,24 +601,24 @@ private fun PackageRequestBlock(
     }
     if (confirm) XyluneAlertDialog(
         onDismissRequest = { confirm = false },
-        title = { Text("Allow package changes?") },
+        title = { Text(uiText("Allow package changes?")) },
         text = {
             val plan = review?.plan
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Only missing or outdated packages will be changed. Packages and install scripts run with Xylune's app permissions.")
+                Text(uiText("Only missing or outdated packages will be changed. Packages and install scripts run with Xylune's app permissions."))
                 plan?.items?.filter { it.action != PackageAction.ALREADY_INSTALLED }?.forEach { item ->
-                    Text("• ${item.name}: ${item.action.name.lowercase()}${item.candidateVersion?.let { " $it" }.orEmpty()}", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                    Text(uiText("• ${item.name}: ${item.action.name.lowercase()}${item.candidateVersion?.let { " $it" }.orEmpty()}"), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                 }
-                if (plan?.downloadSummary?.isNotBlank() == true) Text("Download: ${plan.downloadSummary}")
-                if (plan?.diskSummary?.isNotBlank() == true) Text("Disk: ${plan.diskSummary}")
+                if (plan?.downloadSummary?.isNotBlank() == true) Text(uiText("Download: ${plan.downloadSummary}"))
+                if (plan?.diskSummary?.isNotBlank() == true) Text(uiText("Disk: ${plan.diskSummary}"))
             }
         },
-        dismissButton = { OutlinedButton(onClick = { confirm = false }) { Text("Cancel") } },
+        dismissButton = { OutlinedButton(onClick = { confirm = false }) { Text(uiText("Cancel")) } },
         confirmButton = {
             Button(onClick = {
                 confirm = false
                 scope.launch { installNow() }
-            }, enabled = review?.plan?.hasChanges == true) { Text("Allow and install") }
+            }, enabled = review?.plan?.hasChanges == true) { Text(uiText("Allow and install")) }
         },
     )
 }
@@ -1584,7 +1584,7 @@ private fun CodeBlock(
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
         Column {
             Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(language.ifBlank { "code" }.uppercase(), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(uiText(language.ifBlank { "code" }.uppercase()), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (executable && language.lowercase() in setOf("python", "py")) {
                     IconButton(onClick = {
                         scope.launch {
@@ -1599,7 +1599,7 @@ private fun CodeBlock(
                             liveProgress = null
                             running = false
                         }
-                    }, enabled = !running) { Icon(Icons.Outlined.PlayArrow, "Run in workspace") }
+                    }, enabled = !running) { Icon(Icons.Outlined.PlayArrow, uiText("Run in workspace")) }
                 }
                 if (executable && language.lowercase() in setOf("bash", "sh", "shell", "ubuntu", "debian", "alpine", "linux")) {
                     IconButton(onClick = {
@@ -1615,12 +1615,12 @@ private fun CodeBlock(
                             liveProgress = null
                             running = false
                         }
-                    }, enabled = !running) { Icon(Icons.Outlined.PlayArrow, "Run with Linux tools") }
+                    }, enabled = !running) { Icon(Icons.Outlined.PlayArrow, uiText("Run with Linux tools")) }
                 }
                 IconButton(onClick = {
                     context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("code", code))
                     copied = true
-                }) { Icon(if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, "Copy") }
+                }) { Icon(if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, uiText("Copy")) }
             }
             LowSensitivityHorizontalScroll(Modifier.padding(14.dp)) {
                 HighlightedCodeText(

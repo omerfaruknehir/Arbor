@@ -9,6 +9,9 @@ import android.content.ClipboardManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.LocaleList
+import android.app.LocaleManager
+import android.content.Context
 import android.os.Parcelable
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -22,6 +25,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.heightIn
@@ -37,10 +41,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.toArgb
 import app.xylune.chat.ui.XyluneApp
 import app.xylune.chat.ui.LocalXyluneIconPalette
+import app.xylune.chat.ui.LocalXyluneUiLanguage
+import app.xylune.chat.ui.resolvedUiLanguage
+import app.xylune.chat.ui.uiText
 import app.xylune.chat.ui.ChatViewModel
 import app.xylune.chat.ui.theme.XyluneTheme
 import app.xylune.chat.ui.theme.resolvedXyluneColorScheme
 import app.xylune.chat.settings.ColorPalette
+import app.xylune.chat.settings.AppLanguage
+import app.xylune.chat.settings.withStoredXyluneLanguage
 import app.xylune.chat.settings.LauncherIconManager
 import app.xylune.chat.transfer.XYLUNE_BACKUP_EXTENSION
 import app.xylune.chat.transfer.XYLUNE_BACKUP_MIME
@@ -50,6 +59,10 @@ import kotlinx.coroutines.launch
 
 import app.xylune.chat.ui.XyluneAlertDialog
 class MainActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(newBase.withStoredXyluneLanguage())
+    }
+
     private var launcherRestartInFlight = false
     private val viewModel: ChatViewModel by viewModels {
         ChatViewModel.factory((application as XyluneApplication).container)
@@ -58,6 +71,19 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val preferences = (application as XyluneApplication).container.appPreferences
+        if (Build.VERSION.SDK_INT >= 33) {
+            val localeManager = getSystemService(LocaleManager::class.java)
+            val platformLanguage = if (localeManager.applicationLocales.isEmpty) {
+                AppLanguage.SYSTEM
+            } else {
+                when (localeManager.applicationLocales[0].language) {
+                    "tr" -> AppLanguage.TURKISH
+                    "en" -> AppLanguage.ENGLISH
+                    else -> AppLanguage.SYSTEM
+                }
+            }
+            if (platformLanguage != preferences.appLanguage.value) preferences.setAppLanguage(platformLanguage)
+        }
         window.setBackgroundDrawable(
             ColorDrawable(
                 resolvedXyluneColorScheme(
@@ -75,10 +101,28 @@ class MainActivity : ComponentActivity() {
             val amoled by viewModel.amoled.collectAsState()
             val palette by viewModel.palette.collectAsState()
             val themeMode by viewModel.themeMode.collectAsState()
+            val appLanguage by viewModel.appLanguage.collectAsState()
             val matchLauncherIconToPalette by viewModel.matchLauncherIconToPalette.collectAsState()
+            var appliedLanguage by remember { mutableStateOf(appLanguage) }
+            LaunchedEffect(appLanguage) {
+                if (appLanguage != appliedLanguage) {
+                    appliedLanguage = appLanguage
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        val tags = appLanguage.languageTag.orEmpty()
+                        val manager = getSystemService(LocaleManager::class.java)
+                        if (manager.applicationLocales.toLanguageTags() != tags) {
+                            manager.applicationLocales = LocaleList.forLanguageTags(tags)
+                        }
+                    } else {
+                        recreate()
+                    }
+                }
+            }
+            val systemLanguage = resources.configuration.locales[0]?.language.orEmpty()
             XyluneTheme(amoled = amoled, palette = palette, themeMode = themeMode) {
                 CompositionLocalProvider(
                     LocalXyluneIconPalette provides if (matchLauncherIconToPalette) palette else ColorPalette.XYLUNE,
+                    LocalXyluneUiLanguage provides resolvedUiLanguage(appLanguage, systemLanguage),
                 ) {
                     val appName = stringResource(R.string.app_name)
                     XyluneApp(viewModel, this@MainActivity)
@@ -89,25 +133,25 @@ class MainActivity : ComponentActivity() {
                         val context = LocalContext.current
                         XyluneAlertDialog(
                             onDismissRequest = { container.crashReporter.clear(); crashReport = null },
-                            title = { Text("$appName recovered a crash report") },
+                            title = { Text(uiText("$appName recovered a crash report")) },
                             text = {
                                 Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                                     if (renderSafeMode) {
-                                        Text("$appName reopened safely with generated widgets paused. Your chats and files were not deleted. You can dismiss this report and keep using the app, then retry full rendering when ready.\n")
-                                        OutlinedButton(onClick = { viewModel.setRenderSafeMode(false) }) { Text("Try full rendering again") }
-                                        Text("\n")
+                                        Text(uiText("$appName reopened safely with generated widgets paused. Your chats and files were not deleted. You can dismiss this report and keep using the app, then retry full rendering when ready.\n"))
+                                        OutlinedButton(onClick = { viewModel.setRenderSafeMode(false) }) { Text(uiText("Try full rendering again")) }
+                                        Text(uiText("\n"))
                                     }
-                                    Text("Copy this redacted diagnostic report if you need help diagnosing the failure. Review it before sharing.\n\n$report")
+                                    Text(uiText("Copy this redacted diagnostic report if you need help diagnosing the failure. Review it before sharing.") + "\n\n" + report)
                                 }
                             },
                             dismissButton = {
-                                OutlinedButton(onClick = { container.crashReporter.clear(); crashReport = null }) { Text("Dismiss") }
+                                OutlinedButton(onClick = { container.crashReporter.clear(); crashReport = null }) { Text(uiText("Dismiss")) }
                             },
                             confirmButton = {
                                 Button(onClick = {
                                     context.getSystemService(ClipboardManager::class.java)
                                         .setPrimaryClip(ClipData.newPlainText("$appName crash report", report))
-                                }) { Text("Copy report") }
+                                }) { Text(uiText("Copy report")) }
                             },
                         )
                     }

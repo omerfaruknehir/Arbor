@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Xylune</string>
+    <string name="app_name_possessive">Xylune\'un</string>
+    <string name="generation_channel_name">Yapay zekâ yanıtları</string>
+    <string name="generation_channel_description">Xylune arka plandayken devam eden yanıtlar</string>
+    <string name="home_widget_name">Xylune programlanabilir widget\'ı</string>
+    <string name="home_widget_description">Xylune tarafından oluşturulan izinli programlanabilir Ana ekran widget\'ı</string>
+    <string name="home_widget_program_content">Programlanabilir widget içeriği</string>
+    <string name="home_widget_refresh">Widget\'ı yenile</string>
+</resources>

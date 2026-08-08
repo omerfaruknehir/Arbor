@@ -34,7 +34,7 @@ fun CodeSourcePanel(
         Column {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(title, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                if (live) Text("Streaming…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (live) Text(uiText("Streaming…"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             LowSensitivityHorizontalScroll(Modifier.padding(12.dp)) {
@@ -55,7 +55,7 @@ fun LiveExecutionCard(progress: ExecutionProgress, title: String = "Code executi
     ExecutionFrame(title, "Running", formatExecutionDuration(progress.elapsedMs), failed = false) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-            Text("Live output updates as the process prints.", style = MaterialTheme.typography.bodySmall)
+            Text(uiText("Live output updates as the process prints."), style = MaterialTheme.typography.bodySmall)
         }
         progress.stdoutTail.takeIf(String::isNotBlank)?.let { LiveOutputSection("Output", it) }
         progress.stderrTail.takeIf(String::isNotBlank)?.let { LiveOutputSection("Errors", it, error = true) }
@@ -140,7 +140,7 @@ private fun ExecutionFrame(title: String, state: String, detail: String, failed:
                     shape = MaterialTheme.shapes.extraLarge,
                 ) {
                     Text(
-                        listOf(state, detail).filter(String::isNotBlank).joinToString(" • "),
+                        uiText(listOf(state, detail).filter(String::isNotBlank).joinToString(" • ")),
                         modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold,

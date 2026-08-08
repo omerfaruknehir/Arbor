@@ -19,6 +19,7 @@ import app.xylune.chat.data.ThinkingEffort
 import app.xylune.chat.provider.ProviderEndpointPolicy
 import app.xylune.chat.settings.AppPreferences
 import app.xylune.chat.settings.ColorPalette
+import app.xylune.chat.settings.AppLanguage
 import app.xylune.chat.settings.DeveloperSettings
 import app.xylune.chat.settings.NewChatDefaults
 import app.xylune.chat.settings.PerformanceOverlayPosition
@@ -43,6 +44,7 @@ data class PortableAppSettings(
 @Serializable
 data class PortablePreferenceSettings(
     val themeMode: String,
+    val appLanguage: String = AppLanguage.SYSTEM.name,
     val palette: String,
     val amoled: Boolean,
     val matchLauncherIconToPalette: Boolean,
@@ -201,6 +203,7 @@ class AppSettingsArchiveStore(
         return PortableAppSettings(
             preferences = PortablePreferenceSettings(
                 themeMode = preferences.themeMode.value.name,
+                appLanguage = preferences.appLanguage.value.name,
                 palette = preferences.palette.value.name,
                 amoled = preferences.amoled.value,
                 matchLauncherIconToPalette = preferences.matchLauncherIconToPalette.value,
@@ -509,6 +512,7 @@ class AppSettingsArchiveStore(
         promptIds: Map<String, String>,
     ) {
         preferences.setThemeMode(value.themeMode.enumOr(ThemeMode.SYSTEM))
+        preferences.setAppLanguage(value.appLanguage.enumOr(AppLanguage.SYSTEM))
         preferences.setPalette(value.palette.enumOr(ColorPalette.XYLUNE))
         preferences.setAmoled(value.amoled)
         preferences.setMatchLauncherIconToPalette(value.matchLauncherIconToPalette)

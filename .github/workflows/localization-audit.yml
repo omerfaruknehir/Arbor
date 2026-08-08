@@ -1,0 +1,55 @@
+name: Localization validation
+
+on:
+  push:
+    branches:
+      - agent/turkish-localization
+    paths:
+      - '.github/workflows/localization-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/turkish-localization
+          fetch-depth: 0
+      - name: Fix network-origin translation spacing
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('app/src/main/java/app/xylune/chat/ui/UiLocalization.kt')
+          s = p.read_text(encoding='utf-8')
+          old = '{ " ${it.groupValues[1]} listelenen ağ kaynağına izin ver" }'
+          new = '{ "${it.groupValues[1]} listelenen ağ kaynağına izin ver" }'
+          if old not in s:
+              raise SystemExit('missing network-origin translation')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+      - name: Commit localization correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/app/xylune/chat/ui/UiLocalization.kt
+          git commit -m "Fix Turkish network-origin translation"
+          git push origin HEAD:agent/turkish-localization
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Set up Android 16 SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Run localization unit tests and compile release
+        run: ./gradlew --no-daemon --stacktrace --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process testReleaseUnitTest compileReleaseKotlin

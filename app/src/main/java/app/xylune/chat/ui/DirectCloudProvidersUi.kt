@@ -128,13 +128,13 @@ internal fun DirectCloudProviderTargets(
     }
 
     Text(
-        "Direct app storage",
+        uiText("Direct app storage"),
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier.padding(top = 6.dp),
     )
     Text(
-        "These providers keep Xylune backups in an app-specific folder or prefix. OAuth tokens and storage credentials are encrypted on this device and excluded from exported backups.",
+        uiText("These providers keep Xylune backups in an app-specific folder or prefix. OAuth tokens and storage credentials are encrypted on this device and excluded from exported backups."),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -266,9 +266,9 @@ internal fun DirectCloudProviderTargets(
     deleteTarget?.let { (provider, entry) ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("Delete cloud backup?") },
-            text = { Text("${entry.name} will be permanently deleted from ${provider.displayName}.") },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
+            title = { Text(uiText("Delete cloud backup?")) },
+            text = { Text(uiText("${entry.name} will be permanently deleted from ${provider.displayName}.")) },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(uiText("Cancel")) } },
             confirmButton = {
                 Button(onClick = {
                     deleteTarget = null
@@ -284,7 +284,7 @@ internal fun DirectCloudProviderTargets(
                             .onFailure { setError(provider, it.message ?: "Could not delete backup") }
                         busy = null
                     }
-                }) { Text("Delete") }
+                }) { Text(uiText("Delete")) }
             },
         )
     }
@@ -313,25 +313,25 @@ private fun OAuthCloudCard(
         when (state) {
             is CloudOAuthState.Unavailable -> {
                 ProviderError(state.reason)
-                Text("Build variable: $setupVariable", style = MaterialTheme.typography.labelSmall)
+                Text(uiText("Build variable: $setupVariable"), style = MaterialTheme.typography.labelSmall)
                 redirectUri?.takeIf { !it.contains("unconfigured") }?.let {
-                    Text("Redirect URI: $it", style = MaterialTheme.typography.bodySmall)
+                    Text(uiText("Redirect URI: $it"), style = MaterialTheme.typography.bodySmall)
                 }
                 OutlinedButton(onClick = onOpenGuide, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Outlined.OpenInBrowser, null)
-                    Text(" Open provider setup guide")
+                    Text(uiText(" Open provider setup guide"))
                 }
             }
             CloudOAuthState.Disconnected -> {
                 Button(onClick = onConnect, enabled = enabled && busy == null, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Outlined.Link, null)
-                    Text(" Connect ${provider.displayName}")
+                    Text(uiText(" Connect ${provider.displayName}"))
                 }
             }
             is CloudOAuthState.Authorizing -> {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CircularProgressIndicator(strokeWidth = 2.dp)
-                    Text("Waiting for ${provider.displayName} authorization…")
+                    Text(uiText("Waiting for ${provider.displayName} authorization…"))
                 }
             }
             is CloudOAuthState.Connected -> {
@@ -343,10 +343,10 @@ private fun OAuthCloudCard(
                 ProviderError(state.message)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = onConnect, enabled = busy == null, modifier = Modifier.weight(1f)) {
-                        Text("Reconnect")
+                        Text(uiText("Reconnect"))
                     }
                     OutlinedButton(onClick = onDisconnect, enabled = busy == null, modifier = Modifier.weight(1f)) {
-                        Text("Reset")
+                        Text(uiText("Reset"))
                     }
                 }
             }
@@ -375,7 +375,7 @@ private fun CredentialCloudCard(
         if (connectedLabel == null) {
             Button(onClick = onConfigure, enabled = enabled && busy == null, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Outlined.Edit, null)
-                Text(" Configure ${provider.displayName}")
+                Text(uiText(" Configure ${provider.displayName}"))
             }
         } else {
             ConnectedSummary(connectedLabel)
@@ -420,7 +420,7 @@ private fun ConnectedSummary(label: String) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.CloudDone, null, tint = MaterialTheme.colorScheme.primary)
             Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                Text("Connected", fontWeight = FontWeight.SemiBold)
+                Text(uiText("Connected"), fontWeight = FontWeight.SemiBold)
                 Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -438,17 +438,17 @@ private fun ProviderActions(
 ) {
     Button(onClick = onBackup, enabled = enabled && busy == null, modifier = Modifier.fillMaxWidth()) {
         Icon(Icons.Outlined.Backup, null)
-        Text(" Back up now")
+        Text(uiText(" Back up now"))
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = onRefresh, enabled = busy == null, modifier = Modifier.weight(1f)) {
             Icon(Icons.Outlined.Refresh, null)
-            Text(" Backups")
+            Text(uiText(" Backups"))
         }
         onEdit?.let {
-            OutlinedButton(onClick = it, enabled = busy == null) { Icon(Icons.Outlined.Edit, "Edit") }
+            OutlinedButton(onClick = it, enabled = busy == null) { Icon(Icons.Outlined.Edit, uiText("Edit")) }
         }
-        OutlinedButton(onClick = onDisconnect, enabled = busy == null) { Icon(Icons.Outlined.Logout, "Disconnect") }
+        OutlinedButton(onClick = onDisconnect, enabled = busy == null) { Icon(Icons.Outlined.Logout, uiText("Disconnect")) }
     }
 }
 
@@ -470,20 +470,20 @@ private fun DirectBackupList(
             Column(Modifier.weight(1f)) {
                 Text(entry.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                 Text(
-                    buildString {
+                    uiText(buildString {
                         if (entry.modifiedAt > 0L) append(DateFormat.getDateTimeInstance().format(Date(entry.modifiedAt)))
                         if (entry.sizeBytes > 0L) {
                             if (isNotEmpty()) append(" • ")
                             append(readableDirectBytes(entry.sizeBytes))
                         }
-                    }.ifBlank { "Portable Xylune backup" },
+                    }.ifBlank { "Portable Xylune backup" }),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            OutlinedButton(onClick = { onPreview(entry) }, enabled = busy == null) { Text("Preview") }
+            OutlinedButton(onClick = { onPreview(entry) }, enabled = busy == null) { Text(uiText("Preview")) }
             IconButton(onClick = { onDelete(entry) }, enabled = busy == null) {
-                Icon(Icons.Outlined.DeleteOutline, "Delete backup")
+                Icon(Icons.Outlined.DeleteOutline, uiText("Delete backup"))
             }
         }
     }
@@ -517,26 +517,26 @@ internal fun WebDavConfigDialog(
     var password by remember(existing) { mutableStateOf(existing?.password.orEmpty()) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("WebDAV / Nextcloud") },
+        title = { Text(uiText("WebDAV / Nextcloud")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Enter the exact HTTPS URL of a dedicated Xylune folder. For Nextcloud this normally ends with /remote.php/dav/files/USERNAME/Xylune/.")
-                OutlinedTextField(label, { label = it }, label = { Text("Label") }, singleLine = true)
-                OutlinedTextField(url, { url = it }, label = { Text("WebDAV folder URL") }, singleLine = true)
-                OutlinedTextField(username, { username = it }, label = { Text("Username") }, singleLine = true)
+                Text(uiText("Enter the exact HTTPS URL of a dedicated Xylune folder. For Nextcloud this normally ends with /remote.php/dav/files/USERNAME/Xylune/."))
+                OutlinedTextField(label, { label = it }, label = { Text(uiText("Label")) }, singleLine = true)
+                OutlinedTextField(url, { url = it }, label = { Text(uiText("WebDAV folder URL")) }, singleLine = true)
+                OutlinedTextField(username, { username = it }, label = { Text(uiText("Username")) }, singleLine = true)
                 OutlinedTextField(
                     password,
                     { password = it },
-                    label = { Text("Password or app password") },
+                    label = { Text(uiText("Password or app password")) },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                 )
-                Text("Credentials are encrypted with Android Keystore and are never included in Xylune backups.", style = MaterialTheme.typography.bodySmall)
+                Text(uiText("Credentials are encrypted with Android Keystore and are never included in Xylune backups."), style = MaterialTheme.typography.bodySmall)
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(uiText("Cancel")) } },
         confirmButton = {
-            Button(onClick = { onSave(WebDavCloudConfig(label, url, username, password)) }) { Text("Save and test") }
+            Button(onClick = { onSave(WebDavCloudConfig(label, url, username, password)) }) { Text(uiText("Save and test")) }
         },
     )
 }
@@ -557,35 +557,35 @@ internal fun S3ConfigDialog(
     var sessionToken by remember(existing) { mutableStateOf(existing?.sessionToken.orEmpty()) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("S3-compatible storage") },
+        title = { Text(uiText("S3-compatible storage")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(label, { label = it }, label = { Text("Label") }, singleLine = true)
-                OutlinedTextField(endpoint, { endpoint = it }, label = { Text("HTTPS endpoint") }, singleLine = true)
+                OutlinedTextField(label, { label = it }, label = { Text(uiText("Label")) }, singleLine = true)
+                OutlinedTextField(endpoint, { endpoint = it }, label = { Text(uiText("HTTPS endpoint")) }, singleLine = true)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(region, { region = it }, label = { Text("Region") }, singleLine = true, modifier = Modifier.weight(1f))
-                    OutlinedTextField(bucket, { bucket = it }, label = { Text("Bucket") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(region, { region = it }, label = { Text(uiText("Region")) }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(bucket, { bucket = it }, label = { Text(uiText("Bucket")) }, singleLine = true, modifier = Modifier.weight(1f))
                 }
-                OutlinedTextField(prefix, { prefix = it }, label = { Text("Prefix") }, singleLine = true)
-                OutlinedTextField(accessKey, { accessKey = it }, label = { Text("Access key ID") }, singleLine = true)
+                OutlinedTextField(prefix, { prefix = it }, label = { Text(uiText("Prefix")) }, singleLine = true)
+                OutlinedTextField(accessKey, { accessKey = it }, label = { Text(uiText("Access key ID")) }, singleLine = true)
                 OutlinedTextField(
                     secretKey,
                     { secretKey = it },
-                    label = { Text("Secret access key") },
+                    label = { Text(uiText("Secret access key")) },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                 )
                 OutlinedTextField(
                     sessionToken,
                     { sessionToken = it },
-                    label = { Text("Session token (optional)") },
+                    label = { Text(uiText("Session token (optional)")) },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                 )
-                Text("Use a key restricted to this bucket and prefix. Credentials remain encrypted on-device.", style = MaterialTheme.typography.bodySmall)
+                Text(uiText("Use a key restricted to this bucket and prefix. Credentials remain encrypted on-device."), style = MaterialTheme.typography.bodySmall)
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(uiText("Cancel")) } },
         confirmButton = {
             Button(onClick = {
                 onSave(
@@ -600,7 +600,7 @@ internal fun S3ConfigDialog(
                         sessionToken = sessionToken.takeIf(String::isNotBlank),
                     ),
                 )
-            }) { Text("Save and test") }
+            }) { Text(uiText("Save and test")) }
         },
     )
 }

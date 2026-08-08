@@ -228,7 +228,7 @@ internal fun LinkPreviewDetails(
         }
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(onClick = onDismiss) { Text("Close") }
+            OutlinedButton(onClick = onDismiss) { Text(uiText("Close")) }
             if (openable) {
                 Spacer(Modifier.width(8.dp))
                 Button(onClick = {
@@ -237,7 +237,7 @@ internal fun LinkPreviewDetails(
                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, target.toUri())) }
                 }) {
                     Icon(Icons.AutoMirrored.Outlined.OpenInNew, null, Modifier.size(17.dp))
-                    Text("Open", Modifier.padding(start = 6.dp))
+                    Text(uiText("Open"), Modifier.padding(start = 6.dp))
                 }
             }
         }

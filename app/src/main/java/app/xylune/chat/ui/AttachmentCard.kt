@@ -128,15 +128,15 @@ fun AttachmentCard(
                 Column(Modifier.weight(1f).padding(start = if (attachment.isRasterImage()) 0.dp else 10.dp)) {
                     Text(attachment.displayName, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
                     Text(
-                        "${attachment.mimeType.substringAfter('/').uppercase()}  •  ${Formatter.formatShortFileSize(context, attachment.sizeBytes)}",
+                        uiText("${attachment.mimeType.substringAfter('/').uppercase()}  •  ${Formatter.formatShortFileSize(context, attachment.sizeBytes)}"),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     if (allowOcr && (attachment.ocrJson != null || attachment.imageDescription != null)) Text(
-                        listOfNotNull(
+                        uiText(listOfNotNull(
                             "OCR ready".takeIf { attachment.ocrJson != null },
                             "Local description".takeIf { attachment.imageDescription != null },
-                        ).joinToString("  •  "),
+                        ).joinToString("  •  ")),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold,
@@ -148,9 +148,9 @@ fun AttachmentCard(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = { preview = true }) { Icon(Icons.Outlined.FileOpen, null); Text("Preview", Modifier.padding(start = 6.dp)) }
-                IconButton(onClick = { saveAs.launch(attachment.displayName) }) { Icon(Icons.Outlined.Download, "Save a copy") }
-                IconButton(onClick = { shareFile(context, attachment) }) { Icon(Icons.Outlined.Share, "Share") }
+                TextButton(onClick = { preview = true }) { Icon(Icons.Outlined.FileOpen, null); Text(uiText("Preview"), Modifier.padding(start = 6.dp)) }
+                IconButton(onClick = { saveAs.launch(attachment.displayName) }) { Icon(Icons.Outlined.Download, uiText("Save a copy")) }
+                IconButton(onClick = { shareFile(context, attachment) }) { Icon(Icons.Outlined.Share, uiText("Share")) }
             }
             if (modelUsesFallback) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -162,15 +162,15 @@ fun AttachmentCard(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Outlined.WarningAmber, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
                             Text(
-                                if (attachment.ocrJson == null) "Attachment compatibility" else "OCR fallback enabled",
+                                uiText(if (attachment.ocrJson == null) "Attachment compatibility" else "OCR fallback enabled"),
                                 Modifier.padding(start = 8.dp),
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
                             )
                         }
                         Text(
-                            if (attachment.ocrJson == null) "This model cannot read the original attachment. OCR fallback will be prepared before sending."
-                            else "This model receives OCR text and coordinates; you still see the untouched original.",
+                            uiText(if (attachment.ocrJson == null) "This model cannot read the original attachment. OCR fallback will be prepared before sending."
+                            else "This model receives OCR text and coordinates; you still see the untouched original."),
                             Modifier.fillMaxWidth().padding(top = 5.dp),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -178,7 +178,7 @@ fun AttachmentCard(
                         TextButton(onClick = {
                             if (attachment.ocrJson == null) onEnableOcr?.invoke() else preview = true
                         }, enabled = attachment.ocrJson != null || onEnableOcr != null, modifier = Modifier.align(Alignment.End)) {
-                            Text(if (attachment.ocrJson == null) "Prepare OCR" else "Open OCR view")
+                            Text(uiText(if (attachment.ocrJson == null) "Prepare OCR" else "Open OCR view"))
                         }
                     }
                 }
@@ -203,7 +203,7 @@ private fun InlineImagePreview(attachment: AttachmentEntity, onClick: () -> Unit
             color = MaterialTheme.colorScheme.scrim.copy(alpha = .56f),
             shape = MaterialTheme.shapes.small,
             modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
-        ) { Text("Tap to zoom", Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = Color.White, style = MaterialTheme.typography.labelSmall) }
+        ) { Text(uiText("Tap to zoom"), Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = Color.White, style = MaterialTheme.typography.labelSmall) }
     }
 }
 
@@ -221,16 +221,16 @@ private fun AttachmentPreview(attachment: AttachmentEntity, allowOcr: Boolean, m
                     Column(Modifier.weight(1f)) {
                         Text(attachment.displayName, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text(
-                            when {
+                            uiText(when {
                                 modelUsesFallback && attachment.ocrJson != null -> "Model receives OCR fallback • original preview is unchanged"
                                 modelUsesFallback -> "Selected model cannot read the original attachment"
                                 else -> attachment.mimeType
-                            },
+                            }),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, "Close") }
+                    IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, uiText("Close")) }
                 }
                 Column(Modifier.verticalScroll(rememberScrollState()).weight(1f, fill = false)) {
                     when {
@@ -239,25 +239,25 @@ private fun AttachmentPreview(attachment: AttachmentEntity, allowOcr: Boolean, m
                         attachment.extractedText != null -> PagedExtractedTextPreview(attachment.extractedText)
                         else -> Column(Modifier.fillMaxWidth().padding(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Outlined.FileOpen, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
-                            Text("No inline preview for this file type", Modifier.padding(top = 12.dp))
+                            Text(uiText("No inline preview for this file type"), Modifier.padding(top = 12.dp))
                         }
                     }
                     attachment.imageDescription?.takeIf { allowOcr }?.let {
-                        Text("Local image description", Modifier.padding(top = 16.dp), fontWeight = FontWeight.SemiBold)
+                        Text(uiText("Local image description"), Modifier.padding(top = 16.dp), fontWeight = FontWeight.SemiBold)
                         Text(it, style = MaterialTheme.typography.bodySmall)
                     }
                     attachment.ocrJson?.takeIf { allowOcr && showOcr }?.let { raw ->
                         val ocrText = remember(raw) { extractOcrText(raw) }
-                        Text("Selectable OCR text", Modifier.padding(top = 16.dp), fontWeight = FontWeight.SemiBold)
+                        Text(uiText("Selectable OCR text"), Modifier.padding(top = 16.dp), fontWeight = FontWeight.SemiBold)
                         androidx.compose.foundation.text.selection.SelectionContainer { Text(ocrText, style = MaterialTheme.typography.bodySmall) }
                     }
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.End) {
                     val context = LocalContext.current
                     if (allowOcr && attachment.ocrJson != null) OutlinedButton(onClick = { showOcr = !showOcr }) {
-                        Text(if (showOcr) "Hide OCR overlay" else "Show OCR overlay")
+                        Text(uiText(if (showOcr) "Hide OCR overlay" else "Show OCR overlay"))
                     }
-                    OutlinedButton(onClick = { shareFile(context, attachment) }) { Icon(Icons.Outlined.Share, null); Text("Share", Modifier.padding(start = 8.dp)) }
+                    OutlinedButton(onClick = { shareFile(context, attachment) }) { Icon(Icons.Outlined.Share, null); Text(uiText("Share"), Modifier.padding(start = 8.dp)) }
                 }
             }
         }
@@ -286,17 +286,17 @@ private fun RasterImagePreview(attachment: AttachmentEntity, allowOcr: Boolean, 
                         Column(Modifier.weight(1f)) {
                             Text(attachment.displayName, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                             Text(
-                                when {
+                                uiText(when {
                                     modelUsesFallback && attachment.ocrJson != null -> "Original image • model receives OCR fallback"
                                     modelUsesFallback -> "Original image • selected model cannot receive it"
                                     else -> "Double-tap, pinch, or drag"
-                                },
+                                }),
                                 color = Color.White.copy(alpha = .72f),
                                 style = MaterialTheme.typography.labelSmall,
                             )
                         }
-                        IconButton(onClick = { shareFile(context, attachment) }) { Icon(Icons.Outlined.Share, "Share", tint = Color.White) }
-                        IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, "Close", tint = Color.White) }
+                        IconButton(onClick = { shareFile(context, attachment) }) { Icon(Icons.Outlined.Share, uiText("Share"), tint = Color.White) }
+                        IconButton(onClick = onDismiss) { Icon(Icons.Outlined.Close, uiText("Close"), tint = Color.White) }
                     }
                 }
                 Surface(
@@ -308,13 +308,13 @@ private fun RasterImagePreview(attachment: AttachmentEntity, allowOcr: Boolean, 
                         IconButton(onClick = {
                             scale = (scale / 1.6f).coerceAtLeast(1f)
                             if (scale == 1f) translation = Offset.Zero
-                        }) { Icon(Icons.Outlined.ZoomOut, "Zoom out", tint = Color.White) }
-                        Text("${(scale * 100).toInt()}%", color = Color.White, style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(52.dp))
-                        IconButton(onClick = { scale = (scale * 1.6f).coerceAtMost(8f) }) { Icon(Icons.Outlined.ZoomIn, "Zoom in", tint = Color.White) }
-                        IconButton(onClick = { scale = 1f; translation = Offset.Zero }) { Icon(Icons.Outlined.CenterFocusWeak, "Fit image", tint = Color.White) }
+                        }) { Icon(Icons.Outlined.ZoomOut, uiText("Zoom out"), tint = Color.White) }
+                        Text(uiText("${(scale * 100).toInt()}%"), color = Color.White, style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(52.dp))
+                        IconButton(onClick = { scale = (scale * 1.6f).coerceAtMost(8f) }) { Icon(Icons.Outlined.ZoomIn, uiText("Zoom in"), tint = Color.White) }
+                        IconButton(onClick = { scale = 1f; translation = Offset.Zero }) { Icon(Icons.Outlined.CenterFocusWeak, uiText("Fit image"), tint = Color.White) }
                         if (allowOcr && attachment.ocrJson != null) {
                             Spacer(Modifier.width(4.dp))
-                            TextButton(onClick = { showOcr = !showOcr }) { Text(if (showOcr) "OCR on" else "OCR", color = Color.White) }
+                            TextButton(onClick = { showOcr = !showOcr }) { Text(uiText(if (showOcr) "OCR on" else "OCR"), color = Color.White) }
                         }
                     }
                 }
@@ -326,7 +326,7 @@ private fun RasterImagePreview(attachment: AttachmentEntity, allowOcr: Boolean, 
                         modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 84.dp).heightIn(max = 220.dp),
                     ) {
                         Column(Modifier.padding(12.dp).verticalScroll(rememberScrollState())) {
-                            Text("Selectable OCR text", fontWeight = FontWeight.SemiBold)
+                            Text(uiText("Selectable OCR text"), fontWeight = FontWeight.SemiBold)
                             androidx.compose.foundation.text.selection.SelectionContainer { Text(ocrText, style = MaterialTheme.typography.bodySmall) }
                         }
                     }
@@ -457,9 +457,9 @@ private fun PdfPreview(file: File) {
     }
     val page = rendered
     when {
-        page == null -> Text("Rendering PDF…", Modifier.padding(32.dp))
+        page == null -> Text(uiText("Rendering PDF…"), Modifier.padding(32.dp))
         page.error != null -> Surface(color = MaterialTheme.colorScheme.errorContainer.copy(alpha = .25f), shape = MaterialTheme.shapes.medium) {
-            Text("PDF preview unavailable: ${page.error}", Modifier.fillMaxWidth().padding(16.dp), color = MaterialTheme.colorScheme.error)
+            Text(uiText("PDF preview unavailable: ${page.error}"), Modifier.fillMaxWidth().padding(16.dp), color = MaterialTheme.colorScheme.error)
         }
         page.bitmap != null -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Surface(color = Color.White, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth()) {
@@ -467,11 +467,11 @@ private fun PdfPreview(file: File) {
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { pageIndex = (pageIndex - 1).coerceAtLeast(0) }, enabled = page.pageIndex > 0) {
-                    Icon(Icons.AutoMirrored.Outlined.NavigateBefore, "Previous page")
+                    Icon(Icons.AutoMirrored.Outlined.NavigateBefore, uiText("Previous page"))
                 }
-                Text("Page ${page.pageIndex + 1} of ${page.pageCount}", style = MaterialTheme.typography.labelLarge)
+                Text(uiText("Page ${page.pageIndex + 1} of ${page.pageCount}"), style = MaterialTheme.typography.labelLarge)
                 IconButton(onClick = { pageIndex = (pageIndex + 1).coerceAtMost(page.pageCount - 1) }, enabled = page.pageIndex + 1 < page.pageCount) {
-                    Icon(Icons.AutoMirrored.Outlined.NavigateNext, "Next page")
+                    Icon(Icons.AutoMirrored.Outlined.NavigateNext, uiText("Next page"))
                 }
             }
         }

@@ -1091,7 +1091,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 topPanelHeight = CHAT_TOP_PANEL_HEIGHT_DP.dp,
                 navigationIcon = {
                     if (openDrawer != null) {
-                        IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, "Conversations") }
+                        IconButton(onClick = openDrawer) { Icon(Icons.Outlined.Menu, uiText("Conversations")) }
                     } else {
                         Spacer(Modifier.size(48.dp))
                     }
@@ -1100,14 +1100,14 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     if (pending.isNotEmpty()) Badge { Text(pending.size.toString()) }
                     conversation?.let { activeConversation ->
                         IconButton(onClick = { viewModel.requestShareConversation(activeConversation.id) }) {
-                            Icon(Icons.Outlined.Share, "Share portable chat")
+                            Icon(Icons.Outlined.Share, uiText("Share portable chat"))
                         }
                     }
                     Box {
-                        IconButton(onClick = { chatMenu = true }) { Icon(Icons.Outlined.MoreVert, "Chat actions") }
+                        IconButton(onClick = { chatMenu = true }) { Icon(Icons.Outlined.MoreVert, uiText("Chat actions")) }
                         XyluneDropdownMenu(expanded = chatMenu, onDismissRequest = { chatMenu = false }) {
-                            DropdownMenuItem(text = { Text("Regenerate chat name") }, onClick = { viewModel.regenerateTitle(); chatMenu = false })
-                            DropdownMenuItem(text = { Text("Chat configuration") }, leadingIcon = { Icon(Icons.Outlined.Tune, null) }, onClick = { showChatConfiguration = true; chatMenu = false })
+                            DropdownMenuItem(text = { Text(uiText("Regenerate chat name")) }, onClick = { viewModel.regenerateTitle(); chatMenu = false })
+                            DropdownMenuItem(text = { Text(uiText("Chat configuration")) }, leadingIcon = { Icon(Icons.Outlined.Tune, null) }, onClick = { showChatConfiguration = true; chatMenu = false })
                         }
                     }
                 },
@@ -1123,7 +1123,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                         Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Outlined.Psychology, null, Modifier.size(14.dp))
                             Text(
-                                buildString {
+                                uiText(buildString {
                                     if (usableProviders.isEmpty()) {
                                         append("Set up provider")
                                         return@buildString
@@ -1131,7 +1131,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                     val provider = usableProviders.firstOrNull { it.id == conversation?.selectedProviderId }
                                     if (provider != null && usableProviders.size > 1) append(provider.displayName).append(" · ")
                                     append(models.firstOrNull { it.modelId == conversation?.selectedModelId }?.displayName ?: conversation?.selectedModelId ?: "Choose model")
-                                },
+                                }),
                                 Modifier.padding(start = 4.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 maxLines = 1,
@@ -1273,7 +1273,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 ) {
-                    Icon(Icons.Filled.KeyboardArrowDown, "Go to latest message")
+                    Icon(Icons.Filled.KeyboardArrowDown, uiText("Go to latest message"))
                 }
             }
             val interrupted = recoverable.firstOrNull { candidate ->
@@ -1305,7 +1305,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Outlined.WarningAmber, null, Modifier.size(18.dp))
                                 Text(
-                                    if (failed) "Request failed" else "Response paused",
+                                    uiText(if (failed) "Request failed" else "Response paused"),
                                     Modifier.padding(start = 9.dp).weight(1f),
                                     style = MaterialTheme.typography.labelLarge,
                                     fontWeight = FontWeight.SemiBold,
@@ -1321,7 +1321,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                     },
                                     modifier = Modifier.size(34.dp),
                                 ) {
-                                    Icon(Icons.Outlined.Close, "Dismiss error", Modifier.size(18.dp))
+                                    Icon(Icons.Outlined.Close, uiText("Dismiss error"), Modifier.size(18.dp))
                                 }
                             }
                             Text(
@@ -1339,7 +1339,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 TextButton(onClick = { recoveryDetailsMessage = message }) {
-                                    Text("Details")
+                                    Text(uiText("Details"))
                                 }
                                 TextButton(onClick = {
                                     dismissedRecoveryNoticeKeys = withDismissedRecoveryNotice(
@@ -1349,7 +1349,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                     )
                                     if (failed) viewModel.retryMessage(message) else viewModel.resume(message)
                                 }) {
-                                    Text(if (failed) "Retry" else "Continue")
+                                    Text(uiText(if (failed) "Retry" else "Continue"))
                                 }
                             }
                         }
@@ -1366,7 +1366,7 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         XyluneAlertDialog(
             onDismissRequest = { recoveryDetailsMessage = null },
             title = {
-                Text(if (message.status == MessageStatus.ERROR) "Request error" else "Interrupted response")
+                Text(uiText(if (message.status == MessageStatus.ERROR) "Request error" else "Interrupted response"))
             },
             text = {
                 Column(
@@ -1374,8 +1374,8 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Text(
-                        listOfNotNull(message.providerId, message.modelId).joinToString(" · ")
-                            .ifBlank { "Provider details unavailable" },
+                        uiText(listOfNotNull(message.providerId, message.modelId).joinToString(" · ")
+                            .ifBlank { "Provider details unavailable" }),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1393,11 +1393,11 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 }) {
                     Icon(Icons.Outlined.ContentCopy, null, Modifier.size(17.dp))
                     Spacer(Modifier.width(5.dp))
-                    Text("Copy")
+                    Text(uiText("Copy"))
                 }
             },
             confirmButton = {
-                TextButton(onClick = { recoveryDetailsMessage = null }) { Text("Close") }
+                TextButton(onClick = { recoveryDetailsMessage = null }) { Text(uiText("Close")) }
             },
         )
     }
@@ -1453,7 +1453,7 @@ private fun EmptyConversation(
         )
         Spacer(Modifier.size(14.dp))
         Text(
-            if (providerConfigured) "What are we working on?" else "Connect a model provider",
+            uiText(if (providerConfigured) "What are we working on?" else "Connect a model provider"),
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.primary,
@@ -1461,11 +1461,11 @@ private fun EmptyConversation(
         )
         Spacer(Modifier.size(10.dp))
         Text(
-            if (providerConfigured) {
+            uiText(if (providerConfigured) {
                 "Ask a question, attach a file, or choose Search and Tools beside the message box."
             } else {
                 "Xylune cannot send messages until ChatGPT, an API provider, or a local model server is connected."
-            },
+            }),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -1473,7 +1473,7 @@ private fun EmptyConversation(
         if (!providerConfigured) {
             Spacer(Modifier.size(18.dp))
             Button(onClick = onSetUpProvider) {
-                Text("Set up a provider")
+                Text(uiText("Set up a provider"))
             }
         }
     }
@@ -1581,7 +1581,7 @@ private fun MessageCard(
                             verticalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
                             Text(
-                                if (failed) "Request failed" else "Response paused",
+                                uiText(if (failed) "Request failed" else "Response paused"),
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -1600,7 +1600,7 @@ private fun MessageCard(
                                         if (failed) viewModel.retryMessage(message) else viewModel.resume(message)
                                     },
                                 ) {
-                                    Text(if (failed) "Retry" else "Continue")
+                                    Text(uiText(if (failed) "Retry" else "Continue"))
                                 }
                             }
                         }
@@ -1671,7 +1671,7 @@ private fun MessageCard(
                     val tokens = message.inputTokens + message.outputTokens
                     val cost = message.costMicros / 1_000_000.0
                     Text(
-                        buildString {
+                        uiText(buildString {
                             if (!message.modelId.isNullOrBlank()) append(message.modelId)
                             if (tokens > 0) append(" • $tokens tok")
                             when {
@@ -1680,7 +1680,7 @@ private fun MessageCard(
                                 tokens > 0 -> append(" • cost unavailable")
                             }
                             if (message.status !in setOf(MessageStatus.COMPLETE, MessageStatus.STREAMING)) append(" • ${message.status.name.lowercase()}")
-                        },
+                        }),
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -1705,11 +1705,11 @@ private fun MessageCard(
                     }
                     if (user) {
                         IconButton(onClick = { haptics.tap(); editedText = message.content; editing = true }, modifier = Modifier.size(34.dp)) {
-                            Icon(Icons.Outlined.Edit, "Edit message", Modifier.size(18.dp))
+                            Icon(Icons.Outlined.Edit, uiText("Edit message"), Modifier.size(18.dp))
                         }
                     } else if (message.role == MessageRole.ASSISTANT && message.status != MessageStatus.STREAMING) {
                         IconButton(onClick = { haptics.confirm(); viewModel.retryMessage(message) }, modifier = Modifier.size(34.dp)) {
-                            Icon(Icons.Outlined.Refresh, "Retry response", Modifier.size(18.dp))
+                            Icon(Icons.Outlined.Refresh, uiText("Retry response"), Modifier.size(18.dp))
                         }
                     }
                     MessageContextMenu(message)
@@ -1719,7 +1719,7 @@ private fun MessageCard(
     }
     if (editing) XyluneAlertDialog(
         onDismissRequest = { editing = false },
-        title = { Text("Edit message") },
+        title = { Text(uiText("Edit message")) },
         text = {
             OutlinedTextField(
                 value = editedText,
@@ -1729,10 +1729,10 @@ private fun MessageCard(
                 modifier = Modifier.fillMaxWidth(),
             )
         },
-        dismissButton = { AssistChip(onClick = { editing = false }, label = { Text("Cancel") }) },
+        dismissButton = { AssistChip(onClick = { editing = false }, label = { Text(uiText("Cancel")) }) },
         confirmButton = {
             Button(onClick = { haptics.confirm(); viewModel.editMessage(message, editedText); editing = false }, enabled = editedText.isNotBlank()) {
-                Text("Save & regenerate")
+                Text(uiText("Save & regenerate"))
             }
         },
     )
@@ -1755,10 +1755,10 @@ private fun InlineBranchNavigator(
             enabled = activeIndex > 0,
             modifier = Modifier.size(30.dp),
         ) {
-            Icon(Icons.Outlined.ChevronLeft, "Previous branch", Modifier.size(18.dp))
+            Icon(Icons.Outlined.ChevronLeft, uiText("Previous branch"), Modifier.size(18.dp))
         }
         Text(
-            "${activeIndex + 1} / ${options.size}",
+            uiText("${activeIndex + 1} / ${options.size}"),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1767,7 +1767,7 @@ private fun InlineBranchNavigator(
             enabled = activeIndex < options.lastIndex,
             modifier = Modifier.size(30.dp),
         ) {
-            Icon(Icons.Outlined.ChevronRight, "Next branch", Modifier.size(18.dp))
+            Icon(Icons.Outlined.ChevronRight, uiText("Next branch"), Modifier.size(18.dp))
         }
     }
 }
@@ -1844,7 +1844,7 @@ private fun OrderedMessageTimeline(
                         if (event.kind == "file") {
                             attachments.firstOrNull { it.id == event.output }?.let { attachment ->
                                 Column(Modifier.padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                    Text("FILE • ${event.label.ifBlank { "Sent file" }}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                                    Text("${uiText("FILE")} • ${event.label.ifBlank { uiText("Sent file") }}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                                     AttachmentCard(attachment, allowOcr = false)
                                 }
                             }
@@ -2027,7 +2027,7 @@ private fun TimelineWorkStep(
                     }
                     Column(Modifier.padding(start = 9.dp).weight(1f)) {
                         Text(
-                            "${index + 1}. ${workEventTitle(event)}",
+                            uiText("${index + 1}. ${workEventTitle(event)}"),
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
                             color = if (event.status == "error") MaterialTheme.colorScheme.error
@@ -2067,7 +2067,7 @@ private fun TimelineWorkStep(
                         }
                         when {
                             superseded -> Text(
-                                "This attempt continued in the newer step below.",
+                                uiText("This attempt continued in the newer step below."),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -2178,16 +2178,16 @@ private fun LegacyWorkingBlock(
                 }
                 Column(Modifier.padding(start = 9.dp).weight(1f)) {
                     Text(
-                        when {
+                        uiText(when {
                             working -> traces.lastOrNull()?.label?.takeIf(String::isNotBlank) ?: "Reasoning"
                             traces.any { it.status == "error" } -> "Finished with an error"
                             else -> "Work complete"
-                        },
+                        }),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        if (working) "Running" else "${traces.size + if (text.isNotBlank()) 1 else 0} steps",
+                        uiText(if (working) "Running" else "${traces.size + if (text.isNotBlank()) 1 else 0} steps"),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -2216,7 +2216,7 @@ private fun LegacyWorkingBlock(
                             enabled = animateStreaming && event == traces.lastOrNull(),
                         ) {
                             Column {
-                                Text("${event.label} • ${event.status}", style = MaterialTheme.typography.labelMedium, color = if (event.status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                                Text(uiText("${event.label} • ${event.status}"), style = MaterialTheme.typography.labelMedium, color = if (event.status == "error") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                                 if (showDiagnostics && event.input.isNotBlank()) {
                                     CodeSourcePanel(
                                         if (event.type.contains("python", true)) "python"
@@ -2312,7 +2312,7 @@ private fun ToolStepDetails(
                                 )
                             } else {
                                 Text(
-                                    "Source read completed",
+                                    uiText("Source read completed"),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -2326,7 +2326,7 @@ private fun ToolStepDetails(
                                     ?.let { UbuntuExecutionCard(it, "Ubuntu tool result") }
                                     ?: GenericToolOutputCard(output, failed = status == "error")
                             else -> Text(
-                                if (status == "error") "Execution failed" else "Execution completed",
+                                uiText(if (status == "error") "Execution failed" else "Execution completed"),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (status == "error") MaterialTheme.colorScheme.error
                                 else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -2337,7 +2337,7 @@ private fun ToolStepDetails(
                         GenericToolOutputCard(output, failed = status == "error")
                     } else {
                         Text(
-                            if (status == "error") "Tool failed" else "Tool completed",
+                            uiText(if (status == "error") "Tool failed" else "Tool completed"),
                             style = MaterialTheme.typography.bodySmall,
                             color = if (status == "error") MaterialTheme.colorScheme.error
                             else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -2422,17 +2422,17 @@ private fun ScriptRunActivityCard(initial: ScriptRunResult, viewModel: ChatViewM
                 } else {
                     Icon(Icons.Outlined.Refresh, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Retry")
+                    Text(uiText("Retry"))
                 }
             }
             if (showDiagnostics) {
                 TextButton(onClick = { detailsOpen = true }) {
-                    Text("Details")
+                    Text(uiText("Details"))
                 }
             }
             if (rerunJob?.isActive == true) {
                 TextButton(onClick = { rerunJob?.cancel() }) {
-                    Text("Stop")
+                    Text(uiText("Stop"))
                 }
             }
         }
@@ -2440,7 +2440,7 @@ private fun ScriptRunActivityCard(initial: ScriptRunResult, viewModel: ChatViewM
     if (showDiagnostics && detailsOpen) {
         XyluneAlertDialog(
             onDismissRequest = { detailsOpen = false },
-            title = { Text(if (failed) "Run failed" else "Run details") },
+            title = { Text(uiText(if (failed) "Run failed" else "Run details")) },
             text = {
                 Column(
                     Modifier
@@ -2449,7 +2449,7 @@ private fun ScriptRunActivityCard(initial: ScriptRunResult, viewModel: ChatViewM
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        "${latest.runtime.name.lowercase()} · attempt ${latest.attempt} · revision ${latest.revision}",
+                        uiText("${latest.runtime.name.lowercase()} · attempt ${latest.attempt} · revision ${latest.revision}"),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -2470,7 +2470,7 @@ private fun ScriptRunActivityCard(initial: ScriptRunResult, viewModel: ChatViewM
             },
             confirmButton = {
                 TextButton(onClick = { detailsOpen = false }) {
-                    Text("Close")
+                    Text(uiText("Close"))
                 }
             },
             dismissButton = {
@@ -2487,7 +2487,7 @@ private fun ScriptRunActivityCard(initial: ScriptRunResult, viewModel: ChatViewM
                         }) {
                             Icon(Icons.Outlined.ContentCopy, null, Modifier.size(17.dp))
                             Spacer(Modifier.width(5.dp))
-                            Text("Copy")
+                            Text(uiText("Copy"))
                         }
                     }
                     TextButton(onClick = {
@@ -2498,7 +2498,7 @@ private fun ScriptRunActivityCard(initial: ScriptRunResult, viewModel: ChatViewM
                                 .onFailure { error = it.message.orEmpty() }
                         }
                     }) {
-                        Text("Source")
+                        Text(uiText("Source"))
                     }
                 }
             },
@@ -2517,7 +2517,7 @@ private fun ScriptRunActivityCard(initial: ScriptRunResult, viewModel: ChatViewM
             },
             confirmButton = {
                 TextButton(onClick = { source = null }) {
-                    Text("Close")
+                    Text(uiText("Close"))
                 }
             },
         )
@@ -2594,13 +2594,13 @@ private fun CompactSearchToolCard(
                 Column(Modifier.padding(start = 7.dp).weight(1f)) {
                     Text(engine, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                     Text(
-                        when (status) {
+                        uiText(when (status) {
                             "preparing" -> "Preparing query"
                             "prepared" -> "Query ready"
                             "running" -> "Searching"
                             "error" -> "Search failed"
                             else -> if (results.isEmpty()) "No result details" else "${results.size} results"
-                        },
+                        }),
                         style = MaterialTheme.typography.labelSmall,
                         color = if (status == "error") MaterialTheme.colorScheme.error
                         else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -2614,7 +2614,7 @@ private fun CompactSearchToolCard(
             ) {
                 Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
                     Text(
-                        "QUERY",
+                        uiText("QUERY"),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold,
@@ -2645,7 +2645,7 @@ private fun CompactSearchToolCard(
                                     verticalArrangement = Arrangement.spacedBy(5.dp),
                                 ) {
                                     Text(
-                                        "${index + 1}. ${result.title.ifBlank { host.ifBlank { result.url } }}",
+                                        uiText("${index + 1}. ${result.title.ifBlank { host.ifBlank { result.url } }}"),
                                         style = MaterialTheme.typography.labelLarge,
                                         fontWeight = FontWeight.SemiBold,
                                         maxLines = 2,
@@ -2669,7 +2669,7 @@ private fun CompactSearchToolCard(
                                     }
                                     if (used) {
                                         Text(
-                                            "Opened by Xylune",
+                                            uiText("Opened by Xylune"),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.tertiary,
                                             fontWeight = FontWeight.SemiBold,
@@ -2698,12 +2698,12 @@ private fun CompactSearchToolCard(
                 }
             } else {
                 Text(
-                    when {
+                    uiText(when {
                         status == "error" && output.isNotBlank() -> output.take(700)
                         status in setOf("preparing", "prepared", "running") -> "Waiting for search results…"
                         nativeSearch -> "The provider exposed the query but did not return result metadata or citations."
                         else -> "No search results were returned."
-                    },
+                    }),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (status == "error") MaterialTheme.colorScheme.error
                     else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -2729,17 +2729,17 @@ private fun CompactFetchToolCard(url: String, output: String, status: String) {
                 Icon(Icons.Outlined.TravelExplore, null, Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
                 Column(Modifier.padding(start = 8.dp).weight(1f)) {
                     Text(
-                        when (status) {
+                        uiText(when (status) {
                             "preparing" -> "Writing source request…"
                             "prepared" -> "Source request ready"
                             "running" -> "Reading source…"
                             "error" -> "Source failed"
                             else -> "Source read"
-                        },
+                        }),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold,
                     )
-                    Text(runCatching { target.toUri().host }.getOrNull().orEmpty().removePrefix("www.").ifBlank { target }, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(uiText(runCatching { target.toUri().host }.getOrNull().orEmpty().removePrefix("www.").ifBlank { target }), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -2789,10 +2789,10 @@ private fun ReportedResearchRoadmap(
         Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.TravelExplore, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.tertiary)
-                Text("Research roadmap", Modifier.padding(start = 7.dp).weight(1f), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                Text(stateLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                Text(uiText("Research roadmap"), Modifier.padding(start = 7.dp).weight(1f), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                Text(uiText(stateLabel), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
             }
-            Text(effectiveStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
+            Text(uiText(effectiveStatus), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
             LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
             if (steps.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -2910,11 +2910,11 @@ private fun Composer(
                             Icon(Icons.Outlined.Schedule, null, Modifier.size(16.dp))
                         }
                         Text(
-                            when {
+                            uiText(when {
                                 generating && pending.isNotEmpty() -> "Working · ${pending.size} queued"
                                 generating -> "Working"
                                 else -> "${pending.size} queued"
-                            },
+                            }),
                             modifier = Modifier.padding(start = 9.dp).weight(1f),
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.SemiBold,
@@ -2924,7 +2924,7 @@ private fun Composer(
                                 onClick = { haptics.reject(); viewModel.stop() },
                                 modifier = Modifier.size(36.dp),
                             ) {
-                                Icon(Icons.Filled.Stop, "Stop current response", Modifier.size(19.dp))
+                                Icon(Icons.Filled.Stop, uiText("Stop current response"), Modifier.size(19.dp))
                             }
                         }
                     }
@@ -2963,8 +2963,8 @@ private fun Composer(
                                 Modifier.size(18.dp),
                             )
                             Text(
-                                if (imageGenerationBlocked) "Remove attachments first · image editing is not enabled yet"
-                                else "Image generation · describe the image you want to create",
+                                uiText(if (imageGenerationBlocked) "Remove attachments first · image editing is not enabled yet"
+                                else "Image generation · describe the image you want to create"),
                                 Modifier.padding(start = 8.dp),
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Medium,
@@ -3067,12 +3067,12 @@ private fun Composer(
                     enabled = providerConfigured,
                     placeholder = {
                         Text(
-                            if (!providerConfigured) "Set up a provider to start"
+                            uiText(if (!providerConfigured) "Set up a provider to start"
                             else if (generating) "Add direction…"
                             else if (imageGenerationBlocked) "Remove attachments to generate an image"
                             else if (imageGenerationMode) "Describe an image to generate…"
                             else if (conversation?.deepResearchEnabled == true) "Research request…"
-                            else "Message Xylune…",
+                            else "Message Xylune…"),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -3121,7 +3121,7 @@ private fun Composer(
     if (plusMenu) {
         ModalBottomSheet(onDismissRequest = { plusMenu = false }) {
             Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                Text("Add to chat", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
+                Text(uiText("Add to chat"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
                 ComposerActionRow(Icons.Outlined.AttachFile, "Files", "Documents, archives, code, audio, and other supported files") {
                     plusMenu = false
                     filePicker.launch(arrayOf("*/*"))
@@ -3136,7 +3136,7 @@ private fun Composer(
                 }
                 if (!generating) conversation?.let { current ->
                     Text(
-                        "Tools",
+                        uiText("Tools"),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 8.dp),
@@ -3172,7 +3172,7 @@ private fun Composer(
                             },
                             modifier = Modifier.padding(horizontal = 12.dp),
                         ) {
-                            Text("Manage Linux workspace")
+                            Text(uiText("Manage Linux workspace"))
                         }
                     }
                 }
@@ -3184,15 +3184,15 @@ private fun Composer(
         ModalBottomSheet(onDismissRequest = { sendMenu = false }) {
             Column(Modifier.padding(bottom = 24.dp)) {
                 Text(
-                    if (generating) "While Xylune is working" else "Send options",
+                    uiText(if (generating) "While Xylune is working" else "Send options"),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
                 )
                 if (generating) {
                     ListItem(
-                        headlineContent = { Text("Queue this message") },
-                        supportingContent = { Text(if (hasPayload) "Send after the current response finishes" else "Type a message or attach a file first") },
+                        headlineContent = { Text(uiText("Queue this message")) },
+                        supportingContent = { Text(uiText(if (hasPayload) "Send after the current response finishes" else "Type a message or attach a file first")) },
                         leadingContent = { Icon(Icons.Outlined.Schedule, null) },
                         modifier = Modifier.clickable {
                             if (hasPayload) {
@@ -3202,8 +3202,8 @@ private fun Composer(
                         },
                     )
                     ListItem(
-                        headlineContent = { Text("Stop current response") },
-                        supportingContent = { Text("Keep the partial answer") },
+                        headlineContent = { Text(uiText("Stop current response")) },
+                        supportingContent = { Text(uiText("Keep the partial answer")) },
                         leadingContent = { Icon(Icons.Filled.Stop, null) },
                         modifier = Modifier.clickable {
                             viewModel.stop()
@@ -3212,8 +3212,8 @@ private fun Composer(
                     )
                 } else {
                     ListItem(
-                        headlineContent = { Text("Send now") },
-                        supportingContent = { Text(if (hasPayload) "Start a response" else "Type a message or attach a file first") },
+                        headlineContent = { Text(uiText("Send now")) },
+                        supportingContent = { Text(uiText(if (hasPayload) "Start a response" else "Type a message or attach a file first")) },
                         leadingContent = { Icon(Icons.AutoMirrored.Filled.Send, null) },
                         modifier = Modifier.clickable {
                             if (hasPayload) {
@@ -3310,7 +3310,7 @@ private fun StagedAttachmentPreview(
                     modifier = Modifier.align(Alignment.TopStart).padding(5.dp),
                 ) {
                     Text(
-                        if (attachment.ocrJson != null) "OCR" else "OCR on send",
+                        uiText(if (attachment.ocrJson != null) "OCR" else "OCR on send"),
                         Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -3406,16 +3406,16 @@ private fun ThinkingComposerChip(
             ) {
                 Icon(Icons.Outlined.Psychology, null, Modifier.size(17.dp))
                 Text(
-                    when {
+                    uiText(when {
                         options.isEmpty() -> "Unavailable"
                         !effectiveEnabled -> "Off"
                         else -> effectiveEffort.composerName
-                    },
+                    }),
                     style = MaterialTheme.typography.labelLarge,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Icon(Icons.Filled.KeyboardArrowDown, "Choose thinking level", Modifier.size(19.dp))
+                Icon(Icons.Filled.KeyboardArrowDown, uiText("Choose thinking level"), Modifier.size(19.dp))
             }
         }
         XyluneDropdownMenu(
@@ -3428,15 +3428,15 @@ private fun ThinkingComposerChip(
                 Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text("Thinking effort", style = MaterialTheme.typography.labelLarge)
+                Text(uiText("Thinking effort"), style = MaterialTheme.typography.labelLarge)
                 Text(
-                    preview?.label.orEmpty(),
+                    uiText(preview?.label.orEmpty()),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    preview?.description.orEmpty(),
+                    uiText(preview?.description.orEmpty()),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -3464,11 +3464,11 @@ private fun ThinkingComposerChip(
                         },
                     )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(options.first().label, style = MaterialTheme.typography.labelSmall)
-                        Text(options.last().label, style = MaterialTheme.typography.labelSmall)
+                        Text(uiText(options.first().label), style = MaterialTheme.typography.labelSmall)
+                        Text(uiText(options.last().label), style = MaterialTheme.typography.labelSmall)
                     }
                     Text(
-                        "Release to snap to the nearest supported level",
+                        uiText("Release to snap to the nearest supported level"),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -3542,23 +3542,23 @@ private fun SearchComposerChip(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Icon(icon, null, Modifier.size(17.dp))
-                Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Icon(Icons.Filled.KeyboardArrowDown, "Choose search mode", Modifier.size(19.dp))
+                Text(uiText(label), style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Icon(Icons.Filled.KeyboardArrowDown, uiText("Choose search mode"), Modifier.size(19.dp))
             }
         }
         XyluneDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(
-                text = { Text("Search off") },
+                text = { Text(uiText("Search off")) },
                 onClick = { haptics.selection(); onSelection(false, false); menu = false },
                 leadingIcon = { Icon(Icons.Outlined.Close, null) },
             )
             DropdownMenuItem(
-                text = { Text("Web search") },
+                text = { Text(uiText("Web search")) },
                 onClick = { haptics.selection(); onSelection(true, false); menu = false },
                 leadingIcon = { Icon(Icons.Outlined.Search, null) },
             )
             DropdownMenuItem(
-                text = { Text("Deep Research") },
+                text = { Text(uiText("Deep Research")) },
                 onClick = { haptics.selection(); onSelection(true, true); menu = false },
                 leadingIcon = { Icon(Icons.Outlined.TravelExplore, null) },
             )
@@ -3604,8 +3604,8 @@ private fun ToolComposerChip(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Icon(Icons.Outlined.Code, null, Modifier.size(17.dp))
-                Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
-                Icon(Icons.Filled.KeyboardArrowDown, "Choose chat tools", Modifier.size(19.dp))
+                Text(uiText(label), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                Icon(Icons.Filled.KeyboardArrowDown, uiText("Choose chat tools"), Modifier.size(19.dp))
             }
         }
         XyluneDropdownMenu(
@@ -3614,7 +3614,7 @@ private fun ToolComposerChip(
             modifier = Modifier.width(340.dp),
         ) {
             Text(
-                "Tools available to Xylune in this chat",
+                uiText("Tools available to Xylune in this chat"),
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
@@ -3654,17 +3654,17 @@ private fun ToolComposerChip(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(Icons.Outlined.WarningAmber, null, Modifier.size(20.dp))
-                            Text("Linux workspace not installed", fontWeight = FontWeight.SemiBold)
+                            Text(uiText("Linux workspace not installed"), fontWeight = FontWeight.SemiBold)
                         }
                         Text(
-                            "Install Ubuntu, Debian, or Alpine before Xylune can use Linux tools.",
+                            uiText("Install Ubuntu, Debian, or Alpine before Xylune can use Linux tools."),
                             style = MaterialTheme.typography.bodySmall,
                         )
                         TextButton(onClick = {
                             menu = false
                             onOpenLinuxSetup()
                         }) {
-                            Text("Manage Linux workspace")
+                            Text(uiText("Manage Linux workspace"))
                         }
                     }
                 }

@@ -83,10 +83,11 @@ fun XyluneApp(viewModel: ChatViewModel, activity: Activity) {
     val density = LocalDensity.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val snackbar = remember { SnackbarHostState() }
+    val uiLanguage = LocalXyluneUiLanguage.current
     val openDrawer = remember(drawerState) { { drawerState.open(); Unit } }
 
     LaunchedEffect(viewModel) {
-        viewModel.notices.collect { snackbar.showSnackbar(it) }
+        viewModel.notices.collect { snackbar.showSnackbar(localizeUiText(it, uiLanguage)) }
     }
     LaunchedEffect(providerCatalogReady) {
         if (providerCatalogReady) {
@@ -184,7 +185,7 @@ fun XyluneApp(viewModel: ChatViewModel, activity: Activity) {
         val active = activePython ?: activeLinux ?: return@LaunchedEffect
         val label = if (activePython != null) "Local code execution" else activeLinux!!.distribution.displayName
         val deadline = if (activePython != null) activePython.timeoutSeconds else activeLinux!!.timeoutSeconds
-        if (snackbar.showSnackbar("$label is running in the background • ${deadline}s deadline", "Stop", duration = SnackbarDuration.Indefinite) == SnackbarResult.ActionPerformed) {
+        if (snackbar.showSnackbar(localizeUiText("$label is running in the background • ${deadline}s deadline", uiLanguage), localizeUiText("Stop", uiLanguage), duration = SnackbarDuration.Indefinite) == SnackbarResult.ActionPerformed) {
             if (activePython != null) viewModel.stopPythonRun() else viewModel.stopLinuxRun()
         }
     }

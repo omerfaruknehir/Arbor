@@ -207,7 +207,7 @@ internal fun ImageGenerationScreen(
                 overlayOpacity = chromeOverlayOpacity,
                 navigationIcon = {
                     openDrawer?.let { drawer ->
-                        IconButton(onClick = drawer) { Icon(Icons.Outlined.Menu, "Open conversations") }
+                        IconButton(onClick = drawer) { Icon(Icons.Outlined.Menu, uiText("Open conversations")) }
                     }
                 },
                 actions = {},
@@ -226,7 +226,7 @@ internal fun ImageGenerationScreen(
                             Icon(Icons.Outlined.Image, null, Modifier.size(17.dp))
                             Column {
                                 Text(
-                                    currentModel?.displayName ?: "Choose image model",
+                                    uiText(currentModel?.displayName ?: "Choose image model"),
                                     style = MaterialTheme.typography.labelLarge,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -296,7 +296,7 @@ internal fun ImageGenerationScreen(
                                 onClick = { showReferenceMenu = true },
                                 enabled = !importing && capabilities?.supportsEditing == true,
                             ) {
-                                Icon(Icons.Outlined.Add, "Add reference image")
+                                Icon(Icons.Outlined.Add, uiText("Add reference image"))
                             }
                             OutlinedTextField(
                                 value = draft,
@@ -307,11 +307,11 @@ internal fun ImageGenerationScreen(
                                 enabled = !importing,
                                 placeholder = {
                                     Text(
-                                        when {
+                                        uiText(when {
                                             capabilities?.inputMode == ImageInputMode.REQUIRED && rasterReferences.isEmpty() -> "Add an image, then describe the edit…"
                                             rasterReferences.isNotEmpty() -> "Describe the changes…"
                                             else -> "Describe an image…"
-                                        },
+                                        }),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
@@ -320,7 +320,7 @@ internal fun ImageGenerationScreen(
                             Spacer(Modifier.width(6.dp))
                             if (generating) {
                                 IconButton(onClick = viewModel::stop, modifier = Modifier.size(48.dp)) {
-                                    Icon(Icons.Filled.Stop, "Stop image generation")
+                                    Icon(Icons.Filled.Stop, uiText("Stop image generation"))
                                 }
                                 Spacer(Modifier.width(2.dp))
                             }
@@ -345,7 +345,7 @@ internal fun ImageGenerationScreen(
                         }
                         if (pending.isNotEmpty()) {
                             Text(
-                                "${pending.size} image request${if (pending.size == 1) "" else "s"} queued",
+                                uiText("${pending.size} image request${if (pending.size == 1) "" else "s"} queued"),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(start = 58.dp),
@@ -399,14 +399,14 @@ internal fun ImageGenerationScreen(
         ModalBottomSheet(onDismissRequest = { showReferenceMenu = false }) {
             Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
                 Text(
-                    "Reference image",
+                    uiText("Reference image"),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
                 )
                 ListItem(
-                    headlineContent = { Text("Photos") },
-                    supportingContent = { Text("Choose one or more reference images") },
+                    headlineContent = { Text(uiText("Photos")) },
+                    supportingContent = { Text(uiText("Choose one or more reference images")) },
                     leadingContent = { Icon(Icons.Outlined.Image, null) },
                     modifier = Modifier.combinedClickable(
                         onClick = { showReferenceMenu = false; addPhotos() },
@@ -414,8 +414,8 @@ internal fun ImageGenerationScreen(
                     ),
                 )
                 ListItem(
-                    headlineContent = { Text("Camera") },
-                    supportingContent = { Text("Take a photo to use as a reference") },
+                    headlineContent = { Text(uiText("Camera")) },
+                    supportingContent = { Text(uiText("Take a photo to use as a reference")) },
                     leadingContent = { Icon(Icons.Outlined.CameraAlt, null) },
                     modifier = Modifier.combinedClickable(
                         onClick = { showReferenceMenu = false; takePhoto() },
@@ -424,8 +424,8 @@ internal fun ImageGenerationScreen(
                 )
                 capabilities?.let { caps ->
                     Text(
-                        if (caps.maxInputImages > 0) "${currentModel?.displayName.orEmpty()} accepts up to ${caps.maxInputImages} reference images."
-                        else "This model does not accept reference images.",
+                        uiText(if (caps.maxInputImages > 0) "${currentModel?.displayName.orEmpty()} accepts up to ${caps.maxInputImages} reference images."
+                        else "This model does not accept reference images."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
@@ -462,18 +462,18 @@ private fun ImageWorkspaceEmptyState(
     ) {
         Icon(Icons.Outlined.Image, null, Modifier.size(38.dp), tint = MaterialTheme.colorScheme.primary)
         Text(
-            "What are we creating?",
+            uiText("What are we creating?"),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.primary,
             textAlign = TextAlign.Center,
         )
         Text(
-            if (supportsEditing) {
+            uiText(if (supportsEditing) {
                 "Describe a new image, or add${if (maxReferences > 0) " up to $maxReferences" else ""} reference images and describe the edit."
             } else {
                 "Describe the image you want. This model generates new images without reference-image editing."
-            },
+            }),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -500,7 +500,7 @@ private fun ImageReferenceThumbnail(
             modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(26.dp),
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.Close, "Remove ${attachment.displayName}", Modifier.size(15.dp))
+                Icon(Icons.Outlined.Close, uiText("Remove ${attachment.displayName}"), Modifier.size(15.dp))
             }
         }
     }
@@ -530,11 +530,11 @@ private fun GeneratedImageConversationItem(entry: GeneratedImageHistoryEntry) {
             contentScale = ContentScale.Fit,
         )
         Text(
-            buildString {
+            uiText(buildString {
                 append(entry.modelId ?: "Image")
                 append(" · ")
                 append(entry.attachment.displayName)
-            },
+            }),
             modifier = Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

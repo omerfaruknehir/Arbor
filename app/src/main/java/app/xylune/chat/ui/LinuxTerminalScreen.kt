@@ -102,14 +102,14 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel) {
                 blurArea = STANDARD_TOP_PANEL_HEIGHT_DP.dp,
                 navigationIcon = {
                     IconButton(onClick = { viewModel.screen.value = Screen.SANDBOX }) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to runtime manager")
+                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, uiText("Back to runtime manager"))
                     }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.screen.value = Screen.SANDBOX }) {
-                        Icon(Icons.Outlined.Settings, "Manage Linux workspace")
+                        Icon(Icons.Outlined.Settings, uiText("Manage Linux workspace"))
                     }
-                    IconButton(onClick = { entries.clear() }) { Icon(Icons.Outlined.DeleteSweep, "Clear terminal") }
+                    IconButton(onClick = { entries.clear() }) { Icon(Icons.Outlined.DeleteSweep, uiText("Clear terminal")) }
                 },
             )
         },
@@ -127,10 +127,10 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                when (status.stage) {
+                uiText(when (status.stage) {
                     UbuntuStage.READY -> "Root shell • ${status.distribution.displayName} ${status.release} • /workspace"
                     else -> "${status.distribution.displayName}: ${status.detail.ifBlank { status.stage.name.lowercase() }}"
-                },
+                }),
                 style = MaterialTheme.typography.labelMedium,
                 color = if (status.installed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
             )
@@ -147,14 +147,14 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel) {
                     ) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Icon(Icons.Outlined.WarningAmber, null)
-                            Text("Linux workspace not ready", fontWeight = FontWeight.SemiBold)
+                            Text(uiText("Linux workspace not ready"), fontWeight = FontWeight.SemiBold)
                         }
                         Text(
-                            "Distribution selection, installation, packages, and removal are managed in one place.",
+                            uiText("Distribution selection, installation, packages, and removal are managed in one place."),
                             style = MaterialTheme.typography.bodySmall,
                         )
                         Button(onClick = { viewModel.screen.value = Screen.SANDBOX }) {
-                            Text("Manage Linux workspace")
+                            Text(uiText("Manage Linux workspace"))
                         }
                     }
                 }
@@ -169,7 +169,7 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel) {
             ) {
                 item {
                     Text(
-                        "$appName ${status.distribution.displayName} root terminal\nCommands run as uid 0 inside the selected PRoot distribution.",
+                        uiText("$appName ${status.distribution.displayName} root terminal\nCommands run as uid 0 inside the selected PRoot distribution."),
                         color = Color(0xFF9CCB9C),
                         fontFamily = FontFamily.Monospace,
                     )
@@ -177,7 +177,7 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel) {
                 items(entries) { entry ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            "root@xylune-${status.distribution.id}:/workspace#",
+                            uiText("root@xylune-${status.distribution.id}:/workspace#"),
                             color = Color(0xFF91A391),
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.labelSmall,
@@ -194,22 +194,22 @@ fun LinuxTerminalScreen(viewModel: ChatViewModel) {
                         entry.result?.let { result ->
                             if (result.stdout.isNotBlank()) Text(result.stdout, color = Color(0xFFE4E9E4), fontFamily = FontFamily.Monospace)
                             if (result.stderr.isNotBlank()) Text(result.stderr, color = Color(0xFFFFB4AB), fontFamily = FontFamily.Monospace)
-                            Text("exit ${result.exitCode} • ${result.elapsedMs} ms", color = Color(0xFF91A391), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall)
+                            Text(uiText("exit ${result.exitCode} • ${result.elapsedMs} ms"), color = Color(0xFF91A391), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall)
                         }
                         entry.error?.let { Text(it, color = Color(0xFFFFB4AB), fontFamily = FontFamily.Monospace) }
                     }
                 }
-                if (running) item { Text("running…", color = Color(0xFFFFD37A), fontFamily = FontFamily.Monospace) }
+                if (running) item { Text(uiText("running…"), color = Color(0xFFFFD37A), fontFamily = FontFamily.Monospace) }
             }
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = status.installed && !running,
-                label = { Text("root@xylune-${status.distribution.id}:/workspace#") },
+                label = { Text(uiText("root@xylune-${status.distribution.id}:/workspace#")) },
                 textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                 visualTransformation = rememberCodeVisualTransformation("bash"),
-                trailingIcon = { IconButton(onClick = ::submit, enabled = input.isNotBlank() && status.installed && !running) { Icon(Icons.Outlined.PlayArrow, "Run") } },
+                trailingIcon = { IconButton(onClick = ::submit, enabled = input.isNotBlank() && status.installed && !running) { Icon(Icons.Outlined.PlayArrow, uiText("Run")) } },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { submit() }),
                 maxLines = 4,

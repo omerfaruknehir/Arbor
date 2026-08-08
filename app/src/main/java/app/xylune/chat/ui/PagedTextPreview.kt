@@ -52,10 +52,10 @@ internal fun DiskBackedTextPreview(file: File) {
     }
     val current = page
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Selectable file preview", fontWeight = FontWeight.SemiBold)
+        Text(uiText("Selectable file preview"), fontWeight = FontWeight.SemiBold)
         when {
-            current == null -> Text("Loading preview…")
-            current.error != null -> Text("Preview unavailable: ${current.error}", color = MaterialTheme.colorScheme.error)
+            current == null -> Text(uiText("Loading preview…"))
+            current.error != null -> Text(uiText("Preview unavailable: ${current.error}"), color = MaterialTheme.colorScheme.error)
             else -> {
                 SelectionContainer {
                     Text(
@@ -72,9 +72,9 @@ internal fun DiskBackedTextPreview(file: File) {
                     IconButton(
                         onClick = { pageIndex = (pageIndex - 1).coerceAtLeast(0) },
                         enabled = pageIndex > 0,
-                    ) { Icon(Icons.AutoMirrored.Outlined.NavigateBefore, "Previous text page") }
+                    ) { Icon(Icons.AutoMirrored.Outlined.NavigateBefore, uiText("Previous text page")) }
                     Text(
-                        "Bytes ${current.start + 1}-${current.endExclusive} of ${current.totalBytes}",
+                        uiText("Bytes ${current.start + 1}-${current.endExclusive} of ${current.totalBytes}"),
                         style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier.padding(horizontal = 8.dp),
                     )
@@ -89,10 +89,10 @@ internal fun DiskBackedTextPreview(file: File) {
                             }
                         },
                         enabled = current.nextOffset != null,
-                    ) { Icon(Icons.AutoMirrored.Outlined.NavigateNext, "Next text page") }
+                    ) { Icon(Icons.AutoMirrored.Outlined.NavigateNext, uiText("Next text page")) }
                 }
                 Text(
-                    "Only this page is held in memory. Save or share the file for full-file processing.",
+                    uiText("Only this page is held in memory. Save or share the file for full-file processing."),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -109,7 +109,7 @@ internal fun PagedExtractedTextPreview(text: String) {
     val start = safeIndex * EXTRACTED_PAGE_CHARS
     val end = minOf(text.length, start + EXTRACTED_PAGE_CHARS)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Selectable extracted content", fontWeight = FontWeight.SemiBold)
+        Text(uiText("Selectable extracted content"), fontWeight = FontWeight.SemiBold)
         SelectionContainer { Text(text.substring(start, end), style = MaterialTheme.typography.bodySmall) }
         if (pageCount > 1) Row(
             Modifier.fillMaxWidth(),
@@ -117,11 +117,11 @@ internal fun PagedExtractedTextPreview(text: String) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = { pageIndex-- }, enabled = safeIndex > 0) {
-                Icon(Icons.AutoMirrored.Outlined.NavigateBefore, "Previous extracted-text page")
+                Icon(Icons.AutoMirrored.Outlined.NavigateBefore, uiText("Previous extracted-text page"))
             }
-            Text("Page ${safeIndex + 1} of $pageCount", style = MaterialTheme.typography.labelMedium)
+            Text(uiText("Page ${safeIndex + 1} of $pageCount"), style = MaterialTheme.typography.labelMedium)
             IconButton(onClick = { pageIndex++ }, enabled = safeIndex + 1 < pageCount) {
-                Icon(Icons.AutoMirrored.Outlined.NavigateNext, "Next extracted-text page")
+                Icon(Icons.AutoMirrored.Outlined.NavigateNext, uiText("Next extracted-text page"))
             }
         }
     }
