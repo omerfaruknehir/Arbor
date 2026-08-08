@@ -56,6 +56,16 @@ class SearchAndStreamErrorVisibilityTest {
         )
     }
 
+    @Test
+    fun `dismissed recovery notices survive switching conversations`() {
+        val first = failedMessage(updatedAt = 10, error = "first")
+        val second = first.copy(nodeId = "assistant-2", conversationId = "conversation-2", error = "second")
+        val afterFirst = withDismissedRecoveryNotice(emptyMap(), first.conversationId, first)
+        val afterSecond = withDismissedRecoveryNotice(afterFirst, second.conversationId, second)
+        assertEquals(recoveryNoticeKey(first), afterSecond[first.conversationId])
+        assertEquals(recoveryNoticeKey(second), afterSecond[second.conversationId])
+    }
+
     private fun failedMessage(updatedAt: Long, error: String) = MessageEntity(
         nodeId = "assistant-1",
         conversationId = "conversation-1",
