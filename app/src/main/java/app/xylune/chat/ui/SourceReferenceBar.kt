@@ -29,8 +29,9 @@ import androidx.core.net.toUri
 import kotlin.math.roundToInt
 
 /**
- * A compact bottom-of-response source strip. The pills themselves remain fixed;
- * tapping one opens a separate anchored preview which animates from the pill.
+ * Compact bottom-of-response source strip. The row never reflows when a source
+ * is opened: a separate overlay starts at the pill's exact bounds and performs
+ * the visual container transform above the message layout.
  */
 @Composable
 internal fun SourceReferenceBar(
@@ -39,7 +40,7 @@ internal fun SourceReferenceBar(
 ) {
     if (sources.isEmpty()) return
 
-    var pendingReference by remember { mutableStateOf<LinkReferencePreview?>(null) }
+    var pendingSource by remember { mutableStateOf<Pair<Int, LinkReferencePreview>?>(null) }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(7.dp),
@@ -59,12 +60,13 @@ internal fun SourceReferenceBar(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                sources.forEachIndexed { index, source ->
+                sources.forEachIndexed { sourceIndex, source ->
+                    val displayIndex = sourceIndex + 1
                     SourceReferencePill(
-                        index = index + 1,
+                        index = displayIndex,
                         source = source,
                         onClick = { anchor ->
-                            pendingReference = LinkReferencePreview(
+                            pendingSource = displayIndex to LinkReferencePreview(
                                 kind = LinkReferenceKind.SOURCE,
                                 label = source.label,
                                 target = source.target,
@@ -78,10 +80,11 @@ internal fun SourceReferenceBar(
         }
     }
 
-    pendingReference?.let { reference ->
-        AnchoredLinkPreview(
+    pendingSource?.let { (index, reference) ->
+        MorphingSourcePreview(
+            index = index,
             reference = reference,
-            onDismiss = { pendingReference = null },
+            onDismiss = { pendingSource = null },
         )
     }
 }

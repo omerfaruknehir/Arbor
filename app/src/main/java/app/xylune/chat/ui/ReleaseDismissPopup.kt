@@ -3,42 +3,67 @@ package app.xylune.chat.ui
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemGestures
-import androidx.compose.material3.AlertDialog as MaterialAlertDialog
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.AlertDialogDefaults
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.DropdownMenu as MaterialDropdownMenu
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProvideTextStyle
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collect
+import kotlin.math.max
+import kotlin.math.roundToInt
 
+/**
+ * Handles completed Back gestures for popup/dialog windows.
+ *
+ * If the IME is visible when Back begins, the whole gesture belongs to the IME:
+ * Xylune hides the keyboard only after the gesture completes and leaves the
+ * surrounding modal surface present. A cancelled gesture changes nothing.
+ */
 @Composable
-private fun XylunePopupBackHandler(
+internal fun XylunePopupBackHandler(
     onDismissRequest: () -> Unit,
     onProgress: (Float) -> Unit = {},
 ) {
@@ -47,19 +72,24 @@ private fun XylunePopupBackHandler(
     val focusManager = LocalFocusManager.current
     val imeInsets = WindowInsets.ime
     PredictiveBackHandler(enabled = true) { events ->
-        // Resolve IME visibility when the gesture starts in the popup/dialog
-        // window. If the keyboard is visible, this entire Back gesture belongs
-        // to the IME: the surrounding surface must remain open and unchanged.
         val imeVisibleAtGestureStart = imeInsets.getBottom(density) > 0
         if (imeVisibleAtGestureStart) {
-            events.collect { }
-            keyboard?.hide()
-            focusManager.clearFocus(force = true)
-            onProgress(0f)
+            try {
+                events.collect { }
+                keyboard?.hide()
+                focusManager.clearFocus(force = true)
+                onProgress(0f)
+            } catch (cancelled: CancellationException) {
+                onProgress(0f)
+                throw cancelled
+            }
             return@PredictiveBackHandler
         }
+
         try {
-            events.collect { event -> onProgress(event.progress.coerceIn(0f, 1f)) }
+            events.collect { event ->
+                onProgress(event.progress.coerceIn(0f, 1f))
+            }
             onProgress(1f)
             onDismissRequest()
         } catch (cancelled: CancellationException) {
@@ -70,77 +100,69 @@ private fun XylunePopupBackHandler(
 }
 
 /**
- * Release-based outside dismissal for popup windows.
+ * Tap-away detector for a full-window modal surface.
  *
- * Android can report the initial edge contact of a predictive-Back gesture as
- * an outside touch. Native dismissOnClickOutside therefore closes a popup at
- * finger-down, before Back has even progressed. This layer waits for release
- * and explicitly ignores gestures which began in either system Back edge.
+ * Dismissal happens only after finger release, only for a tap that started and
+ * stayed outside the content, and never for a gesture that began in either
+ * Android system Back edge. This prevents the edge-down event of predictive
+ * Back from being misclassified as a click outside.
  */
-@Composable
-internal fun ReleaseDismissOutsideLayer(
-    visible: Boolean,
+private fun Modifier.dismissOnOutsideRelease(
+    contentBounds: IntRect,
+    leftBackEdgePx: Int,
+    rightBackEdgePx: Int,
     onDismissRequest: () -> Unit,
-    dismissOnOutsideRelease: Boolean = true,
+): Modifier = pointerInput(
+    contentBounds,
+    leftBackEdgePx,
+    rightBackEdgePx,
+    onDismissRequest,
 ) {
-    if (!visible) return
-
-    val density = LocalDensity.current
-    val layoutDirection = LocalLayoutDirection.current
-    val minimumBackEdgePx = with(density) { 24.dp.roundToPx() }
-    val leftBackEdgePx = maxOf(WindowInsets.systemGestures.getLeft(density, layoutDirection), minimumBackEdgePx)
-    val rightBackEdgePx = maxOf(WindowInsets.systemGestures.getRight(density, layoutDirection), minimumBackEdgePx)
-
-    XylunePopupBackHandler(onDismissRequest)
-    Popup(
-        alignment = Alignment.TopStart,
-        properties = PopupProperties(
-            focusable = false,
-            dismissOnBackPress = false,
-            dismissOnClickOutside = false,
-            clippingEnabled = false,
-        ),
-    ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .pointerInput(
-                    onDismissRequest,
-                    dismissOnOutsideRelease,
-                    leftBackEdgePx,
-                    rightBackEdgePx,
-                ) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                        val startedInBackEdge = down.position.x <= leftBackEdgePx ||
-                            down.position.x >= size.width - rightBackEdgePx
-                        var consumedByChild = down.isConsumed
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Final)
-                            consumedByChild = consumedByChild || event.changes.any { it.isConsumed }
-                            if (event.changes.none { it.pressed }) break
-                        }
-                        if (
-                            dismissOnOutsideRelease &&
-                            !startedInBackEdge &&
-                            !consumedByChild
-                        ) {
-                            onDismissRequest()
-                        }
-                    }
-                },
+    awaitEachGesture {
+        val down = awaitFirstDown(
+            requireUnconsumed = false,
+            pass = PointerEventPass.Initial,
         )
+        val startedInBackEdge = down.position.x <= leftBackEdgePx ||
+            down.position.x >= size.width - rightBackEdgePx
+        val boundsReady = contentBounds.width > 0 && contentBounds.height > 0
+        val startedInside = boundsReady &&
+            down.position.x >= contentBounds.left &&
+            down.position.x <= contentBounds.right &&
+            down.position.y >= contentBounds.top &&
+            down.position.y <= contentBounds.bottom
+        val startX = down.position.x
+        val startY = down.position.y
+        var maxTravelSquared = 0f
+
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Final)
+            val tracked = event.changes.firstOrNull { it.id == down.id }
+            if (tracked != null) {
+                val dx = tracked.position.x - startX
+                val dy = tracked.position.y - startY
+                maxTravelSquared = max(maxTravelSquared, dx * dx + dy * dy)
+            }
+            if (event.changes.none { it.pressed }) break
+        }
+
+        val slop = viewConfiguration.touchSlop
+        val wasTap = maxTravelSquared <= slop * slop
+        if (boundsReady && !startedInBackEdge && !startedInside && wasTap) {
+            onDismissRequest()
+        }
     }
 }
 
 /**
- * Xylune's keyboard-safe modal dialog.
+ * Xylune alert dialog with release-based outside dismissal.
  *
- * Large/modal dialogs intentionally do not use native outside-touch dismissal:
- * an Android predictive-Back gesture begins at the screen edge, which can be
- * mistaken for an outside click before the Back handler has a chance to keep
- * the dialog open for the IME. Explicit dialog actions and Back remain safe.
+ * BasicAlertDialog is deliberately made full-window so the scrim and the dialog
+ * card live in the same dialog window. That gives Xylune the actual pointer-up
+ * event instead of relying on Android's native outside-touch callback, which can
+ * fire on the first edge contact of a predictive-Back gesture.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun XyluneAlertDialog(
     onDismissRequest: () -> Unit,
@@ -157,44 +179,124 @@ fun XyluneAlertDialog(
     textContentColor: Color = AlertDialogDefaults.textContentColor,
     tonalElevation: Dp = AlertDialogDefaults.TonalElevation,
 ) {
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val minimumBackEdgePx = with(density) { 32.dp.roundToPx() }
+    val leftBackEdgePx = max(
+        WindowInsets.systemGestures.getLeft(density, layoutDirection),
+        minimumBackEdgePx,
+    )
+    val rightBackEdgePx = max(
+        WindowInsets.systemGestures.getRight(density, layoutDirection),
+        minimumBackEdgePx,
+    )
+    var dialogBounds by remember { mutableStateOf(IntRect.Zero) }
     var backProgress by remember { mutableFloatStateOf(0f) }
-    MaterialAlertDialog(
-        onDismissRequest = onDismissRequest,
-        confirmButton = {
-            // MaterialAlertDialog composes this slot in the dialog's own window.
-            // Registering here makes WindowInsets.ime refer to the same window as
-            // the focused text field instead of the activity behind the dialog.
-            XylunePopupBackHandler(
-                onDismissRequest = onDismissRequest,
-                onProgress = { backProgress = it },
-            )
-            confirmButton()
-        },
-        modifier = modifier.graphicsLayer {
-            val progress = backProgress.coerceIn(0f, 1f)
-            val scale = 1f - 0.04f * progress
-            scaleX = scale
-            scaleY = scale
-            alpha = 1f - 0.14f * progress
-        },
-        dismissButton = dismissButton,
-        icon = icon,
-        title = title,
-        text = text,
-        shape = shape,
-        containerColor = containerColor,
-        iconContentColor = iconContentColor,
-        titleContentColor = titleContentColor,
-        textContentColor = textContentColor,
-        tonalElevation = tonalElevation,
+
+    BasicAlertDialog(
+        onDismissRequest = {},
+        modifier = Modifier.fillMaxSize(),
         properties = DialogProperties(
             dismissOnBackPress = false,
             dismissOnClickOutside = false,
+            usePlatformDefaultWidth = false,
         ),
-    )
+    ) {
+        XylunePopupBackHandler(
+            onDismissRequest = onDismissRequest,
+            onProgress = { backProgress = it },
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .dismissOnOutsideRelease(
+                    contentBounds = dialogBounds,
+                    leftBackEdgePx = leftBackEdgePx,
+                    rightBackEdgePx = rightBackEdgePx,
+                    onDismissRequest = onDismissRequest,
+                )
+                .padding(horizontal = 24.dp, vertical = 24.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(
+                modifier = modifier
+                    .widthIn(min = 280.dp, max = 560.dp)
+                    .onGloballyPositioned { coordinates ->
+                        val bounds = coordinates.boundsInRoot()
+                        dialogBounds = IntRect(
+                            left = bounds.left.roundToInt(),
+                            top = bounds.top.roundToInt(),
+                            right = bounds.right.roundToInt(),
+                            bottom = bounds.bottom.roundToInt(),
+                        )
+                    }
+                    .graphicsLayer {
+                        val progress = backProgress.coerceIn(0f, 1f)
+                        val scale = 1f - 0.04f * progress
+                        scaleX = scale
+                        scaleY = scale
+                        alpha = 1f - 0.14f * progress
+                    },
+                shape = shape,
+                color = containerColor,
+                contentColor = textContentColor,
+                tonalElevation = tonalElevation,
+                shadowElevation = 6.dp,
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    if (icon != null) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CompositionLocalProvider(LocalContentColor provides iconContentColor) {
+                                icon()
+                            }
+                        }
+                    }
+
+                    if (title != null) {
+                        CompositionLocalProvider(LocalContentColor provides titleContentColor) {
+                            ProvideTextStyle(MaterialTheme.typography.headlineSmall) {
+                                title()
+                            }
+                        }
+                    }
+
+                    if (text != null) {
+                        CompositionLocalProvider(LocalContentColor provides textContentColor) {
+                            ProvideTextStyle(MaterialTheme.typography.bodyMedium) {
+                                text()
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (dismissButton != null) {
+                            dismissButton()
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        confirmButton()
+                    }
+                }
+            }
+        }
+    }
 }
 
-/** Dropdown menu with release-based outside dismissal and predictive Back. */
+/**
+ * Small anchored menus keep Material's native outside dismissal. Modal dialogs
+ * and source previews use the release-based full-window path above; menus remain
+ * lightweight and immediately recover the expected tap-away behavior.
+ */
 @Composable
 internal fun XyluneDropdownMenu(
     expanded: Boolean,
@@ -203,19 +305,14 @@ internal fun XyluneDropdownMenu(
     dismissOnClickOutside: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    ReleaseDismissOutsideLayer(
-        visible = expanded,
-        onDismissRequest = onDismissRequest,
-        dismissOnOutsideRelease = dismissOnClickOutside,
-    )
     MaterialDropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismissRequest,
         modifier = modifier,
         properties = PopupProperties(
             focusable = true,
-            dismissOnBackPress = false,
-            dismissOnClickOutside = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = dismissOnClickOutside,
         ),
         content = content,
     )
