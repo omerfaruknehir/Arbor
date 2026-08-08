@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -37,6 +36,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.core.net.toUri
+import kotlinx.coroutines.delay
 import kotlin.math.max
 
 /**
@@ -64,11 +65,26 @@ internal fun MorphingSourcePreview(
     val anchor = reference.anchorBoundsInWindow ?: return
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
+    // Capture the host Activity window before entering Popup. A Popup child
+    // using fillMaxSize can otherwise be measured with a zero/content-sized
+    // constraint, leaving an invisible focusable window over the whole app.
+    val windowSize = LocalWindowInfo.current.containerSize
     val progress = remember(reference.target) { Animatable(0f) }
     var dismissing by remember(reference.target) { mutableStateOf(false) }
-    var rootSize by remember { mutableStateOf(IntSize.Zero) }
-    var cardSize by remember { mutableStateOf(IntSize.Zero) }
+    var cardSize by remember(reference.target) { mutableStateOf(IntSize.Zero) }
 
+    if (
+        anchor.width <= 0 ||
+        anchor.height <= 0 ||
+        windowSize.width <= 0 ||
+        windowSize.height <= 0
+    ) {
+        LaunchedEffect(reference.target, anchor, windowSize) { onDismiss() }
+        return
+    }
+
+    val popupWidth = with(density) { windowSize.width.toDp() }
+    val popupHeight = with(density) { windowSize.height.toDp() }
     val minimumBackEdgePx = with(density) { 32.dp.roundToPx() }
     val leftBackEdgePx = max(
         WindowInsets.systemGestures.getLeft(density, layoutDirection),
@@ -82,9 +98,18 @@ internal fun MorphingSourcePreview(
         if (!dismissing) dismissing = true
     }
 
-    LaunchedEffect(rootSize, cardSize, dismissing) {
-        if (!dismissing && rootSize.width > 0 && rootSize.height > 0 && cardSize.width > 0 && cardSize.height > 0) {
+    LaunchedEffect(cardSize, dismissing, windowSize) {
+        if (!dismissing && cardSize.width > 0 && cardSize.height > 0) {
             progress.animateTo(1f, tween(durationMillis = 240))
+        }
+    }
+    // A source preview must never be able to strand an invisible focusable
+    // Popup above the app. Normal layout resolves in the first frame; if it
+    // does not, close the overlay instead of trapping all subsequent input.
+    LaunchedEffect(reference.target, windowSize) {
+        delay(750)
+        if (!dismissing && (cardSize.width <= 0 || cardSize.height <= 0)) {
+            requestDismiss()
         }
     }
     LaunchedEffect(dismissing) {
@@ -106,7 +131,7 @@ internal fun MorphingSourcePreview(
     ) {
         XylunePopupBackHandler(onDismissRequest = requestDismiss)
 
-        val targetPosition = popupTargetPosition(anchor, rootSize, cardSize)
+        val targetPosition = popupTargetPosition(anchor, windowSize, cardSize)
         val cardBounds = IntRect(
             left = targetPosition.x,
             top = targetPosition.y,
@@ -116,8 +141,7 @@ internal fun MorphingSourcePreview(
 
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .onSizeChanged { rootSize = it }
+                .size(popupWidth, popupHeight)
                 .pointerInput(
                     cardBounds,
                     leftBackEdgePx,
@@ -154,7 +178,7 @@ internal fun MorphingSourcePreview(
 
                         val slop = viewConfiguration.touchSlop
                         val wasTap = maxTravelSquared <= slop * slop
-                        if (boundsReady && !startedInBackEdge && !startedInsideCard && wasTap) {
+                        if (!startedInBackEdge && wasTap && (!boundsReady || !startedInsideCard)) {
                             requestDismiss()
                         }
                     }
