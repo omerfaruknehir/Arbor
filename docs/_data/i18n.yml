@@ -1,0 +1,100 @@
+en:
+  nav:
+    home: Home
+    privacy: Privacy
+    terms: Terms
+    data_deletion: Data deletion
+    releases: Releases
+    github: GitHub
+  ui:
+    primary_navigation: Primary navigation
+    xylune_home: Xylune home
+    open_navigation: Open navigation
+    appearance_controls: Appearance controls
+    open_appearance: Open appearance settings
+    close_appearance: Close appearance settings
+    appearance: Appearance
+    customize_site: Customize this site.
+    theme: Theme
+    app: App
+    auto: Auto
+    light: Light
+    dark: Dark
+    color_scheme: Color scheme
+    graphite: Graphite
+    ocean: Ocean
+    violet: Violet
+    sunset: Sunset
+    brand_icon: Brand icon
+    dynamic_icon: Dynamic icon
+    dynamic_icon_description: Use the same icon variant as Xylune for the selected color scheme.
+    use_dynamic_icon: Use dynamic Xylune icon
+    language: Language
+    language_controls: Language selector
+    choose_language: Choose language
+    english: English
+    turkish: Türkçe
+    current_language: Current language
+    back_to_xylune: Back to Xylune
+  footer:
+    maintained_by: This project is maintained by
+    open_source: Open source on GitHub
+  release:
+    latest: Latest
+    pre_release: Pre-release
+    download_apk: Download APK
+    open_github: Open on GitHub
+    show_all: Show all releases
+    no_notes: No release notes were provided for this build.
+    load_failed: The live release list could not be loaded.
+    open_releases: Open releases on GitHub
+tr:
+  nav:
+    home: Ana sayfa
+    privacy: Gizlilik
+    terms: Koşullar
+    data_deletion: Veri silme
+    releases: Sürümler
+    github: GitHub
+  ui:
+    primary_navigation: Birincil gezinme
+    xylune_home: Xylune ana sayfası
+    open_navigation: Gezinmeyi aç
+    appearance_controls: Görünüm denetimleri
+    open_appearance: Görünüm ayarlarını aç
+    close_appearance: Görünüm ayarlarını kapat
+    appearance: Görünüm
+    customize_site: Bu siteyi özelleştirin.
+    theme: Tema
+    app: Uygulama
+    auto: Otomatik
+    light: Açık
+    dark: Koyu
+    color_scheme: Renk şeması
+    graphite: Grafit
+    ocean: Okyanus
+    violet: Menekşe
+    sunset: Gün batımı
+    brand_icon: Marka simgesi
+    dynamic_icon: Dinamik simge
+    dynamic_icon_description: Seçilen renk şeması için Xylune ile aynı simge varyantını kullanın.
+    use_dynamic_icon: Dinamik Xylune simgesini kullan
+    language: Dil
+    language_controls: Dil seçici
+    choose_language: Dil seçin
+    english: English
+    turkish: Türkçe
+    current_language: Geçerli dil
+    back_to_xylune: Xylune'a dön
+  footer:
+    maintained_by: Bu proje şu kişi tarafından sürdürülmektedir
+    open_source: GitHub'da açık kaynak
+  release:
+    latest: En yeni
+    pre_release: Ön sürüm
+    download_apk: APK'yı indir
+    open_github: GitHub'da aç
+    show_all: Tüm sürümleri göster
+    no_notes: Bu derleme için sürüm notu sunulmadı.
+    load_failed: Canlı sürüm listesi yüklenemedi.
+    open_releases: Sürümleri GitHub'da aç
