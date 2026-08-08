@@ -15,6 +15,7 @@ class MessageUsageMenuRegressionTest {
         val usageUi = repositoryFile("app/src/main/java/app/xylune/chat/ui/UsageDetailsUi.kt").readText()
 
         assertTrue(chat.contains("MessageContextMenu(message)"))
+        assertTrue(usageUi.contains("Box {\n        IconButton(onClick = { open = true }"))
         assertTrue(usageUi.contains("Text(\"Usage details\")"))
         assertTrue(usageUi.contains("Text(\"Share message\")"))
         assertTrue(usageUi.contains("attachmentDao().forMessage(message.nodeId)"))

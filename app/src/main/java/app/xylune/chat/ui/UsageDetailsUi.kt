@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -67,33 +68,35 @@ internal fun MessageContextMenu(message: MessageEntity) {
     val scope = rememberCoroutineScope()
     val container = remember(context) { (context.applicationContext as XyluneApplication).container }
 
-    IconButton(onClick = { open = true }, modifier = Modifier.size(34.dp)) {
-        Icon(Icons.Outlined.MoreVert, "Message actions", Modifier.size(18.dp))
-    }
-    XyluneDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-        if (message.role == MessageRole.ASSISTANT) {
+    Box {
+        IconButton(onClick = { open = true }, modifier = Modifier.size(34.dp)) {
+            Icon(Icons.Outlined.MoreVert, "Message actions", Modifier.size(18.dp))
+        }
+        XyluneDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            if (message.role == MessageRole.ASSISTANT) {
+                DropdownMenuItem(
+                    text = { Text("Usage details") },
+                    leadingIcon = { Icon(Icons.Outlined.DataUsage, null) },
+                    onClick = {
+                        open = false
+                        showUsage = true
+                    },
+                )
+            }
             DropdownMenuItem(
-                text = { Text("Usage details") },
-                leadingIcon = { Icon(Icons.Outlined.DataUsage, null) },
+                text = { Text("Share message") },
+                leadingIcon = { Icon(Icons.Outlined.Share, null) },
                 onClick = {
                     open = false
-                    showUsage = true
+                    scope.launch {
+                        val attachments = withContext(Dispatchers.IO) {
+                            container.database.attachmentDao().forMessage(message.nodeId)
+                        }
+                        shareMessage(context, message, attachments)
+                    }
                 },
             )
         }
-        DropdownMenuItem(
-            text = { Text("Share message") },
-            leadingIcon = { Icon(Icons.Outlined.Share, null) },
-            onClick = {
-                open = false
-                scope.launch {
-                    val attachments = withContext(Dispatchers.IO) {
-                        container.database.attachmentDao().forMessage(message.nodeId)
-                    }
-                    shareMessage(context, message, attachments)
-                }
-            },
-        )
     }
     if (showUsage) {
         MessageUsageDialog(message = message, onDismiss = { showUsage = false })

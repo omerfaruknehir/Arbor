@@ -1,5 +1,6 @@
 package app.xylune.chat.generation
 
+import app.xylune.chat.agent.MessageTimelineEvent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -34,6 +35,35 @@ class ToolCallStreamingTest {
         assertEquals("tool_call", presentation.kind)
         assertEquals(4_000, presentation.input.length)
         assertTrue(presentation.preparingLabel.contains("custom_tool"))
+    }
+
+    @Test fun streamedSearchPreparationMergesWithFinalSearchCall() {
+        val query = "RMX1921_11_F.06 firmware changelog security patch May 2022"
+        val prepared = MessageTimelineEvent(
+            kind = "search",
+            label = "Prepared web search",
+            status = "prepared",
+            input = query,
+            providerCallId = "",
+            argumentsJson = """{"query":"$query"}""",
+            startedAt = 1L,
+        )
+        val finalPresentation = ToolCallPresentation(
+            kind = "search",
+            preparingLabel = "Preparing DuckDuckGo search",
+            runningLabel = "Searching with DuckDuckGo",
+            completedLabel = "DuckDuckGo search",
+            input = query,
+        )
+
+        assertTrue(
+            preparedToolCallMatches(
+                prepared,
+                providerCallId = "provider-call-assigned-late",
+                argumentsJson = """{"query":"$query","source":"auto"}""",
+                presentation = finalPresentation,
+            ),
+        )
     }
 }
 
