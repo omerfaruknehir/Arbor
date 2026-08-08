@@ -94,14 +94,24 @@
 
 .home-hero__visual {
   position: relative;
-  min-height: 330px;
+  min-height: 310px;
   overflow: hidden;
   border: 1px solid var(--outline-variant);
   border-radius: 28px;
   background: var(--surface-low);
+  isolation: isolate;
 }
 
-.home-hero__visual img {
+.home-hero__visual::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(180deg, transparent 24%, color-mix(in srgb, var(--background) 82%, transparent) 100%);
+  content: "";
+  pointer-events: none;
+}
+
+.home-hero__backdrop {
   position: absolute;
   inset: 0;
   display: block;
@@ -109,6 +119,46 @@
   height: 100%;
   object-fit: cover;
   object-position: center;
+}
+
+.home-hero__brand-card {
+  position: absolute;
+  inset: auto 18px 18px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 74%, transparent);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+.home-hero__brand-card img {
+  display: block;
+  width: 64px;
+  height: 64px;
+  flex: 0 0 auto;
+  border-radius: 16px;
+}
+
+.home-hero__brand-copy strong,
+.home-hero__brand-copy span {
+  display: block;
+}
+
+.home-hero__brand-copy strong {
+  color: var(--on-surface);
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.home-hero__brand-copy span {
+  margin-top: 3px;
+  color: var(--on-surface-variant);
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .home-feature-grid {
@@ -329,7 +379,7 @@
   margin-top: 44px;
 }
 
-@media (max-width: 1280px) {
+@media (max-width: 1080px) {
   .home-hero {
     grid-template-columns: 1fr;
     gap: 24px;
@@ -340,12 +390,7 @@
   }
 
   .home-hero__visual {
-    min-height: 220px;
-    max-height: 280px;
-  }
-
-  .home-feature-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    min-height: 230px;
   }
 }
 
@@ -395,8 +440,20 @@
   }
 
   .home-hero__visual {
-    min-height: 180px;
+    min-height: 190px;
     border-radius: 20px;
+  }
+
+  .home-hero__brand-card {
+    inset: auto 12px 12px;
+    padding: 10px;
+    border-radius: 16px;
+  }
+
+  .home-hero__brand-card img {
+    width: 52px;
+    height: 52px;
+    border-radius: 13px;
   }
 
   .home-feature,
@@ -434,7 +491,11 @@
   }
 
   .home-hero__visual {
-    min-height: 150px;
+    min-height: 170px;
+  }
+
+  .home-hero__brand-copy span {
+    display: none;
   }
 
   .home-feature {
