@@ -4,6 +4,7 @@ import app.xylune.chat.data.MessageEntity
 import app.xylune.chat.data.MessageRole
 import app.xylune.chat.data.MessageStatus
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -27,6 +28,32 @@ class SearchAndStreamErrorVisibilityTest {
         val updated = first.copy(updatedAt = 11, error = "HTTP 503: unavailable")
         assertNotEquals(recoveryNoticeKey(first), recoveryNoticeKey(updated))
         assertTrue(recoveryErrorSummary(first).contains("429"))
+    }
+
+    @Test
+    fun `recovery notice only targets active undismissed failure`() {
+        val failed = failedMessage(updatedAt = 10, error = "HTTP 503: unavailable")
+        assertTrue(isRecoveryNoticeCandidate(failed, failed.nodeId, null))
+        assertFalse(isRecoveryNoticeCandidate(failed, "assistant-2", null))
+        assertFalse(isRecoveryNoticeCandidate(failed, failed.nodeId, recoveryNoticeKey(failed)))
+        assertFalse(
+            isRecoveryNoticeCandidate(
+                failed.copy(status = MessageStatus.INTERRUPTED, error = "Steered by user"),
+                failed.nodeId,
+                null,
+            ),
+        )
+    }
+
+    @Test
+    fun `empty terminal assistant remains visible for recovery`() {
+        val failed = failedMessage(updatedAt = 10, error = "provider failed before first token")
+        assertTrue(shouldRenderAssistantRecoveryState(failed))
+        assertFalse(
+            shouldRenderAssistantRecoveryState(
+                failed.copy(status = MessageStatus.COMPLETE, error = null),
+            ),
+        )
     }
 
     private fun failedMessage(updatedAt: Long, error: String) = MessageEntity(

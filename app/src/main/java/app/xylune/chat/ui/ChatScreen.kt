@@ -440,6 +440,22 @@ internal fun recoveryErrorSummary(message: MessageEntity): String = message.erro
         "The response stopped before it completed."
     }
 
+internal fun isActionableRecoveryMessage(message: MessageEntity): Boolean =
+    message.status == MessageStatus.ERROR ||
+        (message.status == MessageStatus.INTERRUPTED &&
+            message.error !in setOf("Steered by user", "Replaced by an edited message"))
+
+internal fun isRecoveryNoticeCandidate(
+    message: MessageEntity,
+    activeLeafNodeId: String?,
+    dismissedNoticeKey: String?,
+): Boolean = isActionableRecoveryMessage(message) &&
+    message.nodeId == activeLeafNodeId &&
+    recoveryNoticeKey(message) != dismissedNoticeKey
+
+internal fun shouldRenderAssistantRecoveryState(message: MessageEntity): Boolean =
+    message.role == MessageRole.ASSISTANT && isActionableRecoveryMessage(message)
+
 internal fun workEventStateLabel(event: MessageTimelineEvent): String = when (event.status) {
     "preparing" -> "Preparing"
     "prepared" -> "Ready"
@@ -813,7 +829,6 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
         showModelPicker = false
         chatMenu = false
         recoveryDetailsMessage = null
-        dismissedRecoveryNoticeKey = null
         followMode = ChatFollowMode.FOLLOWING
         manualFollowHold = false
         initialPositioned = false
@@ -1251,13 +1266,14 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                 }
             }
             val interrupted = recoverable.firstOrNull { candidate ->
-                val recoverableStatus = candidate.status == MessageStatus.ERROR ||
-                    (candidate.status == MessageStatus.INTERRUPTED &&
-                        candidate.error !in setOf("Steered by user", "Replaced by an edited message"))
-                recoverableStatus && recoveryNoticeKey(candidate) != dismissedRecoveryNoticeKey
+                isRecoveryNoticeCandidate(
+                    message = candidate,
+                    activeLeafNodeId = conversation?.activeLeafNodeId,
+                    dismissedNoticeKey = dismissedRecoveryNoticeKey,
+                )
             }
             AnimatedVisibility(
-                visible = interrupted != null && !generating,
+                visible = interrupted != null,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = padding.calculateTopPadding() + 8.dp, start = 12.dp, end = 12.dp),
@@ -1488,13 +1504,15 @@ private fun MessageCard(
     val displayContent = if (deepResearchResponse) {
         remember(message.content) { ResearchStateProtocol.extract(message.content).cleanedText }
     } else message.content
+    val showRecoveryState = shouldRenderAssistantRecoveryState(message)
     if (
         message.role == MessageRole.ASSISTANT &&
         message.status != MessageStatus.STREAMING &&
         displayContent.isBlank() &&
         displayReasoning.isBlank() &&
         timeline.isEmpty() &&
-        attachments.isEmpty()
+        attachments.isEmpty() &&
+        !showRecoveryState
     ) return
     var editing by remember(message.nodeId) { mutableStateOf(false) }
     var editedText by remember(message.nodeId) { mutableStateOf(message.content) }
@@ -1521,6 +1539,49 @@ private fun MessageCard(
                                 allowOcr = fallback,
                                 onEnableOcr = if (fallback) ({ viewModel.enableOcr(attachment) }) else null,
                             )
+                        }
+                    }
+                }
+                if (
+                    showRecoveryState &&
+                    displayContent.isBlank() &&
+                    displayReasoning.isBlank() &&
+                    timeline.isEmpty()
+                ) {
+                    val failed = message.status == MessageStatus.ERROR
+                    Surface(
+                        color = if (failed) MaterialTheme.colorScheme.errorContainer
+                            else MaterialTheme.colorScheme.secondaryContainer,
+                        shape = MaterialTheme.shapes.large,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(
+                            Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(
+                                if (failed) "Request failed" else "Response paused",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                recoveryErrorSummary(message),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (failed) MaterialTheme.colorScheme.onErrorContainer
+                                    else MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                            ) {
+                                TextButton(
+                                    onClick = {
+                                        if (failed) viewModel.retryMessage(message) else viewModel.resume(message)
+                                    },
+                                ) {
+                                    Text(if (failed) "Retry" else "Continue")
+                                }
+                            }
                         }
                     }
                 }
