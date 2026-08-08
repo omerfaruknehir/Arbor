@@ -1,0 +1,23 @@
+{% assign picker_context = include.context | default: 'rail' %}
+<details class="language-picker language-picker--{{ picker_context }}">
+  <summary class="language-picker__summary" aria-label="{{ strings.ui.choose_language | escape }}">
+    <span class="material-symbols-rounded" aria-hidden="true">language</span>
+    {% if picker_context == 'rail' %}
+    <span class="language-picker__label">{{ strings.ui.language }}</span>
+    <span class="language-picker__code">{{ page_lang | upcase }}</span>
+    <span class="material-symbols-rounded language-picker__chevron" aria-hidden="true">expand_more</span>
+    {% endif %}
+  </summary>
+  <div class="language-picker__menu" role="menu" aria-label="{{ strings.ui.choose_language | escape }}">
+    <a href="{{ page.alternate_en | default: '/' | relative_url }}" hreflang="en" lang="en" role="menuitem"{% if page_lang == 'en' %} aria-current="page"{% endif %}>
+      <span class="language-picker__language">English</span>
+      <span class="language-picker__short">EN</span>
+      {% if page_lang == 'en' %}<span class="material-symbols-rounded" aria-hidden="true">check</span>{% endif %}
+    </a>
+    <a href="{{ page.alternate_tr | default: '/tr/' | relative_url }}" hreflang="tr" lang="tr" role="menuitem"{% if page_lang == 'tr' %} aria-current="page"{% endif %}>
+      <span class="language-picker__language">Türkçe</span>
+      <span class="language-picker__short">TR</span>
+      {% if page_lang == 'tr' %}<span class="material-symbols-rounded" aria-hidden="true">check</span>{% endif %}
+    </a>
+  </div>
+</details>

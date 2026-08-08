@@ -1,18 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://omerfaruknehir.github.io/Xylune/</loc>
-  </url>
-  <url>
-    <loc>https://omerfaruknehir.github.io/Xylune/releases/</loc>
-  </url>
-  <url>
-    <loc>https://omerfaruknehir.github.io/Xylune/privacy/</loc>
-  </url>
-  <url>
-    <loc>https://omerfaruknehir.github.io/Xylune/terms/</loc>
-  </url>
-  <url>
-    <loc>https://omerfaruknehir.github.io/Xylune/data-deletion/</loc>
-  </url>
+  <url><loc>https://omerfaruknehir.github.io/Xylune/</loc></url>
+  <url><loc>https://omerfaruknehir.github.io/Xylune/releases/</loc></url>
+  <url><loc>https://omerfaruknehir.github.io/Xylune/privacy/</loc></url>
+  <url><loc>https://omerfaruknehir.github.io/Xylune/terms/</loc></url>
+  <url><loc>https://omerfaruknehir.github.io/Xylune/data-deletion/</loc></url>
+  <url><loc>https://omerfaruknehir.github.io/Xylune/tr/</loc></url>
+  <url><loc>https://omerfaruknehir.github.io/Xylune/tr/releases/</loc></url>
+  <url><loc>https://omerfaruknehir.github.io/Xylune/tr/privacy/</loc></url>
+  <url><loc>https://omerfaruknehir.github.io/Xylune/tr/terms/</loc></url>
+  <url><loc>https://omerfaruknehir.github.io/Xylune/tr/data-deletion/</loc></url>
 </urlset>

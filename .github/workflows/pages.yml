@@ -37,35 +37,94 @@ jobs:
           node --check docs/assets/js/logo-motion.js
           node --check docs/assets/js/popup-motion.js
           node --check docs/assets/js/releases.js
+          node --check docs/assets/js/banner-theme.js
+          node --check docs/assets/js/i18n.js
       - name: Validate source sitemap
         run: |
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
           from urllib.parse import urlparse
 
-          path = "docs/sitemap.xml"
-          root = ET.parse(path).getroot()
-          ns = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
-          assert root.tag == f"{ns}urlset", root.tag
-          locations = [node.text for node in root.findall(f"{ns}url/{ns}loc")]
-          assert locations, "sitemap contains no URLs"
+          expected = {
+              'https://omerfaruknehir.github.io/Xylune/',
+              'https://omerfaruknehir.github.io/Xylune/releases/',
+              'https://omerfaruknehir.github.io/Xylune/privacy/',
+              'https://omerfaruknehir.github.io/Xylune/terms/',
+              'https://omerfaruknehir.github.io/Xylune/data-deletion/',
+              'https://omerfaruknehir.github.io/Xylune/tr/',
+              'https://omerfaruknehir.github.io/Xylune/tr/releases/',
+              'https://omerfaruknehir.github.io/Xylune/tr/privacy/',
+              'https://omerfaruknehir.github.io/Xylune/tr/terms/',
+              'https://omerfaruknehir.github.io/Xylune/tr/data-deletion/',
+          }
+          root = ET.parse('docs/sitemap.xml').getroot()
+          ns = '{http://www.sitemaps.org/schemas/sitemap/0.9}'
+          assert root.tag == f'{ns}urlset', root.tag
+          locations = [node.text for node in root.findall(f'{ns}url/{ns}loc')]
+          assert len(locations) == len(set(locations)), 'duplicate sitemap URLs'
+          assert set(locations) == expected, (set(locations) ^ expected)
           for location in locations:
               parsed = urlparse(location)
-              assert parsed.scheme == "https", location
-              assert parsed.netloc == "omerfaruknehir.github.io", location
-              assert parsed.path.startswith("/Xylune/"), location
+              assert parsed.scheme == 'https', location
+              assert parsed.netloc == 'omerfaruknehir.github.io', location
+              assert parsed.path.startswith('/Xylune/'), location
+          PY
+      - name: Validate optimized banner source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('docs/assets/images/xylune-banner-background.webp')
+          data = path.read_bytes()
+          assert 0 < len(data) < 100_000, len(data)
+          assert data[:4] == b'RIFF' and data[8:12] == b'WEBP', 'not a WebP file'
           PY
       - uses: actions/configure-pages@v5
       - uses: actions/jekyll-build-pages@v1
         with:
           source: ./docs
           destination: ./_site
-      - name: Verify built sitemap remains static XML
+      - name: Verify built static assets
         run: |
           cmp docs/sitemap.xml _site/sitemap.xml
+          cmp docs/assets/images/xylune-banner-background.webp _site/assets/images/xylune-banner-background.webp
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
-          ET.parse("_site/sitemap.xml")
+          ET.parse('_site/sitemap.xml')
+          PY
+      - name: Validate multilingual Pages output
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          pages = {
+              '_site/index.html': ('en', '/Xylune/', '/Xylune/tr/'),
+              '_site/releases/index.html': ('en', '/Xylune/releases/', '/Xylune/tr/releases/'),
+              '_site/privacy/index.html': ('en', '/Xylune/privacy/', '/Xylune/tr/privacy/'),
+              '_site/terms/index.html': ('en', '/Xylune/terms/', '/Xylune/tr/terms/'),
+              '_site/data-deletion/index.html': ('en', '/Xylune/data-deletion/', '/Xylune/tr/data-deletion/'),
+              '_site/tr/index.html': ('tr', '/Xylune/', '/Xylune/tr/'),
+              '_site/tr/releases/index.html': ('tr', '/Xylune/releases/', '/Xylune/tr/releases/'),
+              '_site/tr/privacy/index.html': ('tr', '/Xylune/privacy/', '/Xylune/tr/privacy/'),
+              '_site/tr/terms/index.html': ('tr', '/Xylune/terms/', '/Xylune/tr/terms/'),
+              '_site/tr/data-deletion/index.html': ('tr', '/Xylune/data-deletion/', '/Xylune/tr/data-deletion/'),
+          }
+          for filename, (lang, en_path, tr_path) in pages.items():
+              path = Path(filename)
+              assert path.is_file(), filename
+              html = path.read_text(encoding='utf-8')
+              assert f'<html lang="{lang}"' in html, filename
+              assert f'hreflang="en" href="https://omerfaruknehir.github.io{en_path}"' in html, filename
+              assert f'hreflang="tr" href="https://omerfaruknehir.github.io{tr_path}"' in html, filename
+              assert 'hreflang="x-default"' in html, filename
+              assert 'material-symbols-rounded' in html and '>language</span>' in html, filename
+
+          english = Path('_site/index.html').read_text(encoding='utf-8')
+          turkish = Path('_site/tr/index.html').read_text(encoding='utf-8')
+          assert 'Your AI.' in english
+          assert 'Yapay zekân.' in turkish
+          assert '/Xylune/assets/images/xylune-banner-background.webp' in english
+          assert 'data-themed-banner' in english
+          assert 'BASE_BANNER_HUE = 164' in Path('_site/assets/js/banner-theme.js').read_text(encoding='utf-8')
           PY
       - uses: actions/upload-pages-artifact@v4
         with:
@@ -96,7 +155,10 @@ jobs:
             code="$(curl --silent --show-error --location --output /tmp/sitemap.xml --dump-header /tmp/sitemap.headers --write-out '%{http_code}' "$url" || true)"
             if [[ "$code" == "200" ]] && python3 - <<'PY'
           import xml.etree.ElementTree as ET
-          ET.parse('/tmp/sitemap.xml')
+          root = ET.parse('/tmp/sitemap.xml').getroot()
+          ns = '{http://www.sitemaps.org/schemas/sitemap/0.9}'
+          urls = root.findall(f'{ns}url')
+          assert len(urls) == 10, len(urls)
           PY
             then
               content_type="$(awk 'BEGIN{IGNORECASE=1} /^content-type:/ {sub(/\r$/, ""); print $2}' /tmp/sitemap.headers | tail -n1)"
