@@ -8,8 +8,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DataUsage
 import androidx.compose.material.icons.outlined.MoreVert
@@ -127,41 +130,49 @@ internal fun MessageUsageDialog(
                 if (!rows.isNullOrEmpty()) {
                     HorizontalDivider()
                     Text("Provider calls", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    rows!!.forEachIndexed { index, call ->
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceContainerLow,
-                            shape = MaterialTheme.shapes.medium,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text(
-                                    "Call ${index + 1} · round ${call.roundIndex + 1}",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.Medium,
-                                )
-                                Text(
-                                    "input ${call.inputTokens} · cached ${call.cachedInputTokens} · output ${call.outputTokens}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontFamily = FontFamily.Monospace,
-                                )
-                                val nonCached = (call.inputTokens - call.cachedInputTokens).coerceAtLeast(0)
-                                Text(
-                                    "non-cached $nonCached · total ${call.inputTokens + call.outputTokens}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontFamily = FontFamily.Monospace,
-                                )
-                                Text(
-                                    buildString {
-                                        append(call.status.lowercase(Locale.ROOT))
-                                        call.finishReason?.takeIf(String::isNotBlank)?.let { append(" · ").append(it) }
-                                        append(" · ")
-                                        append(if (call.costKnown) formatCostMicros(call.costMicros) else "cost unavailable")
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                call.error?.takeIf(String::isNotBlank)?.let { error ->
-                                    Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 260.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        rows!!.forEachIndexed { index, call ->
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                                shape = MaterialTheme.shapes.medium,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text(
+                                        "Call ${index + 1} · round ${call.roundIndex + 1}",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Medium,
+                                    )
+                                    Text(
+                                        "input ${call.inputTokens} · cached ${call.cachedInputTokens} · output ${call.outputTokens}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontFamily = FontFamily.Monospace,
+                                    )
+                                    val nonCached = (call.inputTokens - call.cachedInputTokens).coerceAtLeast(0)
+                                    Text(
+                                        "non-cached $nonCached · total ${call.inputTokens + call.outputTokens}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontFamily = FontFamily.Monospace,
+                                    )
+                                    Text(
+                                        buildString {
+                                            append(call.status.lowercase(Locale.ROOT))
+                                            call.finishReason?.takeIf(String::isNotBlank)?.let { append(" · ").append(it) }
+                                            append(" · ")
+                                            append(if (call.costKnown) formatCostMicros(call.costMicros) else "cost unavailable")
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    call.error?.takeIf(String::isNotBlank)?.let { error ->
+                                        Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                                    }
                                 }
                             }
                         }

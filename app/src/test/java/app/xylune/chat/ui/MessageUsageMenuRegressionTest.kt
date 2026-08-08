@@ -21,5 +21,7 @@ class MessageUsageMenuRegressionTest {
         assertTrue(usageUi.contains("Intent.ACTION_SEND_MULTIPLE"))
         assertTrue(usageUi.contains("Non-cached input"))
         assertTrue(usageUi.contains("Provider calls"))
+        assertTrue(usageUi.contains(".heightIn(max = 260.dp)"))
+        assertTrue(usageUi.contains(".verticalScroll(rememberScrollState())"))
     }
 }
