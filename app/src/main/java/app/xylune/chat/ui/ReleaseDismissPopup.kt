@@ -61,12 +61,9 @@ private fun XylunePopupBackHandler(
 }
 
 /**
- * A transparent, full-screen popup placed underneath Xylune popups.
- *
- * Compose reports ordinary outside taps on pointer-down and can cancel the
- * pointer stream when Android takes over an edge Back gesture. Xylune waits for
- * pointer-up and never treats a gesture that began in a system-gesture inset as
- * an outside tap.
+ * Legacy pointer-up dismissal layer retained for the few surfaces that may
+ * explicitly opt out of native popup dismissal. Normal Xylune popups should
+ * prefer focusable native outside-tap dismissal so they cannot become stuck.
  */
 @Composable
 internal fun ReleaseDismissOutsideLayer(
@@ -113,12 +110,8 @@ internal fun ReleaseDismissOutsideLayer(
 }
 
 /**
- * Xylune's keyboard-safe dialog.
- *
- * Outside pointer-down never destroys an in-progress edit. Back first closes
- * the IME; a subsequent Back dismisses the dialog. Explicit Cancel/Save actions
- * remain the reliable dismissal path. Predictive Back scales and fades the
- * dialog with the system gesture instead of waiting silently for commit.
+ * Xylune's keyboard-safe dialog. Outside taps dismiss normally. Predictive Back
+ * still gets Xylune's progress animation and hides the IME before dismissing.
  */
 @Composable
 fun XyluneAlertDialog(
@@ -142,7 +135,7 @@ fun XyluneAlertDialog(
         onProgress = { backProgress = it },
     )
     MaterialAlertDialog(
-        onDismissRequest = {},
+        onDismissRequest = onDismissRequest,
         confirmButton = confirmButton,
         modifier = modifier.graphicsLayer {
             val progress = backProgress.coerceIn(0f, 1f)
@@ -163,28 +156,27 @@ fun XyluneAlertDialog(
         tonalElevation = tonalElevation,
         properties = DialogProperties(
             dismissOnBackPress = false,
-            dismissOnClickOutside = false,
+            dismissOnClickOutside = true,
         ),
     )
 }
 
-/** Dropdown menu whose outside dismissal happens on pointer-up, not down. */
+/** Dropdown menu with normal focus and reliable outside-tap dismissal. */
 @Composable
 internal fun XyluneDropdownMenu(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
-    dismissOnClickOutside: Boolean = false,
+    dismissOnClickOutside: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    if (!dismissOnClickOutside) ReleaseDismissOutsideLayer(expanded, onDismissRequest)
     MaterialDropdownMenu(
         expanded = expanded,
-        onDismissRequest = if (dismissOnClickOutside) onDismissRequest else ({}),
+        onDismissRequest = onDismissRequest,
         modifier = modifier,
         properties = PopupProperties(
-            focusable = dismissOnClickOutside,
-            dismissOnBackPress = dismissOnClickOutside,
+            focusable = true,
+            dismissOnBackPress = true,
             dismissOnClickOutside = dismissOnClickOutside,
         ),
         content = content,

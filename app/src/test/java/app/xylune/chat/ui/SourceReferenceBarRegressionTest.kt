@@ -1,5 +1,6 @@
 package app.xylune.chat.ui
 
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -17,6 +18,9 @@ class SourceReferenceBarRegressionTest {
         val richMessage = repositoryFile(
             "app/src/main/java/app/xylune/chat/ui/RichMessage.kt",
         ).readText()
+        val preview = repositoryFile(
+            "app/src/main/java/app/xylune/chat/ui/LinkPreview.kt",
+        ).readText()
 
         assertTrue(source.contains("LowSensitivityHorizontalScroll"))
         assertTrue(source.contains("horizontalArrangement = Arrangement.spacedBy(8.dp)"))
@@ -25,5 +29,9 @@ class SourceReferenceBarRegressionTest {
         assertTrue(source.contains("widthIn(max = 230.dp)"))
         assertTrue(richMessage.contains("SourceReferenceBar("))
         assertTrue(!richMessage.contains("sourceReferencesFooterMarkdown"))
+        assertTrue(preview.contains("onDismissRequest = onDismiss"))
+        assertTrue(preview.contains("focusable = true"))
+        assertTrue(preview.contains("dismissOnClickOutside = true"))
+        assertFalse(preview.contains("ReleaseDismissOutsideLayer(visible = true"))
     }
 }

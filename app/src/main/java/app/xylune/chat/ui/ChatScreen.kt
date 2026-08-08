@@ -3003,63 +3003,6 @@ private fun Composer(
                         }
                     }
                 }
-                if (!imageGenerationMode) LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        start = 36.dp,
-                        end = 56.dp,
-                    ),
-                ) {
-                    item {
-                        ThinkingComposerChip(
-                            enabled = current.thinkingEnabled,
-                            effort = current.thinkingEffort,
-                            provider = provider,
-                            model = model,
-                            onSelection = { enabled, effort ->
-                                viewModel.updateConversation {
-                                    it.copy(
-                                        thinkingEnabled = enabled,
-                                        thinkingEffort = effort ?: it.thinkingEffort,
-                                    )
-                                }
-                            },
-                        )
-                    }
-                    item {
-                        SearchComposerChip(
-                            webEnabled = current.webSearchEnabled,
-                            deepResearchEnabled = current.deepResearchEnabled,
-                            onSelection = { webEnabled, deepResearchEnabled ->
-                                viewModel.updateConversation {
-                                    it.copy(
-                                        webSearchEnabled = webEnabled,
-                                        deepResearchEnabled = deepResearchEnabled,
-                                    )
-                                }
-                            },
-                        )
-                    }
-                    item {
-                        ToolComposerChip(
-                            pythonEnabled = current.agentPythonEnabled,
-                            linuxEnabled = current.agentUbuntuEnabled,
-                            linuxInstalled = linuxInstalled,
-                            linuxDistributionName = linuxDistributionName,
-                            onOpenLinuxSetup = onOpenLinuxSetup,
-                            onPythonEnabled = { enabled ->
-                                viewModel.updateConversation { it.copy(agentPythonEnabled = enabled) }
-                            },
-                            onLinuxEnabled = { enabled ->
-                                viewModel.updateConversation { it.copy(agentUbuntuEnabled = enabled) }
-                            },
-                        )
-                    }
-                }
             }
 
             Row(verticalAlignment = Alignment.Bottom) {
@@ -3070,7 +3013,7 @@ private fun Composer(
                     Icon(
                         Icons.Outlined.Add,
                         if (imageGenerationMode) "Attachments are unavailable in image generation mode"
-                        else "Attach files, images, or a photo",
+                        else "Attachments, modes, and tools",
                     )
                 }
                 OutlinedTextField(
@@ -3133,7 +3076,7 @@ private fun Composer(
     if (plusMenu) {
         ModalBottomSheet(onDismissRequest = { plusMenu = false }) {
             Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                Text("Attach", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
+                Text("Add to chat", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
                 ComposerActionRow(Icons.Outlined.AttachFile, "Files", "Documents, archives, code, audio, and other supported files") {
                     plusMenu = false
                     filePicker.launch(arrayOf("*/*"))
@@ -3145,6 +3088,58 @@ private fun Composer(
                 ComposerActionRow(Icons.Outlined.CameraAlt, "Camera", "Take a photo and attach it") {
                     plusMenu = false
                     takePhoto()
+                }
+                if (!generating) conversation?.let { current ->
+                    Text(
+                        "Modes & tools",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 8.dp),
+                    )
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        ThinkingComposerChip(
+                            enabled = current.thinkingEnabled,
+                            effort = current.thinkingEffort,
+                            provider = provider,
+                            model = model,
+                            onSelection = { enabled, effort ->
+                                viewModel.updateConversation {
+                                    it.copy(
+                                        thinkingEnabled = enabled,
+                                        thinkingEffort = effort ?: it.thinkingEffort,
+                                    )
+                                }
+                            },
+                        )
+                        SearchComposerChip(
+                            webEnabled = current.webSearchEnabled,
+                            deepResearchEnabled = current.deepResearchEnabled,
+                            onSelection = { webEnabled, deepResearchEnabled ->
+                                viewModel.updateConversation {
+                                    it.copy(
+                                        webSearchEnabled = webEnabled,
+                                        deepResearchEnabled = deepResearchEnabled,
+                                    )
+                                }
+                            },
+                        )
+                        ToolComposerChip(
+                            pythonEnabled = current.agentPythonEnabled,
+                            linuxEnabled = current.agentUbuntuEnabled,
+                            linuxInstalled = linuxInstalled,
+                            linuxDistributionName = linuxDistributionName,
+                            onOpenLinuxSetup = onOpenLinuxSetup,
+                            onPythonEnabled = { enabled ->
+                                viewModel.updateConversation { it.copy(agentPythonEnabled = enabled) }
+                            },
+                            onLinuxEnabled = { enabled ->
+                                viewModel.updateConversation { it.copy(agentUbuntuEnabled = enabled) }
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -3376,8 +3371,11 @@ private fun ThinkingComposerChip(
             ) {
                 Icon(Icons.Outlined.Psychology, null, Modifier.size(17.dp))
                 Text(
-                    if (options.isEmpty()) "Thinking unavailable"
-                    else "Think · ${selected?.label ?: if (effectiveEnabled) effort.composerName else "Off"}",
+                    when {
+                        options.isEmpty() -> "Unavailable"
+                        !effectiveEnabled -> "Off"
+                        else -> effectiveEffort.composerName
+                    },
                     style = MaterialTheme.typography.labelLarge,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -3476,15 +3474,10 @@ private fun SearchComposerChip(
 ) {
     var menu by remember { mutableStateOf(false) }
     val haptics = rememberXyluneHaptics()
-    val context = LocalContext.current
-    val searchSettings by remember(context) {
-        (context.applicationContext as app.xylune.chat.XyluneApplication)
-            .container.appPreferences.webSearchSettings
-    }.collectAsState()
     val label = when {
-        deepResearchEnabled -> "Research · ${searchSettings.activeLabel}"
-        webEnabled -> "Search · ${searchSettings.activeLabel}"
-        else -> "Search off"
+        deepResearchEnabled -> "Research"
+        webEnabled -> "Search"
+        else -> "Off"
     }
     val icon = when {
         deepResearchEnabled -> Icons.Outlined.TravelExplore
@@ -3553,10 +3546,10 @@ private fun ToolComposerChip(
     val effectiveLinuxEnabled = linuxEnabled && linuxInstalled
     val enabledCount = listOf(pythonEnabled, effectiveLinuxEnabled).count { it }
     val label = when {
-        pythonEnabled && effectiveLinuxEnabled -> "Tools · 2"
-        pythonEnabled -> "Tools · Code"
-        effectiveLinuxEnabled -> "Tools · Linux"
-        else -> "Tools off"
+        pythonEnabled && effectiveLinuxEnabled -> "2 on"
+        pythonEnabled -> "Code"
+        effectiveLinuxEnabled -> "Linux"
+        else -> "Off"
     }
     Box {
         Surface(
