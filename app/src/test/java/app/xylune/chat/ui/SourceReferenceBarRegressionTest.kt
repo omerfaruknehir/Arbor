@@ -11,7 +11,7 @@ class SourceReferenceBarRegressionTest {
         ?: error("Could not locate repository file: $path")
 
     @Test
-    fun `bottom source bar stays horizontal and source pills expand inline`() {
+    fun `bottom source bar stays horizontal while preview is a separate animated popup`() {
         val source = repositoryFile(
             "app/src/main/java/app/xylune/chat/ui/SourceReferenceBar.kt",
         ).readText()
@@ -24,20 +24,22 @@ class SourceReferenceBarRegressionTest {
 
         assertTrue(source.contains("LowSensitivityHorizontalScroll"))
         assertTrue(source.contains("horizontalArrangement = Arrangement.spacedBy(8.dp)"))
-        assertTrue(source.contains("var expandedTarget"))
-        assertTrue(source.contains("animateContentSize("))
-        assertTrue(source.contains("AnimatedVisibility("))
-        assertTrue(source.contains("LinkPreviewDetails("))
-        assertTrue(source.contains("showHeader = false"))
-        assertTrue(source.contains("widthIn(max = if (expanded) 340.dp else 230.dp)"))
-        assertFalse(source.contains("AnchoredLinkPreview("))
-        assertFalse(source.contains("anchorBoundsInWindow = anchor"))
+        assertTrue(source.contains("var pendingReference"))
+        assertTrue(source.contains("onGloballyPositioned"))
+        assertTrue(source.contains("anchorBoundsInWindow = anchor"))
+        assertTrue(source.contains("AnchoredLinkPreview("))
+        assertTrue(source.contains("widthIn(max = 230.dp)"))
+        assertFalse(source.contains("animateContentSize("))
+        assertFalse(source.contains("var expandedTarget"))
         assertTrue(richMessage.contains("SourceReferenceBar("))
         assertTrue(!richMessage.contains("sourceReferencesFooterMarkdown"))
-        assertTrue(preview.contains("showHeader: Boolean = true"))
-        assertTrue(preview.contains("onDismissRequest = onDismiss"))
-        assertTrue(preview.contains("focusable = true"))
-        assertTrue(preview.contains("dismissOnClickOutside = true"))
-        assertFalse(preview.contains("ReleaseDismissOutsideLayer(visible = true"))
+
+        assertTrue(preview.contains("MutableTransitionState(false)"))
+        assertTrue(preview.contains("scaleIn("))
+        assertTrue(preview.contains("initialScale = initialScale"))
+        assertTrue(preview.contains("Modifier.width(330.dp).heightIn(max = 420.dp)"))
+        assertTrue(preview.contains("ReleaseDismissOutsideLayer("))
+        assertTrue(preview.contains("dismissOnBackPress = false"))
+        assertTrue(preview.contains("dismissOnClickOutside = false"))
     }
 }
