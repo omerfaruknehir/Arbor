@@ -1,0 +1,500 @@
+Recent Android runs on main:
+[{"conclusion":"success","createdAt":"2026-08-08T02:52:06Z","databaseId":31235934949,"displayTitle":"Merge pull request #95 from omerfaruknehir/agent/scroll-provider-usag…","event":"push","headSha":"2ad03e3f8feb3b0ba880247fa58fea8d220d5124","number":641,"status":"completed","url":"https://github.com/omerfaruknehir/Xylune/actions/runs/31235934949"},{"conclusion":"success","createdAt":"2026-08-08T01:55:34Z","databaseId":31233788191,"displayTitle":"Merge pull request #94 from omerfaruknehir/release/0.24.13","event":"push","headSha":"29e5a362741b6556029ac4ef05d6a3206dc86359","number":639,"status":"completed","url":"https://github.com/omerfaruknehir/Xylune/actions/runs/31233788191"},{"conclusion":"success","createdAt":"2026-08-07T22:45:37Z","databaseId":31224922642,"displayTitle":"Merge pull request #93 from omerfaruknehir/agent/image-ui-google-usag…","event":"push","headSha":"c1301f585a36b52ef5fc52448e371dacaefebf5d","number":637,"status":"completed","url":"https://github.com/omerfaruknehir/Xylune/actions/runs/31224922642"},{"conclusion":"success","createdAt":"2026-08-07T19:51:44Z","databaseId":31213318432,"displayTitle":"Bump Xylune to 0.24.12","event":"push","headSha":"cfd88b16821c0f05ca8d9d2f190a28c3096c0eff","number":627,"status":"completed","url":"https://github.com/omerfaruknehir/Xylune/actions/runs/31213318432"},{"conclusion":"success","createdAt":"2026-08-07T19:38:08Z","databaseId":31212331333,"displayTitle":"Merge pull request #92 from omerfaruknehir/agent/image-generation-ui","event":"push","headSha":"071b4b2dad7c976f3f347f8eea20aed36a4c9cf3","number":626,"status":"completed","url":"https://github.com/omerfaruknehir/Xylune/actions/runs/31212331333"},{"conclusion":"success","createdAt":"2026-08-07T16:43:26Z","databaseId":31198933914,"displayTitle":"Release 0.24.11","event":"push","headSha":"6e44df88ef84abf82f5d588d3e70d96a4a1f7cc3","number":607,"status":"completed","url":"https://github.com/omerfaruknehir/Xylune/actions/runs/31198933914"},{"conclusion":"success","createdAt":"2026-08-07T16:18:38Z","databaseId":31196941403,"displayTitle":"Merge pull request #91 from omerfaruknehir/agent/qwen-image-native-input","event":"push","headSha":"743a2305fbdfd202c80f6bf0b032eea91cf6b0ae","number":606,"status":"completed","url":"https://github.com/omerfaruknehir/Xylune/actions/runs/31196941403"},{"conclusion":"success","createdAt":"2026-08-07T13:51:22Z","databaseId":31184656212,"displayTitle":"Fix Alibaba model metadata and Qwen Image transport","event":"push","headSha":"0f041f4f9471f8924e1fb9fa74c27739f47d573d","number":573,"status":"completed","url":"https://github.com/omerfaruknehir/Xylune/actions/runs/31184656212"}]
+
+Latest failed/cancelled main Android run:
+{"conclusion":"failure","createdAt":"2026-08-07T12:34:39Z","databaseId":31178779844,"displayTitle":"Fix release R8 out-of-memory failure","event":"push","headSha":"7d96d6057921cf17a20a449397b9f98dd99fa34e","jobs":[{"completedAt":"2026-08-07T12:47:36Z","conclusion":"failure","databaseId":92869707996,"name":"publish-release","startedAt":"2026-08-07T12:47:27Z","status":"completed","steps":[{"completedAt":"2026-08-07T12:47:30Z","conclusion":"success","name":"Set up job","number":1,"startedAt":"2026-08-07T12:47:28Z","status":"completed"},{"completedAt":"2026-08-07T12:47:31Z","conclusion":"success","name":"Run actions/checkout@v6","number":2,"startedAt":"2026-08-07T12:47:30Z","status":"completed"},{"completedAt":"2026-08-07T12:47:34Z","conclusion":"failure","name":"Set up Android tools","number":3,"startedAt":"2026-08-07T12:47:31Z","status":"completed"},{"completedAt":"2026-08-07T12:47:34Z","conclusion":"skipped","name":"Run actions/download-artifact@v5","number":4,"startedAt":"2026-08-07T12:47:34Z","status":"completed"},{"completedAt":"2026-08-07T12:47:34Z","conclusion":"skipped","name":"Prepare fixed six-asset release","number":5,"startedAt":"2026-08-07T12:47:34Z","status":"completed"},{"completedAt":"2026-08-07T12:47:34Z","conclusion":"skipped","name":"Publish GitHub release","number":6,"startedAt":"2026-08-07T12:47:34Z","status":"completed"},{"completedAt":"2026-08-07T12:47:35Z","conclusion":"success","name":"Post Run actions/checkout@v6","number":12,"startedAt":"2026-08-07T12:47:34Z","status":"completed"},{"completedAt":"2026-08-07T12:47:35Z","conclusion":"success","name":"Complete job","number":13,"startedAt":"2026-08-07T12:47:35Z","status":"completed"}],"url":"https://github.com/omerfaruknehir/Xylune/actions/runs/31178779844/job/92869707996"},{"completedAt":"2026-08-07T12:34:39Z","conclusion":"skipped","databaseId":92869708011,"name":"signed-release","startedAt":"2026-08-07T12:47:25Z","status":"completed","steps":[],"url":"https://github.com/omerfaruknehir/Xylune/actions/runs/31178779844/job/92869708011"},{"completedAt":"2026-08-07T12:44:25Z","conclusion":"success","databaseId":92869708287,"name":"verify","startedAt":"2026-08-07T12:34:42Z","status":"completed","steps":[{"completedAt":"2026-08-07T12:34:46Z","conclusion":"success","name":"Set up job","number":1,"startedAt":"2026-08-07T12:34:44Z","status":"completed"},{"completedAt":"2026-08-07T12:34:48Z","conclusion":"success","name":"Run actions/checkout@v6","number":2,"startedAt":"2026-08-07T12:34:46Z","status":"completed"},{"completedAt":"2026-08-07T12:34:48Z","conclusion":"success","name":"Run actions/setup-java@v5","number":3,"startedAt":"2026-08-07T12:34:48Z","status":"completed"},{"completedAt":"2026-08-07T12:35:02Z","conclusion":"success","name":"Set up Android 16 SDK","number":4,"startedAt":"2026-08-07T12:34:48Z","status":"completed"},{"completedAt":"2026-08-07T12:35:12Z","conclusion":"success","name":"Run gradle/actions/setup-gradle@v6","number":5,"startedAt":"2026-08-07T12:35:02Z","status":"completed"},{"completedAt":"2026-08-07T12:35:13Z","conclusion":"success","name":"Verify third-party licenses","number":6,"startedAt":"2026-08-07T12:35:12Z","status":"completed"},{"completedAt":"2026-08-07T12:35:24Z","conclusion":"success","name":"Verify offline license catalog","number":7,"startedAt":"2026-08-07T12:35:13Z","status":"completed"},{"completedAt":"2026-08-07T12:44:02Z","conclusion":"success","name":"Test, lint, and build public release","number":8,"startedAt":"2026-08-07T12:35:24Z","status":"completed"},{"completedAt":"2026-08-07T12:44:03Z","conclusion":"success","name":"Verify release APK signature","number":9,"startedAt":"2026-08-07T12:44:02Z","status":"completed"},{"completedAt":"2026-08-07T12:44:03Z","conclusion":"success","name":"Stage verified binaries","number":10,"startedAt":"2026-08-07T12:44:03Z","status":"completed"},{"completedAt":"2026-08-07T12:44:10Z","conclusion":"success","name":"Run actions/upload-artifact@v7","number":11,"startedAt":"2026-08-07T12:44:03Z","status":"completed"},{"completedAt":"2026-08-07T12:44:10Z","conclusion":"skipped","name":"Run actions/upload-artifact@v7","number":12,"startedAt":"2026-08-07T12:44:10Z","status":"completed"},{"completedAt":"2026-08-07T12:44:21Z","conclusion":"success","name":"Post Run gradle/actions/setup-gradle@v6","number":22,"startedAt":"2026-08-07T12:44:10Z","status":"completed"},{"completedAt":"2026-08-07T12:44:22Z","conclusion":"success","name":"Post Run actions/setup-java@v5","number":23,"startedAt":"2026-08-07T12:44:21Z","status":"completed"},{"completedAt":"2026-08-07T12:44:22Z","conclusion":"success","name":"Post Run actions/checkout@v6","number":24,"startedAt":"2026-08-07T12:44:22Z","status":"completed"},{"completedAt":"2026-08-07T12:44:22Z","conclusion":"success","name":"Complete job","number":25,"startedAt":"2026-08-07T12:44:22Z","status":"completed"}],"url":"https://github.com/omerfaruknehir/Xylune/actions/runs/31178779844/job/92869708287"},{"completedAt":"2026-08-07T12:44:36Z","conclusion":"success","databaseId":92869708923,"name":"detect-release","startedAt":"2026-08-07T12:44:28Z","status":"completed","steps":[{"completedAt":"2026-08-07T12:44:30Z","conclusion":"success","name":"Set up job","number":1,"startedAt":"2026-08-07T12:44:29Z","status":"completed"},{"completedAt":"2026-08-07T12:44:32Z","conclusion":"success","name":"Run actions/checkout@v6","number":2,"startedAt":"2026-08-07T12:44:30Z","status":"completed"},{"completedAt":"2026-08-07T12:44:34Z","conclusion":"success","name":"Detect unpublished app version","number":3,"startedAt":"2026-08-07T12:44:32Z","status":"completed"},{"completedAt":"2026-08-07T12:44:34Z","conclusion":"success","name":"Post Run actions/checkout@v6","number":6,"startedAt":"2026-08-07T12:44:34Z","status":"completed"},{"completedAt":"2026-08-07T12:44:34Z","conclusion":"success","name":"Complete job","number":7,"startedAt":"2026-08-07T12:44:34Z","status":"completed"}],"url":"https://github.com/omerfaruknehir/Xylune/actions/runs/31178779844/job/92869708923"},{"completedAt":"2026-08-07T12:34:39Z","conclusion":"skipped","databaseId":92869742755,"name":"device-smoke","startedAt":"2026-08-07T12:47:34Z","status":"completed","steps":[],"url":"https://github.com/omerfaruknehir/Xylune/actions/runs/31178779844/job/92869742755"}],"number":566,"status":"completed","updatedAt":"2026-08-07T12:47:37Z","url":"https://github.com/omerfaruknehir/Xylune/actions/runs/31178779844"}
+
+Failed logs:
+publish-release	UNKNOWN STEP	﻿2026-08-07T12:47:28.7390748Z Current runner version: '2.336.0'
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7430798Z ##[group]Runner Image Provisioner
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7432223Z Hosted Compute Agent
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7433150Z Version: 20260707.563
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7434118Z Commit: 02667638d2b423fbc733a8e32a88b44996a3ba6e
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7435667Z Build Date: 2026-07-07T19:33:50Z
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7436777Z Worker ID: {d7e6c93e-922d-4d26-9460-7514daf400fd}
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7438034Z Azure Region: centralus
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7438997Z ##[endgroup]
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7440969Z ##[group]Operating System
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7442052Z Ubuntu
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7442883Z 22.04.5
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7443607Z LTS
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7445411Z ##[endgroup]
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7446362Z ##[group]Runner Image
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7447441Z Image: ubuntu-22.04
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7448382Z Version: 20260720.234.2
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7450505Z Included Software: https://github.com/actions/runner-images/blob/ubuntu22/20260720.234/images/ubuntu/Ubuntu2204-Readme.md
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7452980Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu22%2F20260720.234
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7454465Z ##[endgroup]
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7456233Z ##[group]GITHUB_TOKEN Permissions
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7459110Z Contents: write
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7459864Z Metadata: read
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7460460Z ##[endgroup]
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7462972Z Secret source: Actions
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.7464545Z Prepare workflow directory
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.8168670Z Prepare all required actions
+publish-release	UNKNOWN STEP	2026-08-07T12:47:28.8243726Z Getting action download info
+publish-release	UNKNOWN STEP	2026-08-07T12:47:29.0753525Z Download action repository 'actions/checkout@v6' (SHA:d23441a48e516b6c34aea4fa41551a30e30af803)
+publish-release	UNKNOWN STEP	2026-08-07T12:47:29.4522628Z Download action repository 'android-actions/setup-android@v4' (SHA:40fd30fb8d7440372e1316f5d1809ec01dcd3699)
+publish-release	UNKNOWN STEP	2026-08-07T12:47:29.7371808Z Download action repository 'actions/download-artifact@v5' (SHA:634f93cb2916e3fdff6788551b99b062d0335ce0)
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.1724615Z Complete job name: publish-release
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2515922Z ##[group]Run actions/checkout@v6
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2516976Z with:
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2517456Z   fetch-depth: 0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2517926Z   repository: omerfaruknehir/Xylune
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2522280Z   token: ***
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2522717Z   ssh-strict: true
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2523164Z   ssh-user: git
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2523610Z   persist-credentials: true
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2524089Z   clean: true
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2524526Z   sparse-checkout-cone-mode: true
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2525235Z   fetch-tags: false
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2525677Z   show-progress: true
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2526145Z   lfs: false
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2526580Z   submodules: false
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2527028Z   set-safe-directory: true
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2527532Z   allow-unsafe-pr-checkout: false
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2528292Z env:
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2528760Z   XYLUNE_SOURCE_REPOSITORY: omerfaruknehir/Xylune
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2529491Z   XYLUNE_SOURCE_COMMIT: 7d96d6057921cf17a20a449397b9f98dd99fa34e
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2530391Z   XYLUNE_MICROSOFT_CLIENT_ID: 8a39da15-8397-489a-adcc-c6766bcfb085
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2531100Z   XYLUNE_DROPBOX_APP_KEY: 8d64e2sl7jtzuu6
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2531639Z   XYLUNE_VERSION: 0.24.10
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2532100Z   XYLUNE_TAG: v0.24.10
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.2532554Z ##[endgroup]
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.3662757Z Syncing repository: omerfaruknehir/Xylune
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.3665417Z ##[group]Getting Git version info
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.3666534Z Working directory is '/home/runner/work/Xylune/Xylune'
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.3667908Z [command]/usr/bin/git version
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.3776760Z git version 2.54.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.3838337Z ##[endgroup]
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.3856892Z Temporarily overriding HOME='/home/runner/work/_temp/c7a5227b-eb6e-4bc0-9aad-5aeed1ce6bf6' before making global git config changes
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.3859502Z Adding repository directory to the temporary git global config as a safe directory
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.3865595Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Xylune/Xylune
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.3918679Z Deleting the contents of '/home/runner/work/Xylune/Xylune'
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.3925122Z ##[group]Determining repository object format
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.3943831Z ##[endgroup]
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.3945587Z ##[group]Initializing the repository
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.3946993Z [command]/usr/bin/git init /home/runner/work/Xylune/Xylune
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4048037Z hint: Using 'master' as the name for the initial branch. This default branch name
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4050806Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4052803Z hint: to use in all of your new repositories, which will suppress this warning,
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4054482Z hint: call:
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4055696Z hint:
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4056760Z hint: 	git config --global init.defaultBranch <name>
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4057931Z hint:
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4059088Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4060929Z hint: 'development'. The just-created branch can be renamed via this command:
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4062579Z hint:
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4063658Z hint: 	git branch -m <name>
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4064706Z hint:
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4066257Z hint: Disable this message with "git config set advice.defaultBranchName false"
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4068246Z Initialized empty Git repository in /home/runner/work/Xylune/Xylune/.git/
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4071653Z [command]/usr/bin/git remote add origin https://github.com/omerfaruknehir/Xylune
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4125840Z ##[endgroup]
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4127522Z ##[group]Disabling automatic garbage collection
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4129024Z [command]/usr/bin/git config --local gc.auto 0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4167041Z ##[endgroup]
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4168582Z ##[group]Setting up auth
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4169404Z Removing SSH command configuration
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4176969Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4224490Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4618593Z Removing HTTP extra header
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4625858Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4672512Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4960369Z Removing includeIf entries pointing to credentials config files
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.4961417Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.5006385Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.5289008Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-25d244ad-2867-4f49-a9bf-bac8b869990b.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.5340614Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/Xylune/Xylune/.git.path /home/runner/work/_temp/git-credentials-25d244ad-2867-4f49-a9bf-bac8b869990b.config
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.5382433Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/Xylune/Xylune/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-25d244ad-2867-4f49-a9bf-bac8b869990b.config
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.5423848Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-25d244ad-2867-4f49-a9bf-bac8b869990b.config
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.5473564Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-25d244ad-2867-4f49-a9bf-bac8b869990b.config
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.5512352Z ##[endgroup]
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.5513523Z ##[group]Fetching the repository
+publish-release	UNKNOWN STEP	2026-08-07T12:47:30.5521224Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/*
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7027449Z From https://github.com/omerfaruknehir/Xylune
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7031013Z  * [new branch]      agent/defer-icon-switch-0.20.19 -> origin/agent/defer-icon-switch-0.20.19
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7033059Z  * [new branch]      agent/finish-cloud-backup -> origin/agent/finish-cloud-backup
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7035698Z  * [new branch]      agent/finish-cloud-backup-test -> origin/agent/finish-cloud-backup-test
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7039644Z  * [new branch]      agent/fix-icon-kill-logo-message-truncation-0.20.18 -> origin/agent/fix-icon-kill-logo-message-truncation-0.20.18
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7043720Z  * [new branch]      agent/fix-icon-message-rendering-0.20.18 -> origin/agent/fix-icon-message-rendering-0.20.18
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7047921Z  * [new branch]      agent/fix-offline-license-icons-disclaimer -> origin/agent/fix-offline-license-icons-disclaimer
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7051633Z  * [new branch]      agent/fix-setup-viewport-0.20.21 -> origin/agent/fix-setup-viewport-0.20.21
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7054609Z  * [new branch]      agent/full-xylune-rebrand -> origin/agent/full-xylune-rebrand
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7058312Z  * [new branch]      agent/legal-capability-ui-followup -> origin/agent/legal-capability-ui-followup
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7062276Z  * [new branch]      agent/legal-pages-about-dynamic-logo -> origin/agent/legal-pages-about-dynamic-logo
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7067292Z  * [new branch]      agent/live-icon-switch-and-themed-logos-0.20.17 -> origin/agent/live-icon-switch-and-themed-logos-0.20.17
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7071442Z  * [new branch]      agent/memory-management-0.22.0 -> origin/agent/memory-management-0.22.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7075919Z  * [new branch]      agent/model-picker-interaction-hotfix -> origin/agent/model-picker-interaction-hotfix
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7079938Z  * [new branch]      agent/native-provider-web-search -> origin/agent/native-provider-web-search
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7082826Z  * [new branch]      agent/onboarding-ux-0.20.14 -> origin/agent/onboarding-ux-0.20.14
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7086727Z  * [new branch]      agent/openrouter-model-catalog-overhaul -> origin/agent/openrouter-model-catalog-overhaul
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7091090Z  * [new branch]      agent/performance-overlay-profile-scale -> origin/agent/performance-overlay-profile-scale
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7095180Z  * [new branch]      agent/release-snapshot-0.20.19 -> origin/agent/release-snapshot-0.20.19
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7098871Z  * [new branch]      agent/release-snapshot-0.20.19-final -> origin/agent/release-snapshot-0.20.19-final
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7102430Z  * [new branch]      agent/release-status-0.20.18 -> origin/agent/release-status-0.20.18
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7105925Z  * [new branch]      agent/release-status-0.20.19 -> origin/agent/release-status-0.20.19
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7109445Z  * [new branch]      agent/release-status-0.20.19-final -> origin/agent/release-status-0.20.19-final
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7112918Z  * [new branch]      agent/release-status-0.20.20 -> origin/agent/release-status-0.20.20
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7116359Z  * [new branch]      agent/release-status-0.20.21 -> origin/agent/release-status-0.20.21
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7119662Z  * [new branch]      agent/search-controls-0.24.7 -> origin/agent/search-controls-0.24.7
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7123003Z  * [new branch]      agent/settings-response-style -> origin/agent/settings-response-style
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7126372Z  * [new branch]      agent/source-pills-0.24.8 -> origin/agent/source-pills-0.24.8
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7129962Z  * [new branch]      agent/stateful-icon-restart-0.20.20 -> origin/agent/stateful-icon-restart-0.20.20
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7133722Z  * [new branch]      agent/stateful-status-02020 -> origin/agent/stateful-status-02020
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7138095Z  * [new branch]      agent/stream-preview-smoothing-0.23.17 -> origin/agent/stream-preview-smoothing-0.23.17
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7141988Z  * [new branch]      agent/theme-matched-icons-0.20.16 -> origin/agent/theme-matched-icons-0.20.16
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7145997Z  * [new branch]      agent/title-collapse-hotfix-0.23.16 -> origin/agent/title-collapse-hotfix-0.23.16
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7149621Z  * [new branch]      agent/ttft-root-fix-0.23.18 -> origin/agent/ttft-root-fix-0.23.18
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7153046Z  * [new branch]      agent/ux-empty-response-hotfix -> origin/agent/ux-empty-response-hotfix
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7157086Z  * [new branch]      agent/widget-capability-ux-0.20.27 -> origin/agent/widget-capability-ux-0.20.27
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7160832Z  * [new branch]      agent/widget-compiler-0.20.28 -> origin/agent/widget-compiler-0.20.28
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7164626Z  * [new branch]      agent/widget-compiler-tool-0.20.29 -> origin/agent/widget-compiler-tool-0.20.29
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7168641Z  * [new branch]      agent/widget-layout-adaptive -> origin/agent/widget-layout-adaptive
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7172147Z  * [new branch]      agent/widget-snippet-runtime -> origin/agent/widget-snippet-runtime
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7176059Z  * [new branch]      agent/xylune-v2-openrouter-images -> origin/agent/xylune-v2-openrouter-images
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7179666Z  * [new branch]      bootstrap/0.23.5-pr-preparer -> origin/bootstrap/0.23.5-pr-preparer
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7183175Z  * [new branch]      codex/automatic-version-releases -> origin/codex/automatic-version-releases
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7187318Z  * [new branch]      codex/offline-license-catalog-0.20.6 -> origin/codex/offline-license-catalog-0.20.6
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7191937Z  * [new branch]      feature/linux-cloud-app-folder-backups-0.20.24 -> origin/feature/linux-cloud-app-folder-backups-0.20.24
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7197177Z  * [new branch]      feature/model-multiselect-backup-chat-share-0.20.23 -> origin/feature/model-multiselect-backup-chat-share-0.20.23
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7200684Z  * [new branch]      feature/pages-logo-slider-popup-motion -> origin/feature/pages-logo-slider-popup-motion
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7203677Z  * [new branch]      feature/setup-restore-settings-0.20.25 -> origin/feature/setup-restore-settings-0.20.25
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7206462Z  * [new branch]      fix-license-png-loading -> origin/fix-license-png-loading
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7208572Z  * [new branch]      fix/apt-status-fd-0.23.12 -> origin/fix/apt-status-fd-0.23.12
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7211087Z  * [new branch]      fix/chat-title-scroll-mapping-0.23.15 -> origin/fix/chat-title-scroll-mapping-0.23.15
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7213678Z  * [new branch]      fix/cloud-restore-and-icons -> origin/fix/cloud-restore-and-icons
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7216460Z  * [new branch]      fix/complete-back-animations-0.23.13 -> origin/fix/complete-back-animations-0.23.13
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7219174Z  * [new branch]      fix/half-slide-half-fade-0.23.14 -> origin/fix/half-slide-half-fade-0.23.14
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7221596Z  * [new branch]      fix/horizontal-source-bar -> origin/fix/horizontal-source-bar
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7223640Z  * [new branch]      fix/icon-safe-zone      -> origin/fix/icon-safe-zone
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7226117Z  * [new branch]      fix/linux-file-backed-logs-0.23.11 -> origin/fix/linux-file-backed-logs-0.23.11
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7228747Z  * [new branch]      fix/linux-progress-pipe-0.23.10 -> origin/fix/linux-progress-pipe-0.23.10
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7231594Z  * [new branch]      fix/linux-setup-progress-storage-0.23.9 -> origin/fix/linux-setup-progress-storage-0.23.9
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7234333Z  * [new branch]      fix/memory-card-layout-0.22.1 -> origin/fix/memory-card-layout-0.22.1
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7237262Z  * [new branch]      fix/openai-compatible-visible-reasoning -> origin/fix/openai-compatible-visible-reasoning
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7240338Z  * [new branch]      fix/pages-combined-theme-color-dialog -> origin/fix/pages-combined-theme-color-dialog
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7243420Z  * [new branch]      fix/pages-icon-match-app-exactly -> origin/fix/pages-icon-match-app-exactly
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7246363Z  * [new branch]      fix/pages-motion-tabs-switch-padding -> origin/fix/pages-motion-tabs-switch-padding
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7249019Z  * [new branch]      fix/pages-scroll-icon-scheme -> origin/fix/pages-scroll-icon-scheme
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7251448Z  * [new branch]      fix/pages-single-shared-shell -> origin/fix/pages-single-shared-shell
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7253901Z  * [new branch]      fix/pages-switch-drag-tab-slide -> origin/fix/pages-switch-drag-tab-slide
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7256938Z  * [new branch]      fix/pages-switch-geometry-dialog-motion -> origin/fix/pages-switch-geometry-dialog-motion
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7259768Z  * [new branch]      fix/pages-switch-hover-position -> origin/fix/pages-switch-hover-position
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7262417Z  * [new branch]      fix/pages-switch-hover-position-v2 -> origin/fix/pages-switch-hover-position-v2
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7265190Z  * [new branch]      fix/pages-switch-off-position -> origin/fix/pages-switch-off-position
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7267915Z  * [new branch]      fix/pages-theme-scheme-scroll-settle -> origin/fix/pages-theme-scheme-scroll-settle
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7270478Z  * [new branch]      fix/pages-title-settle-only -> origin/fix/pages-title-settle-only
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7273164Z  * [new branch]      fix/predictive-back-progress-flow-crash -> origin/fix/predictive-back-progress-flow-crash
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7276449Z  * [new branch]      fix/readme-latest-links-and-android-tests -> origin/fix/readme-latest-links-and-android-tests
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7279231Z  * [new branch]      fix/release-direct-api-upload -> origin/fix/release-direct-api-upload
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7281509Z  * [new branch]      fix/release-draft-recovery -> origin/fix/release-draft-recovery
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7283861Z  * [new branch]      fix/releases-animation-fast-load -> origin/fix/releases-animation-fast-load
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7286799Z  * [new branch]      fix/response-resume-loop-0.20.35 -> origin/fix/response-resume-loop-0.20.35
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7289407Z  * [new branch]      fix/retrigger-search-stream-build -> origin/fix/retrigger-search-stream-build
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7292260Z  * [new branch]      fix/search-results-stream-errors-0.24.10 -> origin/fix/search-results-stream-errors-0.24.10
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7295281Z  * [new branch]      fix/setup-cloud-ux-predictive-back -> origin/fix/setup-cloud-ux-predictive-back
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7297680Z  * [new branch]      fix/setup-flow-animations -> origin/fix/setup-flow-animations
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7299878Z  * [new branch]      fix/setup-pager-google-oauth -> origin/fix/setup-pager-google-oauth
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7302110Z  * [new branch]      fix/setup-real-swipe-pager -> origin/fix/setup-real-swipe-pager
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7304451Z  * [new branch]      fix/setup-spacing-empty-provider -> origin/fix/setup-spacing-empty-provider
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7307411Z  * [new branch]      fix/setup-status-and-dynamic-icon-0.20.22 -> origin/fix/setup-status-and-dynamic-icon-0.20.22
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7309629Z  * [new branch]      main                    -> origin/main
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7311174Z  * [new branch]      nativebrowser-ci        -> origin/nativebrowser-ci
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7312917Z  * [new branch]      nativebrowser-ci2       -> origin/nativebrowser-ci2
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7314669Z  * [new branch]      nativebrowser-ci3       -> origin/nativebrowser-ci3
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7316642Z  * [new branch]      rebrand/xylune-0.23.0   -> origin/rebrand/xylune-0.23.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7318399Z  * [new branch]      release/0.23.19         -> origin/release/0.23.19
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7320162Z  * [new branch]      release/0.24.4-finalize -> origin/release/0.24.4-finalize
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7322129Z  * [new branch]      release/0.24.4-pages-polish -> origin/release/0.24.4-pages-polish
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7324483Z  * [new branch]      release/0.24.5-thinking-update-check -> origin/release/0.24.5-thinking-update-check
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7327364Z  * [new branch]      release/cloud-providers-0.22.5 -> origin/release/cloud-providers-0.22.5
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7329598Z  * [new branch]      release/drive-updates-0.22.4 -> origin/release/drive-updates-0.22.4
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7331823Z  * [new branch]      release/keyboard-search-0.22.2 -> origin/release/keyboard-search-0.22.2
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7334186Z  * [new branch]      release/memory-management-0.22.1 -> origin/release/memory-management-0.22.1
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7336683Z  * [new branch]      release/scroll-physics-0.22.3 -> origin/release/scroll-physics-0.22.3
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7338567Z  * [new branch]      tmp-noop                -> origin/tmp-noop
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7340071Z  * [new branch]      tmp-noop2               -> origin/tmp-noop2
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7341575Z  * [new branch]      tmp-noop3               -> origin/tmp-noop3
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7343291Z  * [new branch]      variant/v0.16.31-original -> origin/variant/v0.16.31-original
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7345396Z  * [new branch]      variant/v0.16.32-original -> origin/variant/v0.16.32-original
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7347677Z  * [new branch]      variant/v0.16.41-original -> origin/variant/v0.16.41-original
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7349661Z  * [new branch]      variant/v0.17.27-original -> origin/variant/v0.17.27-original
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7351745Z  * [new branch]      xylune/0.23.5-back-legal-prompt -> origin/xylune/0.23.5-back-legal-prompt
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7353516Z  * [new tag]         v0.11.0                 -> v0.11.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7354739Z  * [new tag]         v0.11.1                 -> v0.11.1
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7356150Z  * [new tag]         v0.12.0                 -> v0.12.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7357394Z  * [new tag]         v0.13.0                 -> v0.13.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7358624Z  * [new tag]         v0.14.0                 -> v0.14.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7359949Z  * [new tag]         v0.15.0-prebuild        -> v0.15.0-prebuild
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7361532Z  * [new tag]         v0.16.0                 -> v0.16.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7362764Z  * [new tag]         v0.16.1                 -> v0.16.1
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7363988Z  * [new tag]         v0.16.10                -> v0.16.10
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7365494Z  * [new tag]         v0.16.11                -> v0.16.11
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7366809Z  * [new tag]         v0.16.12                -> v0.16.12
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7368069Z  * [new tag]         v0.16.14                -> v0.16.14
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7369317Z  * [new tag]         v0.16.16                -> v0.16.16
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7370573Z  * [new tag]         v0.16.17                -> v0.16.17
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7371820Z  * [new tag]         v0.16.18                -> v0.16.18
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7373072Z  * [new tag]         v0.16.19                -> v0.16.19
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7374310Z  * [new tag]         v0.16.2                 -> v0.16.2
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7375743Z  * [new tag]         v0.16.20                -> v0.16.20
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7377017Z  * [new tag]         v0.16.21                -> v0.16.21
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7378263Z  * [new tag]         v0.16.22                -> v0.16.22
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7379510Z  * [new tag]         v0.16.23                -> v0.16.23
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7380755Z  * [new tag]         v0.16.24                -> v0.16.24
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7382016Z  * [new tag]         v0.16.25                -> v0.16.25
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7383262Z  * [new tag]         v0.16.26                -> v0.16.26
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7384506Z  * [new tag]         v0.16.27                -> v0.16.27
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7385875Z  * [new tag]         v0.16.28                -> v0.16.28
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7387154Z  * [new tag]         v0.16.29                -> v0.16.29
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7388490Z  * [new tag]         v0.16.3-prebuild        -> v0.16.3-prebuild
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7389833Z  * [new tag]         v0.16.30                -> v0.16.30
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7391077Z  * [new tag]         v0.16.31                -> v0.16.31
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7392668Z  * [new tag]         v0.16.31-original       -> v0.16.31-original
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7394018Z  * [new tag]         v0.16.32                -> v0.16.32
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7395590Z  * [new tag]         v0.16.32-original       -> v0.16.32-original
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7396930Z  * [new tag]         v0.16.33                -> v0.16.33
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7398159Z  * [new tag]         v0.16.34                -> v0.16.34
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7399385Z  * [new tag]         v0.16.35                -> v0.16.35
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7400716Z  * [new tag]         v0.16.4-prebuild        -> v0.16.4-prebuild
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7402085Z  * [new tag]         v0.16.40                -> v0.16.40
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7403317Z  * [new tag]         v0.16.41                -> v0.16.41
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7404623Z  * [new tag]         v0.16.41-original       -> v0.16.41-original
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7406176Z  * [new tag]         v0.16.42                -> v0.16.42
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7407419Z  * [new tag]         v0.16.43                -> v0.16.43
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7408662Z  * [new tag]         v0.16.44                -> v0.16.44
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7409890Z  * [new tag]         v0.16.45                -> v0.16.45
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7411110Z  * [new tag]         v0.16.46                -> v0.16.46
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7512452Z  * [new tag]         v0.16.47                -> v0.16.47
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7514207Z  * [new tag]         v0.16.48                -> v0.16.48
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7515978Z  * [new tag]         v0.16.49                -> v0.16.49
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7517769Z  * [new tag]         v0.16.5                 -> v0.16.5
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7519453Z  * [new tag]         v0.16.50                -> v0.16.50
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7520927Z  * [new tag]         v0.16.51                -> v0.16.51
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7522624Z  * [new tag]         v0.16.52                -> v0.16.52
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7524370Z  * [new tag]         v0.16.53                -> v0.16.53
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7526892Z  * [new tag]         v0.16.54                -> v0.16.54
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7528975Z  * [new tag]         v0.16.55                -> v0.16.55
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7530606Z  * [new tag]         v0.16.56                -> v0.16.56
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7532182Z  * [new tag]         v0.16.57                -> v0.16.57
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7533870Z  * [new tag]         v0.16.58                -> v0.16.58
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7556210Z  * [new tag]         v0.16.59                -> v0.16.59
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7557546Z  * [new tag]         v0.16.6                 -> v0.16.6
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7558800Z  * [new tag]         v0.16.60                -> v0.16.60
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7560309Z  * [new tag]         v0.16.7                 -> v0.16.7
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7561561Z  * [new tag]         v0.16.8                 -> v0.16.8
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7562791Z  * [new tag]         v0.16.9                 -> v0.16.9
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7564025Z  * [new tag]         v0.17.0                 -> v0.17.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7565590Z  * [new tag]         v0.17.1                 -> v0.17.1
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7567366Z  * [new tag]         v0.17.10                -> v0.17.10
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7568736Z  * [new tag]         v0.17.11                -> v0.17.11
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7570251Z  * [new tag]         v0.17.12                -> v0.17.12
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7572025Z  * [new tag]         v0.17.13                -> v0.17.13
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7573598Z  * [new tag]         v0.17.14                -> v0.17.14
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7574840Z  * [new tag]         v0.17.15                -> v0.17.15
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7576493Z  * [new tag]         v0.17.16                -> v0.17.16
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7577733Z  * [new tag]         v0.17.17                -> v0.17.17
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7578972Z  * [new tag]         v0.17.18                -> v0.17.18
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7580207Z  * [new tag]         v0.17.19                -> v0.17.19
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7581432Z  * [new tag]         v0.17.2                 -> v0.17.2
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7582665Z  * [new tag]         v0.17.25                -> v0.17.25
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7584184Z  * [new tag]         v0.17.26                -> v0.17.26
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7585604Z  * [new tag]         v0.17.27                -> v0.17.27
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7587324Z  * [new tag]         v0.17.27-original       -> v0.17.27-original
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7589087Z  * [new tag]         v0.17.3                 -> v0.17.3
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7590765Z  * [new tag]         v0.17.4                 -> v0.17.4
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7592409Z  * [new tag]         v0.17.6                 -> v0.17.6
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7594030Z  * [new tag]         v0.17.7                 -> v0.17.7
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7595836Z  * [new tag]         v0.17.8                 -> v0.17.8
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7597759Z  * [new tag]         v0.17.9                 -> v0.17.9
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7599463Z  * [new tag]         v0.18.0                 -> v0.18.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7601087Z  * [new tag]         v0.18.1                 -> v0.18.1
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7602874Z  * [new tag]         v0.18.2                 -> v0.18.2
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7604447Z  * [new tag]         v0.18.3                 -> v0.18.3
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7605905Z  * [new tag]         v0.18.4                 -> v0.18.4
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7607126Z  * [new tag]         v0.19.0                 -> v0.19.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7608344Z  * [new tag]         v0.19.1                 -> v0.19.1
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7609561Z  * [new tag]         v0.19.10                -> v0.19.10
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7610785Z  * [new tag]         v0.19.11                -> v0.19.11
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7612003Z  * [new tag]         v0.19.12                -> v0.19.12
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7613257Z  * [new tag]         v0.19.13                -> v0.19.13
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7614477Z  * [new tag]         v0.19.14                -> v0.19.14
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7615875Z  * [new tag]         v0.19.15                -> v0.19.15
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7617078Z  * [new tag]         v0.19.2                 -> v0.19.2
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7618618Z  * [new tag]         v0.19.3                 -> v0.19.3
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7619834Z  * [new tag]         v0.19.4                 -> v0.19.4
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7621020Z  * [new tag]         v0.19.5                 -> v0.19.5
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7622204Z  * [new tag]         v0.19.6                 -> v0.19.6
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7623459Z  * [new tag]         v0.19.7                 -> v0.19.7
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7625232Z  * [new tag]         v0.19.8                 -> v0.19.8
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7626855Z  * [new tag]         v0.19.9                 -> v0.19.9
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7628289Z  * [new tag]         v0.20.0                 -> v0.20.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7629502Z  * [new tag]         v0.20.1                 -> v0.20.1
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7630732Z  * [new tag]         v0.20.10                -> v0.20.10
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7631969Z  * [new tag]         v0.20.11                -> v0.20.11
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7633211Z  * [new tag]         v0.20.12                -> v0.20.12
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7634464Z  * [new tag]         v0.20.13                -> v0.20.13
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7635932Z  * [new tag]         v0.20.14                -> v0.20.14
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7637149Z  * [new tag]         v0.20.15                -> v0.20.15
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7638353Z  * [new tag]         v0.20.16                -> v0.20.16
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7639570Z  * [new tag]         v0.20.17                -> v0.20.17
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7640779Z  * [new tag]         v0.20.18                -> v0.20.18
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7641980Z  * [new tag]         v0.20.19                -> v0.20.19
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7643190Z  * [new tag]         v0.20.2                 -> v0.20.2
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7644387Z  * [new tag]         v0.20.20                -> v0.20.20
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7645801Z  * [new tag]         v0.20.21                -> v0.20.21
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7647021Z  * [new tag]         v0.20.22                -> v0.20.22
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7648230Z  * [new tag]         v0.20.23                -> v0.20.23
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7649452Z  * [new tag]         v0.20.24                -> v0.20.24
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7650930Z  * [new tag]         v0.20.25                -> v0.20.25
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7652132Z  * [new tag]         v0.20.26                -> v0.20.26
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7653343Z  * [new tag]         v0.20.27                -> v0.20.27
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7654547Z  * [new tag]         v0.20.28                -> v0.20.28
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7655985Z  * [new tag]         v0.20.29                -> v0.20.29
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7657197Z  * [new tag]         v0.20.3                 -> v0.20.3
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7658391Z  * [new tag]         v0.20.30                -> v0.20.30
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7659609Z  * [new tag]         v0.20.31                -> v0.20.31
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7660801Z  * [new tag]         v0.20.32                -> v0.20.32
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7662021Z  * [new tag]         v0.20.33                -> v0.20.33
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7663227Z  * [new tag]         v0.20.34                -> v0.20.34
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7664474Z  * [new tag]         v0.20.35                -> v0.20.35
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7665884Z  * [new tag]         v0.20.36                -> v0.20.36
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7667067Z  * [new tag]         v0.20.4                 -> v0.20.4
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7668268Z  * [new tag]         v0.20.5                 -> v0.20.5
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7669457Z  * [new tag]         v0.20.6                 -> v0.20.6
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7670643Z  * [new tag]         v0.20.7                 -> v0.20.7
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7671812Z  * [new tag]         v0.20.8                 -> v0.20.8
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7672992Z  * [new tag]         v0.20.9                 -> v0.20.9
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7674165Z  * [new tag]         v0.21.0                 -> v0.21.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7675502Z  * [new tag]         v0.22.0                 -> v0.22.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7676682Z  * [new tag]         v0.22.1                 -> v0.22.1
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7677855Z  * [new tag]         v0.22.2                 -> v0.22.2
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7679237Z  * [new tag]         v0.22.3                 -> v0.22.3
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7680425Z  * [new tag]         v0.22.4                 -> v0.22.4
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7681608Z  * [new tag]         v0.23.0                 -> v0.23.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7682909Z  * [new tag]         v0.23.1                 -> v0.23.1
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7684099Z  * [new tag]         v0.23.10                -> v0.23.10
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7685474Z  * [new tag]         v0.23.11                -> v0.23.11
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7686687Z  * [new tag]         v0.23.12                -> v0.23.12
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7687896Z  * [new tag]         v0.23.13                -> v0.23.13
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7689079Z  * [new tag]         v0.23.14                -> v0.23.14
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7690423Z  * [new tag]         v0.23.15                -> v0.23.15
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7691858Z  * [new tag]         v0.23.16                -> v0.23.16
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7693485Z  * [new tag]         v0.23.17                -> v0.23.17
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7694736Z  * [new tag]         v0.23.18                -> v0.23.18
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7696110Z  * [new tag]         v0.23.19                -> v0.23.19
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7697301Z  * [new tag]         v0.23.2                 -> v0.23.2
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7698470Z  * [new tag]         v0.23.3                 -> v0.23.3
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7699643Z  * [new tag]         v0.23.5                 -> v0.23.5
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7700809Z  * [new tag]         v0.23.6                 -> v0.23.6
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7701985Z  * [new tag]         v0.23.7                 -> v0.23.7
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7703144Z  * [new tag]         v0.23.8                 -> v0.23.8
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7704317Z  * [new tag]         v0.23.9                 -> v0.23.9
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7705684Z  * [new tag]         v0.24.0                 -> v0.24.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7706856Z  * [new tag]         v0.24.1                 -> v0.24.1
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7708027Z  * [new tag]         v0.24.2                 -> v0.24.2
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7709210Z  * [new tag]         v0.24.3                 -> v0.24.3
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7710709Z  * [new tag]         v0.24.4                 -> v0.24.4
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7711877Z  * [new tag]         v0.24.5                 -> v0.24.5
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7713060Z  * [new tag]         v0.24.6                 -> v0.24.6
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7714251Z  * [new tag]         v0.24.7                 -> v0.24.7
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7715662Z  * [new tag]         v0.24.8                 -> v0.24.8
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7717104Z  * [new tag]         v0.24.9                 -> v0.24.9
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7720939Z [command]/usr/bin/git branch --list --remote origin/main
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7722115Z   origin/main
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7724075Z [command]/usr/bin/git rev-parse refs/remotes/origin/main
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7725709Z 7d61897569f485d7e56d0c2261a183e202a1be56
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7729842Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules origin +7d96d6057921cf17a20a449397b9f98dd99fa34e:refs/remotes/origin/main
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7732722Z From https://github.com/omerfaruknehir/Xylune
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7734525Z  + 7d61897...7d96d60 7d96d6057921cf17a20a449397b9f98dd99fa34e -> origin/main  (forced update)
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7738815Z [command]/usr/bin/git branch --list --remote origin/main
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7774092Z   origin/main
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7784471Z [command]/usr/bin/git rev-parse refs/remotes/origin/main
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7816827Z 7d96d6057921cf17a20a449397b9f98dd99fa34e
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7822295Z ##[endgroup]
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7823928Z ##[group]Determining the checkout info
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7826096Z ##[endgroup]
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7829765Z [command]/usr/bin/git sparse-checkout disable
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7890536Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7930358Z ##[group]Checking out the ref
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.7934286Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9333999Z Switched to a new branch 'main'
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9348460Z branch 'main' set up to track 'origin/main'.
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9359897Z ##[endgroup]
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9417714Z [command]/usr/bin/git log -1 --format=%H
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9460244Z 7d96d6057921cf17a20a449397b9f98dd99fa34e
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9773639Z ##[group]Run android-actions/setup-android@v4
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9774733Z with:
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9775729Z   packages: platform-tools build-tools;36.0.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9776828Z   cmdline-tools-version: 14742923
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9777817Z   accept-android-sdk-licenses: true
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9778860Z   log-accepted-android-sdk-licenses: true
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9779876Z env:
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9780698Z   XYLUNE_SOURCE_REPOSITORY: omerfaruknehir/Xylune
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9782018Z   XYLUNE_SOURCE_COMMIT: 7d96d6057921cf17a20a449397b9f98dd99fa34e
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9783514Z   XYLUNE_MICROSOFT_CLIENT_ID: 8a39da15-8397-489a-adcc-c6766bcfb085
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9784838Z   XYLUNE_DROPBOX_APP_KEY: 8d64e2sl7jtzuu6
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9785980Z   XYLUNE_VERSION: 0.24.10
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9786841Z   XYLUNE_TAG: v0.24.10
+publish-release	UNKNOWN STEP	2026-08-07T12:47:31.9787675Z ##[endgroup]
+publish-release	UNKNOWN STEP	2026-08-07T12:47:32.1108457Z Found preinstalled sdkmanager in /usr/local/lib/android/sdk/cmdline-tools/latest with following source.properties:
+publish-release	UNKNOWN STEP	2026-08-07T12:47:32.1111478Z Pkg.Revision=9.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:32.1112567Z Pkg.Path=cmdline-tools;9.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:32.1113930Z Pkg.Desc=Android SDK Command-line Tools
+publish-release	UNKNOWN STEP	2026-08-07T12:47:32.1115140Z 
+publish-release	UNKNOWN STEP	2026-08-07T12:47:32.1115749Z Wrong version in preinstalled sdkmanager
+publish-release	UNKNOWN STEP	2026-08-07T12:47:32.1118556Z Downloading commandline tools from https://dl.google.com/android/repository/commandlinetools-linux-14742923_latest.zip
+publish-release	UNKNOWN STEP	2026-08-07T12:47:33.4408355Z [command]/usr/bin/unzip -o -q /home/runner/work/_temp/a08978cf-aa34-44a4-b445-13b3545be416
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.4140687Z Accepting Android SDK licenses
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.4145783Z [command]/usr/local/lib/android/sdk/cmdline-tools/20.0/bin/sdkmanager --licenses
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.6836544Z This tool requires JDK 17 or later. Your version was detected as 11.0.31.
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.6837422Z To override this check, set SKIP_JDK_VERSION_CHECK.
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.6879502Z /home/runner/work/_actions/android-actions/setup-android/v4/dist/index.js:22290
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.6880673Z         error2 = new Error(`The process '${this.toolPath}' failed with exit code ${this.processExitCode}`);
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.6881520Z                  ^
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.6881741Z 
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.6882224Z Error: The process '/usr/local/lib/android/sdk/cmdline-tools/20.0/bin/sdkmanager' failed with exit code 1
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.6883158Z     at _ExecState._setResult (/home/runner/work/_actions/android-actions/setup-android/v4/dist/index.js:22290:18)
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.6883989Z     at _ExecState.CheckComplete (/home/runner/work/_actions/android-actions/setup-android/v4/dist/index.js:22276:12)
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.6885552Z     at ChildProcess.<anonymous> (/home/runner/work/_actions/android-actions/setup-android/v4/dist/index.js:22181:17)
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.6886441Z     at ChildProcess.emit (node:events:509:28)
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.6886957Z     at maybeClose (node:internal/child_process:1124:16)
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.6887564Z     at Socket.<anonymous> (node:internal/child_process:481:11)
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.6888105Z     at Socket.emit (node:events:509:28)
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.6888537Z     at Pipe.<anonymous> (node:net:351:12)
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.6888838Z 
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.6888957Z Node.js v24.18.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.7136470Z Post job cleanup.
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.8169320Z [command]/usr/bin/git version
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.8221167Z git version 2.54.0
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.8269893Z Temporarily overriding HOME='/home/runner/work/_temp/efbf07df-424a-403d-aea3-000728e4e8fb' before making global git config changes
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.8271370Z Adding repository directory to the temporary git global config as a safe directory
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.8276653Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Xylune/Xylune
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.8759912Z Removing SSH command configuration
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.8760740Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.8807323Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.9364842Z Removing HTTP extra header
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.9366149Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.9413207Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.9719692Z Removing includeIf entries pointing to credentials config files
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.9731147Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.9763456Z includeif.gitdir:/home/runner/work/Xylune/Xylune/.git.path
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.9764477Z includeif.gitdir:/home/runner/work/Xylune/Xylune/.git/worktrees/*.path
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.9766201Z includeif.gitdir:/github/workspace/.git.path
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.9767151Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.9776145Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/Xylune/Xylune/.git.path
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.9809883Z /home/runner/work/_temp/git-credentials-25d244ad-2867-4f49-a9bf-bac8b869990b.config
+publish-release	UNKNOWN STEP	2026-08-07T12:47:34.9823344Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/Xylune/Xylune/.git.path /home/runner/work/_temp/git-credentials-25d244ad-2867-4f49-a9bf-bac8b869990b.config
+publish-release	UNKNOWN STEP	2026-08-07T12:47:35.0290941Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/Xylune/Xylune/.git/worktrees/*.path
+publish-release	UNKNOWN STEP	2026-08-07T12:47:35.0328137Z /home/runner/work/_temp/git-credentials-25d244ad-2867-4f49-a9bf-bac8b869990b.config
+publish-release	UNKNOWN STEP	2026-08-07T12:47:35.0338806Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/Xylune/Xylune/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-25d244ad-2867-4f49-a9bf-bac8b869990b.config
+publish-release	UNKNOWN STEP	2026-08-07T12:47:35.0773619Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+publish-release	UNKNOWN STEP	2026-08-07T12:47:35.0808205Z /github/runner_temp/git-credentials-25d244ad-2867-4f49-a9bf-bac8b869990b.config
+publish-release	UNKNOWN STEP	2026-08-07T12:47:35.0817216Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-25d244ad-2867-4f49-a9bf-bac8b869990b.config
+publish-release	UNKNOWN STEP	2026-08-07T12:47:35.0862201Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+publish-release	UNKNOWN STEP	2026-08-07T12:47:35.0893934Z /github/runner_temp/git-credentials-25d244ad-2867-4f49-a9bf-bac8b869990b.config
+publish-release	UNKNOWN STEP	2026-08-07T12:47:35.0905996Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-25d244ad-2867-4f49-a9bf-bac8b869990b.config
+publish-release	UNKNOWN STEP	2026-08-07T12:47:35.1267610Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+publish-release	UNKNOWN STEP	2026-08-07T12:47:35.1552620Z Removing credentials config '/home/runner/work/_temp/git-credentials-25d244ad-2867-4f49-a9bf-bac8b869990b.config'
+publish-release	UNKNOWN STEP	2026-08-07T12:47:35.1746156Z Cleaning up orphan processes
