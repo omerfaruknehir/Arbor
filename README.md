@@ -1,12 +1,14 @@
 <p align="center">
-  <img src="branding/xylune-banner.png" alt="Temporary Arbor banner retained during the Xylune rebrand." width="100%">
+  <img src="branding/xylune-banner.png" alt="Xylune — open-source BYOK AI chat app for Android." width="100%">
 </p>
 
 <p align="center">
-  Xylune (pronounced <strong>“Zy-loon”</strong>) is a native Android workspace for private AI chat, research, files, and local tools.
+  <strong>Xylune</strong> (pronounced <strong>“Zy-loon”</strong>) is an open-source BYOK AI chat app for Android: a native workspace for private AI chat, research, files, and local tools.
 </p>
 
 <p align="center">
+  <a href="https://omerfaruknehir.github.io/Xylune/"><strong>Xylune website</strong></a>
+  ·
   <a href="https://github.com/omerfaruknehir/Xylune/releases/latest"><strong>Download the latest APK</strong></a>
   ·
   <a href="BUILDING.md">Build from source</a>
@@ -126,6 +128,7 @@ For dependency sources, bundled native component notices, hashes, and build reci
 
 Xylune is created by [@omerfaruknehir](https://github.com/omerfaruknehir).
 
+- [Xylune website](https://omerfaruknehir.github.io/Xylune/)
 - [Changelog](CHANGELOG.md)
 - [Latest release notes](https://github.com/omerfaruknehir/Xylune/releases/latest)
 - [Source repository](https://github.com/omerfaruknehir/Xylune)
