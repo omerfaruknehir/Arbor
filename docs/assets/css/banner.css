@@ -1,6 +1,6 @@
 .home-hero__visual {
-  min-height: 210px;
-  aspect-ratio: 3 / 1;
+  min-height: 0;
+  aspect-ratio: 2 / 1;
   background: #111b18;
 }
 
@@ -58,15 +58,17 @@
   text-shadow: 0 2px 10px rgb(0 0 0 / 30%);
 }
 
-@media (max-width: 1080px) {
-  .home-hero__visual {
-    min-height: 230px;
-  }
-}
-
 @media (max-width: 820px) {
+  /* On narrow displays the banner deliberately extends past the content
+     gutters and slightly beyond the viewport. The page shell clips the
+     horizontal overscan, producing an edge-to-edge/full-bleed composition
+     without introducing horizontal scrolling. */
   .home-hero__visual {
-    min-height: 190px;
+    width: calc(100% + 48px);
+    max-width: none;
+    margin-inline: -24px;
+    border-inline: 0;
+    border-radius: 0;
   }
 
   .home-hero__brand-card {
@@ -92,10 +94,6 @@
 }
 
 @media (max-width: 520px) {
-  .home-hero__visual {
-    min-height: 160px;
-  }
-
   .home-hero__brand-card {
     gap: 12px;
   }
@@ -111,6 +109,7 @@
   }
 
   .home-hero__brand-copy span {
+    display: block;
     font-size: 11px;
   }
 }
