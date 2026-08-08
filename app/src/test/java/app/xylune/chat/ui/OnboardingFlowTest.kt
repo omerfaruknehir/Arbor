@@ -86,10 +86,9 @@ class OnboardingFlowTest {
     }
 
     @Test
-    fun `popup back is keyboard safe and edge touch cannot dismiss modals early`() {
+    fun `popup back is keyboard safe and modal tap away waits for release`() {
         val source = java.io.File("src/main/java/app/xylune/chat/ui/ReleaseDismissPopup.kt").readText()
-        val alert = source.substringAfter("fun XyluneAlertDialog").substringBefore("/** Dropdown menu")
-        val beforeMaterialDialog = alert.substringBefore("MaterialAlertDialog(")
+        val alert = source.substringAfter("fun XyluneAlertDialog").substringBefore("/**\n * Small anchored menus")
         val dropdown = source.substringAfter("internal fun XyluneDropdownMenu")
         assertTrue(source.contains("val imeInsets = WindowInsets.ime"))
         assertTrue(source.contains("val imeVisibleAtGestureStart = imeInsets.getBottom(density) > 0"))
@@ -97,16 +96,19 @@ class OnboardingFlowTest {
         assertTrue(source.contains("keyboard?.hide()"))
         assertTrue(source.contains("focusManager.clearFocus(force = true)"))
         assertTrue(source.contains("startedInBackEdge"))
-        assertFalse(beforeMaterialDialog.contains("XylunePopupBackHandler("))
-        assertTrue(alert.contains("confirmButton = {"))
+        assertTrue(source.contains("dismissOnOutsideRelease("))
+        assertTrue(source.contains("if (event.changes.none { it.pressed }) break"))
+        assertTrue(source.contains("val wasTap = maxTravelSquared <= slop * slop"))
+        assertTrue(alert.contains("BasicAlertDialog("))
+        assertTrue(alert.contains("usePlatformDefaultWidth = false"))
         assertTrue(alert.contains("XylunePopupBackHandler("))
         assertTrue(alert.contains("dismissOnBackPress = false"))
         assertTrue(alert.contains("dismissOnClickOutside = false"))
         assertTrue(dropdown.contains("dismissOnClickOutside: Boolean = true"))
-        assertTrue(dropdown.contains("ReleaseDismissOutsideLayer("))
         assertTrue(dropdown.contains("focusable = true"))
-        assertTrue(dropdown.contains("dismissOnBackPress = false"))
-        assertTrue(dropdown.contains("dismissOnClickOutside = false"))
+        assertTrue(dropdown.contains("dismissOnBackPress = true"))
+        assertTrue(dropdown.contains("dismissOnClickOutside = dismissOnClickOutside"))
+        assertFalse(dropdown.contains("ReleaseDismissOutsideLayer("))
     }
 
     @Test
