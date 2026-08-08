@@ -86,22 +86,27 @@ class OnboardingFlowTest {
     }
 
     @Test
-    fun `popup back remains keyboard safe while ordinary outside taps dismiss`() {
+    fun `popup back is keyboard safe and edge touch cannot dismiss modals early`() {
         val source = java.io.File("src/main/java/app/xylune/chat/ui/ReleaseDismissPopup.kt").readText()
         val alert = source.substringAfter("fun XyluneAlertDialog").substringBefore("/** Dropdown menu")
         val beforeMaterialDialog = alert.substringBefore("MaterialAlertDialog(")
         val dropdown = source.substringAfter("internal fun XyluneDropdownMenu")
         assertTrue(source.contains("val imeInsets = WindowInsets.ime"))
         assertTrue(source.contains("val imeVisibleAtGestureStart = imeInsets.getBottom(density) > 0"))
+        assertTrue(source.contains("events.collect { }"))
         assertTrue(source.contains("keyboard?.hide()"))
         assertTrue(source.contains("focusManager.clearFocus(force = true)"))
+        assertTrue(source.contains("startedInBackEdge"))
         assertFalse(beforeMaterialDialog.contains("XylunePopupBackHandler("))
         assertTrue(alert.contains("confirmButton = {"))
         assertTrue(alert.contains("XylunePopupBackHandler("))
         assertTrue(alert.contains("dismissOnBackPress = false"))
-        assertTrue(alert.contains("dismissOnClickOutside = true"))
+        assertTrue(alert.contains("dismissOnClickOutside = false"))
         assertTrue(dropdown.contains("dismissOnClickOutside: Boolean = true"))
+        assertTrue(dropdown.contains("ReleaseDismissOutsideLayer("))
         assertTrue(dropdown.contains("focusable = true"))
+        assertTrue(dropdown.contains("dismissOnBackPress = false"))
+        assertTrue(dropdown.contains("dismissOnClickOutside = false"))
     }
 
     @Test
