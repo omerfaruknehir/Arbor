@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
@@ -50,10 +51,9 @@ import kotlin.math.max
 /**
  * Visual container transform for a source pill.
  *
- * The pill in the message row never changes size or participates in the expanded
- * layout. A full-window overlay is placed on top of it and starts at exactly the
- * pill's bounds, then grows/moves into the preview card. This is the Compose
- * equivalent of a CSS position:fixed container transform.
+ * The real pill in the message row never changes size. A full-window overlay is
+ * laid exactly over its captured bounds and then transformed into the preview,
+ * giving the visual effect of the pill itself expanding without any reflow.
  */
 @Composable
 internal fun MorphingSourcePreview(
@@ -78,26 +78,18 @@ internal fun MorphingSourcePreview(
         WindowInsets.systemGestures.getRight(density, layoutDirection),
         minimumBackEdgePx,
     )
-
     val requestDismiss: () -> Unit = {
         if (!dismissing) dismissing = true
     }
 
     LaunchedEffect(rootSize, cardSize, dismissing) {
         if (!dismissing && rootSize.width > 0 && rootSize.height > 0 && cardSize.width > 0 && cardSize.height > 0) {
-            progress.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 240),
-            )
+            progress.animateTo(1f, tween(durationMillis = 240))
         }
     }
-
     LaunchedEffect(dismissing) {
         if (dismissing) {
-            progress.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 180),
-            )
+            progress.animateTo(0f, tween(durationMillis = 180))
             onDismiss()
         }
     }
@@ -125,13 +117,13 @@ internal fun MorphingSourcePreview(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .onSizeChanged { rootSize = it }
                 .pointerInput(
                     cardBounds,
                     leftBackEdgePx,
                     rightBackEdgePx,
                     requestDismiss,
                 ) {
-                    rootSize = IntSize(size.width, size.height)
                     awaitEachGesture {
                         val down = awaitFirstDown(
                             requireUnconsumed = false,
@@ -139,7 +131,9 @@ internal fun MorphingSourcePreview(
                         )
                         val startedInBackEdge = down.position.x <= leftBackEdgePx ||
                             down.position.x >= size.width - rightBackEdgePx
-                        val startedInsideCard = down.position.x >= cardBounds.left &&
+                        val boundsReady = cardBounds.width > 0 && cardBounds.height > 0
+                        val startedInsideCard = boundsReady &&
+                            down.position.x >= cardBounds.left &&
                             down.position.x <= cardBounds.right &&
                             down.position.y >= cardBounds.top &&
                             down.position.y <= cardBounds.bottom
@@ -160,7 +154,7 @@ internal fun MorphingSourcePreview(
 
                         val slop = viewConfiguration.touchSlop
                         val wasTap = maxTravelSquared <= slop * slop
-                        if (!startedInBackEdge && !startedInsideCard && wasTap) {
+                        if (boundsReady && !startedInBackEdge && !startedInsideCard && wasTap) {
                             requestDismiss()
                         }
                     }
@@ -200,7 +194,7 @@ internal fun MorphingSourcePreview(
                     .offset { targetPosition }
                     .width(330.dp)
                     .heightIn(max = 420.dp)
-                    .onGloballyPositionedSize { cardSize = it }
+                    .onSizeChanged { cardSize = it }
                     .graphicsLayer {
                         transformOrigin = TransformOrigin.Center
                         this.scaleX = scaleX
@@ -296,10 +290,3 @@ private fun popupTargetPosition(
 
 private fun lerp(start: Float, end: Float, fraction: Float): Float =
     start + (end - start) * fraction.coerceIn(0f, 1f)
-
-private fun Modifier.onGloballyPositionedSize(onSize: (IntSize) -> Unit): Modifier =
-    this.then(
-        Modifier.onGloballyPositioned { coordinates ->
-            onSize(coordinates.size)
-        },
-    )
