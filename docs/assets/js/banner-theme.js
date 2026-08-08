@@ -1,6 +1,7 @@
 (() => {
   const root = document.documentElement;
-  if (!document.querySelector('[data-themed-banner]')) return;
+  const banners = [...document.querySelectorAll('[data-themed-banner]')];
+  if (banners.length === 0) return;
 
   const BASE_BANNER_HUE = 164;
   const schemePrimary = {
@@ -48,6 +49,13 @@
     root.style.setProperty('--xylune-banner-hue-shift', `${shift.toFixed(2)}deg`);
     root.style.setProperty('--xylune-banner-target-hue', `${targetBannerHue.toFixed(2)}deg`);
   }
+
+  banners.forEach((banner) => {
+    banner.addEventListener('error', () => {
+      const fallback = banner.dataset.fallbackSrc;
+      if (fallback && banner.src !== fallback) banner.src = fallback;
+    }, { once: true });
+  });
 
   const observer = new MutationObserver(syncBannerHue);
   observer.observe(root, {
