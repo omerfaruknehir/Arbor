@@ -4,5 +4,6 @@ url: https://omerfaruknehir.github.io
 baseurl: /Xylune
 repository: omerfaruknehir/Xylune
 default_social_image: https://raw.githubusercontent.com/omerfaruknehir/Xylune/main/branding/xylune-banner.png
+seo_keywords: Android AI chat, BYOK AI, bring your own key, open-source AI chat app, OpenAI Android client, Anthropic Android client, Gemini Android client, DeepSeek Android client, OpenRouter Android client, local LLM Android
 exclude:
   - README.md
