@@ -456,6 +456,14 @@ internal fun isRecoveryNoticeCandidate(
 internal fun shouldRenderAssistantRecoveryState(message: MessageEntity): Boolean =
     message.role == MessageRole.ASSISTANT && isActionableRecoveryMessage(message)
 
+internal fun withDismissedRecoveryNotice(
+    current: Map<String, String>,
+    conversationId: String?,
+    message: MessageEntity,
+): Map<String, String> = conversationId?.let { id ->
+    current + (id to recoveryNoticeKey(message))
+} ?: current
+
 internal fun workEventStateLabel(event: MessageTimelineEvent): String = when (event.status) {
     "preparing" -> "Preparing"
     "prepared" -> "Ready"
@@ -598,7 +606,10 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
     var showModelPicker by remember { mutableStateOf(false) }
     var chatMenu by remember { mutableStateOf(false) }
     var showChatConfiguration by remember { mutableStateOf(false) }
-    var dismissedRecoveryNoticeKey by rememberSaveable(conversation?.id) { mutableStateOf<String?>(null) }
+    var dismissedRecoveryNoticeKeys by rememberSaveable {
+        mutableStateOf<Map<String, String>>(emptyMap())
+    }
+    val dismissedRecoveryNoticeKey = conversation?.id?.let { dismissedRecoveryNoticeKeys[it] }
     var recoveryDetailsMessage by remember(conversation?.id) { mutableStateOf<MessageEntity?>(null) }
     val messageListState = rememberLazyListState()
     val savedScroll = remember(conversation?.id) {
@@ -1301,7 +1312,13 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                     maxLines = 1,
                                 )
                                 IconButton(
-                                    onClick = { dismissedRecoveryNoticeKey = recoveryNoticeKey(message) },
+                                    onClick = {
+                                        dismissedRecoveryNoticeKeys = withDismissedRecoveryNotice(
+                                            dismissedRecoveryNoticeKeys,
+                                            conversation?.id,
+                                            message,
+                                        )
+                                    },
                                     modifier = Modifier.size(34.dp),
                                 ) {
                                     Icon(Icons.Outlined.Close, "Dismiss error", Modifier.size(18.dp))
@@ -1325,7 +1342,11 @@ fun ChatScreen(viewModel: ChatViewModel, openDrawer: (() -> Unit)?) {
                                     Text("Details")
                                 }
                                 TextButton(onClick = {
-                                    dismissedRecoveryNoticeKey = recoveryNoticeKey(message)
+                                    dismissedRecoveryNoticeKeys = withDismissedRecoveryNotice(
+                                        dismissedRecoveryNoticeKeys,
+                                        conversation?.id,
+                                        message,
+                                    )
                                     if (failed) viewModel.retryMessage(message) else viewModel.resume(message)
                                 }) {
                                     Text(if (failed) "Retry" else "Continue")
