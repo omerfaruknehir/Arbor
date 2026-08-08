@@ -3,31 +3,23 @@ layout: default
 home: true
 title: Xylune
 heading: Xylune
-browser_title: Xylune — Android BYOK AI Chat App
-description: Xylune is an open-source Android BYOK AI chat app for OpenAI, Anthropic, Gemini, DeepSeek, OpenRouter, xAI, ChatGPT, and local model servers.
+browser_title: Xylune — BYOK AI Chat App for Android
+description: Xylune is an open-source BYOK AI chat app for Android that connects directly to OpenAI, Anthropic, Gemini, DeepSeek, OpenRouter, xAI, ChatGPT, and local model servers.
 ---
 
-<div class="home-banner" aria-label="Xylune Android BYOK AI chat app banner">
-  <img src="https://raw.githubusercontent.com/omerfaruknehir/Xylune/main/branding/xylune-banner.png" alt="Xylune, an Android BYOK AI chat app">
+<div class="home-banner" aria-label="Xylune BYOK AI chat app for Android banner">
+  <img src="https://raw.githubusercontent.com/omerfaruknehir/Xylune/main/branding/xylune-banner.png" alt="Xylune, an open-source BYOK AI chat app for Android">
 </div>
 
 <section class="home-content" aria-labelledby="home-headline">
-  <p class="headline" id="home-headline">Native Android BYOK AI chat. Private by design.</p>
-  <p class="intro">An open-source, local-first Android AI chat app that connects directly to the providers and local models you choose.</p>
-
-  <ul class="destination-list" aria-label="Xylune resources">
-    <li><a href="{{ '/privacy/' | relative_url }}">Privacy Policy <span>/ Gizlilik ve KVKK Aydınlatma Metni</span></a></li>
-    <li><a href="{{ '/terms/' | relative_url }}">Terms and Disclaimer <span>/ Koşullar ve Sorumluluk Reddi</span></a></li>
-    <li><a href="{{ '/data-deletion/' | relative_url }}">Data Deletion <span>/ Veri Silme</span></a></li>
-    <li><a href="{{ '/releases/' | relative_url }}">Releases</a></li>
-    <li><a href="https://github.com/omerfaruknehir/Xylune">Source code</a></li>
-    <li><a href="https://github.com/omerfaruknehir/Xylune/issues">Support and issues</a></li>
-  </ul>
+  <p class="eyebrow">Open-source Android AI client</p>
+  <h2 class="headline" id="home-headline">A BYOK AI chat app for Android</h2>
+  <p class="intro"><strong>Xylune</strong> (pronounced “Zy-loon”) is a native, local-first Android chat client for people who want to bring their own API keys, provider accounts, or local model servers instead of being locked into one AI service.</p>
 
   <div class="primary-actions">
     <a class="button button-primary" href="https://github.com/omerfaruknehir/Xylune/releases/latest">
       <span class="material-symbols-rounded" aria-hidden="true">download</span>
-      <span>Download Android APK</span>
+      <span>Download Xylune for Android</span>
     </a>
     <a class="button button-text" href="{{ '/releases/' | relative_url }}">
       <span>All releases</span>
@@ -36,20 +28,34 @@ description: Xylune is an open-source Android BYOK AI chat app for OpenAI, Anthr
   </div>
 
   <section class="home-search-summary" aria-labelledby="byok-heading">
-    <p class="eyebrow">Android BYOK AI client</p>
-    <h2 id="byok-heading">One native app for your AI providers</h2>
-    <p>Bring your own API keys, a supported ChatGPT account, or a compatible local model server. Xylune sends requests directly from your Android device to the service you select, without a Xylune relay backend.</p>
+    <p class="eyebrow">Bring your own key</p>
+    <h2 id="byok-heading">Use your own AI providers from one Android app</h2>
+    <p>Connect OpenAI, Anthropic, Gemini, DeepSeek, OpenRouter, xAI, ChatGPT, OpenAI-compatible endpoints, or a compatible local model server. Xylune sends requests directly from your Android device to the provider or server you select, without a Xylune relay backend.</p>
     <ul class="feature-points">
-      <li><strong>Multi-provider chat:</strong> OpenAI, Anthropic, Gemini, DeepSeek, OpenRouter, xAI, ChatGPT, and OpenAI-compatible endpoints.</li>
+      <li><strong>BYOK multi-provider chat:</strong> use your own API access and switch between supported providers and models.</li>
       <li><strong>Local-first storage:</strong> encrypted credentials, a local SQLCipher chat database, app-private files, and portable backups.</li>
       <li><strong>Native Android tools:</strong> streaming chat, search, files, Markdown, LaTeX, Python, optional Linux tools, and programmable widgets.</li>
     </ul>
+  </section>
+
+  <section class="home-search-summary" aria-labelledby="byok-explained-heading">
+    <h2 id="byok-explained-heading">What does BYOK mean?</h2>
+    <p>BYOK means <strong>bring your own key</strong>. Instead of buying AI access from Xylune, you connect credentials for a provider you already use. The provider remains responsible for its own model access and billing, while Xylune provides the Android chat interface and local workspace.</p>
   </section>
 
   <aside class="privacy-note">
     <span class="note-icon material-symbols-rounded" aria-hidden="true">shield</span>
     <p>Cloud backups move directly between the user’s device and the destination they select. Xylune does not operate a central backup service.</p>
   </aside>
+
+  <ul class="destination-list" aria-label="Xylune resources">
+    <li><a href="{{ '/releases/' | relative_url }}">Xylune releases and Android APK downloads</a></li>
+    <li><a href="https://github.com/omerfaruknehir/Xylune">Xylune source code on GitHub</a></li>
+    <li><a href="https://github.com/omerfaruknehir/Xylune/issues">Xylune support and issues</a></li>
+    <li><a href="{{ '/privacy/' | relative_url }}">Privacy Policy <span>/ Gizlilik ve KVKK Aydınlatma Metni</span></a></li>
+    <li><a href="{{ '/terms/' | relative_url }}">Terms and Disclaimer <span>/ Koşullar ve Sorumluluk Reddi</span></a></li>
+    <li><a href="{{ '/data-deletion/' | relative_url }}">Data Deletion <span>/ Veri Silme</span></a></li>
+  </ul>
 
   <div class="resource-card" aria-label="Legal and privacy documents">
     <a class="resource-row" href="{{ '/privacy/' | relative_url }}">
