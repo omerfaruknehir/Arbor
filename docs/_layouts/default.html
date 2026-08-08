@@ -18,34 +18,51 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#101411">
     <meta name="application-name" content="Xylune">
+    <meta name="author" content="Ömer Faruk Nehir">
     <meta name="description" content="{{ page_description | escape }}">
+    <meta name="keywords" content="{{ site.seo_keywords | escape }}">
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
     <title>{{ document_title }}</title>
     <link rel="canonical" href="{{ canonical_url }}">
     <link rel="sitemap" type="application/xml" title="Sitemap" href="{{ '/sitemap.xml' | absolute_url }}">
+    <link rel="me" href="https://github.com/omerfaruknehir">
 
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Xylune">
+    <meta property="og:locale" content="en_US">
     <meta property="og:title" content="{{ document_title | strip | escape }}">
     <meta property="og:description" content="{{ page_description | escape }}">
     <meta property="og:url" content="{{ canonical_url }}">
     <meta property="og:image" content="{{ social_image }}">
+    <meta property="og:image:type" content="image/png">
     <meta property="og:image:alt" content="Xylune Android BYOK AI chat app">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{{ document_title | strip | escape }}">
     <meta name="twitter:description" content="{{ page_description | escape }}">
     <meta name="twitter:image" content="{{ social_image }}">
+    <meta name="twitter:image:alt" content="Xylune Android BYOK AI chat app">
 
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@graph": [
         {
+          "@type": "Person",
+          "@id": "{{ '/' | absolute_url }}#maintainer",
+          "name": "Ömer Faruk Nehir",
+          "url": "https://github.com/omerfaruknehir",
+          "sameAs": ["https://github.com/omerfaruknehir"]
+        },
+        {
           "@type": "WebSite",
           "@id": "{{ '/' | absolute_url }}#website",
           "url": "{{ '/' | absolute_url }}",
           "name": "Xylune",
-          "description": {{ site.description | jsonify }}
+          "alternateName": "Xylune Android BYOK AI Chat",
+          "description": {{ site.description | jsonify }},
+          "inLanguage": "en",
+          "creator": { "@id": "{{ '/' | absolute_url }}#maintainer" },
+          "sameAs": ["https://github.com/omerfaruknehir/Xylune"]
         },
         {
           "@type": "WebPage",
@@ -53,12 +70,36 @@
           "url": "{{ canonical_url }}",
           "name": {{ document_title | strip | jsonify }},
           "description": {{ page_description | strip | jsonify }},
+          "inLanguage": "{{ page.lang | default: 'en' }}",
           "isPartOf": { "@id": "{{ '/' | absolute_url }}#website" },
+          "creator": { "@id": "{{ '/' | absolute_url }}#maintainer" },
           "primaryImageOfPage": {
             "@type": "ImageObject",
             "url": "{{ social_image }}"
-          }
-        }{% if page.home %},
+          }{% unless page.home %},
+          "breadcrumb": { "@id": "{{ canonical_url }}#breadcrumb" }
+          {% endunless %}{% if page.home %},
+          "mainEntity": { "@id": "{{ '/' | absolute_url }}#app" }
+          {% endif %}
+        }{% unless page.home %},
+        {
+          "@type": "BreadcrumbList",
+          "@id": "{{ canonical_url }}#breadcrumb",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Xylune",
+              "item": "{{ '/' | absolute_url }}"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": {{ app_bar_title | strip | jsonify }},
+              "item": "{{ canonical_url }}"
+            }
+          ]
+        }{% endunless %}{% if page.home %},
         {
           "@type": "MobileApplication",
           "@id": "{{ '/' | absolute_url }}#app",
@@ -67,7 +108,10 @@
           "url": "{{ '/' | absolute_url }}",
           "description": {{ page_description | strip | jsonify }},
           "operatingSystem": "Android 8.0 and later",
-          "applicationCategory": "DeveloperApplication",
+          "softwareRequirements": "Android 8.0 or later",
+          "applicationCategory": "UtilitiesApplication",
+          "applicationSubCategory": "BYOK AI chat client",
+          "keywords": "Android AI chat, BYOK AI, bring your own key, OpenAI, Anthropic, Gemini, DeepSeek, OpenRouter, local LLM",
           "isAccessibleForFree": true,
           "offers": {
             "@type": "Offer",
@@ -78,11 +122,12 @@
           "codeRepository": "https://github.com/omerfaruknehir/Xylune",
           "license": "https://www.apache.org/licenses/LICENSE-2.0",
           "image": "{{ social_image }}",
-          "author": {
-            "@type": "Person",
-            "name": "Ömer Faruk Nehir",
-            "url": "https://github.com/omerfaruknehir"
-          },
+          "mainEntityOfPage": { "@id": "{{ canonical_url }}#webpage" },
+          "author": { "@id": "{{ '/' | absolute_url }}#maintainer" },
+          "sameAs": [
+            "https://github.com/omerfaruknehir/Xylune",
+            "https://github.com/omerfaruknehir/Xylune/releases"
+          ],
           "featureList": [
             "Bring-your-own-provider AI chat",
             "Native Android interface",
@@ -97,8 +142,9 @@
     }
     </script>
 
-    <link rel="icon" href="{{ '/assets/images/xylune-logo.svg' | relative_url }}" type="image/svg+xml" data-xylune-favicon>
-    <link rel="apple-touch-icon" href="{{ '/assets/images/xylune-logo.svg' | relative_url }}" data-xylune-favicon>
+    <link rel="shortcut icon" href="{{ '/favicon.svg' | relative_url }}" type="image/svg+xml" sizes="any">
+    <link rel="icon" href="{{ '/favicon.svg' | relative_url }}" type="image/svg+xml" sizes="any" data-xylune-favicon>
+    <link rel="apple-touch-icon" href="{{ '/favicon.svg' | relative_url }}" data-xylune-favicon>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     {% if page.preconnect_releases %}
