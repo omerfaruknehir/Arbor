@@ -1,4 +1,6 @@
 <!doctype html>
+{% assign page_lang = page.lang | default: 'en' %}
+{% assign strings = site.data.i18n[page_lang] %}
 {% assign title_parts = page.title | default: site.title | split: ' / ' %}
 {% assign app_bar_title = page.heading %}
 {% if app_bar_title == nil or app_bar_title == '' %}
@@ -12,7 +14,26 @@
 {% assign canonical_path = page.canonical_url | default: page.url %}
 {% assign canonical_url = canonical_path | absolute_url %}
 {% assign social_image = page.image | default: site.default_social_image %}
-<html lang="{{ page.lang | default: 'en' }}" data-theme="dark" class="collapsing-title-page">
+{% if page_lang == 'tr' %}
+  {% assign home_path = '/tr/' %}
+  {% assign privacy_path = '/tr/privacy/' %}
+  {% assign terms_path = '/tr/terms/' %}
+  {% assign deletion_path = '/tr/data-deletion/' %}
+  {% assign releases_path = '/tr/releases/' %}
+  {% assign og_locale = 'tr_TR' %}
+  {% assign og_locale_alternate = 'en_US' %}
+  {% assign social_alt = 'Xylune Android BYOK yapay zekâ sohbet uygulaması' %}
+{% else %}
+  {% assign home_path = '/' %}
+  {% assign privacy_path = '/privacy/' %}
+  {% assign terms_path = '/terms/' %}
+  {% assign deletion_path = '/data-deletion/' %}
+  {% assign releases_path = '/releases/' %}
+  {% assign og_locale = 'en_US' %}
+  {% assign og_locale_alternate = 'tr_TR' %}
+  {% assign social_alt = 'Xylune Android BYOK AI chat app' %}
+{% endif %}
+<html lang="{{ page_lang }}" data-theme="dark" class="collapsing-title-page">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -24,23 +45,29 @@
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
     <title>{{ document_title }}</title>
     <link rel="canonical" href="{{ canonical_url }}">
+    {% if page.alternate_en and page.alternate_tr %}
+    <link rel="alternate" hreflang="en" href="{{ page.alternate_en | absolute_url }}">
+    <link rel="alternate" hreflang="tr" href="{{ page.alternate_tr | absolute_url }}">
+    <link rel="alternate" hreflang="x-default" href="{{ page.alternate_en | absolute_url }}">
+    {% endif %}
     <link rel="sitemap" type="application/xml" title="Sitemap" href="{{ '/sitemap.xml' | absolute_url }}">
     <link rel="me" href="https://github.com/omerfaruknehir">
 
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Xylune">
-    <meta property="og:locale" content="en_US">
+    <meta property="og:locale" content="{{ og_locale }}">
+    <meta property="og:locale:alternate" content="{{ og_locale_alternate }}">
     <meta property="og:title" content="{{ document_title | strip | escape }}">
     <meta property="og:description" content="{{ page_description | escape }}">
     <meta property="og:url" content="{{ canonical_url }}">
     <meta property="og:image" content="{{ social_image }}">
     <meta property="og:image:type" content="image/png">
-    <meta property="og:image:alt" content="Xylune Android BYOK AI chat app">
+    <meta property="og:image:alt" content="{{ social_alt }}">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{{ document_title | strip | escape }}">
     <meta name="twitter:description" content="{{ page_description | escape }}">
     <meta name="twitter:image" content="{{ social_image }}">
-    <meta name="twitter:image:alt" content="Xylune Android BYOK AI chat app">
+    <meta name="twitter:image:alt" content="{{ social_alt }}">
 
     <script type="application/ld+json">
     {
@@ -60,7 +87,7 @@
           "name": "Xylune",
           "alternateName": "Xylune Android BYOK AI Chat",
           "description": {{ site.description | jsonify }},
-          "inLanguage": "en",
+          "inLanguage": ["en", "tr"],
           "creator": { "@id": "{{ '/' | absolute_url }}#maintainer" },
           "sameAs": ["https://github.com/omerfaruknehir/Xylune"]
         },
@@ -70,7 +97,7 @@
           "url": "{{ canonical_url }}",
           "name": {{ document_title | strip | jsonify }},
           "description": {{ page_description | strip | jsonify }},
-          "inLanguage": "{{ page.lang | default: 'en' }}",
+          "inLanguage": "{{ page_lang }}",
           "isPartOf": { "@id": "{{ '/' | absolute_url }}#website" },
           "creator": { "@id": "{{ '/' | absolute_url }}#maintainer" },
           "primaryImageOfPage": {
@@ -90,7 +117,7 @@
               "@type": "ListItem",
               "position": 1,
               "name": "Xylune",
-              "item": "{{ '/' | absolute_url }}"
+              "item": "{{ home_path | absolute_url }}"
             },
             {
               "@type": "ListItem",
@@ -107,6 +134,7 @@
           "alternateName": "Xylune Android BYOK AI Chat",
           "url": "{{ '/' | absolute_url }}",
           "description": {{ page_description | strip | jsonify }},
+          "inLanguage": "{{ page_lang }}",
           "operatingSystem": "Android 8.0 and later",
           "softwareRequirements": "Android 8.0 or later",
           "applicationCategory": "UtilitiesApplication",
@@ -158,37 +186,45 @@
     <link rel="stylesheet" href="{{ '/assets/css/app-bar.css' | relative_url }}?v=81">
     <link rel="stylesheet" href="{{ '/assets/css/motion.css' | relative_url }}?v=81">
     <link rel="stylesheet" href="{{ '/assets/css/interaction-fix.css' | relative_url }}?v=81">
-    {% if page.home %}<link rel="stylesheet" href="{{ '/assets/css/home.css' | relative_url }}?v=1">{% endif %}
+    <link rel="stylesheet" href="{{ '/assets/css/language.css' | relative_url }}?v=1">
+    {% if page.home %}<link rel="stylesheet" href="{{ '/assets/css/home.css' | relative_url }}?v=2">{% endif %}
+    <script>window.XyluneLocale = {{ strings | jsonify }};</script>
   </head>
   <body class="page-with-collapsing-title preload{% if page.home %} home-page{% endif %}">
     <div class="nav-scrim" data-menu-dismiss></div>
-    <aside class="site-rail" aria-label="Primary navigation">
-      <a class="brand rail-brand" href="{{ '/' | relative_url }}" aria-label="Xylune home">
+    <aside class="site-rail" aria-label="{{ strings.ui.primary_navigation | escape }}">
+      <a class="brand rail-brand" href="{{ home_path | relative_url }}" aria-label="{{ strings.ui.xylune_home | escape }}">
         <img src="{{ '/assets/images/xylune-logo.svg' | relative_url }}" alt="" data-xylune-logo width="58" height="58">
         <span>Xylune</span>
       </a>
       <nav class="rail-nav">
-        <a class="nav-item{% if page.url == '/' %} is-active{% endif %}" href="{{ '/' | relative_url }}"{% if page.url == '/' %} aria-current="page"{% endif %}><span class="material-symbols-rounded" aria-hidden="true">home</span><span>Home</span></a>
-        <a class="nav-item{% if page.url contains '/privacy/' %} is-active{% endif %}" href="{{ '/privacy/' | relative_url }}"{% if page.url contains '/privacy/' %} aria-current="page"{% endif %}><span class="material-symbols-rounded" aria-hidden="true">shield</span><span>Privacy</span></a>
-        <a class="nav-item{% if page.url contains '/terms/' %} is-active{% endif %}" href="{{ '/terms/' | relative_url }}"{% if page.url contains '/terms/' %} aria-current="page"{% endif %}><span class="material-symbols-rounded" aria-hidden="true">description</span><span>Terms</span></a>
-        <a class="nav-item{% if page.url contains '/data-deletion/' %} is-active{% endif %}" href="{{ '/data-deletion/' | relative_url }}"{% if page.url contains '/data-deletion/' %} aria-current="page"{% endif %}><span class="material-symbols-rounded" aria-hidden="true">person_remove</span><span>Data deletion</span></a>
-        <a class="nav-item{% if page.url == '/releases/' %} is-active{% endif %}" href="{{ '/releases/' | relative_url }}"{% if page.url == '/releases/' %} aria-current="page"{% endif %}><span class="material-symbols-rounded" aria-hidden="true">sell</span><span>Releases</span></a>
-        <a class="nav-item" href="https://github.com/omerfaruknehir/Xylune" aria-label="Xylune on GitHub, external link"><span class="material-symbols-rounded" aria-hidden="true">code</span><span>GitHub</span><span class="material-symbols-rounded nav-item__external" aria-hidden="true">open_in_new</span></a>
+        <a class="nav-item{% if page.url == home_path %} is-active{% endif %}" href="{{ home_path | relative_url }}"{% if page.url == home_path %} aria-current="page"{% endif %}><span class="material-symbols-rounded" aria-hidden="true">home</span><span>{{ strings.nav.home }}</span></a>
+        <a class="nav-item{% if page.url == privacy_path %} is-active{% endif %}" href="{{ privacy_path | relative_url }}"{% if page.url == privacy_path %} aria-current="page"{% endif %}><span class="material-symbols-rounded" aria-hidden="true">shield</span><span>{{ strings.nav.privacy }}</span></a>
+        <a class="nav-item{% if page.url == terms_path %} is-active{% endif %}" href="{{ terms_path | relative_url }}"{% if page.url == terms_path %} aria-current="page"{% endif %}><span class="material-symbols-rounded" aria-hidden="true">description</span><span>{{ strings.nav.terms }}</span></a>
+        <a class="nav-item{% if page.url == deletion_path %} is-active{% endif %}" href="{{ deletion_path | relative_url }}"{% if page.url == deletion_path %} aria-current="page"{% endif %}><span class="material-symbols-rounded" aria-hidden="true">person_remove</span><span>{{ strings.nav.data_deletion }}</span></a>
+        <a class="nav-item{% if page.url == releases_path %} is-active{% endif %}" href="{{ releases_path | relative_url }}"{% if page.url == releases_path %} aria-current="page"{% endif %}><span class="material-symbols-rounded" aria-hidden="true">sell</span><span>{{ strings.nav.releases }}</span></a>
+        <a class="nav-item" href="https://github.com/omerfaruknehir/Xylune" aria-label="Xylune on GitHub, external link"><span class="material-symbols-rounded" aria-hidden="true">code</span><span>{{ strings.nav.github }}</span><span class="material-symbols-rounded nav-item__external" aria-hidden="true">open_in_new</span></a>
       </nav>
       <div class="rail-spacer"></div>
-      <div class="rail-appearance" aria-label="Appearance controls"></div>
+      <div class="rail-language" aria-label="{{ strings.ui.language_controls | escape }}">
+        {% include language-picker.html context='rail' %}
+      </div>
+      <div class="rail-appearance" aria-label="{{ strings.ui.appearance_controls | escape }}"></div>
     </aside>
 
     <main class="page-shell {% if page.home %}home-shell{% else %}document-shell{% endif %} page-with-app-bar">
       <header class="document-app-bar">
         <div class="document-app-bar__row">
-          <button class="icon-button document-app-bar__menu" type="button" data-menu-toggle aria-label="Open navigation" aria-expanded="false">
+          <button class="icon-button document-app-bar__menu" type="button" data-menu-toggle aria-label="{{ strings.ui.open_navigation | escape }}" aria-expanded="false">
             <span class="material-symbols-rounded" aria-hidden="true">menu</span>
           </button>
           <h1 class="document-app-bar__title">{{ app_bar_title | escape }}</h1>
-          <button class="icon-button document-app-bar__appearance" type="button" data-theme-settings aria-label="Open appearance settings">
-            <span class="material-symbols-rounded" aria-hidden="true">palette</span>
-          </button>
+          <div class="document-app-bar__actions">
+            {% include language-picker.html context='app-bar' %}
+            <button class="icon-button document-app-bar__appearance" type="button" data-theme-settings aria-label="{{ strings.ui.open_appearance | escape }}">
+              <span class="material-symbols-rounded" aria-hidden="true">palette</span>
+            </button>
+          </div>
         </div>
       </header>
       <div class="document-title-collapse-snap" aria-hidden="true"></div>
@@ -203,8 +239,8 @@
           {{ content }}
         </article>
         <footer class="site-footer document-footer">
-          <p>This project is maintained by <a href="https://github.com/omerfaruknehir">omerfaruknehir</a>.</p>
-          <p><a href="{{ '/' | relative_url }}">Back to Xylune</a></p>
+          <p>{{ strings.footer.maintained_by }} <a href="https://github.com/omerfaruknehir">omerfaruknehir</a>.</p>
+          <p><a href="{{ home_path | relative_url }}">{{ strings.ui.back_to_xylune }}</a></p>
         </footer>
       </div>
       {% endif %}
@@ -215,5 +251,7 @@
     <script src="{{ '/assets/js/motion.js' | relative_url }}?v=81" defer></script>
     <script src="{{ '/assets/js/logo-motion.js' | relative_url }}?v=81" defer></script>
     <script src="{{ '/assets/js/popup-motion.js' | relative_url }}?v=81" defer></script>
+    <script src="{{ '/assets/js/banner-theme.js' | relative_url }}?v=1" defer></script>
+    <script src="{{ '/assets/js/i18n.js' | relative_url }}?v=1" defer></script>
   </body>
 </html>
