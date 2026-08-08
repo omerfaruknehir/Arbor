@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -46,10 +47,9 @@ private fun XylunePopupBackHandler(
     val focusManager = LocalFocusManager.current
     val imeInsets = WindowInsets.ime
     PredictiveBackHandler(enabled = true) { events ->
-        // Read IME visibility when the gesture actually starts. In particular,
-        // dialogs live in their own window, so checking this outside the dialog
-        // composition observes the activity window and can incorrectly report
-        // the keyboard as hidden.
+        // Resolve IME visibility when the gesture starts in the popup/dialog
+        // window. If the keyboard is visible, this entire Back gesture belongs
+        // to the IME: the surrounding surface must remain open and unchanged.
         val imeVisibleAtGestureStart = imeInsets.getBottom(density) > 0
         if (imeVisibleAtGestureStart) {
             events.collect { }
@@ -70,14 +70,18 @@ private fun XylunePopupBackHandler(
 }
 
 /**
- * Legacy pointer-up dismissal layer retained for the few surfaces that may
- * explicitly opt out of native popup dismissal. Normal Xylune popups should
- * prefer focusable native outside-tap dismissal so they cannot become stuck.
+ * Release-based outside dismissal for popup windows.
+ *
+ * Android can report the initial edge contact of a predictive-Back gesture as
+ * an outside touch. Native dismissOnClickOutside therefore closes a popup at
+ * finger-down, before Back has even progressed. This layer waits for release
+ * and explicitly ignores gestures which began in either system Back edge.
  */
 @Composable
 internal fun ReleaseDismissOutsideLayer(
     visible: Boolean,
     onDismissRequest: () -> Unit,
+    dismissOnOutsideRelease: Boolean = true,
 ) {
     if (!visible) return
 
@@ -100,7 +104,12 @@ internal fun ReleaseDismissOutsideLayer(
         Box(
             Modifier
                 .fillMaxSize()
-                .pointerInput(onDismissRequest, leftBackEdgePx, rightBackEdgePx) {
+                .pointerInput(
+                    onDismissRequest,
+                    dismissOnOutsideRelease,
+                    leftBackEdgePx,
+                    rightBackEdgePx,
+                ) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                         val startedInBackEdge = down.position.x <= leftBackEdgePx ||
@@ -111,7 +120,13 @@ internal fun ReleaseDismissOutsideLayer(
                             consumedByChild = consumedByChild || event.changes.any { it.isConsumed }
                             if (event.changes.none { it.pressed }) break
                         }
-                        if (!startedInBackEdge && !consumedByChild) onDismissRequest()
+                        if (
+                            dismissOnOutsideRelease &&
+                            !startedInBackEdge &&
+                            !consumedByChild
+                        ) {
+                            onDismissRequest()
+                        }
                     }
                 },
         )
@@ -119,10 +134,12 @@ internal fun ReleaseDismissOutsideLayer(
 }
 
 /**
- * Xylune's keyboard-safe dialog. The Back handler is installed *inside* the
- * dialog window, so a first Back gesture while an editor has the IME open only
- * hides the keyboard. A subsequent Back gesture dismisses the dialog with the
- * normal predictive animation. Outside taps still dismiss normally.
+ * Xylune's keyboard-safe modal dialog.
+ *
+ * Large/modal dialogs intentionally do not use native outside-touch dismissal:
+ * an Android predictive-Back gesture begins at the screen edge, which can be
+ * mistaken for an outside click before the Back handler has a chance to keep
+ * the dialog open for the IME. Explicit dialog actions and Back remain safe.
  */
 @Composable
 fun XyluneAlertDialog(
@@ -172,12 +189,12 @@ fun XyluneAlertDialog(
         tonalElevation = tonalElevation,
         properties = DialogProperties(
             dismissOnBackPress = false,
-            dismissOnClickOutside = true,
+            dismissOnClickOutside = false,
         ),
     )
 }
 
-/** Dropdown menu with normal focus and reliable outside-tap dismissal. */
+/** Dropdown menu with release-based outside dismissal and predictive Back. */
 @Composable
 internal fun XyluneDropdownMenu(
     expanded: Boolean,
@@ -186,14 +203,19 @@ internal fun XyluneDropdownMenu(
     dismissOnClickOutside: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    ReleaseDismissOutsideLayer(
+        visible = expanded,
+        onDismissRequest = onDismissRequest,
+        dismissOnOutsideRelease = dismissOnClickOutside,
+    )
     MaterialDropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismissRequest,
         modifier = modifier,
         properties = PopupProperties(
             focusable = true,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = dismissOnClickOutside,
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
         ),
         content = content,
     )
