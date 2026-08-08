@@ -30,6 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 ci/agent_composer_popup_patch.py
+          sed -i '${/^$/d;}' docs/releases/RELEASE_NOTES_0.24.16.md
           git fetch origin main
           git checkout origin/main -- .github/workflows/android.yml
           rm -f .github/workflows/agent-composer-popup-fix.yml
