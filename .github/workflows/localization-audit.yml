@@ -35,16 +35,31 @@ jobs:
                   files.extend(sorted(root.rglob('*.kt')))
 
           literal_re = re.compile(r'"(?:\\.|[^"\\])*"')
-          likely_ui_names = (
+          likely_ui_markers = (
               'Text(', 'title =', 'subtitle =', 'label =', 'placeholder =',
               'contentDescription =', 'supportingText =', 'headlineContent =',
-              'showSnackbar(', 'Toast.makeText(', 'error(', 'notice', 'message =',
-              'description =', 'emptyText =', 'buttonText =',
+              'showSnackbar(', 'Toast.makeText(', 'message =', 'description =',
+              'emptyText =', 'buttonText =', 'SettingsGroup(', 'SettingsDestination(',
+              'SectionTitle(', 'SettingsSwitch(', 'SettingSwitch(', 'OptionRow(',
+              'StatusRow(', 'XyluneAlertDialog(', 'confirmButton', 'dismissButton',
+              'RadioOption(', 'FilterChip(', 'AssistChip(', 'InputChip(', 'SuggestionChip(',
+              'DropdownMenuItem(', 'NavigationDrawerItem(', 'NavigationBarItem(',
+              'TopAppBar(', 'LargeTopAppBar(', 'MediumTopAppBar(', 'SmallTopAppBar(',
+              'OutlinedTextField(', 'TextField(', 'SearchBar(', 'Tooltip',
           )
           excluded_prefixes = (
               'http://', 'https://', 'app.', 'com.', 'android.', 'xylune_',
               'application/', 'text/', 'image/', 'model/', 'provider/',
           )
+          one_word_ui = {
+              'back','close','cancel','save','delete','edit','retry','search','settings','appearance',
+              'privacy','about','open','copy','share','stop','send','images','files','camera','tools',
+              'thinking','research','off','on','auto','system','light','dark','refresh','done','next',
+              'skip','continue','remove','add','download','restore','import','export','archive','rename',
+              'move','unarchive','install','uninstall','enable','disable','default','english','turkish',
+              'language','yes','no','ok','apply','create','clear','browse','connect','disconnect','learn',
+              'manage','select','choose','view','hide','show','copy','paste','replace','reset','finish',
+          }
 
           rows = []
           for path in files:
@@ -55,7 +70,7 @@ jobs:
                   stripped = line.strip()
                   if stripped.startswith(('package ', 'import ', '//', '*')):
                       continue
-                  if not any(marker in line for marker in likely_ui_names) and '/ui/' not in rel and not rel.endswith('/MainActivity.kt'):
+                  if not any(marker in line for marker in likely_ui_markers):
                       continue
                   for match in literal_re.finditer(line):
                       token = match.group(0)
@@ -68,21 +83,20 @@ jobs:
                           continue
                       if clean.startswith(excluded_prefixes):
                           continue
-                      if re.fullmatch(r'[A-Za-z0-9_.:/+-]+', clean) and (' ' not in clean) and clean.lower() not in {
-                          'back','close','cancel','save','delete','edit','retry','search','settings','appearance','privacy','about','open','copy','share','stop','send','images','files','camera','tools','thinking','research','off','on','auto','system','light','dark','refresh','done','next','skip','continue','remove','add','download','restore','import','export','archive','rename','move','unarchive','install','uninstall','enable','disable','default','english','turkish','language'
-                      }:
+                      if re.fullmatch(r'[A-Za-z0-9_.:/+-]+', clean) and clean.casefold() not in one_word_ui:
                           continue
                       rows.append((rel, lineno, clean))
 
           Path('build').mkdir(exist_ok=True)
+          unique = sorted({value for _, _, value in rows}, key=lambda s: s.casefold())
           with Path('build/localization-audit.txt').open('w', encoding='utf-8') as out:
               out.write('=== LOCATIONS ===\n')
               for rel, lineno, value in rows:
                   out.write(f'{rel}:{lineno}\t{value}\n')
               out.write('\n=== UNIQUE ===\n')
-              for value in sorted({value for _, _, value in rows}, key=lambda s: s.casefold()):
+              for value in unique:
                   out.write(value.replace('\n', r'\n') + '\n')
-          print(f'Collected {len(rows)} occurrences / {len({v for _,_,v in rows})} unique strings')
+          print(f'Collected {len(rows)} occurrences / {len(unique)} unique displayed strings')
       - uses: actions/upload-artifact@v7
         with:
           name: localization-audit
