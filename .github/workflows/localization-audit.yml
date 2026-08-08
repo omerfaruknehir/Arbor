@@ -23,7 +23,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base64 --decode .ci/localization.patch.gz.b64 | gzip --decompress > /tmp/localization.patch
+          cat \
+            .ci/localization.patch.part.00 \
+            .ci/localization.patch.part.01 \
+            .ci/localization.patch.part.02 \
+            .ci/localization.patch.part.03 \
+            .ci/localization.patch.part.04 \
+            .ci/localization.patch.rest.00 \
+            .ci/localization.patch.rest.01 \
+            .ci/localization.patch.rest.02 \
+            .ci/localization.patch.rest.03 \
+            .ci/localization.patch.rest.04 \
+            | base64 --decode \
+            | gzip --decompress \
+            > /tmp/localization.patch
           git apply --check /tmp/localization.patch
           git apply /tmp/localization.patch
           git diff --check
