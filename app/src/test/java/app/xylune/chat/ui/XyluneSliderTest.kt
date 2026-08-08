@@ -105,7 +105,7 @@ class XyluneSliderTest {
         assertFalse(promptArea.contains("ThinkingComposerChip("))
         assertFalse(promptArea.contains("SearchComposerChip("))
         assertFalse(promptArea.contains("ToolComposerChip("))
-        assertTrue(plusMenu.contains("Text("Modes & tools""))
+        assertTrue(plusMenu.contains("Text(\"Modes & tools\""))
         assertTrue(plusMenu.contains("ThinkingComposerChip("))
         assertTrue(plusMenu.contains("SearchComposerChip("))
         assertTrue(plusMenu.contains("ToolComposerChip("))
