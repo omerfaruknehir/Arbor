@@ -1,4 +1,4 @@
-@import url('./banner.css');
+@import url('./banner.css?v=2');
 
 .rail-language {
   position: relative;
@@ -171,7 +171,12 @@
   }
 
   .document-app-bar__row {
-    grid-template-columns: 64px minmax(0, 1fr) 104px;
+    grid-template-columns: 104px minmax(0, 1fr) 104px;
+  }
+
+  .document-app-bar__menu {
+    justify-self: start;
+    margin-inline-start: 12px;
   }
 
   .document-app-bar__actions {
