@@ -1,23 +1,18 @@
----
-layout: null
-permalink: /sitemap.xml
----
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>{{ '/' | absolute_url }}</loc>
+    <loc>https://omerfaruknehir.github.io/Xylune/</loc>
   </url>
   <url>
-    <loc>{{ '/privacy/' | absolute_url }}</loc>
+    <loc>https://omerfaruknehir.github.io/Xylune/releases/</loc>
   </url>
   <url>
-    <loc>{{ '/terms/' | absolute_url }}</loc>
+    <loc>https://omerfaruknehir.github.io/Xylune/privacy/</loc>
   </url>
   <url>
-    <loc>{{ '/data-deletion/' | absolute_url }}</loc>
+    <loc>https://omerfaruknehir.github.io/Xylune/terms/</loc>
   </url>
   <url>
-    <loc>{{ '/releases/' | absolute_url }}</loc>
+    <loc>https://omerfaruknehir.github.io/Xylune/data-deletion/</loc>
   </url>
 </urlset>
-
