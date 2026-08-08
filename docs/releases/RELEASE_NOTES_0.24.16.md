@@ -2,4 +2,6 @@
 
 ## Image composer blur
 
-The Images workspace bottom blur now matches the measured composer height instead of using a fixed 240 dp area. It keeps the same minimum height as the normal chat composer and grows only when the input area itself grows.
+The Images workspace bottom blur no longer uses the oversized fixed 240 dp area or the normal chat composer's larger minimum. Image generation has a compact 88 dp blur floor and expands only to the image input area's actual measured height when reference images, validation text, queue status, or multiline input make it taller.
+
+This keeps the translucent bottom chrome tight around the simpler image composer, which does not have the normal chat tool and mode rows.
