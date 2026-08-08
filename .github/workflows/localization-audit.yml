@@ -1,6 +1,10 @@
 name: Localization audit
 
 on:
+  pull_request:
+    paths:
+      - 'app/src/**/*.kt'
+      - '.github/workflows/localization-audit.yml'
   push:
     branches:
       - agent/turkish-localization
@@ -45,7 +49,6 @@ jobs:
           rows = []
           for path in files:
               rel = path.as_posix()
-              # UI/source-facing application code only; omit generated/vendor runtime internals.
               if '/python/' in rel or '/schemas/' in rel:
                   continue
               for lineno, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
@@ -66,12 +69,11 @@ jobs:
                       if clean.startswith(excluded_prefixes):
                           continue
                       if re.fullmatch(r'[A-Za-z0-9_.:/+-]+', clean) and (' ' not in clean) and clean.lower() not in {
-                          'Back','Close','Cancel','Save','Delete','Edit','Retry','Search','Settings','Appearance','Privacy','About','Open','Copy','Share','Stop','Send','Images','Files','Camera','Tools','Thinking','Research','Off','On','Auto','System','Light','Dark','Refresh','Done','Next','Skip','Continue','Remove','Add','Download','Restore','Import','Export','Archive','Rename','Move','Unarchive','Install','Uninstall','Enable','Disable','Default','English','Turkish','Language'
+                          'back','close','cancel','save','delete','edit','retry','search','settings','appearance','privacy','about','open','copy','share','stop','send','images','files','camera','tools','thinking','research','off','on','auto','system','light','dark','refresh','done','next','skip','continue','remove','add','download','restore','import','export','archive','rename','move','unarchive','install','uninstall','enable','disable','default','english','turkish','language'
                       }:
                           continue
                       rows.append((rel, lineno, clean))
 
-          # Preserve locations, and also emit a unique list for translation work.
           Path('build').mkdir(exist_ok=True)
           with Path('build/localization-audit.txt').open('w', encoding='utf-8') as out:
               out.write('=== LOCATIONS ===\n')
