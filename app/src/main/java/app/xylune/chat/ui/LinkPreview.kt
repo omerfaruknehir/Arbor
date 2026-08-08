@@ -2,6 +2,13 @@ package app.xylune.chat.ui
 
 import android.content.Intent
 import android.text.Html
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,8 +38,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,6 +54,7 @@ import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -74,24 +83,64 @@ internal fun AnchoredLinkPreview(
     onDismiss: () -> Unit,
 ) {
     val anchor = reference.anchorBoundsInWindow ?: IntRect(0, 0, 1, 1)
+    val density = LocalDensity.current
+    val initialScale = remember(anchor, density) {
+        val finalWidthPx = with(density) { 330.dp.toPx() }
+        (anchor.width.toFloat() / finalWidthPx).coerceIn(0.58f, 0.86f)
+    }
+    var dismissRequested by remember(reference.target) { mutableStateOf(false) }
+    val visibility = remember(reference.target) {
+        MutableTransitionState(false).apply { targetState = true }
+    }
+    val requestDismiss: () -> Unit = { dismissRequested = true }
+
+    LaunchedEffect(dismissRequested) {
+        if (dismissRequested) {
+            visibility.targetState = false
+            delay(170)
+            onDismiss()
+        }
+    }
+
+    // Native outside dismissal reacts to the initial edge touch of Android's
+    // predictive-Back gesture. Keep the popup fixed and let the shared release
+    // layer decide whether a completed gesture was an outside tap or Back.
+    ReleaseDismissOutsideLayer(
+        visible = true,
+        onDismissRequest = requestDismiss,
+    )
     Popup(
         popupPositionProvider = SpanPopupPositionProvider(anchor),
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         properties = PopupProperties(
             focusable = true,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true,
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
         ),
     ) {
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            shape = MaterialTheme.shapes.extraLarge,
-            shadowElevation = 14.dp,
-            tonalElevation = 4.dp,
-            modifier = Modifier.width(330.dp).heightIn(max = 420.dp),
+        AnimatedVisibility(
+            visibleState = visibility,
+            enter = scaleIn(
+                animationSpec = tween(210),
+                initialScale = initialScale,
+                transformOrigin = TransformOrigin.Center,
+            ) + fadeIn(animationSpec = tween(130)),
+            exit = scaleOut(
+                animationSpec = tween(160),
+                targetScale = initialScale,
+                transformOrigin = TransformOrigin.Center,
+            ) + fadeOut(animationSpec = tween(120)),
         ) {
-            LinkPreviewDetails(reference, onDismiss, Modifier.padding(16.dp))
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                shape = MaterialTheme.shapes.extraLarge,
+                shadowElevation = 14.dp,
+                tonalElevation = 4.dp,
+                modifier = Modifier.width(330.dp).heightIn(max = 420.dp),
+            ) {
+                LinkPreviewDetails(reference, requestDismiss, Modifier.padding(16.dp))
+            }
         }
     }
 }
