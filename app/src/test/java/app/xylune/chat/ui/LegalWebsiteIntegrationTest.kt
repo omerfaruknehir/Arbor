@@ -183,7 +183,7 @@ class LegalWebsiteIntegrationTest {
     }
 
     @Test
-    fun `home uses banner and release notes expand in page`() {
+    fun `home uses branded hero and release notes expand in page`() {
         val releases = repositoryFile("docs/assets/js/releases.js").readText()
         val page = repositoryFile("docs/releases/index.html").readText()
         val home = repositoryFile("docs/index.html").readText()
@@ -200,7 +200,8 @@ class LegalWebsiteIntegrationTest {
         assertTrue(page.contains("data-release-list"))
         assertTrue(!page.contains("sorted numerically"))
         assertTrue(!page.contains("regardless of GitHub publication timestamps"))
-        assertTrue(home.contains("class=\"home-banner\""))
+        assertTrue(home.contains("class=\"home-hero\""))
+        assertTrue(home.contains("class=\"home-hero__backdrop\""))
         assertTrue(home.contains("branding/xylune-banner.png"))
         assertTrue(home.contains("{{ '/releases/' | relative_url }}"))
         assertTrue(css.contains(".release-card__toggle"))
