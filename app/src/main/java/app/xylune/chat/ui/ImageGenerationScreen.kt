@@ -290,7 +290,7 @@ internal fun ImageGenerationScreen(
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.Bottom,
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             IconButton(
                                 onClick = { showReferenceMenu = true },
@@ -359,8 +359,13 @@ internal fun ImageGenerationScreen(
         Box(Modifier.fillMaxSize().xyluneBackdropSource(blurState)) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 14.dp,
+                    end = 14.dp,
+                    top = padding.calculateTopPadding() + 14.dp,
+                    bottom = padding.calculateBottomPadding() + 14.dp,
+                ),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 if (generating && conversation != null && currentProvider != null && currentModel != null && capabilities != null) {

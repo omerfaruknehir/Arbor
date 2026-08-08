@@ -3005,7 +3005,52 @@ private fun Composer(
                 }
             }
 
-            Row(verticalAlignment = Alignment.Bottom) {
+            if (providerConfigured && !generating && !imageGenerationMode) conversation?.let { current ->
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        start = 36.dp,
+                        end = 56.dp,
+                    ),
+                ) {
+                    item {
+                        ThinkingComposerChip(
+                            enabled = current.thinkingEnabled,
+                            effort = current.thinkingEffort,
+                            provider = provider,
+                            model = model,
+                            onSelection = { enabled, effort ->
+                                viewModel.updateConversation {
+                                    it.copy(
+                                        thinkingEnabled = enabled,
+                                        thinkingEffort = effort ?: it.thinkingEffort,
+                                    )
+                                }
+                            },
+                        )
+                    }
+                    item {
+                        SearchComposerChip(
+                            webEnabled = current.webSearchEnabled,
+                            deepResearchEnabled = current.deepResearchEnabled,
+                            onSelection = { webEnabled, deepResearchEnabled ->
+                                viewModel.updateConversation {
+                                    it.copy(
+                                        webSearchEnabled = webEnabled,
+                                        deepResearchEnabled = deepResearchEnabled,
+                                    )
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = {
                     haptics.tap()
                     plusMenu = true
@@ -3013,7 +3058,7 @@ private fun Composer(
                     Icon(
                         Icons.Outlined.Add,
                         if (imageGenerationMode) "Attachments are unavailable in image generation mode"
-                        else "Attachments, modes, and tools",
+                        else "Attachments and tools",
                     )
                 }
                 OutlinedTextField(
@@ -3091,54 +3136,44 @@ private fun Composer(
                 }
                 if (!generating) conversation?.let { current ->
                     Text(
-                        "Modes & tools",
+                        "Tools",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 8.dp),
                     )
-                    Column(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        ThinkingComposerChip(
-                            enabled = current.thinkingEnabled,
-                            effort = current.thinkingEffort,
-                            provider = provider,
-                            model = model,
-                            onSelection = { enabled, effort ->
-                                viewModel.updateConversation {
-                                    it.copy(
-                                        thinkingEnabled = enabled,
-                                        thinkingEffort = effort ?: it.thinkingEffort,
-                                    )
-                                }
+                    ComposerToggleRow(
+                        icon = Icons.Outlined.Code,
+                        title = "Local Code Execution",
+                        subtitle = "Run Python in this chat's persistent workspace",
+                        checked = current.agentPythonEnabled,
+                        onCheckedChange = { enabled ->
+                            viewModel.updateConversation { it.copy(agentPythonEnabled = enabled) }
+                        },
+                    )
+                    ComposerToggleRow(
+                        icon = Icons.Outlined.Terminal,
+                        title = "Linux",
+                        subtitle = if (linuxInstalled) {
+                            "Use the $linuxDistributionName tooling workspace"
+                        } else {
+                            "Install a Linux workspace before enabling"
+                        },
+                        checked = current.agentUbuntuEnabled && linuxInstalled,
+                        enabled = linuxInstalled,
+                        onCheckedChange = { enabled ->
+                            viewModel.updateConversation { it.copy(agentUbuntuEnabled = enabled) }
+                        },
+                    )
+                    if (!linuxInstalled) {
+                        TextButton(
+                            onClick = {
+                                plusMenu = false
+                                onOpenLinuxSetup()
                             },
-                        )
-                        SearchComposerChip(
-                            webEnabled = current.webSearchEnabled,
-                            deepResearchEnabled = current.deepResearchEnabled,
-                            onSelection = { webEnabled, deepResearchEnabled ->
-                                viewModel.updateConversation {
-                                    it.copy(
-                                        webSearchEnabled = webEnabled,
-                                        deepResearchEnabled = deepResearchEnabled,
-                                    )
-                                }
-                            },
-                        )
-                        ToolComposerChip(
-                            pythonEnabled = current.agentPythonEnabled,
-                            linuxEnabled = current.agentUbuntuEnabled,
-                            linuxInstalled = linuxInstalled,
-                            linuxDistributionName = linuxDistributionName,
-                            onOpenLinuxSetup = onOpenLinuxSetup,
-                            onPythonEnabled = { enabled ->
-                                viewModel.updateConversation { it.copy(agentPythonEnabled = enabled) }
-                            },
-                            onLinuxEnabled = { enabled ->
-                                viewModel.updateConversation { it.copy(agentUbuntuEnabled = enabled) }
-                            },
-                        )
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        ) {
+                            Text("Manage Linux workspace")
+                        }
                     }
                 }
             }

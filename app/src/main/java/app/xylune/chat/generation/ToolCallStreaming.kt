@@ -1,5 +1,6 @@
 package app.xylune.chat.generation
 
+import app.xylune.chat.agent.MessageTimelineEvent
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -14,6 +15,26 @@ internal data class ToolCallPresentation(
 )
 
 private val ToolPreviewJson = Json { ignoreUnknownKeys = true }
+
+internal fun preparedToolCallMatches(
+    candidate: MessageTimelineEvent,
+    providerCallId: String,
+    argumentsJson: String,
+    presentation: ToolCallPresentation,
+): Boolean {
+    if (candidate.status !in setOf("preparing", "prepared") || candidate.kind != presentation.kind) return false
+
+    val sameProviderCall = providerCallId.isNotBlank() && candidate.providerCallId == providerCallId
+    val sameArguments = argumentsJson.isNotBlank() && candidate.argumentsJson.isNotBlank() &&
+        candidate.argumentsJson == argumentsJson
+    // Some providers only assign the final call id after streaming the arguments,
+    // and may normalize the final JSON. The visible tool input is the stable
+    // identity in that case, so preparation should morph into execution rather
+    // than becoming a second card.
+    val sameInput = presentation.input.isNotBlank() && candidate.input.isNotBlank() &&
+        candidate.input.trim() == presentation.input.trim()
+    return sameProviderCall || sameArguments || sameInput
+}
 
 internal fun toolCallPresentation(name: String, argumentsJson: String): ToolCallPresentation {
     val normalized = name.lowercase()

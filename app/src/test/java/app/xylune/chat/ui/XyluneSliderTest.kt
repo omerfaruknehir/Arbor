@@ -96,19 +96,23 @@ class XyluneSliderTest {
     }
 
     @Test
-    fun composerModesAndToolsLiveInThePlusMenuWithShortLabels() {
+    fun thinkingAndSearchStayAbovePromptWhileToolsLiveInPlusMenu() {
         val chat = java.io.File("src/main/java/app/xylune/chat/ui/ChatScreen.kt").readText()
         val composer = chat.substringAfter("private fun Composer(").substringBefore("private fun StagedAttachmentPreview")
         val promptArea = composer.substringBefore("if (plusMenu)")
         val plusMenu = composer.substringAfter("if (plusMenu)").substringBefore("if (sendMenu)")
 
-        assertFalse(promptArea.contains("ThinkingComposerChip("))
-        assertFalse(promptArea.contains("SearchComposerChip("))
+        assertTrue(promptArea.contains("ThinkingComposerChip("))
+        assertTrue(promptArea.contains("SearchComposerChip("))
+        assertTrue(promptArea.contains("Row(verticalAlignment = Alignment.CenterVertically)"))
         assertFalse(promptArea.contains("ToolComposerChip("))
-        assertTrue(plusMenu.contains("\"Modes & tools\""))
-        assertTrue(plusMenu.contains("ThinkingComposerChip("))
-        assertTrue(plusMenu.contains("SearchComposerChip("))
-        assertTrue(plusMenu.contains("ToolComposerChip("))
+        assertFalse(promptArea.contains("Row(verticalAlignment = Alignment.Bottom)"))
+        assertTrue(plusMenu.contains("\"Tools\""))
+        assertTrue(plusMenu.contains("title = \"Local Code Execution\""))
+        assertTrue(plusMenu.contains("title = \"Linux\""))
+        assertTrue(plusMenu.contains("ComposerToggleRow("))
+        assertFalse(plusMenu.contains("ThinkingComposerChip("))
+        assertFalse(plusMenu.contains("SearchComposerChip("))
         assertFalse(chat.contains("Think ·"))
         assertFalse(chat.contains("searchSettings.activeLabel"))
         assertFalse(chat.contains("Tools ·"))

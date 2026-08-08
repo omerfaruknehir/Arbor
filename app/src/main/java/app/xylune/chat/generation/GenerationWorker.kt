@@ -428,9 +428,7 @@ class GenerationWorker(
             }
 
             val preparedIndex = timeline.indexOfLast { candidate ->
-                candidate.status in setOf("preparing", "prepared") &&
-                    ((providerCallId.isNotBlank() && candidate.providerCallId == providerCallId) ||
-                        (providerCallId.isBlank() && candidate.argumentsJson == argumentsJson && candidate.kind == presentation.kind))
+                preparedToolCallMatches(candidate, providerCallId, argumentsJson, presentation)
             }
             val prepared = preparedIndex.takeIf { it >= 0 }?.let(timeline::get)
             closeOpenStreamEvents()
@@ -539,9 +537,7 @@ class GenerationWorker(
             val presentation = toolCallPresentation(call.name, call.argumentsJson)
             val now = System.currentTimeMillis()
             val existingIndex = timeline.indexOfLast { candidate ->
-                candidate.status in setOf("preparing", "prepared") &&
-                    ((call.id.isNotBlank() && candidate.providerCallId == call.id) ||
-                        (candidate.argumentsJson == call.argumentsJson && candidate.kind == presentation.kind))
+                preparedToolCallMatches(candidate, call.id, call.argumentsJson, presentation)
             }
             val existing = existingIndex.takeIf { it >= 0 }?.let(timeline::get)
             val failed = MessageTimelineEvent(
