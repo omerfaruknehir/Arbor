@@ -102,20 +102,13 @@ internal fun AnchoredLinkPreview(
         }
     }
 
-    // Native outside dismissal reacts to the initial edge touch of Android's
-    // predictive-Back gesture. Keep the popup fixed and let the shared release
-    // layer decide whether a completed gesture was an outside tap or Back.
-    ReleaseDismissOutsideLayer(
-        visible = true,
-        onDismissRequest = requestDismiss,
-    )
     Popup(
         popupPositionProvider = SpanPopupPositionProvider(anchor),
         onDismissRequest = requestDismiss,
         properties = PopupProperties(
             focusable = true,
-            dismissOnBackPress = false,
-            dismissOnClickOutside = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
         ),
     ) {
         AnimatedVisibility(
