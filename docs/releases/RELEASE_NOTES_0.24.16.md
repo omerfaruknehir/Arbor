@@ -8,7 +8,7 @@ This keeps the translucent bottom chrome tight around the simpler image composer
 
 ## Cleaner composer controls
 
-Thinking, search, and execution controls now live under the + menu instead of permanently consuming a row above the prompt. Their visible labels are compact: thinking shows only the current effort, search shows Search or Research, and tools show the active tool state without redundant prefixes.
+Thinking, search, and execution controls now live under the + menu instead of permanently consuming a row above the prompt. Their visible labels are compact: thinking shows only the current effort, search shows Search or Research, and tools show the active tool state without redundant prefixes or provider fallback details.
 
 ## Reliable popup dismissal
 
