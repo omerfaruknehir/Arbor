@@ -86,13 +86,16 @@ class OnboardingFlowTest {
     }
 
     @Test
-    fun `popup back hides keyboard and ignores system edge origins`() {
+    fun `popup back remains keyboard safe while ordinary outside taps dismiss`() {
         val source = java.io.File("src/main/java/app/xylune/chat/ui/ReleaseDismissPopup.kt").readText()
+        val alert = source.substringAfter("fun XyluneAlertDialog").substringBefore("/** Dropdown menu")
+        val dropdown = source.substringAfter("internal fun XyluneDropdownMenu")
         assertTrue(source.contains("WindowInsets.ime.getBottom"))
         assertTrue(source.contains("keyboard?.hide()"))
-        assertTrue(source.contains("startedInBackEdge"))
-        assertTrue(source.contains("dismissOnClickOutside = false"))
-        assertTrue(source.contains("fun XyluneAlertDialog"))
+        assertTrue(alert.contains("onDismissRequest = onDismissRequest"))
+        assertTrue(alert.contains("dismissOnClickOutside = true"))
+        assertTrue(dropdown.contains("dismissOnClickOutside: Boolean = true"))
+        assertTrue(dropdown.contains("focusable = true"))
     }
 
     @Test

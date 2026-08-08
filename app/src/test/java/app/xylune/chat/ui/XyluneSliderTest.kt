@@ -96,17 +96,22 @@ class XyluneSliderTest {
     }
 
     @Test
-    fun composerPillsUseTheFullWidthAsTheirHorizontalGestureViewport() {
+    fun composerModesAndToolsLiveInThePlusMenuWithShortLabels() {
         val chat = java.io.File("src/main/java/app/xylune/chat/ui/ChatScreen.kt").readText()
         val composer = chat.substringAfter("private fun Composer(").substringBefore("private fun StagedAttachmentPreview")
-        val pillRow = composer.substringAfter("conversation?.let { current ->").substringBefore("ThinkingComposerChip(")
+        val promptArea = composer.substringBefore("if (plusMenu)")
+        val plusMenu = composer.substringAfter("if (plusMenu)").substringBefore("if (sendMenu)")
 
-        assertTrue(pillRow.contains(".fillMaxWidth()"))
-        assertTrue(pillRow.contains(".padding(bottom = 6.dp)"))
-        assertTrue(pillRow.contains("start = 36.dp"))
-        assertTrue(pillRow.contains("end = 56.dp"))
-        assertFalse(pillRow.contains(".padding(start = 36.dp"))
-        assertFalse(pillRow.contains(".padding(start = 48.dp"))
+        assertFalse(promptArea.contains("ThinkingComposerChip("))
+        assertFalse(promptArea.contains("SearchComposerChip("))
+        assertFalse(promptArea.contains("ToolComposerChip("))
+        assertTrue(plusMenu.contains("Text("Modes & tools""))
+        assertTrue(plusMenu.contains("ThinkingComposerChip("))
+        assertTrue(plusMenu.contains("SearchComposerChip("))
+        assertTrue(plusMenu.contains("ToolComposerChip("))
+        assertFalse(chat.contains("Think ·"))
+        assertFalse(chat.contains("searchSettings.activeLabel"))
+        assertFalse(chat.contains("Tools ·"))
     }
 
     @Test
