@@ -69,11 +69,11 @@ jobs:
               assert parsed.netloc == 'omerfaruknehir.github.io', location
               assert parsed.path.startswith('/Xylune/'), location
           PY
-      - name: Validate optimized banner source
+      - name: Validate optimized 2-to-1 banner source
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('docs/assets/images/xylune-banner-background.webp')
+          path = Path('docs/assets/images/xylune-banner-background-2-1.webp')
           data = path.read_bytes()
           assert 0 < len(data) < 100_000, len(data)
           assert data[:4] == b'RIFF' and data[8:12] == b'WEBP', 'not a WebP file'
@@ -86,7 +86,7 @@ jobs:
       - name: Verify built static assets
         run: |
           cmp docs/sitemap.xml _site/sitemap.xml
-          cmp docs/assets/images/xylune-banner-background.webp _site/assets/images/xylune-banner-background.webp
+          cmp docs/assets/images/xylune-banner-background-2-1.webp _site/assets/images/xylune-banner-background-2-1.webp
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
           ET.parse('_site/sitemap.xml')
@@ -120,10 +120,17 @@ jobs:
 
           english = Path('_site/index.html').read_text(encoding='utf-8')
           turkish = Path('_site/tr/index.html').read_text(encoding='utf-8')
+          banner_css = Path('_site/assets/css/banner.css').read_text(encoding='utf-8')
+          banner_path = '/Xylune/assets/images/xylune-banner-background-2-1.webp'
           assert 'Your AI.' in english
           assert 'Yapay zekân.' in turkish
-          assert '/Xylune/assets/images/xylune-banner-background.webp' in english
+          assert banner_path in english
+          assert banner_path in turkish
           assert 'data-themed-banner' in english
+          assert 'data-themed-banner' in turkish
+          assert 'aspect-ratio: 2 / 1' in banner_css
+          assert 'width: calc(100% + 48px)' in banner_css
+          assert 'margin-inline: -24px' in banner_css
           assert 'BASE_BANNER_HUE = 164' in Path('_site/assets/js/banner-theme.js').read_text(encoding='utf-8')
           PY
       - uses: actions/upload-pages-artifact@v4

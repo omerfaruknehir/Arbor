@@ -187,7 +187,8 @@
     <link rel="stylesheet" href="{{ '/assets/css/motion.css' | relative_url }}?v=81">
     <link rel="stylesheet" href="{{ '/assets/css/interaction-fix.css' | relative_url }}?v=81">
     {% if page.home %}<link rel="stylesheet" href="{{ '/assets/css/home.css' | relative_url }}?v=3">{% endif %}
-    <link rel="stylesheet" href="{{ '/assets/css/language.css' | relative_url }}?v=2">
+    <link rel="stylesheet" href="{{ '/assets/css/language.css' | relative_url }}?v=3">
+    {% if page.home %}<link rel="stylesheet" href="{{ '/assets/css/banner.css' | relative_url }}?v=3">{% endif %}
     <script>window.XyluneLocale = {{ strings | jsonify }};</script>
   </head>
   <body class="page-with-collapsing-title preload{% if page.home %} home-page{% endif %}">
