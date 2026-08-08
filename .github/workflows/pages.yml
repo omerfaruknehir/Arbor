@@ -69,14 +69,24 @@ jobs:
               assert parsed.netloc == 'omerfaruknehir.github.io', location
               assert parsed.path.startswith('/Xylune/'), location
           PY
+      - name: Validate optimized banner source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('docs/assets/images/xylune-banner-background.webp')
+          data = path.read_bytes()
+          assert 0 < len(data) < 100_000, len(data)
+          assert data[:4] == b'RIFF' and data[8:12] == b'WEBP', 'not a WebP file'
+          PY
       - uses: actions/configure-pages@v5
       - uses: actions/jekyll-build-pages@v1
         with:
           source: ./docs
           destination: ./_site
-      - name: Verify built sitemap remains static XML
+      - name: Verify built static assets
         run: |
           cmp docs/sitemap.xml _site/sitemap.xml
+          cmp docs/assets/images/xylune-banner-background.webp _site/assets/images/xylune-banner-background.webp
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
           ET.parse('_site/sitemap.xml')
@@ -114,11 +124,8 @@ jobs:
           assert 'Yapay zekân.' in turkish
           assert '/Xylune/assets/images/xylune-banner-background.webp' in english
           assert 'data-themed-banner' in english
+          assert 'BASE_BANNER_HUE = 164' in Path('_site/assets/js/banner-theme.js').read_text(encoding='utf-8')
           PY
-      - name: Validate optimized banner asset
-        run: |
-          test -s docs/assets/images/xylune-banner-background.webp
-          test "$(wc -c < docs/assets/images/xylune-banner-background.webp)" -lt 100000
       - uses: actions/upload-pages-artifact@v4
         with:
           path: ./_site
