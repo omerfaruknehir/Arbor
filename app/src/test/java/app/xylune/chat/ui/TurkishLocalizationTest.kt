@@ -26,6 +26,9 @@ class TurkishLocalizationTest {
         assertEquals("Görseller", localizeUiText("Images", XyluneUiLanguage.TURKISH))
         assertEquals("Sayfa 2 / 7", localizeUiText("Page 2 of 7", XyluneUiLanguage.TURKISH))
         assertEquals("Kaynak 3", localizeUiText("Source 3", XyluneUiLanguage.TURKISH))
+        assertEquals("3 listelenen ağ kaynağına izin ver", localizeUiText("Allow 3 listed network origins?", XyluneUiLanguage.TURKISH))
+        assertEquals("2 devre dışı bellek silinsin mi?", localizeUiText("Delete 2 disabled memories?", XyluneUiLanguage.TURKISH))
+        assertEquals("Deneme 4 · 2 hata", localizeUiText("Attempt 4 · 2 error(s)", XyluneUiLanguage.TURKISH))
     }
 
     @Test

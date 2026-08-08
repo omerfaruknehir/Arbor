@@ -75,7 +75,7 @@ private fun localizeTurkishDynamic(value: String): String {
         { text -> Regex("^(\\d+) error\\(s\\)$").matchEntire(text)?.let { "${it.groupValues[1]} hata" } },
         { text -> Regex("^(.+) ready$").matchEntire(text)?.let { "${it.groupValues[1]} hazır" } },
         { text -> Regex("^Configured as (.+) • tap to check backups$").matchEntire(text)?.let { "${it.groupValues[1]} olarak yapılandırıldı • yedekleri denetlemek için dokunun" } },
-        { text -> Regex("""^ Allow (\d+) listed network origins\?$""").matchEntire(text)?.let { " ${it.groupValues[1]} listelenen ağ kaynağına izin ver" } },
+        { text -> Regex("""^Allow (\d+) listed network origins\?$""").matchEntire(text)?.let { " ${it.groupValues[1]} listelenen ağ kaynağına izin ver" } },
         { text -> Regex("""^Delete (\d+) disabled memor(?:y|ies)\?$""").matchEntire(text)?.let { "${it.groupValues[1]} devre dışı bellek silinsin mi?" } },
         { text -> Regex("""^Updates are checked against (.+)\.$""").matchEntire(text)?.let { "Güncellemeler ${it.groupValues[1]} ile karşılaştırılarak denetlenir." } },
         { text -> Regex("^Checking (.+)…$").matchEntire(text)?.let { "${it.groupValues[1]} denetleniyor…" } },
