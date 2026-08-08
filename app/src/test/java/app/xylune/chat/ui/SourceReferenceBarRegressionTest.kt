@@ -29,13 +29,18 @@ class SourceReferenceBarRegressionTest {
         assertTrue(source.contains("anchorBoundsInWindow = anchor"))
         assertTrue(source.contains("MorphingSourcePreview("))
         assertTrue(source.contains("widthIn(max = 230.dp)"))
+        assertTrue(source.contains("anchorBounds.width > 0 && anchorBounds.height > 0"))
         assertFalse(source.contains("animateContentSize("))
         assertFalse(source.contains("var expandedTarget"))
         assertTrue(richMessage.contains("SourceReferenceBar("))
         assertFalse(richMessage.contains("sourceReferencesFooterMarkdown"))
 
         assertTrue(morph.contains("Animatable(0f)"))
-        assertTrue(morph.contains(".fillMaxSize()"))
+        assertTrue(morph.contains("LocalWindowInfo.current.containerSize"))
+        assertTrue(morph.contains(".size(popupWidth, popupHeight)"))
+        assertFalse(morph.contains(".fillMaxSize()"))
+        assertTrue(morph.contains("delay(750)"))
+        assertTrue(morph.contains("cardSize.width <= 0 || cardSize.height <= 0"))
         assertTrue(morph.contains(".width(330.dp)"))
         assertTrue(morph.contains(".heightIn(max = 420.dp)"))
         assertTrue(morph.contains("this.scaleX = scaleX"))
@@ -45,5 +50,6 @@ class SourceReferenceBarRegressionTest {
         assertTrue(morph.contains("dismissOnBackPress = false"))
         assertTrue(morph.contains("dismissOnClickOutside = false"))
         assertTrue(morph.contains("val wasTap = maxTravelSquared <= slop * slop"))
+        assertTrue(morph.contains("!boundsReady || !startedInsideCard"))
     }
 }
