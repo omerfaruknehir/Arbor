@@ -57,10 +57,13 @@
     }, { once: true });
   });
 
+  // Appearance changes update these data attributes after the active CSS variables
+  // have been applied. Observing root.style itself would recurse because this
+  // module also writes two banner CSS variables to the root style declaration.
   const observer = new MutationObserver(syncBannerHue);
   observer.observe(root, {
     attributes: true,
-    attributeFilter: ['style', 'data-scheme-preference', 'data-theme'],
+    attributeFilter: ['data-scheme-preference', 'data-theme'],
   });
   syncBannerHue();
 })();
