@@ -53,32 +53,6 @@ env:
   XYLUNE_DROPBOX_APP_KEY: ${{ vars.XYLUNE_DROPBOX_APP_KEY }}
 
 jobs:
-  patch-0-24-18:
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/ime-back-source-pill'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
-      - name: Apply version patch
-        run: python3 ci/patch-0.24.18.py
-      - name: Restore normal workflow and commit final patch
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin main
-          git checkout origin/main -- .github/workflows/android.yml
-          rm ci/patch-0.24.18.py
-          git diff --check
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/build.gradle.kts .github/workflows/android.yml ci/patch-0.24.18.py
-          git commit -m 'Bump Xylune to 0.24.18'
-          git push origin HEAD:${{ github.head_ref }}
-
   verify:
     runs-on: ubuntu-22.04
     timeout-minutes: 75
