@@ -20,24 +20,17 @@ jobs:
         with:
           ref: agent/turkish-localization
           fetch-depth: 0
-      - name: Fix dynamic Turkish regexes and add coverage
+      - name: Correct dynamic Turkish rule and add coverage
         shell: python
         run: |
           from pathlib import Path
           p = Path('app/src/main/java/app/xylune/chat/ui/UiLocalization.kt')
           s = p.read_text(encoding='utf-8')
-          replacements = {
-              r'Regex("""^ Allow (\\d+) listed network origins\\?$""")': r'Regex("""^Allow (\d+) listed network origins\?$""")',
-              r'Regex("""^Delete (\\d+) disabled memor(?:y|ies)\\?$""")': r'Regex("""^Delete (\d+) disabled memor(?:y|ies)\?$""")',
-              r'Regex("""^Updates are checked against (.+)\\.$""")': r'Regex("""^Updates are checked against (.+)\.$""")',
-              r'Regex("""^Attempt (\\d+) · repeated candidate · (\\d+) error\\(s\\)$""")': r'Regex("""^Attempt (\d+) · repeated candidate · (\d+) error\(s\)$""")',
-              r'Regex("""^Attempt (\\d+) · (\\d+) error\\(s\\)$""")': r'Regex("""^Attempt (\d+) · (\d+) error\(s\)$""")',
-          }
-          for old, new in replacements.items():
-              if old not in s:
-                  raise SystemExit(f'missing expected regex: {old}')
-              s = s.replace(old, new)
-          p.write_text(s, encoding='utf-8')
+          old = r'Regex("""^ Allow (\d+) listed network origins\?$""")'
+          new = r'Regex("""^Allow (\d+) listed network origins\?$""")'
+          if old not in s:
+              raise SystemExit('missing network-origin dynamic rule')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
 
           t = Path('app/src/test/java/app/xylune/chat/ui/TurkishLocalizationTest.kt')
           tests = t.read_text(encoding='utf-8')
@@ -49,8 +42,7 @@ jobs:
           )
           if needle not in tests:
               raise SystemExit('missing TurkishLocalizationTest insertion point')
-          tests = tests.replace(needle, addition, 1)
-          t.write_text(tests, encoding='utf-8')
+          t.write_text(tests.replace(needle, addition, 1), encoding='utf-8')
       - name: Commit localization corrections
         shell: bash
         run: |
@@ -59,7 +51,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/java/app/xylune/chat/ui/UiLocalization.kt app/src/test/java/app/xylune/chat/ui/TurkishLocalizationTest.kt
-          git commit -m "Correct dynamic Turkish translations"
+          git commit -m "Cover dynamic Turkish translations"
           git push origin HEAD:agent/turkish-localization
       - uses: actions/setup-java@v5
         with:
