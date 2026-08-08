@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - 'app/src/**/*.kt'
+      - 'app/src/main/res/**'
       - '.github/workflows/localization-audit.yml'
   push:
     branches:
       - agent/turkish-localization
     paths:
       - 'app/src/**/*.kt'
+      - 'app/src/main/res/**'
       - '.github/workflows/localization-audit.yml'
   workflow_dispatch:
 
@@ -101,4 +103,13 @@ jobs:
         with:
           name: localization-audit
           path: build/localization-audit.txt
+          retention-days: 2
+      - uses: actions/upload-artifact@v7
+        with:
+          name: localization-source-snapshot
+          path: |
+            app/src/main/java/
+            app/src/main/res/
+            app/src/test/java/
+            app/build.gradle.kts
           retention-days: 2
